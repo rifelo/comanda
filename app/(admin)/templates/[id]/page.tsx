@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getTemplate } from "@/lib/db/templates";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { TemplateEditor } from "./template-editor";
+import { DeleteTemplateButton } from "./delete-template-button";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,13 @@ export default async function TemplatePage({
   await requireAdmin();
   const data = await getTemplate(id);
   if (!data) notFound();
+
+  // Count attached shifts so the delete button can pick hard vs soft.
+  const supabase = await createSupabaseServerClient();
+  const { count: shiftCount } = await supabase
+    .from("shift_instances")
+    .select("id", { count: "exact", head: true })
+    .eq("template_id", id);
 
   return (
     <div>
@@ -50,6 +59,11 @@ export default async function TemplatePage({
             {data.tasks.length} tareas
           </p>
         </div>
+        <DeleteTemplateButton
+          templateId={id}
+          restaurantId={data.template.restaurant_id}
+          shiftCount={shiftCount ?? 0}
+        />
       </header>
 
       <div style={{ padding: "20px 32px" }}>

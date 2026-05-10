@@ -8,6 +8,7 @@ export async function getTemplate(templateId: string) {
       .from("checklist_templates")
       .select("*")
       .eq("id", templateId)
+      .eq("active", true)
       .single<ChecklistTemplate>(),
     supabase
       .from("template_tasks")
@@ -25,6 +26,7 @@ export async function listTemplatesForRestaurant(restaurantId: string) {
     .from("checklist_templates")
     .select("*")
     .eq("restaurant_id", restaurantId)
+    .eq("active", true)
     .order("shift");
   return (data ?? []) as ChecklistTemplate[];
 }

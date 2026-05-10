@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Folio } from "@/components/comanda/primitives";
+import { MemberRow } from "./staff/member-row";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export default async function RestaurantDetail({
     .from("checklist_templates")
     .select("id, name, shift, active, version")
     .eq("restaurant_id", id)
+    .eq("active", true)
     .order("shift");
 
   const { data: recentShifts } = await supabase
@@ -36,6 +38,19 @@ export default async function RestaurantDetail({
     .eq("restaurant_id", id)
     .order("date", { ascending: false })
     .limit(20);
+
+  // Equipo · staff with access to this restaurant.
+  const { data: memberRows } = await supabase
+    .from("restaurant_members")
+    .select("user_id, profile:profiles!inner(id, full_name)")
+    .eq("restaurant_id", id);
+  type MemberRow = {
+    user_id: string;
+    profile: { id: string; full_name: string };
+  };
+  const members = ((memberRows ?? []) as unknown as MemberRow[]).filter(
+    (m) => m.profile,
+  );
 
   return (
     <div>
@@ -76,7 +91,16 @@ export default async function RestaurantDetail({
           borderBottom: "1px dashed var(--rule)",
         }}
       >
-        <SectionLabel>Plantillas</SectionLabel>
+        <div className="flex items-center justify-between">
+          <SectionLabel>Plantillas</SectionLabel>
+          <Link
+            href={`/restaurants/${id}/templates/new`}
+            className="cmd-btn ghost sm"
+            style={{ marginBottom: 14 }}
+          >
+            + Nueva plantilla
+          </Link>
+        </div>
         <ul
           className="grid gap-4"
           style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}
@@ -116,6 +140,43 @@ export default async function RestaurantDetail({
               style={{ fontSize: 12 }}
             >
               Sin plantillas para este restaurante.
+            </li>
+          ) : null}
+        </ul>
+      </section>
+
+      <section
+        style={{
+          padding: "24px 32px",
+          borderBottom: "1px dashed var(--rule)",
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <SectionLabel>Equipo · {members.length}</SectionLabel>
+          <Link
+            href={`/restaurants/${id}/staff/new`}
+            className="cmd-btn ghost sm"
+            style={{ marginBottom: 14 }}
+          >
+            + Agregar staff
+          </Link>
+        </div>
+        <ul>
+          {members.map((m) => (
+            <MemberRow
+              key={m.user_id}
+              restaurantId={id}
+              userId={m.user_id}
+              fullName={m.profile.full_name}
+            />
+          ))}
+          {members.length === 0 ? (
+            <li
+              className="text-muted"
+              style={{ padding: "12px 0", fontSize: 12 }}
+            >
+              Aún no tienes staff asignado a este restaurante. Agrega cajeros
+              para que puedan registrar tareas en sus turnos.
             </li>
           ) : null}
         </ul>
