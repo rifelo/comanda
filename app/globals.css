@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/* ── Comanda · paper-ticket palette ──────────────────────────── */
+:root {
+  --paper: #f4ecdc;
+  --paper-dk: #ebe2cf;
+  --paper-lt: #faf5e8;
+  --ink: #1f1a14;
+  --ink-2: #3d342a;
+  --muted: #7d6f5d;
+  --rule: #cabea4;
+  --rule-soft: #dfd3b8;
+  --red: #b03a2e;
+  --red-dk: #7e2419;
+  --green: #3f6b3a;
+  --amber: #b9871f;
+  --stamp: #aa3322;
+}
+
+@theme inline {
+  --font-mono: var(--font-mono);
+  --font-slab: var(--font-slab);
+  --font-script: var(--font-script);
+
+  --color-paper: var(--paper);
+  --color-paper-dk: var(--paper-dk);
+  --color-paper-lt: var(--paper-lt);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-red: var(--red);
+  --color-red-dk: var(--red-dk);
+  --color-green: var(--green);
+  --color-amber: var(--amber);
+  --color-stamp: var(--stamp);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* iOS Safari: prevent input zoom + maintain tap-target floor for kitchen staff. */
+input, textarea, select { font-size: 16px; }
+button, [role="button"], a { min-height: 44px; }
+
+@media (display-mode: standalone) {
+  html, body { overscroll-behavior-y: none; }
+}
+
+/* ── Paper background w/ ruled-paper hairlines + warm-light vignette */
+.cmd-paper {
+  background: var(--paper);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(120, 90, 40, 0.04) 0 1px, transparent 1px 28px),
+    radial-gradient(ellipse at top left, rgba(255, 240, 200, 0.5), transparent 60%);
+}
+
+.cmd-paper-lt { background: var(--paper-lt); }
+
+/* ── Subtle multiply-noise overlay for ticket cards */
+.cmd-noise { position: relative; }
+.cmd-noise::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(60, 40, 10, 0.06) 1px, transparent 1.2px);
+  background-size: 3px 3px;
+  mix-blend-mode: multiply;
+  opacity: 0.4;
+}
+
+/* ── Tabular numerics on demand */
+.cmd-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ── Lined notepaper texture for novedad textarea */
+.cmd-lined {
+  background: var(--paper-lt);
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0 23px,
+    var(--rule-soft) 23px 24px
+  );
+}
+
+/* ── Striped photo-placeholder fill */
+.cmd-photo-stripe {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--rule-soft) 0 6px,
+    var(--paper) 6px 12px
+  );
+}
+
+/* ── Shared button reset for monospace ticket buttons */
+.cmd-btn {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: 2px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper-lt);
+  cursor: pointer;
+  transition: transform 0.08s, background 0.12s, color 0.12s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.cmd-btn:active { transform: translateY(1px); }
+.cmd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cmd-btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.cmd-btn.ghost:hover { background: var(--ink); color: var(--paper-lt); }
+.cmd-btn.red { background: var(--red); border-color: var(--red); color: var(--paper-lt); }
+.cmd-btn.red:hover { background: var(--red-dk); border-color: var(--red-dk); }
+.cmd-btn.sm { font-size: 10px; padding: 7px 10px; min-height: 32px; }
+
+.cmd-link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+}

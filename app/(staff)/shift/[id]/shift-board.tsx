@@ -1,0 +1,163 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState, useTransition } from "react";
+import type { ShiftView } from "@/lib/types";
+import { TaskRow } from "@/components/task-row";
+import { CmdSectionLabel, Folio } from "@/components/comanda/primitives";
+import { closeShift } from "./actions";
+
+export function ShiftBoard({
+  view,
+  userId,
+}: {
+  view: ShiftView;
+  userId: string;
+}) {
+  const [closing, startClosing] = useTransition();
+  const [closeError, setCloseError] = useState<string | null>(null);
+
+  // Group tasks by due_time bucket (or "Sin hora" at the bottom).
+  const groups = useMemo(() => {
+    const map = new Map<string, typeof view.tasks>();
+    for (const t of view.tasks) {
+      const key = t.due_time?.slice(0, 5) ?? "Sin hora";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === "Sin hora") return 1;
+      if (b === "Sin hora") return -1;
+      return a.localeCompare(b);
+    });
+  }, [view.tasks]);
+
+  const allComplete =
+    view.tasks.length > 0 &&
+    Object.keys(view.completions).length === view.tasks.length;
+
+  const remaining = view.tasks.length - Object.keys(view.completions).length;
+
+  return (
+    <>
+      <div className="cmd-paper pb-32">
+        {groups.map(([bucket, tasks]) => (
+          <section key={bucket}>
+            <CmdSectionLabel>
+              ● {bucket === "Sin hora" ? "Sin hora" : bucket}
+            </CmdSectionLabel>
+            <ul>
+              {tasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  shiftId={view.shift.id}
+                  restaurantId={view.shift.restaurant_id}
+                  completion={view.completions[task.id]}
+                  userId={userId}
+                  disabled={view.shift.status === "closed"}
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
+
+        {/* novedades footer cell */}
+        <div
+          className="px-4 py-4 mt-3"
+          style={{ borderTop: "2px dashed var(--rule)" }}
+        >
+          <div className="flex items-center justify-between mb-2.5">
+            <span
+              className="text-muted"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+              }}
+            >
+              Novedades
+            </span>
+            <Folio n={`N-${44}`} label="REPORTE" />
+          </div>
+          <Link
+            href={`/shift/${view.shift.id}/novedades`}
+            className="cmd-btn ghost w-full"
+          >
+            + Agregar novedad
+          </Link>
+        </div>
+      </div>
+
+      {/* sticky footer */}
+      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md">
+        <div
+          className="px-4 pt-3 pb-4"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(244,236,220,0) 0%, var(--paper) 30%)",
+            borderTop: "1px solid var(--rule)",
+          }}
+        >
+          {view.shift.status === "open" ? (
+            <>
+              <button
+                type="button"
+                className="cmd-btn red w-full"
+                style={{ padding: "14px", fontSize: 13 }}
+                disabled={closing}
+                onClick={() => {
+                  setCloseError(null);
+                  if (
+                    !allComplete &&
+                    !confirm(
+                      "Todavía hay tareas pendientes. ¿Cerrar el turno de todos modos?",
+                    )
+                  ) {
+                    return;
+                  }
+                  startClosing(async () => {
+                    const r = await closeShift({
+                      shift_instance_id: view.shift.id,
+                    });
+                    if (r?.error) setCloseError(r.error);
+                  });
+                }}
+              >
+                {closing
+                  ? "Cerrando…"
+                  : allComplete
+                    ? "Cerrar turno · entregar →"
+                    : `Faltan ${remaining} tareas`}
+              </button>
+              {closeError ? (
+                <p
+                  className="text-center mt-2"
+                  style={{
+                    color: "var(--red)",
+                    fontSize: 11,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {closeError}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <div
+              className="text-center"
+              style={{
+                color: "var(--green)",
+                fontSize: 12,
+                letterSpacing: "0.06em",
+                padding: "10px 0",
+              }}
+            >
+              Turno cerrado · entregado.
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
