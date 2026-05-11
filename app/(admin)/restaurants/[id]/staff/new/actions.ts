@@ -12,18 +12,18 @@ const Schema = z.object({
   restaurant_id: z.string().uuid(),
   full_name: z.string().min(1).max(120),
   email: z.string().email(),
-  password: z.string().min(8).max(72).optional().or(z.literal("")),
 });
 
 /**
- * Add a staff member to a restaurant.
- *
- * Behavior:
- *   - If the email is new → create a Supabase Auth user with metadata
- *     `{role: 'staff', organization_id, full_name}`. The DB trigger
- *     `handle_new_user` will create the matching profile row.
- *   - If the email already belongs to a profile in the admin's org →
- *     skip user creation and just assign them to the restaurant.
+ * Add a staff member to a restaurant. Google-OAuth-only world:
+ *   - If the email is new → create a Supabase Auth user (no password,
+ *     `email_confirm: true`) with metadata `{role: 'staff', organization_id,
+ *     full_name}`. The `handle_new_user` DB trigger creates the matching
+ *     profile row in the admin's org. When the staff person later signs in
+ *     with Google using the same email, Supabase's account linking attaches
+ *     the Google identity to the same auth user.
+ *   - If the email already belongs to a profile in the admin's org → skip
+ *     user creation and just assign them to the restaurant.
  *   - Always (re)inserts `restaurant_members(user_id, restaurant_id)`,
  *     ignoring duplicates.
  *
@@ -40,7 +40,6 @@ export async function addStaffMember(
     restaurant_id: formData.get("restaurant_id"),
     full_name: formData.get("full_name"),
     email: formData.get("email"),
-    password: formData.get("password") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: "Datos inválidos. Revisa los campos." };
@@ -99,18 +98,12 @@ export async function addStaffMember(
     userId = existingUserId;
     reused = true;
   } else {
-    // 2) Create the Auth user. The DB trigger handles profile creation.
-    const password = parsed.data.password?.trim();
-    if (!password) {
-      return {
-        ok: false,
-        error: "Define una contraseña inicial para el nuevo staff.",
-      };
-    }
+    // 2) Create the Auth user — no password, email pre-confirmed so the
+    // Google identity can link without an email-verification roundtrip.
+    // The DB trigger handles profile creation from `user_metadata`.
     const { data: created, error: createErr } =
       await adminDb.auth.admin.createUser({
         email,
-        password,
         email_confirm: true,
         user_metadata: {
           full_name: parsed.data.full_name,

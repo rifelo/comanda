@@ -21,14 +21,14 @@ const script = Caveat({
 });
 
 export const metadata: Metadata = {
-  title: "Comanda",
+  title: "co-manda",
   description:
     "Centraliza y controla los procedimientos diarios de tu restaurante.",
-  applicationName: "Comanda",
+  applicationName: "co-manda",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "Comanda",
+    title: "co-manda",
     statusBarStyle: "black-translucent",
   },
   icons: {

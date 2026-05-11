@@ -3,17 +3,38 @@ import { todayInTz } from "@/lib/utils";
 import type { ShiftInstance, ShiftView, TaskCompletion } from "@/lib/types";
 
 /**
- * Fetch (or auto-create) today's open shifts for the calling staff member.
- * Staff usually have one restaurant; we return all visible shifts for today.
+ * Today's shifts for the *operational* view (/today).
+ *
+ * Scoped to `restaurant_members` membership for everyone — including
+ * admins. Admins still see every restaurant in their own admin views
+ * (dashboard, reports, drilldowns) via RLS, but /today is the "shift I'm
+ * working right now" surface: an admin shouldn't see all 3 sedes here
+ * unless they've explicitly been added to those restaurants' equipo. An
+ * admin with zero memberships gets an empty /today, which is correct —
+ * they have /dashboard. Staff are unaffected (their visibility was always
+ * membership-bound via RLS anyway).
  */
 export async function getTodayShifts() {
   const supabase = await createSupabaseServerClient();
 
-  // We need restaurants the user can see — RLS handles isolation, so plain select works.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: memberships } = await supabase
+    .from("restaurant_members")
+    .select("restaurant_id")
+    .eq("user_id", user.id);
+
+  const restaurantIds = (memberships ?? []).map((m) => m.restaurant_id);
+  if (restaurantIds.length === 0) return [];
+
+  // Pull timezone per member restaurant so we can compute "today" locally.
   const { data: restaurants } = await supabase
     .from("restaurants")
-    .select("id, timezone");
-
+    .select("id, timezone")
+    .in("id", restaurantIds);
   if (!restaurants?.length) return [];
 
   const dates = restaurants.map((r) => ({
@@ -24,14 +45,8 @@ export async function getTodayShifts() {
   const { data: shifts } = await supabase
     .from("shift_instances")
     .select("*")
-    .in(
-      "restaurant_id",
-      dates.map((d) => d.restaurant_id),
-    )
-    .in(
-      "date",
-      Array.from(new Set(dates.map((d) => d.date))),
-    );
+    .in("restaurant_id", restaurantIds)
+    .in("date", Array.from(new Set(dates.map((d) => d.date))));
 
   return (shifts ?? []) as ShiftInstance[];
 }

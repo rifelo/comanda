@@ -7,9 +7,11 @@ import { addStaffMember } from "./actions";
 export function AddStaffForm({
   restaurantId,
   restaurantName,
+  adminEmail,
 }: {
   restaurantId: string;
   restaurantName: string;
+  adminEmail: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -35,12 +37,18 @@ export function AddStaffForm({
   }
 
   if (done) {
+    const isSelfAdd =
+      done.reused &&
+      adminEmail &&
+      done.email.toLowerCase() === adminEmail.toLowerCase();
     return (
       <div style={{ padding: "24px 32px", maxWidth: 520 }}>
         <p style={{ fontSize: 14, lineHeight: 1.5 }}>
-          {done.reused
-            ? `${done.email} ya existía en tu organización — ahora también tiene acceso a ${restaurantName}.`
-            : `Cuenta creada para ${done.email}. Comparte el correo y la contraseña con el staff para que inicie sesión.`}
+          {isSelfAdd
+            ? `Listo. Ahora también apareces en el equipo de ${restaurantName} — encontrarás sus turnos en "Mi turno".`
+            : done.reused
+              ? `${done.email} ya existía en tu organización — ahora también tiene acceso a ${restaurantName}.`
+              : `Listo. Pídele a ${done.email} que entre a ${typeof window !== "undefined" ? window.location.origin : ""} e inicie sesión con Google usando ese mismo correo.`}
         </p>
         <div className="flex gap-2" style={{ marginTop: 18 }}>
           <button
@@ -79,37 +87,25 @@ export function AddStaffForm({
         disabled={pending}
       />
 
-      <UnderlinedField
-        id="email"
-        name="email"
-        type="email"
-        label="Correo"
-        required
-        maxLength={120}
-        placeholder="cajero@danielsburger.co"
-        autoComplete="off"
-        inputMode="email"
-        disabled={pending}
-      />
-
       <div>
         <UnderlinedField
-          id="password"
-          name="password"
-          type="text"
-          label="Contraseña inicial"
-          minLength={8}
-          maxLength={72}
-          placeholder="Mínimo 8 caracteres"
+          id="email"
+          name="email"
+          type="email"
+          label="Correo Google"
+          required
+          maxLength={120}
+          placeholder="cajero@gmail.com"
           autoComplete="off"
+          inputMode="email"
           disabled={pending}
         />
         <p
           className="text-muted"
           style={{ fontSize: 11, marginTop: 6 }}
         >
-          Sólo se usa si el correo es nuevo. Compártela con el staff por un
-          canal seguro — el staff podrá cambiarla luego.
+          Tiene que ser el mismo correo con el que el staff inicia sesión en
+          Google.
         </p>
       </div>
 

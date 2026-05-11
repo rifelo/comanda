@@ -22,7 +22,7 @@ export function Wordmark({
       className={cn("font-slab leading-none tracking-tight", className)}
       style={{ fontSize: size }}
     >
-      comanda<span className="text-red">.</span>
+      co-manda<span className="text-red">.</span>
     </span>
   );
 }

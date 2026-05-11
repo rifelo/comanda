@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
-import { requireAdmin } from "@/lib/auth";
+import { getMembershipCount, requireAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Wordmark } from "@/components/comanda/primitives";
 
@@ -17,6 +17,11 @@ export default async function AdminLayout({
     .from("restaurants")
     .select("id, name")
     .order("name");
+
+  // "Mi turno" shows up only when the admin is also a member of at least
+  // one restaurant's equipo. Without membership, /today is empty for
+  // admins — surfacing the link would just send them to a dead end.
+  const myShiftCount = await getMembershipCount();
 
   return (
     <div className="cmd-paper flex min-h-screen text-ink">
@@ -48,6 +53,9 @@ export default async function AdminLayout({
 
         <NavSection label="Operación">
           <NavLink href="/dashboard" label="Hoy" />
+          {myShiftCount > 0 ? (
+            <NavLink href="/today" label="Mi turno" />
+          ) : null}
           <NavLink href="/restaurants" label="Restaurantes" />
           <NavLink href="/reports" label="Reportes" />
         </NavSection>
@@ -116,6 +124,7 @@ export default async function AdminLayout({
           style={{ fontSize: 11, letterSpacing: "0.06em" }}
         >
           <Link href="/dashboard">Hoy</Link>
+          {myShiftCount > 0 ? <Link href="/today">Mi turno</Link> : null}
           <Link href="/restaurants">Sedes</Link>
           <Link href="/reports">Reportes</Link>
           <form action={signOut}>

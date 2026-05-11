@@ -7,10 +7,12 @@ export function MemberRow({
   restaurantId,
   userId,
   fullName,
+  role,
 }: {
   restaurantId: string;
   userId: string;
   fullName: string;
+  role: "admin" | "staff";
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -37,17 +39,36 @@ export function MemberRow({
         opacity: pending ? 0.5 : 1,
       }}
     >
-      <div>
+      <div className="flex items-center gap-2 min-w-0">
         <div style={{ fontSize: 13, fontWeight: 500 }}>{fullName}</div>
-        {error ? (
-          <div
-            role="alert"
-            style={{ color: "var(--red)", fontSize: 11, marginTop: 2 }}
+        {role === "admin" ? (
+          <span
+            aria-label="También administrador"
+            title="También administrador"
+            style={{
+              fontSize: 8,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "var(--red)",
+              border: "1px solid var(--red)",
+              padding: "1px 5px",
+              fontWeight: 700,
+              lineHeight: 1.4,
+              flexShrink: 0,
+            }}
           >
-            {error}
-          </div>
+            admin
+          </span>
         ) : null}
       </div>
+      {error ? (
+        <div
+          role="alert"
+          style={{ color: "var(--red)", fontSize: 11, marginTop: 2 }}
+        >
+          {error}
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={onRemove}

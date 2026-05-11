@@ -12,7 +12,7 @@ export default async function AddStaffPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireAdmin();
+  const { user } = await requireAdmin();
 
   const supabase = await createSupabaseServerClient();
   const { data: restaurant } = await supabase
@@ -44,13 +44,19 @@ export default async function AddStaffPage({
           Agregar staff
         </h1>
         <p className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
-          El staff agregado podrá iniciar sesión y ver los turnos de{" "}
-          <strong>{restaurant.name}</strong>. Si el correo ya existe en tu
-          organización, sólo se le asignará este restaurante.
+          El staff agregado podrá iniciar sesión con Google y ver los turnos
+          de <strong>{restaurant.name}</strong>. Si el correo ya existe en tu
+          organización (incluyendo el tuyo, si quieres trabajar turnos
+          aquí), sólo se le asignará este restaurante — sin cambiar sus
+          permisos.
         </p>
       </header>
 
-      <AddStaffForm restaurantId={id} restaurantName={restaurant.name} />
+      <AddStaffForm
+        restaurantId={id}
+        restaurantName={restaurant.name}
+        adminEmail={user.email ?? ""}
+      />
     </div>
   );
 }

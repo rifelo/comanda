@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Folio } from "@/components/comanda/primitives";
 import { MemberRow } from "./staff/member-row";
+import { DeleteRestaurantButton } from "./delete-restaurant-button";
 
 export const dynamic = "force-dynamic";
 
@@ -40,17 +41,50 @@ export default async function RestaurantDetail({
     .limit(20);
 
   // Equipo · staff with access to this restaurant.
+  // Includes `role` so the row UI can mark admin-members (e.g. the owner
+  // who's also on shift here) with a small badge.
   const { data: memberRows } = await supabase
     .from("restaurant_members")
-    .select("user_id, profile:profiles!inner(id, full_name)")
+    .select("user_id, profile:profiles!inner(id, full_name, role)")
     .eq("restaurant_id", id);
   type MemberRow = {
     user_id: string;
-    profile: { id: string; full_name: string };
+    profile: { id: string; full_name: string; role: "admin" | "staff" };
   };
   const members = ((memberRows ?? []) as unknown as MemberRow[]).filter(
     (m) => m.profile,
   );
+
+  // Impact counts for the delete-restaurant confirmation. Includes inactive
+  // templates so the admin sees the full footprint.
+  const [tplC, shiftC, novC, complC] = await Promise.all([
+    supabase
+      .from("checklist_templates")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", id),
+    supabase
+      .from("shift_instances")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", id),
+    supabase
+      .from("novedades")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", id),
+    supabase
+      .from("task_completions")
+      .select("id, shift_instance:shift_instances!inner(restaurant_id)", {
+        count: "exact",
+        head: true,
+      })
+      .eq("shift_instance.restaurant_id", id),
+  ]);
+  const impact = {
+    templates: tplC.count ?? 0,
+    shifts: shiftC.count ?? 0,
+    novedades: novC.count ?? 0,
+    completions: complC.count ?? 0,
+    members: members.length,
+  };
 
   return (
     <div>
@@ -83,6 +117,11 @@ export default async function RestaurantDetail({
             {(restaurant.id as string).slice(0, 4).toUpperCase()}
           </div>
         </div>
+        <DeleteRestaurantButton
+          restaurantId={id}
+          restaurantName={restaurant.name}
+          impact={impact}
+        />
       </header>
 
       <section
@@ -168,6 +207,7 @@ export default async function RestaurantDetail({
               restaurantId={id}
               userId={m.user_id}
               fullName={m.profile.full_name}
+              role={m.profile.role}
             />
           ))}
           {members.length === 0 ? (

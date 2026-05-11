@@ -37,10 +37,11 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Auth gate: anyone hitting an app route without a session bounces to /login.
-  // Public paths: /login, /api/cron/*, static assets.
+  // Public paths: /login, /auth/* (OAuth callback), /api/cron/*, static assets.
   const path = request.nextUrl.pathname;
   const isPublic =
     path.startsWith("/login") ||
+    path.startsWith("/auth/") ||
     path.startsWith("/api/cron") ||
     path.startsWith("/_next") ||
     path.startsWith("/icons") ||
