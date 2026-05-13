@@ -26,9 +26,8 @@ export default async function NewRestaurantPage() {
           Nuevo restaurante
         </h1>
         <p className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Se creará el restaurante y se duplicarán las plantillas base
-          (turno día y turno noche) de Daniel&apos;s Burger. Podrás editarlas
-          después.
+          Después de crearlo podrás agregar las plantillas (turno día,
+          noche, o las que necesites) desde la página del restaurante.
         </p>
       </header>
 

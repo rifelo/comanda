@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -13,11 +13,16 @@ interface PhotoCaptureProps {
   onClose: () => void;
 }
 
+type FacingMode = "environment" | "user";
+
 /**
- * Dark camera-viewfinder modal · staff workflow:
- *  - Tap shutter → opens native rear camera (`<input capture="environment">`).
- *  - Pick → preview + confirm uploads to Supabase Storage at
- *    `<restaurantId>/<shiftId>/<taskId>-<random>.jpg` (matches RLS policy).
+ * In-app camera modal. Streams `getUserMedia` into a `<video>` viewfinder,
+ * captures the current frame to a JPEG via `<canvas>.toBlob`, then uploads to
+ * Supabase Storage at `<restaurantId>/<shiftId>/<taskId>-<random>.jpg` (path
+ * matches RLS policy on the `task-photos` bucket).
+ *
+ * Falls back to `<input capture="environment">` (native camera app) when
+ * `getUserMedia` is unavailable or the user denies the permission.
  */
 export function PhotoCapture({
   shiftInstanceId,
@@ -27,33 +32,140 @@ export function PhotoCapture({
   onUploaded,
   onClose,
 }: PhotoCaptureProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [facingMode, setFacingMode] = useState<FacingMode>("environment");
   const [preview, setPreview] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [starting, setStarting] = useState(true);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+  const stopStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []);
+
+  // Start (or restart on flip) the live camera while no preview is held.
+  useEffect(() => {
+    if (preview) return;
+
+    let cancelled = false;
+    setStarting(true);
+    setCameraError(null);
+
+    async function start() {
+      try {
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error("unsupported");
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          // iOS Safari refuses to autoplay without an explicit play() call.
+          await video.play().catch(() => {});
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const name = err instanceof Error ? err.message : "";
+        const isDenied =
+          err instanceof DOMException &&
+          (err.name === "NotAllowedError" || err.name === "SecurityError");
+        setCameraError(
+          isDenied
+            ? "Permiso de cámara denegado"
+            : name === "unsupported"
+              ? "Cámara no disponible en este dispositivo"
+              : "No se pudo iniciar la cámara",
+        );
+      } finally {
+        if (!cancelled) setStarting(false);
+      }
+    }
+    start();
+
+    return () => {
+      cancelled = true;
+      stopStream();
+    };
+  }, [facingMode, preview, stopStream]);
+
+  // Revoke blob URLs to avoid leaks when the preview changes or modal closes.
+  useEffect(() => {
+    if (!preview) return;
+    return () => URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  function onShutter() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (b) => {
+        if (!b) {
+          setError("No se pudo capturar la foto");
+          return;
+        }
+        setBlob(b);
+        setPreview(URL.createObjectURL(b));
+        stopStream();
+      },
+      "image/jpeg",
+      0.85,
+    );
+  }
+
+  function onRetake() {
+    setBlob(null);
+    setPreview(null);
+    setError(null);
+  }
+
+  function onFlip() {
+    setFacingMode((f) => (f === "environment" ? "user" : "environment"));
+  }
+
+  function onPickFromFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    setFile(f);
+    setBlob(f);
     setPreview(URL.createObjectURL(f));
   }
 
   async function onConfirm() {
-    if (!file) return;
+    if (!blob) return;
     setUploading(true);
     setError(null);
     try {
       const supabase = createSupabaseBrowserClient();
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+      const ext = blob.type.includes("png") ? "png" : "jpg";
       const random = Math.random().toString(36).slice(2, 10);
       const path = `${restaurantId}/${shiftInstanceId}/${taskId}-${random}.${ext}`;
 
       const { error: upErr } = await supabase.storage
         .from("task-photos")
-        .upload(path, file, {
-          contentType: file.type || "image/jpeg",
+        .upload(path, blob, {
+          contentType: blob.type || "image/jpeg",
           upsert: false,
         });
       if (upErr) throw upErr;
@@ -71,6 +183,8 @@ export function PhotoCapture({
       setUploading(false);
     }
   }
+
+  const liveCameraAvailable = !cameraError;
 
   return (
     <div
@@ -118,6 +232,21 @@ export function PhotoCapture({
         className="flex-1 relative mx-4 overflow-hidden"
         style={{ background: "#1a1612", borderRadius: 4 }}
       >
+        {/* Live video — hidden while preview is showing, but kept mounted only when streaming. */}
+        {!preview && liveCameraAvailable ? (
+          <video
+            ref={videoRef}
+            playsInline
+            muted
+            autoPlay
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              transform: facingMode === "user" ? "scaleX(-1)" : undefined,
+              background: "#1a1612",
+            }}
+          />
+        ) : null}
+
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -125,15 +254,11 @@ export function PhotoCapture({
             alt="Vista previa"
             className="absolute inset-0 h-full w-full object-cover"
           />
-        ) : (
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "repeating-linear-gradient(45deg, rgba(255,255,255,.04) 0 12px, rgba(255,255,255,.08) 12px 24px)",
-            }}
-          >
-            {/* corner brackets */}
+        ) : null}
+
+        {/* corner brackets / framing guides — over live feed only */}
+        {!preview ? (
+          <>
             {(["tl", "tr", "bl", "br"] as const).map((c) => (
               <div
                 key={c}
@@ -147,22 +272,51 @@ export function PhotoCapture({
                   borderBottom: c[0] === "b" ? "2px solid #fff" : "none",
                   borderLeft: c[1] === "l" ? "2px solid #fff" : "none",
                   borderRight: c[1] === "r" ? "2px solid #fff" : "none",
+                  pointerEvents: "none",
                 }}
               />
             ))}
-            <div
-              className="absolute inset-x-0 text-center"
+          </>
+        ) : null}
+
+        {/* status overlay: starting / camera error / hint */}
+        {!preview && starting && liveCameraAvailable ? (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center"
+            style={{ background: "rgba(14,12,8,0.65)", fontSize: 11, letterSpacing: "0.12em" }}
+          >
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <div style={{ marginTop: 10, opacity: 0.75 }}>INICIANDO CÁMARA…</div>
+          </div>
+        ) : null}
+
+        {!preview && cameraError ? (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center text-center"
+            style={{ padding: "0 32px", gap: 14 }}
+          >
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", color: "var(--red)" }}>
+              CÁMARA NO DISPONIBLE
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.8, lineHeight: 1.45 }}>{cameraError}</div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
               style={{
-                bottom: 70,
+                marginTop: 6,
+                padding: "10px 18px",
                 fontSize: 11,
-                opacity: 0.7,
-                letterSpacing: "0.1em",
+                letterSpacing: "0.14em",
+                border: "1px solid #fff",
+                background: "transparent",
+                color: "#fff",
+                cursor: "pointer",
               }}
             >
-              ENCUADRE LA TAREA
-            </div>
+              ABRIR CÁMARA DEL SISTEMA
+            </button>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* task label */}
@@ -207,10 +361,7 @@ export function PhotoCapture({
           <>
             <button
               type="button"
-              onClick={() => {
-                setFile(null);
-                setPreview(null);
-              }}
+              onClick={onRetake}
               disabled={uploading}
               style={{
                 fontSize: 10,
@@ -254,14 +405,25 @@ export function PhotoCapture({
           </>
         ) : (
           <>
-            <span
-              style={{ fontSize: 10, opacity: 0.5, letterSpacing: "0.18em" }}
-            >
-              GALERÍA
-            </span>
             <button
               type="button"
-              onClick={() => inputRef.current?.click()}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                fontSize: 10,
+                opacity: 0.7,
+                letterSpacing: "0.18em",
+                background: "transparent",
+                border: "none",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              GALERÍA
+            </button>
+            <button
+              type="button"
+              onClick={liveCameraAvailable ? onShutter : () => fileInputRef.current?.click()}
+              disabled={liveCameraAvailable && starting}
               style={{
                 width: 64,
                 height: 64,
@@ -273,6 +435,7 @@ export function PhotoCapture({
                 alignItems: "center",
                 justifyContent: "center",
                 padding: 0,
+                opacity: liveCameraAvailable && starting ? 0.5 : 1,
               }}
               aria-label="Tomar foto"
             >
@@ -286,22 +449,33 @@ export function PhotoCapture({
                 }}
               />
             </button>
-            <span
-              style={{ fontSize: 10, opacity: 0.5, letterSpacing: "0.18em" }}
+            <button
+              type="button"
+              onClick={onFlip}
+              disabled={!liveCameraAvailable || starting}
+              style={{
+                fontSize: 10,
+                opacity: liveCameraAvailable ? 0.7 : 0.3,
+                letterSpacing: "0.18em",
+                background: "transparent",
+                border: "none",
+                color: "#fff",
+                cursor: liveCameraAvailable ? "pointer" : "not-allowed",
+              }}
             >
               VOLTEAR
-            </span>
+            </button>
           </>
         )}
       </div>
 
       <input
-        ref={inputRef}
+        ref={fileInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         className="hidden"
-        onChange={onPick}
+        onChange={onPickFromFile}
       />
     </div>
   );
