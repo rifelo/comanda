@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createTemplate } from "./actions";
 
@@ -9,6 +9,14 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [shift, setShift] = useState<"day" | "night">("day");
+  const [redirectId, setRedirectId] = useState<string | null>(null);
+
+  // Navigation runs in useEffect — calling router.push inside startTransition
+  // keeps the transition pending forever on Next 16 + React 19, locking the
+  // button on "Creando…" even though the action returned 200.
+  useEffect(() => {
+    if (redirectId) router.push(`/templates/${redirectId}`);
+  }, [redirectId, router]);
 
   function onSubmit(formData: FormData) {
     setError(null);
@@ -20,10 +28,11 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
         setError(r.error ?? "Algo salió mal.");
         return;
       }
-      router.push(`/templates/${r.id}`);
-      router.refresh();
+      setRedirectId(r.id ?? null);
     });
   }
+
+  const busy = pending || !!redirectId;
 
   return (
     <form
@@ -38,7 +47,7 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
         required
         maxLength={120}
         placeholder="Ej: Cajero · Turno Día"
-        disabled={pending}
+        disabled={busy}
       />
 
       <div>
@@ -62,7 +71,7 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
               key={value}
               type="button"
               onClick={() => setShift(value)}
-              disabled={pending}
+              disabled={busy}
               className={shift === value ? "cmd-btn" : "cmd-btn ghost"}
               style={{ flex: 1 }}
             >
@@ -97,9 +106,9 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
         type="submit"
         className="cmd-btn red"
         style={{ padding: "12px 18px" }}
-        disabled={pending}
+        disabled={busy}
       >
-        {pending ? "Creando…" : "Crear plantilla →"}
+        {busy ? "Creando…" : "Crear plantilla →"}
       </button>
     </form>
   );

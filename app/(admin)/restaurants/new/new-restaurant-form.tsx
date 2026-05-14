@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createRestaurant } from "./actions";
 
@@ -9,11 +9,21 @@ import { createRestaurant } from "./actions";
  * form's pattern: useTransition + manual error display + router.push on
  * success. Avoids the Server-Action-redirect-from-form failure mode where
  * Next 16 returns "unexpected response" after stale-action-ID HMR.
+ *
+ * Navigation happens in a useEffect rather than inside startTransition —
+ * Next 16 + React 19 keeps the transition pending when router.push runs
+ * inside it (the navigation never settles), so the button used to lock
+ * on "Creando…" forever even when the action returned 200.
  */
 export function NewRestaurantForm() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [redirectId, setRedirectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (redirectId) router.push(`/restaurants/${redirectId}`);
+  }, [redirectId, router]);
 
   function onSubmit(formData: FormData) {
     setError(null);
@@ -23,10 +33,11 @@ export function NewRestaurantForm() {
         setError(r.error ?? "Algo salió mal.");
         return;
       }
-      router.push(`/restaurants/${r.id}`);
-      router.refresh();
+      setRedirectId(r.id ?? null);
     });
   }
+
+  const busy = pending || !!redirectId;
 
   return (
     <form
@@ -41,7 +52,7 @@ export function NewRestaurantForm() {
         required
         maxLength={120}
         placeholder="Ej: Sede Norte"
-        disabled={pending}
+        disabled={busy}
       />
 
       <div>
@@ -51,7 +62,7 @@ export function NewRestaurantForm() {
           label="Zona horaria"
           required
           defaultValue="America/Bogota"
-          disabled={pending}
+          disabled={busy}
           options={TIMEZONE_OPTIONS}
         />
         <p
@@ -79,9 +90,9 @@ export function NewRestaurantForm() {
         type="submit"
         className="cmd-btn red"
         style={{ padding: "12px 18px" }}
-        disabled={pending}
+        disabled={busy}
       >
-        {pending ? "Creando…" : "Crear restaurante →"}
+        {busy ? "Creando…" : "Crear restaurante →"}
       </button>
     </form>
   );
