@@ -28,7 +28,7 @@ export default async function ReportsPage() {
     .from("shift_instances")
     .select(
       `id, date, restaurant_id, restaurant:restaurants!inner(id, name),
-       template:checklist_templates!inner(id, name, shift, template_tasks(count)),
+       template:checklist_templates!inner(id, name, template_tasks(count)),
        completions:task_completions(count)`,
     )
     .gte("date", startDate)

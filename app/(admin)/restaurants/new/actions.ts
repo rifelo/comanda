@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 
@@ -50,6 +51,12 @@ export async function createRestaurant(
   // know their own operation better than any seeded default. The cron job
   // will simply have no `active=true` templates to materialise shifts
   // from until the admin adds one.
+
+  // Bust the (admin) layout cache so the sidebar's Sedes list (and the
+  // "X sedes" footer count) include the new restaurant on next navigation.
+  // The layout fetches at its own segment, so revalidating from the root
+  // layout down is the simplest way to invalidate every cached admin path.
+  revalidatePath("/", "layout");
 
   return { ok: true, id: restaurant.id };
 }

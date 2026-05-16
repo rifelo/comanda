@@ -237,7 +237,7 @@ export default async function DashboardPage() {
                               fontWeight: 600,
                             }}
                           >
-                            Turno {s.shift === "day" ? "día" : "noche"}
+                            {s.template_name}
                           </span>
                           <ShiftStatus status={s.status} pct={s.pct} />
                         </div>

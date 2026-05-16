@@ -8,7 +8,6 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [shift, setShift] = useState<"day" | "night">("day");
   const [redirectId, setRedirectId] = useState<string | null>(null);
 
   // Navigation runs in useEffect — calling router.push inside startTransition
@@ -21,7 +20,6 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
   function onSubmit(formData: FormData) {
     setError(null);
     formData.set("restaurant_id", restaurantId);
-    formData.set("shift", shift);
     startTransition(async () => {
       const r = await createTemplate(null, formData);
       if (!r.ok) {
@@ -49,37 +47,6 @@ export function NewTemplateForm({ restaurantId }: { restaurantId: string }) {
         placeholder="Ej: Cajero · Turno Día"
         disabled={busy}
       />
-
-      <div>
-        <div
-          className="text-muted block"
-          style={{
-            fontSize: 9,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            marginBottom: 8,
-          }}
-        >
-          Turno
-        </div>
-        <div className="flex gap-2">
-          {([
-            ["day", "Día"],
-            ["night", "Noche"],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setShift(value)}
-              disabled={busy}
-              className={shift === value ? "cmd-btn" : "cmd-btn ghost"}
-              style={{ flex: 1 }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <p
         className="text-muted"

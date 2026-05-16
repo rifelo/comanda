@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     .select(
       `id, date, status,
        restaurant:restaurants!inner(name),
-       template:checklist_templates!inner(name, shift, template_tasks(count)),
+       template:checklist_templates!inner(name, template_tasks(count)),
        completions:task_completions(count)`,
     )
     .gte("date", start)
@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
   const header = [
     "date",
     "restaurant",
-    "shift",
     "template",
     "status",
     "completed",
@@ -50,8 +49,6 @@ export async function GET(req: NextRequest) {
       r.date,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       JSON.stringify((r as any).restaurant?.name ?? ""),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (r as any).template?.shift ?? "",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       JSON.stringify((r as any).template?.name ?? ""),
       r.status,

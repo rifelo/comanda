@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteRestaurant } from "./actions";
 
@@ -41,8 +41,16 @@ export function DeleteRestaurantButton({
   const [confirming, setConfirming] = useState(false);
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Navigation runs in useEffect — see new-restaurant-form.tsx for why
+  // router.push inside startTransition locks pending forever on Next 16.
+  useEffect(() => {
+    if (redirecting) router.push("/restaurants");
+  }, [redirecting, router]);
 
   const matches = typed.trim() === restaurantName;
+  const busy = pending || redirecting;
 
   function onConfirm() {
     if (!matches) return;
@@ -56,8 +64,7 @@ export function DeleteRestaurantButton({
         setError(r.error ?? "No se pudo eliminar.");
         return;
       }
-      router.push("/restaurants");
-      router.refresh();
+      setRedirecting(true);
     });
   }
 
@@ -155,7 +162,7 @@ export function DeleteRestaurantButton({
         type="text"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
-        disabled={pending}
+        disabled={busy}
         autoFocus
         className="block w-full bg-transparent outline-none"
         style={{
@@ -186,7 +193,7 @@ export function DeleteRestaurantButton({
             setTyped("");
             setError(null);
           }}
-          disabled={pending}
+          disabled={busy}
           className="cmd-btn ghost sm"
         >
           Cancelar
@@ -194,11 +201,11 @@ export function DeleteRestaurantButton({
         <button
           type="button"
           onClick={onConfirm}
-          disabled={!matches || pending}
+          disabled={!matches || busy}
           className="cmd-btn red sm"
           style={{ flex: 1 }}
         >
-          {pending ? "Eliminando…" : "Eliminar definitivamente"}
+          {busy ? "Eliminando…" : "Eliminar definitivamente"}
         </button>
       </div>
     </div>

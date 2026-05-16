@@ -6,7 +6,6 @@ export interface ShiftSummary {
   restaurant_id: string;
   restaurant_name: string;
   template_name: string;
-  shift: "day" | "night";
   date: string;
   status: "open" | "closed";
   total_tasks: number;
@@ -24,7 +23,7 @@ export async function getDashboardSummary(date: string): Promise<ShiftSummary[]>
     .select(
       `id, restaurant_id, status, date,
        restaurants:restaurants!inner(name),
-       templates:checklist_templates!inner(name, shift),
+       templates:checklist_templates!inner(name),
        completions:task_completions(count),
        template_tasks_count:checklist_templates!inner(template_tasks(count))`,
     )
@@ -60,8 +59,6 @@ export async function getDashboardSummary(date: string): Promise<ShiftSummary[]>
       restaurant_name: (s as any).restaurants?.name ?? "—",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       template_name: (s as any).templates?.name ?? "—",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      shift: (s as any).templates?.shift ?? "day",
       date: s.date,
       status: s.status,
       total_tasks: total,

@@ -6,6 +6,7 @@ import {
   ComandaPlate,
   CmdProgress,
   Folio,
+  Stamp,
 } from "@/components/comanda/primitives";
 import { formatTime } from "@/lib/utils";
 import { ShiftBoard } from "./shift-board";
@@ -36,6 +37,14 @@ export default async function ShiftPage({
       >
         ← Hoy
       </Link>
+
+      {view.shift.status === "closed" ? (
+        <div className="px-4 pt-3 flex justify-center">
+          <Stamp rotate={-4} size={12} color="var(--green)">
+            ✓ Turno cerrado
+          </Stamp>
+        </div>
+      ) : null}
 
       <ComandaPlate
         subtitle={`${profile.full_name} · ${view.template.name}`}

@@ -2,7 +2,6 @@
 // If you add columns or tables, update both this file and the corresponding query in lib/db/.
 
 export type UserRole = "staff" | "admin";
-export type ShiftKind = "day" | "night";
 export type ShiftStatus = "open" | "closed";
 
 export interface Profile {
@@ -23,7 +22,6 @@ export interface ChecklistTemplate {
   id: string;
   restaurant_id: string;
   name: string;
-  shift: ShiftKind;
   active: boolean;
   version: number;
 }

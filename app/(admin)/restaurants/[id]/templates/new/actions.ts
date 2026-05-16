@@ -10,7 +10,6 @@ import { requireAdmin } from "@/lib/auth";
 const Schema = z.object({
   restaurant_id: z.string().uuid(),
   name: z.string().min(1).max(120),
-  shift: z.enum(["day", "night"]),
 });
 
 export async function createTemplate(
@@ -20,7 +19,6 @@ export async function createTemplate(
   const parsed = Schema.safeParse({
     restaurant_id: formData.get("restaurant_id"),
     name: formData.get("name"),
-    shift: formData.get("shift"),
   });
   if (!parsed.success) {
     return { ok: false, error: "Datos inválidos. Revisa los campos." };
@@ -44,7 +42,6 @@ export async function createTemplate(
     .insert({
       restaurant_id: parsed.data.restaurant_id,
       name: parsed.data.name,
-      shift: parsed.data.shift,
     })
     .select()
     .single();

@@ -26,15 +26,15 @@ export default async function RestaurantDetail({
 
   const { data: templates } = await supabase
     .from("checklist_templates")
-    .select("id, name, shift, active, version")
+    .select("id, name, active, version")
     .eq("restaurant_id", id)
     .eq("active", true)
-    .order("shift");
+    .order("name");
 
   const { data: recentShifts } = await supabase
     .from("shift_instances")
     .select(
-      "id, date, status, template:checklist_templates!inner(name, shift)",
+      "id, date, status, template:checklist_templates!inner(name)",
     )
     .eq("restaurant_id", id)
     .order("date", { ascending: false })
@@ -164,7 +164,6 @@ export default async function RestaurantDetail({
                       className="text-muted"
                       style={{ fontSize: 11, marginTop: 2 }}
                     >
-                      Turno {t.shift === "day" ? "día" : "noche"} ·{" "}
                       v{t.version ?? 1}
                     </div>
                   </div>

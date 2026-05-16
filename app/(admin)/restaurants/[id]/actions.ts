@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -81,6 +82,10 @@ export async function deleteRestaurant(
       error: delErr.message ?? "No se pudo eliminar el restaurante.",
     };
   }
+
+  // Drop the deleted sede from the (admin) sidebar list and the
+  // /restaurants index on next navigation.
+  revalidatePath("/", "layout");
 
   return { ok: true };
 }

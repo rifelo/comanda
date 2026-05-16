@@ -55,7 +55,6 @@ export default async function TemplatePage({
             {data.template.name}
           </h1>
           <p className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Turno {data.template.shift === "day" ? "día" : "noche"} ·{" "}
             {data.tasks.length} tareas
           </p>
         </div>

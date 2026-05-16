@@ -27,6 +27,6 @@ export async function listTemplatesForRestaurant(restaurantId: string) {
     .select("*")
     .eq("restaurant_id", restaurantId)
     .eq("active", true)
-    .order("shift");
+    .order("name");
   return (data ?? []) as ChecklistTemplate[];
 }

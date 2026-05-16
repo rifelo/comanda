@@ -22,7 +22,7 @@ export default async function TodayPage() {
   const { data: enriched } = await supabase
     .from("shift_instances")
     .select(
-      "id, status, restaurant:restaurants(name), template:checklist_templates(name, shift)",
+      "id, status, restaurant:restaurants(name), template:checklist_templates(name)",
     )
     .in(
       "id",
@@ -32,11 +32,25 @@ export default async function TodayPage() {
   const items = enriched ?? [];
   const dateLabel = formatDateLabel(today);
 
+  // Staff are usually assigned to a single sede, but admins-on-shift can
+  // have today-shifts across more than one. Dedupe + join so the nameplate
+  // truthfully reflects whichever restaurants today's turnos belong to.
+  const restaurantNames = Array.from(
+    new Set(
+      items
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((s) => (s as any).restaurant?.name as string | undefined)
+        .filter((n): n is string => !!n),
+    ),
+  );
+  const restaurantLabel =
+    restaurantNames.length > 0 ? restaurantNames.join(" · ") : undefined;
+
   return (
     <div className="mx-auto w-full max-w-md">
       <ComandaPlate
         subtitle={`${profile.full_name} · Hoy`}
-        restaurant="Daniel's Burger"
+        restaurant={restaurantLabel}
         date={dateLabel}
         time={formatTime(new Date())}
       />
@@ -81,7 +95,6 @@ export default async function TodayPage() {
                           style={{ fontSize: 11 }}
                         >
                           {r?.name}
-                          {t?.shift ? ` · Turno ${t.shift === "day" ? "día" : "noche"}` : ""}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

@@ -95,8 +95,7 @@ export default async function AdminShiftDetail({
             className="text-muted mt-2"
             style={{ fontSize: 10, letterSpacing: "0.16em" }}
           >
-            {view.shift.date} · TURNO{" "}
-            {view.template.shift === "day" ? "DÍA" : "NOCHE"} · FOLIO DR-
+            {view.shift.date} · FOLIO DR-
             {view.shift.id.slice(0, 4).toUpperCase()}
           </div>
           <h1

@@ -1,8 +1,9 @@
 -- =============================================================================
 -- Demo seed: Daniel's Burger as the example restaurant template.
 -- Run after migration 0001 against a clean database to create a demo org/restaurant
--- with both turno día and turno noche templates pre-loaded from the paper sheet
--- (FO-DB-05 v01, 2024-04-30).
+-- with the cajero day + night plantillas pre-loaded from the paper sheet
+-- (FO-DB-05 v01, 2024-04-30). Both are now just plain plantillas — the
+-- day/night enum was dropped in 0004.
 --
 -- This seed bypasses RLS because supabase db reset runs as the superuser.
 -- =============================================================================
@@ -17,12 +18,11 @@ insert into restaurants (id, organization_id, name, timezone) values
    'Daniel''s Burger - Sede Demo',
    'America/Bogota');
 
--- ---------- Turno Día template ----------
-insert into checklist_templates (id, restaurant_id, name, shift) values
+-- ---------- Cajero · Día template ----------
+insert into checklist_templates (id, restaurant_id, name) values
   ('00000000-0000-0000-0000-0000000000d1',
    '00000000-0000-0000-0000-000000000002',
-   'Cajero - Turno Día',
-   'day');
+   'Cajero - Turno Día');
 
 insert into template_tasks (template_id, order_index, title, instructions, due_time, requires_photo) values
   ('00000000-0000-0000-0000-0000000000d1', 1,  'Abrir arqueo a las 10:30', null, '10:30', false),
@@ -46,12 +46,11 @@ insert into template_tasks (template_id, order_index, title, instructions, due_t
   ('00000000-0000-0000-0000-0000000000d1', 11, 'A la 1:30 organizar recibos para entrega de caja', null, '13:30', false),
   ('00000000-0000-0000-0000-0000000000d1', 12, 'Cerrar arqueo 02:30 pm según procedimiento entrega de caja', null, '14:30', false);
 
--- ---------- Turno Noche template ----------
-insert into checklist_templates (id, restaurant_id, name, shift) values
+-- ---------- Cajero · Noche template ----------
+insert into checklist_templates (id, restaurant_id, name) values
   ('00000000-0000-0000-0000-0000000000d2',
    '00000000-0000-0000-0000-000000000002',
-   'Cajero - Turno Noche',
-   'night');
+   'Cajero - Turno Noche');
 
 insert into template_tasks (template_id, order_index, title, instructions, due_time, requires_photo) values
   ('00000000-0000-0000-0000-0000000000d2', 1, 'Recibir caja según procedimiento de entrega y apertura de caja 6:00 pm',
