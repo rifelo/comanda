@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Image from "next/image";
 import { Loader2 } from "lucide-react";
 import type { TaskCompletion, TemplateTask } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
@@ -172,13 +173,16 @@ export function TaskRow({
 
         {completion?.photo_url ? (
           <span
-            className="self-start ml-2 overflow-hidden"
+            className="self-start ml-2 overflow-hidden block relative"
             style={{ width: 48, height: 48, border: "1px solid var(--rule)" }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={completion.photo_url}
-              alt="Evidencia"
+              alt="Foto de evidencia"
+              width={48}
+              height={48}
+              sizes="48px"
+              unoptimized
               className="h-full w-full object-cover"
             />
           </span>

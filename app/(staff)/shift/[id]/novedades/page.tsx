@@ -21,22 +21,24 @@ export default async function NovedadesPage({
   await requireUser();
 
   const supabase = await createSupabaseServerClient();
-  const { data: shift } = await supabase
-    .from("shift_instances")
-    .select(
-      "id, status, restaurant:restaurants(name), template:checklist_templates(shift)",
-    )
-    .eq("id", id)
-    .single();
+  // Parallelize shift lookup + novedades — neither depends on the other.
+  // The shift query intentionally selects only what this page renders;
+  // `template.shift` was dropped in migration 0004 and would 400 the join.
+  const [{ data: shift }, { data: novedades }] = await Promise.all([
+    supabase
+      .from("shift_instances")
+      .select("id, status, restaurant:restaurants(name)")
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("novedades")
+      .select(
+        "id, body, submitted_at, profiles:profiles!novedades_submitted_by_fkey(full_name)",
+      )
+      .eq("shift_instance_id", id)
+      .order("submitted_at", { ascending: false }),
+  ]);
   if (!shift) notFound();
-
-  const { data: novedades } = await supabase
-    .from("novedades")
-    .select(
-      "id, body, submitted_at, profiles:profiles!novedades_submitted_by_fkey(full_name)",
-    )
-    .eq("shift_instance_id", id)
-    .order("submitted_at", { ascending: false });
 
   return (
     <div className="mx-auto w-full max-w-md">

@@ -8,7 +8,7 @@ import {
   Folio,
   Stamp,
 } from "@/components/comanda/primitives";
-import { formatTime } from "@/lib/utils";
+import { formatTime, formatDateLabelEs } from "@/lib/utils";
 import { ShiftBoard } from "./shift-board";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +26,7 @@ export default async function ShiftPage({
   const completedCount = Object.keys(view.completions).length;
   const total = view.tasks.length;
   const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
-  const dateLabel = formatDateLabel(view.shift.date);
+  const dateLabel = formatDateLabelEs(view.shift.date);
 
   return (
     <div className="mx-auto w-full max-w-md">
@@ -95,23 +95,3 @@ export default async function ShiftPage({
   );
 }
 
-function formatDateLabel(yyyyMMdd: string) {
-  const [y, m, d] = yyyyMMdd.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  const wk = ["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"][dt.getUTCDay()];
-  const month = [
-    "ENE",
-    "FEB",
-    "MAR",
-    "ABR",
-    "MAY",
-    "JUN",
-    "JUL",
-    "AGO",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DIC",
-  ][m - 1];
-  return `${wk} ${d}·${month}`;
-}

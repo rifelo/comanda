@@ -25,15 +25,15 @@ export async function GET(req: NextRequest) {
     { auth: { persistSession: false } },
   );
 
-  const { data: restaurants, error } = await supa
-    .from("restaurants")
-    .select("id, timezone");
+  // Restaurants + active templates are independent — fan out in parallel.
+  const [
+    { data: restaurants, error },
+    { data: templates, error: tErr },
+  ] = await Promise.all([
+    supa.from("restaurants").select("id, timezone"),
+    supa.from("checklist_templates").select("id, restaurant_id").eq("active", true),
+  ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const { data: templates, error: tErr } = await supa
-    .from("checklist_templates")
-    .select("id, restaurant_id")
-    .eq("active", true);
   if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
 
   // Build one row per (template, today-in-its-restaurant-tz).

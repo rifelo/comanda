@@ -2,20 +2,25 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getDashboardSummary } from "@/lib/db/reports";
-import { todayInTz, formatTime } from "@/lib/utils";
+import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 import { CmdProgress, Stamp } from "@/components/comanda/primitives";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  await requireAdmin();
   const today = todayInTz();
-  const supabase = await createSupabaseServerClient();
+  // Auth + the two list queries are independent. We need an authenticated
+  // client for `restaurants`, so the restaurant query is chained after
+  // requireAdmin resolves, but the summary fan-outs against its own
+  // client and races the auth gate in parallel.
+  const [{ supabase }, summary] = await Promise.all([
+    requireAdmin(),
+    getDashboardSummary(today),
+  ]);
   const { data: restaurants } = await supabase
     .from("restaurants")
     .select("id, name");
 
-  const summary = await getDashboardSummary(today);
 
   const byRestaurant = (restaurants ?? []).map((r) => ({
     ...r,
@@ -50,7 +55,7 @@ export default async function DashboardPage() {
               textTransform: "uppercase",
             }}
           >
-            {formatDateLabel(today)}
+            {formatDateLabelEs(today, "long")}
           </div>
           <h1
             className="font-slab"
@@ -483,32 +488,4 @@ async function Bitacora({
   );
 }
 
-function formatDateLabel(yyyyMMdd: string) {
-  const [y, m, d] = yyyyMMdd.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  const dayNames = [
-    "Domingo",
-    "Lunes",
-    "Martes",
-    "Miércoles",
-    "Jueves",
-    "Viernes",
-    "Sábado",
-  ];
-  const month = [
-    "ENE",
-    "FEB",
-    "MAR",
-    "ABR",
-    "MAY",
-    "JUN",
-    "JUL",
-    "AGO",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DIC",
-  ][m - 1];
-  return `${dayNames[dt.getUTCDay()]} ${d}·${month}`;
-}
 

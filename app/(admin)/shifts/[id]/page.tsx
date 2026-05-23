@@ -1,8 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getShiftView } from "@/lib/db/shifts";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CmdCheck,
   CmdProgress,
@@ -19,12 +19,14 @@ export default async function AdminShiftDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireAdmin();
-  const view = await getShiftView(id);
-  if (!view) notFound();
+  const { supabase } = await requireAdmin();
 
-  const supabase = await createSupabaseServerClient();
-  const [{ data: novedades }, { data: completionDetails }] = await Promise.all([
+  // Fan out the shift hydration with the page-specific list queries.
+  // getShiftView returns null for missing/unauthorized shifts; in that
+  // case we still want to surface notFound() rather than render with
+  // partial data.
+  const [view, novedadesRes, completionsRes] = await Promise.all([
+    getShiftView(id),
     supabase
       .from("novedades")
       .select(
@@ -39,6 +41,9 @@ export default async function AdminShiftDetail({
       )
       .eq("shift_instance_id", id),
   ]);
+  if (!view) notFound();
+  const { data: novedades } = novedadesRes;
+  const { data: completionDetails } = completionsRes;
 
   const completionsByTask: Record<
     string,
@@ -63,16 +68,9 @@ export default async function AdminShiftDetail({
   const done = Object.keys(completionsByTask).length;
   const photos = (completionDetails ?? []).filter((c) => c.photo_url);
 
-  // Lead author = whoever opened the shift, if available.
-  let opener = "—";
-  if (view.shift.opened_by) {
-    const { data: p } = await supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", view.shift.opened_by)
-      .single();
-    opener = p?.full_name ?? "—";
-  }
+  // Lead author = whoever opened the shift. Embedded by `getShiftView` so
+  // we don't need a second roundtrip here.
+  const opener = view.opener?.full_name ?? "—";
 
   return (
     <div>
@@ -212,6 +210,7 @@ export default async function AdminShiftDetail({
                     href={c.photo_url}
                     target="_blank"
                     rel="noreferrer"
+                    className="relative block"
                     style={{
                       width: 56,
                       height: 42,
@@ -220,10 +219,13 @@ export default async function AdminShiftDetail({
                       flexShrink: 0,
                     }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <Image
                       src={c.photo_url}
-                      alt="Evidencia"
+                      alt="Foto de evidencia"
+                      width={56}
+                      height={42}
+                      sizes="56px"
+                      unoptimized
                       className="h-full w-full object-cover"
                     />
                   </a>
@@ -272,17 +274,19 @@ export default async function AdminShiftDetail({
                     style={{ border: "1px solid var(--ink)" }}
                   >
                     {p.photo_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.photo_url}
-                        alt={tt?.title ?? ""}
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          height: 92,
-                          objectFit: "cover",
-                        }}
-                      />
+                      <div
+                        className="relative"
+                        style={{ width: "100%", height: 92 }}
+                      >
+                        <Image
+                          src={p.photo_url}
+                          alt={tt?.title ?? "Foto de evidencia"}
+                          fill
+                          sizes="(max-width: 768px) 50vw, 240px"
+                          unoptimized
+                          style={{ objectFit: "cover" }}
+                        />
+                      </div>
                     ) : (
                       <PhotoPlaceholder w="100%" h={92} label={tt?.title ?? ""} />
                     )}

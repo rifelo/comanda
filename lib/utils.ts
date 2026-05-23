@@ -27,3 +27,40 @@ export function todayInTz(timezone = "America/Bogota", at = new Date()) {
     day: "2-digit",
   }).format(at);
 }
+
+const SHORT_WEEKDAYS = ["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"] as const;
+const LONG_WEEKDAYS = [
+  "Domingo",
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+] as const;
+const SHORT_MONTHS = [
+  "ENE", "FEB", "MAR", "ABR", "MAY", "JUN",
+  "JUL", "AGO", "SEP", "OCT", "NOV", "DIC",
+] as const;
+
+/**
+ * Format a YYYY-MM-DD into a short or long Spanish label.
+ *  - "short" → "LUN 12·MAY"   (used on /today, /shift)
+ *  - "long"  → "Lunes 12·MAY" (used on /dashboard)
+ *
+ * Uses UTC so the printed day/month never drifts from the YYYY-MM-DD the
+ * server stored — the date is already timezone-normalized upstream by
+ * `todayInTz`.
+ */
+export function formatDateLabelEs(
+  yyyyMMdd: string,
+  variant: "short" | "long" = "short",
+): string {
+  const [y, m, d] = yyyyMMdd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const wk =
+    variant === "long"
+      ? LONG_WEEKDAYS[dt.getUTCDay()]
+      : SHORT_WEEKDAYS[dt.getUTCDay()];
+  return `${wk} ${d}·${SHORT_MONTHS[m - 1]}`;
+}

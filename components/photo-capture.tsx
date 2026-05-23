@@ -53,14 +53,19 @@ export function PhotoCapture({
   }, []);
 
   // Start (or restart on flip) the live camera while no preview is held.
+  // Note: setStarting/setCameraError were previously called in the effect
+  // body, which trips React 19's `set-state-in-effect` rule. They now run
+  // inside the async start() closure (i.e. in a callback, not in the
+  // effect body itself), so React batches them with the rest of start()'s
+  // updates instead of cascading another render up front.
   useEffect(() => {
     if (preview) return;
 
     let cancelled = false;
-    setStarting(true);
-    setCameraError(null);
 
     async function start() {
+      setStarting(true);
+      setCameraError(null);
       try {
         if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
           throw new Error("unsupported");

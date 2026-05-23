@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
-import { getMembershipCount, requireAdmin } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 import { Wordmark } from "@/components/comanda/primitives";
 
 export default async function AdminLayout({
@@ -9,19 +8,24 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile } = await requireAdmin();
+  // requireAdmin already gives us an authenticated supabase client — reuse
+  // it for the sidebar's two list queries instead of building another one
+  // (which also redoes auth.getUser via the SSR cookie path) and fan them
+  // out in parallel. `myShiftCount` is just a head-count, so .head=true
+  // keeps payload tiny.
+  const { profile, user, supabase } = await requireAdmin();
 
-  // Sidebar restaurants list — quick navigation across sedes.
-  const supabase = await createSupabaseServerClient();
-  const { data: restaurants } = await supabase
-    .from("restaurants")
-    .select("id, name")
-    .order("name");
-
+  const [{ data: restaurants }, { count: myShiftCount }] = await Promise.all([
+    supabase.from("restaurants").select("id, name").order("name"),
+    supabase
+      .from("restaurant_members")
+      .select("user_id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+  ]);
   // "Mi turno" shows up only when the admin is also a member of at least
   // one restaurant's equipo. Without membership, /today is empty for
   // admins — surfacing the link would just send them to a dead end.
-  const myShiftCount = await getMembershipCount();
+  const showMyShift = (myShiftCount ?? 0) > 0;
 
   return (
     <div className="cmd-paper flex min-h-screen text-ink">
@@ -53,7 +57,7 @@ export default async function AdminLayout({
 
         <NavSection label="Operación">
           <NavLink href="/dashboard" label="Hoy" />
-          {myShiftCount > 0 ? (
+          {showMyShift ? (
             <NavLink href="/today" label="Mi turno" />
           ) : null}
           <NavLink href="/restaurants" label="Restaurantes" />
@@ -124,7 +128,7 @@ export default async function AdminLayout({
           style={{ fontSize: 11, letterSpacing: "0.06em" }}
         >
           <Link href="/dashboard">Hoy</Link>
-          {myShiftCount > 0 ? <Link href="/today">Mi turno</Link> : null}
+          {showMyShift ? <Link href="/today">Mi turno</Link> : null}
           <Link href="/restaurants">Sedes</Link>
           <Link href="/reports">Reportes</Link>
           <form action={signOut}>

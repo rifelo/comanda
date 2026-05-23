@@ -2,6 +2,17 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInTz } from "@/lib/utils";
 import type { ShiftInstance, ShiftView, TaskCompletion } from "@/lib/types";
 
+/** Hydrated row returned by `getTodayShifts`: shift fields the /today list needs
+ *  + the joined restaurant/template names so the page doesn't need a second
+ *  round trip. */
+export interface TodayShiftRow {
+  id: string;
+  restaurant_id: string;
+  status: "open" | "closed";
+  restaurant_name: string | null;
+  template_name: string | null;
+}
+
 /**
  * Today's shifts for the *operational* view (/today).
  *
@@ -13,8 +24,11 @@ import type { ShiftInstance, ShiftView, TaskCompletion } from "@/lib/types";
  * admin with zero memberships gets an empty /today, which is correct —
  * they have /dashboard. Staff are unaffected (their visibility was always
  * membership-bound via RLS anyway).
+ *
+ * Returns rows already joined with restaurant + template names so callers
+ * don't need a second query to render the list.
  */
-export async function getTodayShifts() {
+export async function getTodayShifts(): Promise<TodayShiftRow[]> {
   const supabase = await createSupabaseServerClient();
 
   const {
@@ -22,71 +36,120 @@ export async function getTodayShifts() {
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data: memberships } = await supabase
+  // Memberships + restaurant timezones in one round-trip via embed.
+  const { data: memberRows } = await supabase
     .from("restaurant_members")
-    .select("restaurant_id")
+    .select("restaurant_id, restaurant:restaurants!inner(id, timezone)")
     .eq("user_id", user.id);
 
-  const restaurantIds = (memberships ?? []).map((m) => m.restaurant_id);
+  if (!memberRows?.length) return [];
+
+  const restaurantIds: string[] = [];
+  const dates = new Set<string>();
+  for (const m of memberRows) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = (m as any).restaurant as { id: string; timezone: string } | null;
+    if (!r) continue;
+    restaurantIds.push(r.id);
+    dates.add(todayInTz(r.timezone));
+  }
   if (restaurantIds.length === 0) return [];
 
-  // Pull timezone per member restaurant so we can compute "today" locally.
-  const { data: restaurants } = await supabase
-    .from("restaurants")
-    .select("id, timezone")
-    .in("id", restaurantIds);
-  if (!restaurants?.length) return [];
-
-  const dates = restaurants.map((r) => ({
-    restaurant_id: r.id,
-    date: todayInTz(r.timezone),
-  }));
-
+  // Single query for the shifts with their joined restaurant/template names.
   const { data: shifts } = await supabase
     .from("shift_instances")
-    .select("*")
+    .select(
+      "id, restaurant_id, status, restaurant:restaurants(name), template:checklist_templates(name)",
+    )
     .in("restaurant_id", restaurantIds)
-    .in("date", Array.from(new Set(dates.map((d) => d.date))));
+    .in("date", Array.from(dates));
 
-  return (shifts ?? []) as ShiftInstance[];
+  return (shifts ?? []).map((s) => ({
+    id: s.id as string,
+    restaurant_id: s.restaurant_id as string,
+    status: s.status as "open" | "closed",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    restaurant_name: ((s as any).restaurant?.name as string | undefined) ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    template_name: ((s as any).template?.name as string | undefined) ?? null,
+  }));
 }
 
-/** Hydrate a shift with its template, tasks, completions, and restaurant. */
+/** Hydrate a shift with its template, tasks, completions, and restaurant.
+ *
+ * Was previously: shift → then parallel(template, restaurant, tasks,
+ * completions). We embed template + restaurant on the initial shift query,
+ * then fan out template_tasks + task_completions in a single round-trip —
+ * cutting the wall time roughly in half on a cold path. */
 export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
   const supabase = await createSupabaseServerClient();
 
-  const { data: shift, error } = await supabase
+  // Embed the opener profile alongside template + restaurant so the admin
+  // detail page doesn't need a separate roundtrip for the "abrió por ..."
+  // label. Left join (no `!inner`) — a shift that hasn't been opened yet
+  // has opened_by = null and should still hydrate.
+  const shiftPromise = supabase
     .from("shift_instances")
-    .select("*")
+    .select(
+      "*, template:checklist_templates!inner(*), restaurant:restaurants!inner(*), opener:profiles!shift_instances_opened_by_fkey(id, full_name)",
+    )
     .eq("id", shiftId)
     .single();
-  if (error || !shift) return null;
 
-  const [{ data: template }, { data: restaurant }, { data: tasks }, { data: completions }] =
-    await Promise.all([
-      supabase.from("checklist_templates").select("*").eq("id", shift.template_id).single(),
-      supabase.from("restaurants").select("*").eq("id", shift.restaurant_id).single(),
-      supabase
-        .from("template_tasks")
-        .select("*")
-        .eq("template_id", shift.template_id)
-        .order("order_index"),
-      supabase.from("task_completions").select("*").eq("shift_instance_id", shiftId),
-    ]);
+  // Fan out the two list queries in parallel with the shift fetch. Both
+  // are keyed by IDs we know up-front (template_id and shift id), but
+  // template_id we only know via the shift row — so the tasks query has
+  // to be sequential. Completions however are scoped to shiftId already
+  // and can race the shift fetch.
+  const completionsPromise = supabase
+    .from("task_completions")
+    .select("*")
+    .eq("shift_instance_id", shiftId);
 
-  if (!template || !restaurant || !tasks) return null;
+  const { data: shiftRow, error } = await shiftPromise;
+  if (error || !shiftRow) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const template = (shiftRow as any).template;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const restaurant = (shiftRow as any).restaurant;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const opener = ((shiftRow as any).opener ?? null) as ShiftView["opener"];
+  if (!template || !restaurant) return null;
+
+  const [{ data: tasks }, { data: completions }] = await Promise.all([
+    supabase
+      .from("template_tasks")
+      .select("*")
+      .eq("template_id", template.id)
+      .order("order_index"),
+    completionsPromise,
+  ]);
+  if (!tasks) return null;
 
   const completionsMap: Record<string, TaskCompletion> = {};
   (completions ?? []).forEach((c) => {
     completionsMap[c.template_task_id] = c as TaskCompletion;
   });
 
+  // Strip the embedded relations off the shift row so the returned
+  // `shift` matches `ShiftInstance` shape exactly.
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+  const {
+    template: _t,
+    restaurant: _r,
+    opener: _o,
+    ...shiftCols
+  } = shiftRow as any;
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+
   return {
-    shift: shift as ShiftInstance,
+    shift: shiftCols as ShiftInstance,
     template,
     restaurant,
     tasks,
     completions: completionsMap,
+    opener,
   };
 }
 

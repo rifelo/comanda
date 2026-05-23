@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteTemplate } from "./actions";
 
@@ -26,11 +26,23 @@ export function DeleteTemplateButton({ templateId, restaurantId, shiftCount }: P
   const [pending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Navigation runs in useEffect — calling router.push (and especially
+  // router.push + router.refresh) inside startTransition keeps the
+  // transition pending forever on Next 16 + React 19, locking the button
+  // on "Eliminando…" even after the action returns ok. See
+  // app/(admin)/restaurants/new/new-restaurant-form.tsx for the same fix.
+  useEffect(() => {
+    if (redirecting) router.push(`/restaurants/${restaurantId}`);
+  }, [redirecting, restaurantId, router]);
 
   const willSoftDelete = shiftCount > 0;
   const explainer = willSoftDelete
     ? `Esta plantilla ya tiene ${shiftCount} turno${shiftCount === 1 ? "" : "s"} registrado${shiftCount === 1 ? "" : "s"}. Se desactivará — los turnos y reportes históricos se conservan.`
     : "Esta plantilla no se ha usado todavía. Se eliminará permanentemente junto con sus tareas.";
+
+  const busy = pending || redirecting;
 
   function onConfirm() {
     setError(null);
@@ -43,8 +55,7 @@ export function DeleteTemplateButton({ templateId, restaurantId, shiftCount }: P
         setConfirming(false);
         return;
       }
-      router.push(`/restaurants/${restaurantId}`);
-      router.refresh();
+      setRedirecting(true);
     });
   }
 
@@ -86,7 +97,7 @@ export function DeleteTemplateButton({ templateId, restaurantId, shiftCount }: P
         <button
           type="button"
           onClick={() => setConfirming(false)}
-          disabled={pending}
+          disabled={busy}
           className="cmd-btn ghost sm"
         >
           Cancelar
@@ -94,10 +105,10 @@ export function DeleteTemplateButton({ templateId, restaurantId, shiftCount }: P
         <button
           type="button"
           onClick={onConfirm}
-          disabled={pending}
+          disabled={busy}
           className="cmd-btn red sm"
         >
-          {pending
+          {busy
             ? "Eliminando…"
             : willSoftDelete
               ? "Confirmar · desactivar"

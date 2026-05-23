@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Folio } from "@/components/comanda/primitives";
 import { MemberRow } from "./staff/member-row";
 import { DeleteRestaurantButton } from "./delete-restaurant-button";
@@ -14,50 +13,48 @@ export default async function RestaurantDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireAdmin();
-  const supabase = await createSupabaseServerClient();
+  const { supabase } = await requireAdmin();
 
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("*")
-    .eq("id", id)
-    .single();
-  if (!restaurant) notFound();
-
-  const { data: templates } = await supabase
-    .from("checklist_templates")
-    .select("id, name, active, version")
-    .eq("restaurant_id", id)
-    .eq("active", true)
-    .order("name");
-
-  const { data: recentShifts } = await supabase
-    .from("shift_instances")
-    .select(
-      "id, date, status, template:checklist_templates!inner(name)",
-    )
-    .eq("restaurant_id", id)
-    .order("date", { ascending: false })
-    .limit(20);
-
-  // Equipo · staff with access to this restaurant.
-  // Includes `role` so the row UI can mark admin-members (e.g. the owner
-  // who's also on shift here) with a small badge.
-  const { data: memberRows } = await supabase
-    .from("restaurant_members")
-    .select("user_id, profile:profiles!inner(id, full_name, role)")
-    .eq("restaurant_id", id);
+  // Fan out everything this page needs in a single round-trip. The
+  // shape-list (one membership row UI type alias) is declared up front
+  // so all of the destructuring stays readable.
   type MemberRow = {
     user_id: string;
     profile: { id: string; full_name: string; role: "admin" | "staff" };
   };
-  const members = ((memberRows ?? []) as unknown as MemberRow[]).filter(
-    (m) => m.profile,
-  );
 
-  // Impact counts for the delete-restaurant confirmation. Includes inactive
-  // templates so the admin sees the full footprint.
-  const [tplC, shiftC, novC, complC] = await Promise.all([
+  const [
+    { data: restaurant },
+    { data: templates },
+    { data: recentShifts },
+    { data: memberRows },
+    { count: tplCount },
+    { count: shiftCount },
+    { count: novCount },
+    { count: complCount },
+  ] = await Promise.all([
+    supabase.from("restaurants").select("*").eq("id", id).single(),
+    supabase
+      .from("checklist_templates")
+      .select("id, name, active, version")
+      .eq("restaurant_id", id)
+      .eq("active", true)
+      .order("name"),
+    supabase
+      .from("shift_instances")
+      .select("id, date, status, template:checklist_templates!inner(name)")
+      .eq("restaurant_id", id)
+      .order("date", { ascending: false })
+      .limit(20),
+    // Equipo · staff with access to this restaurant. Includes `role` so the
+    // row UI can mark admin-members (the owner who's also on shift here)
+    // with a small badge.
+    supabase
+      .from("restaurant_members")
+      .select("user_id, profile:profiles!inner(id, full_name, role)")
+      .eq("restaurant_id", id),
+    // Impact counts for the delete-restaurant confirmation. Includes
+    // inactive templates so the admin sees the full footprint.
     supabase
       .from("checklist_templates")
       .select("id", { count: "exact", head: true })
@@ -78,11 +75,17 @@ export default async function RestaurantDetail({
       })
       .eq("shift_instance.restaurant_id", id),
   ]);
+
+  if (!restaurant) notFound();
+
+  const members = ((memberRows ?? []) as unknown as MemberRow[]).filter(
+    (m) => m.profile,
+  );
   const impact = {
-    templates: tplC.count ?? 0,
-    shifts: shiftC.count ?? 0,
-    novedades: novC.count ?? 0,
-    completions: complC.count ?? 0,
+    templates: tplCount ?? 0,
+    shifts: shiftCount ?? 0,
+    novedades: novCount ?? 0,
+    completions: complCount ?? 0,
     members: members.length,
   };
 

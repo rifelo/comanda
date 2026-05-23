@@ -18,9 +18,13 @@ export function ShiftBoard({
   const [closeError, setCloseError] = useState<string | null>(null);
 
   // Group tasks by due_time bucket (or "Sin hora" at the bottom).
+  // Alias the array so the dep is a plain identifier — eslint's
+  // exhaustive-deps otherwise flags `view.tasks` as a missing dep on
+  // `view` (false positive).
+  const tasks = view.tasks;
   const groups = useMemo(() => {
-    const map = new Map<string, typeof view.tasks>();
-    for (const t of view.tasks) {
+    const map = new Map<string, typeof tasks>();
+    for (const t of tasks) {
       const key = t.due_time?.slice(0, 5) ?? "Sin hora";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
@@ -30,7 +34,7 @@ export function ShiftBoard({
       if (b === "Sin hora") return -1;
       return a.localeCompare(b);
     });
-  }, [view.tasks]);
+  }, [tasks]);
 
   const allComplete =
     view.tasks.length > 0 &&

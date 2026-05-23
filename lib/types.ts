@@ -74,4 +74,7 @@ export interface ShiftView {
   tasks: TemplateTask[];
   completions: Record<string, TaskCompletion>; // keyed by template_task_id
   restaurant: Restaurant;
+  /** Profile of whoever opened the shift, embedded from `shift_instances.opened_by`.
+   *  `null` if the shift has not been opened yet. */
+  opener: { id: string; full_name: string | null } | null;
 }

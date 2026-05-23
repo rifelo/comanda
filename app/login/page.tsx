@@ -1,15 +1,7 @@
 import { Wordmark } from "@/components/comanda/primitives";
 import { GoogleSignInButton } from "./google-signin-button";
 
-export default function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ next?: string; error?: string }>;
-}) {
-  return <LoginPageInner searchParams={searchParams} />;
-}
-
-async function LoginPageInner({
+export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string; error?: string }>;
