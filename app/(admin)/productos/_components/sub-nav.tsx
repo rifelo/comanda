@@ -165,10 +165,9 @@ export function ProductosSubNavMobile() {
   const pathname = usePathname();
   return (
     <nav
-      className="cmd-paper-lt lg:hidden overflow-x-auto"
+      className="cmd-paper-lt flex lg:hidden overflow-x-auto"
       style={{
         borderBottom: "1.5px solid var(--ink)",
-        display: "flex",
         gap: 6,
         padding: "10px 14px",
         whiteSpace: "nowrap",
