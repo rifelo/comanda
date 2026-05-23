@@ -61,6 +61,7 @@ export default async function AdminLayout({
             <NavLink href="/today" label="Mi turno" />
           ) : null}
           <NavLink href="/restaurants" label="Restaurantes" />
+          <NavLink href="/productos/catalogo" label="Productos" />
           <NavLink href="/reports" label="Reportes" />
         </NavSection>
 
@@ -130,6 +131,7 @@ export default async function AdminLayout({
           <Link href="/dashboard">Hoy</Link>
           {showMyShift ? <Link href="/today">Mi turno</Link> : null}
           <Link href="/restaurants">Sedes</Link>
+          <Link href="/productos/catalogo">Productos</Link>
           <Link href="/reports">Reportes</Link>
           <form action={signOut}>
             <button
