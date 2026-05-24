@@ -11,6 +11,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 //   type DeleteCategoriaResult = { ok: boolean; error?: string }
 //   type CreateProductoResult  = { ok: boolean; id?: string; warning?: string; error?: string; fieldErrors?: Record<string, string> }
 //   type UpdateProductoResult  = { ok: boolean; id?: string; warning?: string; error?: string; fieldErrors?: Record<string, string> }
+//   type DeleteProductoResult  = { ok: boolean; error?: string }
 //   type ToggleFavoriteResult  = { ok: boolean; error?: string }
 
 // =============================================================================
@@ -475,6 +476,74 @@ export async function updateProducto(
     id: parsed.data.id,
     ...(uploadWarning ? { warning: uploadWarning } : {}),
   };
+}
+
+// =============================================================================
+// Delete producto
+// =============================================================================
+
+const DeleteProductoSchema = z.object({ id: z.string().uuid() });
+
+/**
+ * Hard-delete a producto. Cascades handled by the schema:
+ *   - `producto_favorites.producto_id` is `on delete cascade` → users'
+ *     stars for this producto are auto-removed.
+ *
+ * Best-effort image cleanup: if the row had an `image_url`, parse the
+ * storage path out and remove it from the bucket. Storage failure is
+ * logged but doesn't fail the request — the row is already gone.
+ */
+export async function deleteProducto(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const parsed = DeleteProductoSchema.safeParse({ id });
+  if (!parsed.success) {
+    return { ok: false, error: "Producto inválido." };
+  }
+
+  const { profile, supabase } = await requireAdmin();
+
+  const { data: existing } = await supabase
+    .from("productos")
+    .select("id, image_url")
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle();
+  if (!existing) {
+    return { ok: false, error: "El producto no existe." };
+  }
+
+  const { error: deleteErr } = await supabase
+    .from("productos")
+    .delete()
+    .eq("id", parsed.data.id);
+
+  if (deleteErr) {
+    console.error("[deleteProducto] delete failed:", deleteErr);
+    return {
+      ok: false,
+      error: deleteErr.message ?? "No se pudo eliminar el producto.",
+    };
+  }
+
+  if (existing.image_url) {
+    // Public URL shape: https://<host>/storage/v1/object/public/producto-photos/<path>
+    const m = existing.image_url.match(/\/producto-photos\/(.+)$/);
+    if (m) {
+      const { error: rmErr } = await supabase.storage
+        .from("producto-photos")
+        .remove([m[1]]);
+      if (rmErr) {
+        console.warn(
+          "[deleteProducto] image remove failed (row already deleted):",
+          rmErr,
+        );
+      }
+    }
+  }
+
+  revalidatePath("/catalogo");
+  return { ok: true };
 }
 
 // =============================================================================

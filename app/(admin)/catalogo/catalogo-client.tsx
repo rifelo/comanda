@@ -24,7 +24,230 @@ import { Chip } from "../_components/chip";
 import { NuevoProductoDrawer } from "./nuevo-producto-drawer";
 import { NuevaCategoriaForm } from "./nueva-categoria-form";
 import { FavoriteToggle } from "./favorite-toggle";
-import { deleteProductoCategoria } from "./actions";
+import { deleteProducto, deleteProductoCategoria } from "./actions";
+
+// Row-level ··· popover with Editar + Eliminar. Confirm-delete state and
+// the outside-click dismiss listener live inside this component; the
+// parent only tracks which row's menu is currently open (single-open).
+function RowMenu({
+  product,
+  open,
+  onOpen,
+  onClose,
+  onEdit,
+}: {
+  product: CatalogoRow;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const [mode, setMode] = React.useState<"menu" | "confirm">("menu");
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, startTransition] = React.useTransition();
+  const wrapperRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Reset to the menu pane every time the popover closes, so re-opening
+  // doesn't surface a stale "¿Eliminar?" confirm.
+  React.useEffect(() => {
+    if (!open) {
+      setMode("menu");
+      setError(null);
+    }
+  }, [open]);
+
+  // Outside-click + Esc dismiss. The trigger button is inside wrapperRef,
+  // so clicking it doesn't trigger this listener — the trigger toggles
+  // via its own onClick.
+  React.useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="text-muted"
+        aria-label={`Acciones para ${product.name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (open) onClose();
+          else onOpen();
+        }}
+        style={{
+          textAlign: "right",
+          fontSize: 13,
+          cursor: "pointer",
+          background: "none",
+          border: "none",
+          padding: 0,
+          width: "100%",
+          minHeight: 0,
+          letterSpacing: ".1em",
+        }}
+      >
+        ···
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "100%",
+            marginTop: 4,
+            zIndex: 30,
+            background: "var(--paper-lt)",
+            border: "1.5px solid var(--ink)",
+            minWidth: 140,
+            boxShadow: "2px 4px 12px rgba(0,0,0,0.12)",
+            borderRadius: 2,
+          }}
+        >
+          {mode === "menu" ? (
+            <>
+              <MenuItem
+                onClick={() => {
+                  onEdit();
+                  onClose();
+                }}
+              >
+                ✏ Editar
+              </MenuItem>
+              <div style={{ height: 1, background: "var(--rule)" }} />
+              <MenuItem
+                danger
+                onClick={() => {
+                  setMode("confirm");
+                  setError(null);
+                }}
+              >
+                ✕ Eliminar
+              </MenuItem>
+            </>
+          ) : (
+            <div style={{ padding: "10px 12px" }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--red)",
+                  letterSpacing: ".08em",
+                  marginBottom: 8,
+                }}
+              >
+                {error ?? "¿Eliminar producto?"}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    startTransition(async () => {
+                      const r = await deleteProducto(product.id);
+                      if (!r.ok) {
+                        setError(r.error ?? "No se pudo eliminar.");
+                        return;
+                      }
+                      onClose();
+                    });
+                  }}
+                  style={{
+                    flex: 1,
+                    background: "var(--red)",
+                    color: "var(--paper-lt)",
+                    border: "none",
+                    fontSize: 10,
+                    padding: "4px 0",
+                    cursor: pending ? "default" : "pointer",
+                    opacity: pending ? 0.6 : 1,
+                    letterSpacing: ".1em",
+                    textTransform: "uppercase",
+                    borderRadius: 2,
+                    minHeight: 0,
+                  }}
+                >
+                  Sí
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("menu");
+                    setError(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    color: "var(--ink)",
+                    border: "1px solid var(--rule)",
+                    fontSize: 10,
+                    padding: "4px 0",
+                    cursor: "pointer",
+                    letterSpacing: ".1em",
+                    textTransform: "uppercase",
+                    borderRadius: 2,
+                    minHeight: 0,
+                  }}
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MenuItem({
+  children,
+  onClick,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        background: "none",
+        border: "none",
+        padding: "9px 12px",
+        fontSize: 11,
+        color: danger ? "var(--red)" : "var(--ink)",
+        cursor: "pointer",
+        textAlign: "left",
+        minHeight: 0,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 function flattenCategorias(
   nodes: CatalogoCategoryNode[],
@@ -296,6 +519,8 @@ export function CatalogoClient({
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [editProduct, setEditProduct] = React.useState<CatalogoRow | null>(null);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
+  // One row menu open at a time. `null` = no popover visible.
+  const [openMenuId, setOpenMenuId] = React.useState<string | null>(null);
 
   // Build a category-id -> descendant-ids map so picking a parent also
   // matches its children's productos.
@@ -552,27 +777,16 @@ export function CatalogoClient({
                   {p.margin_pct}%
                 </div>
                 <StockBadge status={p.stock_status} />
-                <button
-                  type="button"
-                  className="text-muted"
-                  aria-label={`Editar ${p.name}`}
-                  onClick={() => {
+                <RowMenu
+                  product={p}
+                  open={openMenuId === p.id}
+                  onOpen={() => setOpenMenuId(p.id)}
+                  onClose={() => setOpenMenuId(null)}
+                  onEdit={() => {
                     setEditProduct(p);
                     setDrawerOpen(true);
                   }}
-                  style={{
-                    textAlign: "right",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    width: "100%",
-                    minHeight: 0,
-                  }}
-                >
-                  ···
-                </button>
+                />
               </div>
             ))}
             {filtered.length === 0 ? (
