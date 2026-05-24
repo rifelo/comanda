@@ -11,6 +11,8 @@ import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
 import {
   createIngrediente,
   createIngredienteCategoria,
+  deleteIngrediente,
+  updateIngrediente,
 } from "./actions";
 
 interface TreeNode {
@@ -280,6 +282,7 @@ function NuevoIngredienteDrawer({
   depthById,
   pending,
   serverError,
+  editData,
   onClose,
   onSave,
 }: {
@@ -287,6 +290,7 @@ function NuevoIngredienteDrawer({
   depthById: Map<string, number>;
   pending: boolean;
   serverError: string | null;
+  editData?: Ingrediente | null;
   onClose: () => void;
   onSave: (input: {
     name: string;
@@ -298,15 +302,30 @@ function NuevoIngredienteDrawer({
     costCop: number;
   }) => void;
 }) {
-  const [form, setForm] = React.useState({
-    name: "",
-    categoryId: "" as string,
-    unit: "kg" as (typeof UNITS)[number],
-    stock: "",
-    min: "",
-    merma: "",
-    cost: "",
-  });
+  const isEdit = !!editData;
+  const [form, setForm] = React.useState(() =>
+    editData
+      ? {
+          name: editData.name,
+          categoryId: editData.category_id ?? "",
+          unit: (UNITS as readonly string[]).includes(editData.unit)
+            ? (editData.unit as (typeof UNITS)[number])
+            : ("kg" as (typeof UNITS)[number]),
+          stock: String(editData.stock_current),
+          min: String(editData.stock_min),
+          merma: String(editData.merma_pct),
+          cost: String(editData.cost_cop),
+        }
+      : {
+          name: "",
+          categoryId: "" as string,
+          unit: "kg" as (typeof UNITS)[number],
+          stock: "",
+          min: "",
+          merma: "",
+          cost: "",
+        },
+  );
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -429,7 +448,7 @@ function NuevoIngredienteDrawer({
               className="font-slab"
               style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2 }}
             >
-              Nuevo ingrediente
+              {isEdit ? "Editar ingrediente" : "Nuevo ingrediente"}
             </div>
           </div>
           <button
@@ -656,7 +675,11 @@ function NuevoIngredienteDrawer({
             className="cmd-btn"
             style={{ flex: 2 }}
           >
-            {pending ? "Guardando…" : "Guardar ingrediente"}
+            {pending
+              ? "Guardando…"
+              : isEdit
+                ? "Guardar cambios"
+                : "Guardar ingrediente"}
           </button>
         </div>
       </div>
@@ -667,7 +690,7 @@ function NuevoIngredienteDrawer({
 // ─────────────────────────────────────────────────────────────────────────
 // IngredientesClient (root)
 // ─────────────────────────────────────────────────────────────────────────
-const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px";
+const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px 64px";
 
 export function IngredientesClient({
   initialCategorias,
@@ -680,8 +703,11 @@ export function IngredientesClient({
   const [ingredientes, setIngredientes] = React.useState(initialIngredientes);
   const [cat, setCat] = React.useState("all");
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [editIng, setEditIng] = React.useState<Ingrediente | null>(null);
+  const [confirmDelId, setConfirmDelId] = React.useState<string | null>(null);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
   const [drawerError, setDrawerError] = React.useState<string | null>(null);
+  const [rowError, setRowError] = React.useState<string | null>(null);
   const [catError, setCatError] = React.useState<string | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
@@ -721,7 +747,7 @@ export function IngredientesClient({
     });
   };
 
-  const handleAddIngrediente = (input: {
+  const handleSaveIngrediente = (input: {
     name: string;
     categoryId: string | null;
     unit: (typeof UNITS)[number];
@@ -731,14 +757,41 @@ export function IngredientesClient({
     costCop: number;
   }) => {
     setDrawerError(null);
+    const editingId = editIng?.id;
     startTransition(async () => {
-      const res = await createIngrediente(input);
+      if (editingId) {
+        const res = await updateIngrediente({ id: editingId, ...input });
+        if (!res.ok) {
+          setDrawerError(res.error);
+          return;
+        }
+        const updated = res.ingrediente as Ingrediente;
+        setIngredientes((prev) =>
+          prev.map((i) => (i.id === updated.id ? updated : i)),
+        );
+      } else {
+        const res = await createIngrediente(input);
+        if (!res.ok) {
+          setDrawerError(res.error);
+          return;
+        }
+        setIngredientes((prev) => [res.ingrediente as Ingrediente, ...prev]);
+      }
+      setDrawerOpen(false);
+      setEditIng(null);
+    });
+  };
+
+  const handleDeleteIngrediente = (id: string) => {
+    setRowError(null);
+    startTransition(async () => {
+      const res = await deleteIngrediente({ id });
       if (!res.ok) {
-        setDrawerError(res.error);
+        setRowError(res.error);
         return;
       }
-      setIngredientes((prev) => [res.ingrediente as Ingrediente, ...prev]);
-      setDrawerOpen(false);
+      setIngredientes((prev) => prev.filter((i) => i.id !== id));
+      setConfirmDelId(null);
     });
   };
 
@@ -768,11 +821,13 @@ export function IngredientesClient({
           depthById={depthById}
           pending={isPending}
           serverError={drawerError}
+          editData={editIng}
           onClose={() => {
             setDrawerOpen(false);
+            setEditIng(null);
             setDrawerError(null);
           }}
-          onSave={handleAddIngrediente}
+          onSave={handleSaveIngrediente}
         />
       ) : null}
 
@@ -941,6 +996,7 @@ export function IngredientesClient({
               <span>Stock vs mínimo</span>
               <span style={{ textAlign: "right" }}>Merma</span>
               <span style={{ textAlign: "right" }}>Costo / U</span>
+              <span />
             </div>
 
             {ingredientes.length === 0 ? (
@@ -1028,9 +1084,114 @@ export function IngredientesClient({
                   >
                     ${fmtCOP(ing.cost_cop)}
                   </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 4,
+                      justifyContent: "flex-end",
+                      alignItems: "center",
+                    }}
+                  >
+                    {confirmDelId === ing.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteIngrediente(ing.id)}
+                          disabled={isPending}
+                          style={{
+                            background: "var(--red)",
+                            color: "var(--paper-lt)",
+                            border: "none",
+                            fontSize: 9,
+                            padding: "3px 6px",
+                            cursor: "pointer",
+                            minHeight: 0,
+                          }}
+                        >
+                          Sí
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmDelId(null);
+                            setRowError(null);
+                          }}
+                          disabled={isPending}
+                          style={{
+                            background: "transparent",
+                            border: "1px solid var(--rule)",
+                            fontSize: 9,
+                            padding: "3px 6px",
+                            cursor: "pointer",
+                            color: "var(--ink)",
+                            minHeight: 0,
+                          }}
+                        >
+                          No
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          title="Editar"
+                          aria-label={`Editar ${ing.name}`}
+                          onClick={() => {
+                            setDrawerError(null);
+                            setEditIng(ing);
+                            setDrawerOpen(true);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--muted)",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            padding: "2px 4px",
+                            minHeight: 0,
+                          }}
+                        >
+                          ✏
+                        </button>
+                        <button
+                          type="button"
+                          title="Eliminar"
+                          aria-label={`Eliminar ${ing.name}`}
+                          onClick={() => {
+                            setRowError(null);
+                            setConfirmDelId(ing.id);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--red)",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            padding: "2px 4px",
+                            minHeight: 0,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
+            {rowError ? (
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderTop: "1px dashed var(--rule)",
+                  color: "var(--red)",
+                  fontSize: 11,
+                  background: "var(--paper)",
+                }}
+              >
+                {rowError}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

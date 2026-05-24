@@ -23,6 +23,14 @@ const CreateIngredienteSchema = z.object({
   costCop: z.coerce.number().int().min(0),
 });
 
+const UpdateIngredienteSchema = CreateIngredienteSchema.extend({
+  id: z.string().uuid(),
+});
+
+const DeleteIngredienteSchema = z.object({
+  id: z.string().uuid(),
+});
+
 // Result shapes documented for callers; never exported as types from a
 // "use server" file (Next 16 RSC payload gotcha — see
 // app/(admin)/restaurants/new/actions.ts).
@@ -97,4 +105,67 @@ export async function createIngrediente(input: unknown) {
 
   revalidatePath("/productos/ingredientes");
   return { ok: true as const, ingrediente: data };
+}
+
+export async function updateIngrediente(input: unknown) {
+  const parsed = UpdateIngredienteSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const d = parsed.data;
+  const { data, error } = await supabase
+    .from("ingredientes")
+    .update({
+      category_id: d.categoryId,
+      name: d.name,
+      unit: d.unit,
+      stock_current: d.stockCurrent,
+      stock_min: d.stockMin,
+      merma_pct: d.mermaPct,
+      cost_cop: d.costCop,
+    })
+    .eq("id", d.id)
+    .eq("organization_id", profile.organization_id)
+    .select(
+      "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
+    )
+    .single();
+
+  if (error) {
+    console.error("[updateIngrediente]", error);
+    if (error.code === "23505") {
+      return {
+        ok: false as const,
+        error: "Ya existe un ingrediente con ese nombre.",
+      };
+    }
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/productos/ingredientes");
+  return { ok: true as const, ingrediente: data };
+}
+
+export async function deleteIngrediente(input: unknown) {
+  const parsed = DeleteIngredienteSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const { error } = await supabase
+    .from("ingredientes")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) {
+    console.error("[deleteIngrediente]", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/productos/ingredientes");
+  return { ok: true as const };
 }
