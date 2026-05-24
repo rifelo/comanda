@@ -119,20 +119,38 @@ export type RecetaIngrediente = {
   note?: string;
 };
 
-export type Receta = {
+export type RecetaSummary = {
+  id: string;
   product: string;
   sku: string;
   cat: string;
   price: number;
-  ings: RecetaIngrediente[];
+  version: number;
+  editor: string;
+  date: string;
 };
 
-export const RECETA: Receta = {
-  product: "Doble Tocineta",
-  sku: "HB-014",
-  cat: "Hamburguesas · Especiales",
-  price: 32900,
-  ings: [
+export const RECETAS_LIST: RecetaSummary[] = [
+  { id: "r1", product: "Daniel's Burger Clásica", sku: "HB-001", cat: "Hamburguesas · Clásicas", price: 24900, version: 4, editor: "Andrés R.", date: "20·MAY" },
+  { id: "r2", product: "Doble Tocineta", sku: "HB-014", cat: "Hamburguesas · Especiales", price: 32900, version: 3, editor: "Andrés R.", date: "14·MAY" },
+  { id: "r3", product: "Triple Bestia", sku: "HB-022", cat: "Hamburguesas · Especiales", price: 42900, version: 2, editor: "Carlos M.", date: "10·MAY" },
+  { id: "r4", product: "Veggie Portobello", sku: "HB-031", cat: "Hamburguesas · Vegetarianas", price: 26900, version: 1, editor: "Andrés R.", date: "05·MAY" },
+  { id: "r5", product: "Papas Rústicas grandes", sku: "AC-002", cat: "Acompañamientos", price: 12900, version: 2, editor: "Carlos M.", date: "02·MAY" },
+  { id: "r6", product: "Limonada de coco", sku: "BJ-005", cat: "Bebidas · Jugos naturales", price: 9900, version: 3, editor: "Andrés R.", date: "18·MAY" },
+  { id: "r7", product: "Brownie con helado", sku: "PO-002", cat: "Postres", price: 13900, version: 1, editor: "Laura V.", date: "08·MAY" },
+];
+
+export const RECETAS_INGS: Record<string, RecetaIngrediente[]> = {
+  r1: [
+    { name: 'Pan brioche 4"', qty: 1, unit: "und", cost: 1100, total: 1100 },
+    { name: "Carne molida 80/20", qty: 0.15, unit: "kg", cost: 18900, total: 2835 },
+    { name: "Queso cheddar", qty: 1, unit: "loncha", cost: 980, total: 980 },
+    { name: "Lechuga crespa", qty: 0.5, unit: "und", cost: 3200, total: 1600 },
+    { name: "Tomate chonto", qty: 0.04, unit: "kg", cost: 4200, total: 168 },
+    { name: "Salsa BBQ casera", qty: 20, unit: "g", cost: 22, total: 440 },
+    { name: "Caja hamburguesa", qty: 1, unit: "und", cost: 380, total: 380 },
+  ],
+  r2: [
     { name: 'Pan brioche 4"', qty: 1, unit: "und", cost: 1100, total: 1100 },
     { name: "Carne molida 80/20", qty: 0.18, unit: "kg", cost: 18900, total: 3402 },
     { name: "Carne molida 80/20", qty: 0.18, unit: "kg", cost: 18900, total: 3402, note: "segunda carne" },
@@ -142,6 +160,42 @@ export const RECETA: Receta = {
     { name: "Tomate chonto", qty: 0.06, unit: "kg", cost: 4200, total: 252 },
     { name: "Salsa BBQ casera", qty: 30, unit: "g", cost: 22, total: 660 },
     { name: "Caja hamburguesa", qty: 1, unit: "und", cost: 380, total: 380 },
+  ],
+  r3: [
+    { name: 'Pan brioche 4"', qty: 1, unit: "und", cost: 1100, total: 1100 },
+    { name: "Carne molida 80/20", qty: 0.24, unit: "kg", cost: 18900, total: 4536 },
+    { name: "Carne molida 80/20", qty: 0.24, unit: "kg", cost: 18900, total: 4536, note: "segunda carne" },
+    { name: "Carne molida 80/20", qty: 0.24, unit: "kg", cost: 18900, total: 4536, note: "tercera carne" },
+    { name: "Queso cheddar", qty: 3, unit: "lonchas", cost: 980, total: 2940 },
+    { name: "Tocineta ahumada", qty: 0.08, unit: "kg", cost: 22800, total: 1824 },
+    { name: "Caja hamburguesa", qty: 1, unit: "und", cost: 380, total: 380 },
+  ],
+  r4: [
+    { name: 'Pan brioche 4"', qty: 1, unit: "und", cost: 1100, total: 1100 },
+    { name: "Portobello fresco", qty: 0.12, unit: "kg", cost: 12000, total: 1440 },
+    { name: "Queso mozzarella", qty: 0.06, unit: "kg", cost: 18500, total: 1110 },
+    { name: "Lechuga crespa", qty: 1, unit: "und", cost: 3200, total: 3200 },
+    { name: "Tomate chonto", qty: 0.08, unit: "kg", cost: 4200, total: 336 },
+    { name: "Caja hamburguesa", qty: 1, unit: "und", cost: 380, total: 380 },
+  ],
+  r5: [
+    { name: "Papa R12 lavada", qty: 0.3, unit: "kg", cost: 2800, total: 840 },
+    { name: "Aceite de fritura", qty: 0.04, unit: "L", cost: 9800, total: 392 },
+    { name: "Sal marina", qty: 3, unit: "g", cost: 8, total: 24 },
+    { name: "Caja papas", qty: 1, unit: "und", cost: 220, total: 220 },
+  ],
+  r6: [
+    { name: "Coco rallado", qty: 0.04, unit: "kg", cost: 8200, total: 328 },
+    { name: "Limón Tahití", qty: 3, unit: "und", cost: 320, total: 960 },
+    { name: "Azúcar", qty: 0.03, unit: "kg", cost: 1800, total: 54 },
+    { name: "Agua", qty: 0.3, unit: "L", cost: 100, total: 30 },
+    { name: "Vaso plástico 16oz", qty: 1, unit: "und", cost: 280, total: 280 },
+  ],
+  r7: [
+    { name: "Brownie base", qty: 1, unit: "porción", cost: 1800, total: 1800 },
+    { name: "Helado vainilla", qty: 2, unit: "bolas", cost: 600, total: 1200 },
+    { name: "Salsa chocolate", qty: 20, unit: "g", cost: 18, total: 360 },
+    { name: "Plato desechable", qty: 1, unit: "und", cost: 150, total: 150 },
   ],
 };
 
