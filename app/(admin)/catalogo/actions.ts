@@ -8,6 +8,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 // note in `app/(admin)/restaurants/new/actions.ts`. Result shapes are
 // documented inline.
 //   type CreateCategoriaResult = { ok: boolean; id?: string; error?: string }
+//   type DeleteCategoriaResult = { ok: boolean; error?: string }
 //   type CreateProductoResult  = { ok: boolean; id?: string; warning?: string; error?: string; fieldErrors?: Record<string, string> }
 //   type ToggleFavoriteResult  = { ok: boolean; error?: string }
 
@@ -91,6 +92,59 @@ export async function createProductoCategoria(
 
   revalidatePath("/catalogo");
   return { ok: true, id: row.id };
+}
+
+const DeleteCategoriaSchema = z.object({ id: z.string().uuid() });
+
+/**
+ * Hard-delete a categoría. Cascade behaviour is handled by the schema
+ * (migration 0005):
+ *   - `producto_categorias.parent_id` is `on delete cascade` → descendant
+ *     categorías go with the parent.
+ *   - `productos.category_id` is `on delete set null` → productos under
+ *     the removed subtree become uncategorized rather than vanishing.
+ *
+ * We pre-check that the row belongs to the caller's org so RLS doesn't
+ * silently swallow the delete; otherwise the UI would show a fake
+ * "success" while nothing changed.
+ */
+export async function deleteProductoCategoria(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const parsed = DeleteCategoriaSchema.safeParse({ id });
+  if (!parsed.success) {
+    return { ok: false, error: "Categoría inválida." };
+  }
+
+  const { profile, supabase } = await requireAdmin();
+
+  // RLS would block the delete silently if the row is from another org;
+  // surface the same friendly message createProductoCategoria uses.
+  const { data: existing } = await supabase
+    .from("producto_categorias")
+    .select("id")
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle();
+  if (!existing) {
+    return { ok: false, error: "La categoría no existe." };
+  }
+
+  const { error: deleteErr } = await supabase
+    .from("producto_categorias")
+    .delete()
+    .eq("id", parsed.data.id);
+
+  if (deleteErr) {
+    console.error("[deleteProductoCategoria] delete failed:", deleteErr);
+    return {
+      ok: false,
+      error: deleteErr.message ?? "No se pudo eliminar la categoría.",
+    };
+  }
+
+  revalidatePath("/catalogo");
+  return { ok: true };
 }
 
 // =============================================================================

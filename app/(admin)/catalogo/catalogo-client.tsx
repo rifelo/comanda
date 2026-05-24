@@ -24,6 +24,7 @@ import { Chip } from "../_components/chip";
 import { NuevoProductoDrawer } from "./nuevo-producto-drawer";
 import { NuevaCategoriaForm } from "./nueva-categoria-form";
 import { FavoriteToggle } from "./favorite-toggle";
+import { deleteProductoCategoria } from "./actions";
 
 function flattenCategorias(
   nodes: CatalogoCategoryNode[],
@@ -50,47 +51,214 @@ function CategoriaTree({
   nodes,
   activeId,
   onPick,
+  onDelete,
 }: {
   nodes: CatalogoCategoryNode[];
   activeId: string | null; // null = "Todas"
   onPick: (id: string | null) => void;
+  onDelete: (deletedId: string) => void;
 }) {
+  // Tree-level state — one row at a time can be hovered or in confirm
+  // mode. The single-string design is intentional: opening a second
+  // confirm collapses the first (matches "one at a time" in the spec).
+  const [hoveredId, setHoveredId] = React.useState<string | null>(null);
+  const [confirmId, setConfirmId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, startTransition] = React.useTransition();
+  const confirmRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Focus the confirm container as soon as it opens so Escape works
+  // without the user having to click into it first.
+  React.useEffect(() => {
+    if (confirmId && confirmRef.current) {
+      confirmRef.current.focus();
+    }
+  }, [confirmId]);
+
   const Row = ({ row }: { row: CatalogoCategoryNode }) => {
     const isActive = activeId === row.id;
     const isRoot = row.indent === 0;
+    const isConfirming = row.id !== null && confirmId === row.id;
+    const indentPad = 8 + Math.max(row.indent - 1, 0) * 14;
+
+    // ── Confirm variant ────────────────────────────────────────────────
+    if (isConfirming) {
+      return (
+        <div
+          ref={confirmRef}
+          tabIndex={-1}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setConfirmId(null);
+              setError(null);
+            }
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 8px",
+            paddingLeft: indentPad,
+            background: "var(--paper)",
+            border: "1px solid var(--red)",
+            borderRadius: 2,
+            fontSize: 10,
+            outline: "none",
+          }}
+        >
+          <span
+            style={{
+              flex: 1,
+              color: "var(--red)",
+              letterSpacing: ".08em",
+            }}
+          >
+            {error
+              ? error
+              : <>¿Eliminar «{row.label}»?</>}
+          </span>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!row.id) return;
+              const targetId = row.id;
+              startTransition(async () => {
+                const r = await deleteProductoCategoria(targetId);
+                if (!r.ok) {
+                  setError(r.error ?? "No se pudo eliminar.");
+                  return;
+                }
+                onDelete(targetId);
+                setConfirmId(null);
+                setError(null);
+              });
+            }}
+            style={{
+              background: "var(--red)",
+              color: "var(--paper-lt)",
+              border: "none",
+              fontSize: 9,
+              padding: "3px 8px",
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
+              cursor: pending ? "default" : "pointer",
+              opacity: pending ? 0.6 : 1,
+              borderRadius: 2,
+              minHeight: 0,
+            }}
+          >
+            Sí
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmId(null);
+              setError(null);
+            }}
+            style={{
+              background: "transparent",
+              color: "var(--ink)",
+              border: "1px solid var(--rule)",
+              fontSize: 9,
+              padding: "3px 8px",
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              borderRadius: 2,
+              minHeight: 0,
+            }}
+          >
+            No
+          </button>
+        </div>
+      );
+    }
+
+    // ── Normal variant ─────────────────────────────────────────────────
+    // The ✕ shows on hover OR while this row is the active filter; never
+    // for the synthetic "Todas" row (id === null).
+    const showDelete =
+      row.id !== null && (hoveredId === row.id || isActive);
+
     return (
-      <button
-        type="button"
-        onClick={() => onPick(row.id)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          width: "100%",
-          textAlign: "left",
-          padding: "5px 8px",
-          paddingLeft: 8 + Math.max(row.indent - 1, 0) * 14,
-          background: isActive ? "var(--ink)" : "transparent",
-          color: isActive ? "var(--paper-lt)" : "var(--ink)",
-          border: "none",
-          fontSize: 11,
-          borderRadius: 2,
-          minHeight: 0,
-          cursor: "pointer",
+      <div
+        style={{ position: "relative" }}
+        onMouseEnter={() => {
+          if (row.id) setHoveredId(row.id);
+        }}
+        onMouseLeave={() => {
+          // Only clear if this row is still the hovered one; avoids the
+          // race where a fast pointer enters row B before A's leave fires.
+          setHoveredId((prev) => (prev === row.id ? null : prev));
         }}
       >
-        {row.children?.length ? (
-          <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
-        ) : (
-          <span style={{ width: 8 }} />
-        )}
-        <span style={{ flex: 1, fontWeight: isRoot ? 600 : 400 }}>
-          {row.label}
-        </span>
-        <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
-          {row.count}
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={() => onPick(row.id)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            width: "100%",
+            textAlign: "left",
+            padding: "5px 8px",
+            paddingLeft: indentPad,
+            background: isActive ? "var(--ink)" : "transparent",
+            color: isActive ? "var(--paper-lt)" : "var(--ink)",
+            border: "none",
+            fontSize: 11,
+            borderRadius: 2,
+            minHeight: 0,
+            cursor: "pointer",
+          }}
+        >
+          {row.children?.length ? (
+            <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+          ) : (
+            <span style={{ width: 8 }} />
+          )}
+          <span style={{ flex: 1, fontWeight: isRoot ? 600 : 400 }}>
+            {row.label}
+          </span>
+          <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
+            {row.count}
+          </span>
+        </button>
+        {showDelete ? (
+          <button
+            type="button"
+            title="Eliminar categoría"
+            aria-label={`Eliminar categoría ${row.label}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmId(row.id);
+              setError(null);
+            }}
+            style={{
+              position: "absolute",
+              right: 4,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 16,
+              height: 16,
+              fontSize: 8,
+              lineHeight: "14px",
+              textAlign: "center",
+              color: "var(--red)",
+              background: "var(--paper)",
+              border: "1px solid var(--red)",
+              borderRadius: 2,
+              padding: 0,
+              cursor: "pointer",
+            }}
+          >
+            ✕
+          </button>
+        ) : null}
+      </div>
     );
   };
   return (
@@ -186,7 +354,14 @@ export function CatalogoClient({
           }}
         >
           <CmdMiniLabel>Categorías</CmdMiniLabel>
-          <CategoriaTree nodes={categorias} activeId={cat} onPick={setCat} />
+          <CategoriaTree
+            nodes={categorias}
+            activeId={cat}
+            onPick={setCat}
+            onDelete={(id) => {
+              if (cat === id) setCat(null);
+            }}
+          />
           {catFormOpen ? (
             <NuevaCategoriaForm
               categorias={categorias}
