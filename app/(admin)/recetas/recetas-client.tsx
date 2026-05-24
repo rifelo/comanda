@@ -382,13 +382,545 @@ function SummaryCard({
   );
 }
 
-export function RecetasClient() {
-  const [selected, setSelected] = React.useState<string>("r2");
-  const receta = RECETAS_LIST.find((r) => r.id === selected);
-  const ings = receta ? RECETAS_INGS[selected] ?? [] : [];
+const CATS = [
+  "Hamburguesas · Clásicas",
+  "Hamburguesas · Especiales",
+  "Hamburguesas · Vegetarianas",
+  "Acompañamientos",
+  "Bebidas · Gaseosas",
+  "Bebidas · Cervezas",
+  "Bebidas · Jugos naturales",
+  "Postres",
+  "Salsas (extras)",
+  "Combos",
+];
+
+const UNITS = ["und", "kg", "g", "L", "ml", "porción", "loncha", "bola"];
+
+type DraftRow = { name: string; qty: string; unit: string; cost: string };
+
+const EMPTY_FORM = {
+  product: "",
+  sku: "",
+  cat: CATS[0],
+  price: "",
+};
+const EMPTY_ING: DraftRow = { name: "", qty: "", unit: "und", cost: "" };
+
+type SavePayload = {
+  meta: RecetaSummary;
+  ings: RecetaIngrediente[];
+};
+
+function NuevaRecetaDrawer({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (p: SavePayload) => void;
+}) {
+  const [form, setForm] = React.useState(EMPTY_FORM);
+  const [rows, setRows] = React.useState<DraftRow[]>([{ ...EMPTY_ING }]);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
+
+  const setF = (k: keyof typeof form, v: string) =>
+    setForm((f) => ({ ...f, [k]: v }));
+  const setRow = (i: number, k: keyof DraftRow, v: string) =>
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const addRow = () => setRows((rs) => [...rs, { ...EMPTY_ING }]);
+  const delRow = (i: number) =>
+    setRows((rs) => (rs.length > 1 ? rs.filter((_, j) => j !== i) : rs));
+
+  const totalCosto = rows.reduce((s, r) => {
+    const qty = Number(r.qty) || 0;
+    const cost = Number(r.cost) || 0;
+    return s + qty * cost;
+  }, 0);
+  const price = Number(form.price) || 0;
+  const margen =
+    price > 0 ? Math.round(((price - totalCosto) / price) * 100) : null;
+
+  const handleSave = () => {
+    const e: Record<string, string> = {};
+    if (!form.product.trim()) e.product = "Requerido";
+    if (!form.sku.trim()) e.sku = "Requerido";
+    if (!form.price || price <= 0) e.price = "Precio inválido";
+    if (rows.every((r) => !r.name.trim()))
+      e.rows = "Agrega al menos un ingrediente";
+    setErrors(e);
+    if (Object.keys(e).length > 0) return;
+
+    const id = "r" + Date.now();
+    const ings: RecetaIngrediente[] = rows
+      .filter((r) => r.name.trim())
+      .map((r) => {
+        const qty = Number(r.qty) || 0;
+        const cost = Number(r.cost) || 0;
+        return {
+          name: r.name.trim(),
+          qty,
+          unit: r.unit,
+          cost,
+          total: Math.round(qty * cost),
+        };
+      });
+    onSave({
+      meta: {
+        id,
+        product: form.product.trim(),
+        sku: form.sku.trim().toUpperCase(),
+        cat: form.cat,
+        price,
+        version: 1,
+        editor: "Tú",
+        date: "hoy",
+      },
+      ings,
+    });
+  };
+
+  const inputSt = (err?: string): React.CSSProperties => ({
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    fontFamily: "var(--font-mono)",
+    fontSize: 12,
+    color: "var(--ink)",
+    background: "var(--paper)",
+    padding: "7px 9px",
+    border: `1.5px solid ${err ? "var(--red)" : "var(--ink)"}`,
+    outline: "none",
+    minHeight: 0,
+  });
+  const labelSt: React.CSSProperties = {
+    display: "block",
+    fontSize: 9,
+    letterSpacing: "0.18em",
+    textTransform: "uppercase",
+    color: "var(--muted)",
+    marginBottom: 4,
+  };
+  const errSt: React.CSSProperties = {
+    fontSize: 10,
+    color: "var(--red)",
+    marginTop: 3,
+  };
+  const gap: React.CSSProperties = { marginBottom: 14 };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        justifyContent: "flex-end",
+      }}
+    >
+      <div
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(30,25,18,.32)",
+        }}
+      />
+      <div
+        className="cmd-paper-lt"
+        style={{
+          position: "relative",
+          zIndex: 1,
+          width: 480,
+          maxWidth: "100%",
+          height: "100%",
+          borderLeft: "1.5px solid var(--ink)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* header */}
+        <div
+          className="bg-paper"
+          style={{
+            padding: "18px 22px 14px",
+            borderBottom: "1.5px solid var(--ink)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <div
+              className="text-muted"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+              }}
+            >
+              Recetas · 03
+            </div>
+            <div
+              className="font-slab"
+              style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2 }}
+            >
+              Nueva receta
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted"
+            style={{
+              background: "none",
+              border: "1px solid var(--rule)",
+              fontSize: 12,
+              padding: "4px 9px",
+              cursor: "pointer",
+              minHeight: 0,
+            }}
+          >
+            ✕ cerrar
+          </button>
+        </div>
+
+        {/* body */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "20px 22px 0",
+          }}
+        >
+          <div style={gap}>
+            <label style={labelSt}>Nombre del producto *</label>
+            <input
+              value={form.product}
+              onChange={(e) => setF("product", e.target.value)}
+              placeholder="Ej. Burger Especial de la Casa"
+              style={inputSt(errors.product)}
+            />
+            {errors.product ? (
+              <div style={errSt}>{errors.product}</div>
+            ) : null}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1.4fr",
+              gap: 10,
+              ...gap,
+            }}
+          >
+            <div>
+              <label style={labelSt}>SKU *</label>
+              <input
+                value={form.sku}
+                onChange={(e) => setF("sku", e.target.value)}
+                placeholder="HB-099"
+                style={inputSt(errors.sku)}
+              />
+              {errors.sku ? <div style={errSt}>{errors.sku}</div> : null}
+            </div>
+            <div>
+              <label style={labelSt}>Categoría</label>
+              <select
+                value={form.cat}
+                onChange={(e) => setF("cat", e.target.value)}
+                style={{
+                  ...inputSt(),
+                  appearance: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {CATS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={gap}>
+            <label style={labelSt}>Precio de venta (COP) *</label>
+            <input
+              type="number"
+              min="0"
+              value={form.price}
+              onChange={(e) => setF("price", e.target.value)}
+              placeholder="24900"
+              style={inputSt(errors.price)}
+            />
+            {errors.price ? <div style={errSt}>{errors.price}</div> : null}
+          </div>
+
+          <div
+            style={{
+              height: 1,
+              background: "var(--rule)",
+              margin: "4px -22px 16px",
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <div
+              className="text-muted"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+              }}
+            >
+              Ingredientes de la receta
+            </div>
+            <button
+              type="button"
+              onClick={addRow}
+              className="cmd-btn ghost sm"
+              style={{ fontSize: 10 }}
+            >
+              + agregar fila
+            </button>
+          </div>
+          {errors.rows ? (
+            <div style={{ ...errSt, marginBottom: 8 }}>{errors.rows}</div>
+          ) : null}
+
+          <div
+            className="text-muted"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 70px 70px 80px 22px",
+              gap: 6,
+              fontSize: 8,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              padding: "0 0 4px",
+            }}
+          >
+            <span>Ingrediente</span>
+            <span>Cantidad</span>
+            <span>Unidad</span>
+            <span style={{ textAlign: "right" }}>Costo / U</span>
+            <span />
+          </div>
+
+          {rows.map((r, i) => (
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 70px 70px 80px 22px",
+                gap: 6,
+                marginBottom: 6,
+              }}
+            >
+              <input
+                value={r.name}
+                onChange={(e) => setRow(i, "name", e.target.value)}
+                placeholder="Nombre…"
+                style={{ ...inputSt(), fontSize: 11, padding: "5px 7px" }}
+              />
+              <input
+                type="number"
+                min="0"
+                value={r.qty}
+                onChange={(e) => setRow(i, "qty", e.target.value)}
+                placeholder="0"
+                style={{
+                  ...inputSt(),
+                  fontSize: 11,
+                  padding: "5px 7px",
+                  textAlign: "right",
+                }}
+              />
+              <select
+                value={r.unit}
+                onChange={(e) => setRow(i, "unit", e.target.value)}
+                style={{
+                  ...inputSt(),
+                  fontSize: 11,
+                  padding: "5px 4px",
+                  appearance: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0"
+                value={r.cost}
+                onChange={(e) => setRow(i, "cost", e.target.value)}
+                placeholder="0"
+                style={{
+                  ...inputSt(),
+                  fontSize: 11,
+                  padding: "5px 7px",
+                  textAlign: "right",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => delRow(i)}
+                disabled={rows.length <= 1}
+                className="text-muted"
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 14,
+                  cursor: rows.length > 1 ? "pointer" : "default",
+                  opacity: rows.length > 1 ? 1 : 0.3,
+                  padding: 0,
+                  minHeight: 0,
+                }}
+                aria-label="Quitar fila"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          {price > 0 ? (
+            <div
+              className="bg-paper"
+              style={{
+                margin: "12px 0 16px",
+                padding: "10px 12px",
+                border: "1px dashed var(--rule)",
+                display: "flex",
+                gap: 24,
+              }}
+            >
+              <PreviewStat label="Costo receta" value={fmtCOP(totalCosto)} />
+              <PreviewStat
+                label="Margen"
+                value={margen !== null ? `${margen}%` : "—"}
+                color={
+                  margen === null
+                    ? "var(--muted)"
+                    : margen >= 55
+                      ? "var(--green)"
+                      : "var(--amber)"
+                }
+              />
+              <PreviewStat
+                label="Utilidad"
+                value={fmtCOP(price - totalCosto)}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {/* footer */}
+        <div
+          className="bg-paper"
+          style={{
+            padding: "14px 22px 18px",
+            borderTop: "1.5px solid var(--ink)",
+            display: "flex",
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="cmd-btn ghost"
+            style={{ flex: 1 }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="cmd-btn"
+            style={{ flex: 2 }}
+          >
+            Crear receta
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewStat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div>
+      <div
+        className="text-muted"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        className="cmd-num"
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: color || "var(--ink)",
+          marginTop: 2,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+export function RecetasClient() {
+  const [recetasList, setRecetasList] =
+    React.useState<RecetaSummary[]>(RECETAS_LIST);
+  const [recetasIngs, setRecetasIngs] =
+    React.useState<Record<string, RecetaIngrediente[]>>(RECETAS_INGS);
+  const [selected, setSelected] = React.useState<string>("r2");
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+
+  const receta = recetasList.find((r) => r.id === selected);
+  const ings = receta ? recetasIngs[selected] ?? [] : [];
+
+  return (
+    <div
+      style={{ display: "flex", flexDirection: "column", position: "relative" }}
+    >
+      {drawerOpen ? (
+        <NuevaRecetaDrawer
+          onClose={() => setDrawerOpen(false)}
+          onSave={({ meta, ings: newIngs }) => {
+            setRecetasList((list) => [meta, ...list]);
+            setRecetasIngs((map) => ({ ...map, [meta.id]: newIngs }));
+            setSelected(meta.id);
+            setDrawerOpen(false);
+          }}
+        />
+      ) : null}
       <SectionCrumb
         section="recetas"
         right={
@@ -399,7 +931,11 @@ export function RecetasClient() {
             <button type="button" className="cmd-btn ghost sm">
               Historial
             </button>
-            <button type="button" className="cmd-btn sm">
+            <button
+              type="button"
+              className="cmd-btn sm"
+              onClick={() => setDrawerOpen(true)}
+            >
               + Nueva receta
             </button>
           </>
@@ -422,10 +958,10 @@ export function RecetasClient() {
           }}
         >
           <div style={{ padding: "10px 12px 6px" }}>
-            <CmdMiniLabel>Recetas ({RECETAS_LIST.length})</CmdMiniLabel>
+            <CmdMiniLabel>Recetas ({recetasList.length})</CmdMiniLabel>
           </div>
-          {RECETAS_LIST.map((r) => {
-            const ri = RECETAS_INGS[r.id] ?? [];
+          {recetasList.map((r) => {
+            const ri = recetasIngs[r.id] ?? [];
             const tc = ri.reduce((s, x) => s + x.total, 0);
             const mg =
               r.price > 0 ? Math.round(((r.price - tc) / r.price) * 100) : 0;
