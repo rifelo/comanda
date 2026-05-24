@@ -123,3 +123,43 @@ export interface CatalogoCategoryNode {
   parent_id: string | null;
   children?: CatalogoCategoryNode[];
 }
+
+// =============================================================================
+// Ingredientes catálogo (module 02)
+// =============================================================================
+
+export interface IngredienteCategoria {
+  id: string;
+  organization_id: string;
+  parent_id: string | null;
+  label: string;
+  position: number;
+}
+
+export interface Ingrediente {
+  id: string;
+  organization_id: string;
+  category_id: string | null;
+  name: string;
+  unit: string;
+  stock_current: number;
+  stock_min: number;
+  merma_pct: number;
+  cost_cop: number;
+  archived: boolean;
+}
+
+export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import";
+
+export interface IngredienteMovement {
+  id: string;
+  organization_id: string;
+  ingrediente_id: string;
+  type: IngredienteMovementType;
+  delta: number;
+  balance_after: number;
+  unit_cost_cop: number | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
