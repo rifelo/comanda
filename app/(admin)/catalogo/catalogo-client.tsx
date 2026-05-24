@@ -244,6 +244,10 @@ function CategoriaTree({
               transform: "translateY(-50%)",
               width: 16,
               height: 16,
+              // globals.css enforces a 44px min-height on every <button>
+              // for kitchen-staff touch targets; opt out so the inline
+              // 16px height actually applies.
+              minHeight: 0,
               fontSize: 8,
               lineHeight: "14px",
               textAlign: "center",
