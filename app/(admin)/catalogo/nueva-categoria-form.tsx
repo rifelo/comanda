@@ -14,10 +14,12 @@ import { createProductoCategoria } from "./actions";
 
 export function NuevaCategoriaForm({
   categorias,
+  activeId,
   onClose,
   onCreated,
 }: {
   categorias: CatalogoCategoryNode[];
+  activeId: string | null;
   onClose: () => void;
   onCreated: (newId: string) => void;
 }) {
@@ -30,8 +32,30 @@ export function NuevaCategoriaForm({
     [categorias],
   );
 
+  // Default the parent picker to the rail's active categoría when possible:
+  //   - active is a top-level cat → use it as the parent.
+  //   - active is a child (its parent IS top-level) → use that parent so
+  //     the new cat lands as a sibling of the active one. The picker can't
+  //     offer children, so falling back to the parent is the closest match.
+  //   - active is null / nothing matches → "Nivel raíz".
+  const defaultPadre = React.useMemo(() => {
+    if (!activeId) return "";
+    if (topLevel.some((c) => c.id === activeId)) return activeId;
+    const flat: CatalogoCategoryNode[] = [];
+    const walk = (n: CatalogoCategoryNode) => {
+      flat.push(n);
+      n.children?.forEach(walk);
+    };
+    categorias.forEach(walk);
+    const me = flat.find((n) => n.id === activeId);
+    if (me?.parent_id && topLevel.some((c) => c.id === me.parent_id)) {
+      return me.parent_id;
+    }
+    return "";
+  }, [activeId, topLevel, categorias]);
+
   const [nombre, setNombre] = React.useState("");
-  const [padre, setPadre] = React.useState<string>(""); // "" = root
+  const [padre, setPadre] = React.useState<string>(defaultPadre);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const inputRef = React.useRef<HTMLInputElement>(null);

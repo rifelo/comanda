@@ -373,6 +373,7 @@ export function CatalogoClient({
           {catFormOpen ? (
             <NuevaCategoriaForm
               categorias={categorias}
+              activeId={cat}
               onClose={() => setCatFormOpen(false)}
               onCreated={(id) => setCat(id)}
             />
