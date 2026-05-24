@@ -10,6 +10,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 //   type CreateCategoriaResult = { ok: boolean; id?: string; error?: string }
 //   type DeleteCategoriaResult = { ok: boolean; error?: string }
 //   type CreateProductoResult  = { ok: boolean; id?: string; warning?: string; error?: string; fieldErrors?: Record<string, string> }
+//   type UpdateProductoResult  = { ok: boolean; id?: string; warning?: string; error?: string; fieldErrors?: Record<string, string> }
 //   type ToggleFavoriteResult  = { ok: boolean; error?: string }
 
 // =============================================================================
@@ -309,6 +310,169 @@ export async function createProducto(
   return {
     ok: true,
     id: producto.id,
+    ...(uploadWarning ? { warning: uploadWarning } : {}),
+  };
+}
+
+const UpdateProductoSchema = ProductoSchema.extend({
+  id: z.string().uuid(),
+});
+
+export async function updateProducto(
+  _prev: {
+    ok: boolean;
+    id?: string;
+    warning?: string;
+    error?: string;
+    fieldErrors?: Record<string, string>;
+  } | null,
+  formData: FormData,
+): Promise<{
+  ok: boolean;
+  id?: string;
+  warning?: string;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+}> {
+  const rawCategory = formData.get("category_id");
+  const parsed = UpdateProductoSchema.safeParse({
+    id: formData.get("id"),
+    name: formData.get("name"),
+    sku: formData.get("sku"),
+    category_id:
+      rawCategory && rawCategory !== "" ? rawCategory : null,
+    price_cop: formData.get("price_cop"),
+    cost_cop: formData.get("cost_cop"),
+    stock_status: formData.get("stock_status"),
+  });
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && !fieldErrors[key]) {
+        fieldErrors[key] = issue.message;
+      }
+    }
+    return {
+      ok: false,
+      error: "Datos inválidos. Revisa los campos marcados.",
+      fieldErrors,
+    };
+  }
+
+  const { profile, supabase } = await requireAdmin();
+
+  // Bounce ids from another org with a clear message rather than letting
+  // RLS swallow the update silently (zero affected rows would look like
+  // success).
+  const { data: existing } = await supabase
+    .from("productos")
+    .select("id")
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle();
+  if (!existing) {
+    return { ok: false, error: "El producto no existe." };
+  }
+
+  if (parsed.data.category_id) {
+    const { data: cat } = await supabase
+      .from("producto_categorias")
+      .select("id")
+      .eq("id", parsed.data.category_id)
+      .eq("organization_id", profile.organization_id)
+      .maybeSingle();
+    if (!cat) {
+      return {
+        ok: false,
+        error: "La categoría seleccionada no existe.",
+        fieldErrors: { category_id: "Categoría no encontrada." },
+      };
+    }
+  }
+
+  const sku = parsed.data.sku.trim().toUpperCase();
+
+  // margin_pct is a generated column — recomputed by Postgres from
+  // price_cop/cost_cop, so we explicitly omit it from the update payload.
+  const { error: updateErr } = await supabase
+    .from("productos")
+    .update({
+      category_id: parsed.data.category_id,
+      name: parsed.data.name.trim(),
+      sku,
+      price_cop: parsed.data.price_cop,
+      cost_cop: parsed.data.cost_cop,
+      stock_status: parsed.data.stock_status,
+    })
+    .eq("id", parsed.data.id);
+
+  if (updateErr) {
+    const isDup = updateErr.code === "23505";
+    console.error("[updateProducto] update failed:", updateErr);
+    return {
+      ok: false,
+      error: isDup
+        ? "Ya existe un producto con ese SKU."
+        : (updateErr.message ?? "No se pudo actualizar el producto."),
+      ...(isDup ? { fieldErrors: { sku: "SKU ya usado." } } : {}),
+    };
+  }
+
+  // ── Optional image upload (same two-phase contract as create) ─────────
+  const imageEntry = formData.get("image");
+  let uploadWarning: string | undefined;
+
+  if (imageEntry instanceof File && imageEntry.size > 0) {
+    if (imageEntry.size > MAX_IMAGE_BYTES) {
+      uploadWarning =
+        "Producto actualizado, pero la foto supera 2 MB y no se subió.";
+    } else if (
+      !ALLOWED_IMAGE_TYPES.includes(
+        imageEntry.type as (typeof ALLOWED_IMAGE_TYPES)[number],
+      )
+    ) {
+      uploadWarning =
+        "Producto actualizado, pero el formato de la foto no es JPG ni PNG.";
+    } else {
+      const ext = imageEntry.type === "image/png" ? "png" : "jpg";
+      const path = `${profile.organization_id}/${parsed.data.id}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("producto-photos")
+        .upload(path, imageEntry, {
+          upsert: true,
+          contentType: imageEntry.type,
+        });
+      if (uploadErr) {
+        console.error("[updateProducto] upload failed:", uploadErr);
+        uploadWarning =
+          "Producto actualizado, pero la foto no se pudo subir. Intenta de nuevo desde edición.";
+      } else {
+        const { data: pub } = supabase.storage
+          .from("producto-photos")
+          .getPublicUrl(path);
+        const publicUrl = pub.publicUrl;
+        const { error: linkErr } = await supabase
+          .from("productos")
+          .update({ image_url: publicUrl })
+          .eq("id", parsed.data.id);
+        if (linkErr) {
+          console.error(
+            "[updateProducto] image_url update failed:",
+            linkErr,
+          );
+          uploadWarning =
+            "Producto actualizado y foto subida, pero no se enlazó la URL.";
+        }
+      }
+    }
+  }
+
+  revalidatePath("/catalogo");
+
+  return {
+    ok: true,
+    id: parsed.data.id,
     ...(uploadWarning ? { warning: uploadWarning } : {}),
   };
 }

@@ -8,10 +8,14 @@
  * optional photo upload. Submits via the createProducto Server Action.
  */
 import * as React from "react";
-import type { CatalogoCategoryNode, ProductoStockStatus } from "@/lib/types";
+import type {
+  CatalogoCategoryNode,
+  CatalogoRow,
+  ProductoStockStatus,
+} from "@/lib/types";
 import { fmtCOP } from "@/lib/mock/productos";
 import { Drawer } from "../_components/drawer";
-import { createProducto } from "./actions";
+import { createProducto, updateProducto } from "./actions";
 
 type LeafOption = { id: string; label: string };
 
@@ -48,30 +52,42 @@ export function NuevoProductoDrawer({
   onClose,
   categorias,
   defaultCategoryId,
+  editData = null,
 }: {
   open: boolean;
   onClose: () => void;
   categorias: CatalogoCategoryNode[];
   defaultCategoryId: string | null;
+  editData?: CatalogoRow | null;
 }) {
+  const isEdit = !!editData;
   const leafOptions = React.useMemo(
     () => flattenLeafCategorias(categorias),
     [categorias],
   );
 
   const initialCategory = React.useMemo(() => {
+    if (editData?.category_id && leafOptions.some((o) => o.id === editData.category_id)) {
+      return editData.category_id;
+    }
     if (defaultCategoryId && leafOptions.some((o) => o.id === defaultCategoryId)) {
       return defaultCategoryId;
     }
     return leafOptions[0]?.id ?? "";
-  }, [defaultCategoryId, leafOptions]);
+  }, [editData, defaultCategoryId, leafOptions]);
 
-  const [name, setName] = React.useState("");
-  const [sku, setSku] = React.useState("");
+  const [name, setName] = React.useState(editData?.name ?? "");
+  const [sku, setSku] = React.useState(editData?.sku ?? "");
   const [categoryId, setCategoryId] = React.useState(initialCategory);
-  const [price, setPrice] = React.useState("");
-  const [cost, setCost] = React.useState("");
-  const [stock, setStock] = React.useState<ProductoStockStatus>("ok");
+  const [price, setPrice] = React.useState(
+    editData ? String(editData.price_cop) : "",
+  );
+  const [cost, setCost] = React.useState(
+    editData ? String(editData.cost_cop) : "",
+  );
+  const [stock, setStock] = React.useState<ProductoStockStatus>(
+    editData?.stock_status ?? "ok",
+  );
   const [file, setFile] = React.useState<File | null>(null);
 
   const [pending, startTransition] = React.useTransition();
@@ -81,21 +97,31 @@ export function NuevoProductoDrawer({
     {},
   );
 
-  // Reset whenever the drawer opens so the next "+ Nuevo producto" click
-  // gets a clean form (and inherits the rail's current category).
+  // Sync form state whenever the drawer opens: in edit mode prefill from
+  // editData, in create mode start blank (and inherit the rail's current
+  // category from initialCategory).
   React.useEffect(() => {
     if (!open) return;
-    setName("");
-    setSku("");
-    setCategoryId(initialCategory);
-    setPrice("");
-    setCost("");
-    setStock("ok");
+    if (editData) {
+      setName(editData.name);
+      setSku(editData.sku);
+      setCategoryId(initialCategory);
+      setPrice(String(editData.price_cop));
+      setCost(String(editData.cost_cop));
+      setStock(editData.stock_status);
+    } else {
+      setName("");
+      setSku("");
+      setCategoryId(initialCategory);
+      setPrice("");
+      setCost("");
+      setStock("ok");
+    }
     setFile(null);
     setError(null);
     setWarning(null);
     setFieldErrors({});
-  }, [open, initialCategory]);
+  }, [open, editData, initialCategory]);
 
   const priceNum = Number(price);
   const costNum = Number(cost);
@@ -132,14 +158,16 @@ export function NuevoProductoDrawer({
     setWarning(null);
     setFieldErrors({});
     startTransition(async () => {
-      const r = await createProducto(null, formData);
+      const r = isEdit
+        ? await updateProducto(null, formData)
+        : await createProducto(null, formData);
       if (!r.ok) {
         setError(r.error ?? "Algo salió mal.");
         if (r.fieldErrors) setFieldErrors(r.fieldErrors);
         return;
       }
       if (r.warning) setWarning(r.warning);
-      // Brief delay to surface a warning if one exists; otherwise close.
+      // Surface a warning if one exists; otherwise close.
       if (!r.warning) onClose();
     });
   }
@@ -148,7 +176,7 @@ export function NuevoProductoDrawer({
     <Drawer
       open={open}
       onClose={pending ? () => undefined : onClose}
-      title="Nuevo producto"
+      title={isEdit ? "Editar producto" : "Nuevo producto"}
       footer={
         <>
           <button
@@ -167,7 +195,11 @@ export function NuevoProductoDrawer({
             style={{ flex: 2, padding: "10px 14px" }}
             disabled={pending}
           >
-            {pending ? "Guardando…" : "Guardar producto"}
+            {pending
+              ? "Guardando…"
+              : isEdit
+                ? "Guardar cambios"
+                : "Guardar producto"}
           </button>
         </>
       }
@@ -177,6 +209,9 @@ export function NuevoProductoDrawer({
         action={onSubmit}
         style={{ display: "flex", flexDirection: "column", gap: 16 }}
       >
+        {isEdit ? (
+          <input type="hidden" name="id" value={editData.id} />
+        ) : null}
         {error ? (
           <p
             role="alert"
