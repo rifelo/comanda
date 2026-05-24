@@ -1,36 +1,79 @@
 "use client";
 
 /**
- * 02 · Ingredientes — 4-level tree (Categoría → Subcat. → Principal → Sub-ing).
- * Client component to handle expand/collapse of sub-ingredient rows.
+ * 02 · Ingredientes — 4-level tree + ingredient table, wired to Supabase.
+ * Receives initial categories + ingredients from the server component; calls
+ * server actions to persist new categories and ingredients.
  */
 import * as React from "react";
-import {
-  ING_TREE,
-  INGS,
-  type IngredienteTreeRow,
-  fmtCOP,
-} from "@/lib/mock/productos";
+import type { Ingredient, IngredientCategory } from "@/lib/types";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
+import { createIngredient, createIngredientCategory } from "./actions";
 
-function flattenTree(rows: IngredienteTreeRow[]): IngredienteTreeRow[] {
-  return rows.flatMap((r) => [
-    r,
-    ...(r.expanded && r.children ? flattenTree(r.children) : []),
-  ]);
+// ── view-model: nested tree built from the flat IngredientCategory list ──
+interface TreeNode {
+  id: string;
+  label: string;
+  depth: number;
+  children: TreeNode[];
+  expanded: boolean;
 }
 
+function buildTree(rows: IngredientCategory[]): TreeNode[] {
+  const byId = new Map<string, TreeNode>();
+  for (const r of rows) {
+    byId.set(r.id, {
+      id: r.id,
+      label: r.name,
+      depth: r.depth,
+      children: [],
+      expanded: r.depth <= 1, // open the top two levels by default
+    });
+  }
+  const roots: TreeNode[] = [];
+  for (const r of rows) {
+    const node = byId.get(r.id)!;
+    if (r.parent_id) byId.get(r.parent_id)?.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+function flattenTree(nodes: TreeNode[]): TreeNode[] {
+  return nodes.flatMap((n) => [n, ...(n.expanded ? flattenTree(n.children) : [])]);
+}
+
+const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
+
+function fmtNumber(n: number): string {
+  return Number.isFinite(n) ? Number(n).toString() : "0";
+}
+function fmtCOP(n: number): string {
+  return Number(n).toLocaleString("es-CO");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IngTree
+// ─────────────────────────────────────────────────────────────────────────
 function IngTree({
+  total,
+  rows,
   active,
   onPick,
 }: {
+  total: number;
+  rows: TreeNode[];
   active: string;
   onPick: (id: string) => void;
 }) {
-  const flat = flattenTree(ING_TREE);
+  const flat = flattenTree(rows);
+  const items: { id: string; label: string; depth: number; root?: boolean }[] = [
+    { id: "all", label: "Todos los ingredientes", depth: 0, root: true },
+    ...flat.map((n) => ({ id: n.id, label: n.label, depth: n.depth })),
+  ];
   return (
     <div className="flex flex-col" style={{ gap: 1 }}>
-      {flat.map((row) => {
+      {items.map((row) => {
         const isActive = active === row.id;
         return (
           <button
@@ -44,13 +87,9 @@ function IngTree({
               width: "100%",
               textAlign: "left",
               padding: "5px 8px",
-              paddingLeft: 8 + (row.indent || 0) * 14,
+              paddingLeft: 8 + row.depth * 14,
               background: isActive ? "var(--ink)" : "transparent",
-              color: isActive
-                ? "var(--paper-lt)"
-                : row.leaf
-                  ? "var(--ink-2)"
-                  : "var(--ink)",
+              color: isActive ? "var(--paper-lt)" : "var(--ink)",
               border: "none",
               fontSize: 11,
               borderRadius: 2,
@@ -58,24 +97,13 @@ function IngTree({
               cursor: "pointer",
             }}
           >
-            {row.children ? (
-              <span style={{ fontSize: 9, opacity: 0.6 }}>
-                {row.expanded ? "▾" : "▸"}
-              </span>
-            ) : row.leaf ? (
-              <span style={{ width: 8, color: "var(--muted)" }}>·</span>
-            ) : (
-              <span style={{ width: 8 }} />
-            )}
+            <span style={{ width: 8 }} />
             <span style={{ flex: 1, fontWeight: row.root ? 600 : 400 }}>
               {row.label}
             </span>
-            {row.count !== undefined ? (
-              <span
-                className="cmd-num"
-                style={{ fontSize: 10, opacity: 0.7 }}
-              >
-                {row.count}
+            {row.root ? (
+              <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
+                {total}
               </span>
             ) : null}
           </button>
@@ -85,31 +113,701 @@ function IngTree({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// NuevaCategoriaForm — inline form in the tree panel
+// ─────────────────────────────────────────────────────────────────────────
+function NuevaCategoriaForm({
+  categories,
+  pending,
+  onSave,
+  onCancel,
+}: {
+  categories: IngredientCategory[];
+  pending: boolean;
+  onSave: (input: { name: string; parentId: string | null }) => void;
+  onCancel: () => void;
+}) {
+  const [nombre, setNombre] = React.useState("");
+  const [padre, setPadre] = React.useState<string>("root");
+  const [error, setError] = React.useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Cap parent depth at 2 so a new child stays within the 4-level limit (the
+  // DB trigger enforces this too).
+  const parentCandidates = categories.filter((c) => c.depth <= 2);
+
+  const handleSave = () => {
+    if (!nombre.trim()) {
+      setError("Requerido");
+      return;
+    }
+    onSave({
+      name: nombre.trim(),
+      parentId: padre === "root" ? null : padre,
+    });
+  };
+
+  const inputSt: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    fontSize: 11,
+    color: "var(--ink)",
+    background: "var(--paper)",
+    padding: "6px 8px",
+    border: `1.5px solid ${error ? "var(--red)" : "var(--ink)"}`,
+    outline: "none",
+    marginBottom: 2,
+  };
+  const labelSt: React.CSSProperties = {
+    display: "block",
+    fontSize: 8,
+    color: "var(--muted)",
+    letterSpacing: "0.18em",
+    textTransform: "uppercase",
+    marginBottom: 3,
+  };
+
+  return (
+    <div
+      style={{
+        margin: "8px 0 0",
+        padding: "10px 8px 12px",
+        border: "1.5px solid var(--ink)",
+        background: "var(--paper)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9,
+          color: "var(--muted)",
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          marginBottom: 2,
+        }}
+      >
+        Nueva categoría
+      </div>
+
+      <div>
+        <label style={labelSt}>Nombre *</label>
+        <input
+          ref={inputRef}
+          value={nombre}
+          disabled={pending}
+          onChange={(e) => {
+            setNombre(e.target.value);
+            setError("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") onCancel();
+          }}
+          placeholder="Ej. Mariscos"
+          style={inputSt}
+        />
+        {error ? (
+          <div style={{ fontSize: 10, color: "var(--red)" }}>{error}</div>
+        ) : null}
+      </div>
+
+      <div>
+        <label style={labelSt}>Categoría padre</label>
+        <select
+          value={padre}
+          disabled={pending}
+          onChange={(e) => setPadre(e.target.value)}
+          style={{
+            ...inputSt,
+            marginBottom: 0,
+            cursor: "pointer",
+            appearance: "none",
+          }}
+        >
+          <option value="root">— Nivel raíz —</option>
+          {parentCandidates.map((c) => (
+            <option key={c.id} value={c.id}>
+              {"  ".repeat(c.depth)}
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={pending}
+          className="cmd-btn ghost sm"
+          style={{ flex: 1, fontSize: 10 }}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={pending}
+          className="cmd-btn sm"
+          style={{ flex: 2, fontSize: 10 }}
+        >
+          {pending ? "Guardando…" : "Guardar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NuevoIngredienteDrawer
+// ─────────────────────────────────────────────────────────────────────────
+function NuevoIngredienteDrawer({
+  categories,
+  pending,
+  serverError,
+  onClose,
+  onSave,
+}: {
+  categories: IngredientCategory[];
+  pending: boolean;
+  serverError: string | null;
+  onClose: () => void;
+  onSave: (input: {
+    name: string;
+    categoryId: string | null;
+    unit: (typeof UNITS)[number];
+    stockCurrent: number;
+    stockMin: number;
+    mermaPct: number;
+    costPerUnit: number;
+  }) => void;
+}) {
+  const defaultCatId = categories[0]?.id ?? "";
+  const [form, setForm] = React.useState({
+    name: "",
+    categoryId: defaultCatId,
+    unit: "kg" as (typeof UNITS)[number],
+    stock: "",
+    min: "",
+    merma: "",
+    cost: "",
+  });
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
+
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!form.name.trim()) e.name = "Requerido";
+    if (!form.stock || isNaN(Number(form.stock)) || Number(form.stock) < 0)
+      e.stock = "Inválido";
+    if (!form.min || isNaN(Number(form.min)) || Number(form.min) < 0)
+      e.min = "Inválido";
+    if (!form.cost || isNaN(Number(form.cost)) || Number(form.cost) <= 0)
+      e.cost = "Inválido";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    onSave({
+      name: form.name.trim(),
+      categoryId: form.categoryId || null,
+      unit: form.unit,
+      stockCurrent: Number(form.stock),
+      stockMin: Number(form.min),
+      mermaPct: form.merma ? Number(form.merma) : 0,
+      costPerUnit: Number(form.cost),
+    });
+  };
+
+  const inputSt = (err?: string): React.CSSProperties => ({
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    fontSize: 12,
+    color: "var(--ink)",
+    background: "var(--paper)",
+    padding: "7px 9px",
+    border: `1.5px solid ${err ? "var(--red)" : "var(--ink)"}`,
+    outline: "none",
+  });
+  const labelSt: React.CSSProperties = {
+    display: "block",
+    fontSize: 9,
+    letterSpacing: "0.18em",
+    textTransform: "uppercase",
+    color: "var(--muted)",
+    marginBottom: 4,
+  };
+  const errSt: React.CSSProperties = {
+    fontSize: 10,
+    color: "var(--red)",
+    marginTop: 3,
+  };
+  const rowGap: React.CSSProperties = { marginBottom: 16 };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        justifyContent: "flex-end",
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Cerrar"
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(30,25,18,.32)",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+        }}
+      />
+
+      <div
+        role="dialog"
+        aria-label="Nuevo ingrediente"
+        style={{
+          position: "relative",
+          zIndex: 1,
+          width: 400,
+          maxWidth: "100%",
+          height: "100%",
+          background: "var(--paper-lt)",
+          borderLeft: "1.5px solid var(--ink)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          className="bg-paper"
+          style={{
+            padding: "18px 22px 14px",
+            borderBottom: "1.5px solid var(--ink)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 9,
+                color: "var(--muted)",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+              }}
+            >
+              Ingredientes · 02
+            </div>
+            <div
+              className="font-slab"
+              style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2 }}
+            >
+              Nuevo ingrediente
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "1px solid var(--rule)",
+              fontSize: 12,
+              color: "var(--muted)",
+              padding: "4px 9px",
+              cursor: "pointer",
+            }}
+          >
+            ✕ cerrar
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "22px 22px 0" }}>
+          <div style={rowGap}>
+            <label style={labelSt}>Nombre del ingrediente *</label>
+            <input
+              value={form.name}
+              disabled={pending}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder="Ej. Carne molida 80/20"
+              style={inputSt(errors.name)}
+            />
+            {errors.name ? <div style={errSt}>{errors.name}</div> : null}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              ...rowGap,
+            }}
+          >
+            <div>
+              <label style={labelSt}>Categoría</label>
+              <select
+                value={form.categoryId}
+                disabled={pending}
+                onChange={(e) => set("categoryId", e.target.value)}
+                style={{ ...inputSt(), appearance: "none", cursor: "pointer" }}
+              >
+                <option value="">— Sin categoría —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {"  ".repeat(c.depth)}
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelSt}>Unidad de medida</label>
+              <select
+                value={form.unit}
+                disabled={pending}
+                onChange={(e) =>
+                  set("unit", e.target.value as (typeof UNITS)[number])
+                }
+                style={{ ...inputSt(), appearance: "none", cursor: "pointer" }}
+              >
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              ...rowGap,
+            }}
+          >
+            <div>
+              <label style={labelSt}>Stock actual *</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={form.stock}
+                disabled={pending}
+                onChange={(e) => set("stock", e.target.value)}
+                placeholder="Ej. 14.2"
+                style={inputSt(errors.stock)}
+              />
+              {errors.stock ? <div style={errSt}>{errors.stock}</div> : null}
+            </div>
+            <div>
+              <label style={labelSt}>Stock mínimo *</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={form.min}
+                disabled={pending}
+                onChange={(e) => set("min", e.target.value)}
+                placeholder="Ej. 8"
+                style={inputSt(errors.min)}
+              />
+              {errors.min ? <div style={errSt}>{errors.min}</div> : null}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              ...rowGap,
+            }}
+          >
+            <div>
+              <label style={labelSt}>Merma estimada (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="any"
+                value={form.merma}
+                disabled={pending}
+                onChange={(e) => set("merma", e.target.value)}
+                placeholder="Ej. 3.2"
+                style={inputSt()}
+              />
+            </div>
+            <div>
+              <label style={labelSt}>Costo / unidad (COP) *</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={form.cost}
+                disabled={pending}
+                onChange={(e) => set("cost", e.target.value)}
+                placeholder="Ej. 18900"
+                style={inputSt(errors.cost)}
+              />
+              {errors.cost ? <div style={errSt}>{errors.cost}</div> : null}
+            </div>
+          </div>
+
+          {form.stock !== "" && form.min !== "" ? (
+            <div
+              className="bg-paper"
+              style={{
+                marginBottom: 16,
+                padding: "10px 12px",
+                border: "1px dashed var(--rule)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "var(--muted)",
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                }}
+              >
+                Vista previa de stock
+              </div>
+              <StockBar
+                value={Number(form.stock)}
+                min={Number(form.min)}
+                max={Math.max(
+                  Number(form.min) * 2.5,
+                  Number(form.stock) * 1.1,
+                  1,
+                )}
+                unit={form.unit}
+              />
+            </div>
+          ) : null}
+
+          {serverError ? (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "8px 10px",
+                border: "1px solid var(--red)",
+                color: "var(--red)",
+                fontSize: 11,
+                background: "var(--paper)",
+              }}
+            >
+              {serverError}
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          className="bg-paper"
+          style={{
+            padding: "14px 22px 18px",
+            borderTop: "1.5px solid var(--ink)",
+            display: "flex",
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="cmd-btn ghost"
+            style={{ flex: 1 }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={pending}
+            className="cmd-btn"
+            style={{ flex: 2 }}
+          >
+            {pending ? "Guardando…" : "Guardar ingrediente"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IngredientesClient (root)
+// ─────────────────────────────────────────────────────────────────────────
 const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px";
 
-export function IngredientesClient() {
+export function IngredientesClient({
+  restaurantId,
+  sedeName,
+  initialCategories,
+  initialIngredients,
+}: {
+  restaurantId: string | null;
+  sedeName: string | null;
+  initialCategories: IngredientCategory[];
+  initialIngredients: Ingredient[];
+}) {
+  const [categories, setCategories] = React.useState(initialCategories);
+  const [ingredients, setIngredients] = React.useState(initialIngredients);
   const [cat, setCat] = React.useState("all");
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({
-    'Pan brioche 4"': true,
-  });
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [catFormOpen, setCatFormOpen] = React.useState(false);
+  const [drawerError, setDrawerError] = React.useState<string | null>(null);
+  const [catError, setCatError] = React.useState<string | null>(null);
+  const [isPending, startTransition] = React.useTransition();
+
+  const tree = React.useMemo(() => buildTree(categories), [categories]);
+
+  // sort categories by depth then name for the parent / category selects
+  const sortedCategories = React.useMemo(
+    () =>
+      [...categories].sort(
+        (a, b) => a.depth - b.depth || a.name.localeCompare(b.name),
+      ),
+    [categories],
+  );
+
+  const noBackend = restaurantId === null;
+
+  const handleAddCategoria = ({
+    name,
+    parentId,
+  }: {
+    name: string;
+    parentId: string | null;
+  }) => {
+    if (!restaurantId) {
+      setCatError(
+        "No hay sede activa: crea un restaurante primero para guardar categorías.",
+      );
+      return;
+    }
+    setCatError(null);
+    startTransition(async () => {
+      const res = await createIngredientCategory({
+        restaurantId,
+        name,
+        parentId,
+      });
+      if (!res.ok) {
+        setCatError(res.error);
+        return;
+      }
+      setCategories((prev) => [...prev, res.category as IngredientCategory]);
+      setCat(res.category.id);
+      setCatFormOpen(false);
+    });
+  };
+
+  const handleAddIngrediente = (input: {
+    name: string;
+    categoryId: string | null;
+    unit: (typeof UNITS)[number];
+    stockCurrent: number;
+    stockMin: number;
+    mermaPct: number;
+    costPerUnit: number;
+  }) => {
+    if (!restaurantId) {
+      setDrawerError(
+        "No hay sede activa: crea un restaurante primero para guardar ingredientes.",
+      );
+      return;
+    }
+    setDrawerError(null);
+    startTransition(async () => {
+      const res = await createIngredient({ restaurantId, ...input });
+      if (!res.ok) {
+        setDrawerError(res.error);
+        return;
+      }
+      setIngredients((prev) => [res.ingredient as Ingredient, ...prev]);
+      setDrawerOpen(false);
+    });
+  };
+
+  const lowStockCount = ingredients.filter(
+    (i) => i.stock_current < i.stock_min,
+  ).length;
+  const highMermaCount = ingredients.filter((i) => i.merma_pct >= 5).length;
 
   const kpis = [
-    { label: "Ingredientes activos", val: "142" },
-    { label: "En stock bajo", val: "7", tone: "var(--amber)" },
-    { label: "Merma > 5%", val: "4", tone: "var(--red)" },
-    { label: "Costo prom. plato", val: "$ 9.420" },
+    { label: "Ingredientes activos", val: String(ingredients.length) },
+    { label: "En stock bajo", val: String(lowStockCount), tone: "var(--amber)" },
+    { label: "Merma > 5%", val: String(highMermaCount), tone: "var(--red)" },
+    { label: "Costo prom. plato", val: "$ —" },
   ];
 
   return (
-    <div>
+    <div style={{ position: "relative" }}>
+      {drawerOpen ? (
+        <NuevoIngredienteDrawer
+          categories={sortedCategories}
+          pending={isPending}
+          serverError={drawerError}
+          onClose={() => {
+            setDrawerOpen(false);
+            setDrawerError(null);
+          }}
+          onSave={handleAddIngrediente}
+        />
+      ) : null}
+
       <SectionCrumb
         section="ingredientes"
         right={
           <>
+            {sedeName ? (
+              <span
+                className="text-muted"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  marginRight: 6,
+                }}
+              >
+                Sede · {sedeName}
+              </span>
+            ) : null}
             <button type="button" className="cmd-btn ghost sm">
               Importar
             </button>
-            <button type="button" className="cmd-btn sm">
+            <button
+              type="button"
+              className="cmd-btn sm"
+              disabled={noBackend}
+              title={noBackend ? "Crea una sede para habilitar esta acción" : undefined}
+              onClick={() => {
+                setDrawerError(null);
+                setDrawerOpen(true);
+              }}
+            >
               + Nuevo ingrediente
             </button>
           </>
@@ -142,25 +840,61 @@ export function IngredientesClient() {
           >
             Categoría → Subcat. → Principal → Subingrediente
           </div>
-          <IngTree active={cat} onPick={setCat} />
-          <button
-            type="button"
-            className="cmd-link"
-            style={{
-              padding: "10px 8px 0",
-              fontSize: 11,
-              color: "var(--muted)",
-              minHeight: 0,
-              background: "none",
-              border: "none",
-            }}
-          >
-            + nueva categoría
-          </button>
+          <IngTree
+            total={ingredients.length}
+            rows={tree}
+            active={cat}
+            onPick={setCat}
+          />
+          {catFormOpen ? (
+            <NuevaCategoriaForm
+              categories={sortedCategories}
+              pending={isPending}
+              onSave={handleAddCategoria}
+              onCancel={() => {
+                setCatFormOpen(false);
+                setCatError(null);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setCatError(null);
+                setCatFormOpen(true);
+              }}
+              disabled={noBackend}
+              className="cmd-link"
+              style={{
+                padding: "10px 8px 0",
+                fontSize: 11,
+                color: "var(--muted)",
+                minHeight: 0,
+                background: "none",
+                border: "none",
+                cursor: noBackend ? "not-allowed" : "pointer",
+              }}
+            >
+              + nueva categoría
+            </button>
+          )}
+          {catError ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: "6px 8px",
+                border: "1px solid var(--red)",
+                color: "var(--red)",
+                fontSize: 10,
+                background: "var(--paper)",
+              }}
+            >
+              {catError}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ padding: "16px 22px 24px" }}>
-          {/* KPI strip */}
           <div
             className="grid"
             style={{
@@ -197,7 +931,6 @@ export function IngredientesClient() {
             ))}
           </div>
 
-          {/* table */}
           <div
             className="cmd-paper-lt"
             style={{ border: "1.5px solid var(--ink)" }}
@@ -227,165 +960,95 @@ export function IngredientesClient() {
               <span style={{ textAlign: "right" }}>Costo / U</span>
             </div>
 
-            {INGS.map((ing, i) => {
-              const isExp = expanded[ing.name];
+            {ingredients.length === 0 ? (
+              <div
+                className="text-muted"
+                style={{
+                  padding: "40px 18px",
+                  textAlign: "center",
+                  fontSize: 12,
+                }}
+              >
+                Aún no hay ingredientes en esta sede.
+                {noBackend
+                  ? " Crea una sede primero para empezar a cargar el catálogo."
+                  : " Usa “+ Nuevo ingrediente” para crear el primero."}
+              </div>
+            ) : null}
+
+            {ingredients.map((ing, i) => {
+              const categoryName =
+                categories.find((c) => c.id === ing.category_id)?.name ?? "—";
               return (
-                <React.Fragment key={ing.name}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: GRID,
-                      gap: 10,
-                      padding: "10px 12px",
-                      alignItems: "center",
-                      borderBottom: "1px dashed var(--rule-soft)",
-                      background:
-                        i % 2 ? "var(--paper-lt)" : "var(--paper)",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        ing.sub &&
-                        setExpanded((s) => ({
-                          ...s,
-                          [ing.name]: !isExp,
-                        }))
-                      }
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        cursor: ing.sub ? "pointer" : "default",
-                        color: ing.sub ? "var(--ink)" : "var(--rule)",
-                        fontSize: 10,
-                        minHeight: 0,
-                      }}
-                    >
-                      {ing.sub ? (isExp ? "▾" : "▸") : "·"}
-                    </button>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>
-                        {ing.name}
-                      </div>
-                      {ing.sub ? (
-                        <div
-                          className="text-muted"
-                          style={{ fontSize: 10, marginTop: 2 }}
-                        >
-                          contiene {ing.sub.length} sub-ingredientes
-                        </div>
-                      ) : null}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
-                      {ing.group}
-                    </div>
-                    <div
-                      className="text-muted cmd-num"
-                      style={{
-                        textAlign: "center",
-                        fontSize: 11,
-                      }}
-                    >
-                      {ing.unit}
-                    </div>
-                    <div
-                      className="cmd-num"
-                      style={{
-                        textAlign: "right",
-                        fontSize: 13,
-                        fontWeight: 500,
-                      }}
-                    >
-                      {ing.stock}
-                    </div>
-                    <StockBar
-                      value={ing.stock}
-                      min={ing.min}
-                      max={Math.max(ing.min * 2.5, ing.stock * 1.1)}
-                      unit={ing.unit}
-                    />
-                    <div
-                      className="cmd-num"
-                      style={{
-                        textAlign: "right",
-                        fontSize: 12,
-                        color:
-                          ing.merma >= 5
-                            ? "var(--red)"
-                            : ing.merma >= 2
-                              ? "var(--amber)"
-                              : "var(--muted)",
-                      }}
-                    >
-                      {ing.merma}%
-                    </div>
-                    <div
-                      className="cmd-num"
-                      style={{ textAlign: "right", fontSize: 12 }}
-                    >
-                      ${fmtCOP(ing.cost)}
+                <div
+                  key={ing.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: GRID,
+                    gap: 10,
+                    padding: "10px 12px",
+                    alignItems: "center",
+                    borderBottom: "1px dashed var(--rule-soft)",
+                    background: i % 2 ? "var(--paper-lt)" : "var(--paper)",
+                  }}
+                >
+                  <span style={{ color: "var(--rule)", fontSize: 10 }}>·</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>
+                      {ing.name}
                     </div>
                   </div>
-                  {isExp && ing.sub
-                    ? ing.sub.map((s) => (
-                        <div
-                          key={s}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: GRID,
-                            gap: 10,
-                            padding: "7px 12px 7px 28px",
-                            alignItems: "center",
-                            borderBottom: "1px dashed var(--rule-soft)",
-                            background: "var(--paper-dk)",
-                            fontSize: 11,
-                            color: "var(--ink-2)",
-                          }}
-                        >
-                          <span style={{ color: "var(--muted)" }}>└</span>
-                          <span>{s}</span>
-                          <span style={{ color: "var(--muted)" }}>
-                            sub-ingrediente
-                          </span>
-                          <span
-                            style={{
-                              textAlign: "center",
-                              color: "var(--muted)",
-                            }}
-                          >
-                            und
-                          </span>
-                          <span
-                            className="cmd-num"
-                            style={{ textAlign: "right" }}
-                          >
-                            —
-                          </span>
-                          <span
-                            style={{
-                              color: "var(--muted)",
-                              fontSize: 10,
-                            }}
-                          >
-                            vinculado al padre
-                          </span>
-                          <span
-                            className="cmd-num"
-                            style={{ textAlign: "right" }}
-                          >
-                            —
-                          </span>
-                          <span
-                            className="cmd-num"
-                            style={{ textAlign: "right" }}
-                          >
-                            —
-                          </span>
-                        </div>
-                      ))
-                    : null}
-                </React.Fragment>
+                  <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
+                    {categoryName}
+                  </div>
+                  <div
+                    className="text-muted cmd-num"
+                    style={{ textAlign: "center", fontSize: 11 }}
+                  >
+                    {ing.unit}
+                  </div>
+                  <div
+                    className="cmd-num"
+                    style={{
+                      textAlign: "right",
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {fmtNumber(ing.stock_current)}
+                  </div>
+                  <StockBar
+                    value={Number(ing.stock_current)}
+                    min={Number(ing.stock_min)}
+                    max={Math.max(
+                      Number(ing.stock_min) * 2.5,
+                      Number(ing.stock_current) * 1.1,
+                      1,
+                    )}
+                    unit={ing.unit}
+                  />
+                  <div
+                    className="cmd-num"
+                    style={{
+                      textAlign: "right",
+                      fontSize: 12,
+                      color:
+                        ing.merma_pct >= 5
+                          ? "var(--red)"
+                          : ing.merma_pct >= 2
+                            ? "var(--amber)"
+                            : "var(--muted)",
+                    }}
+                  >
+                    {ing.merma_pct}%
+                  </div>
+                  <div
+                    className="cmd-num"
+                    style={{ textAlign: "right", fontSize: 12 }}
+                  >
+                    ${fmtCOP(ing.cost_per_unit)}
+                  </div>
+                </div>
               );
             })}
           </div>

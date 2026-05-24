@@ -67,6 +67,44 @@ export interface Novedad {
   body: string;
 }
 
+export interface IngredientCategory {
+  id: string;
+  restaurant_id: string;
+  parent_id: string | null;
+  name: string;
+  depth: number; // 0..3
+  sort_index: number;
+}
+
+export interface Ingredient {
+  id: string;
+  restaurant_id: string;
+  category_id: string | null;
+  parent_ingredient_id: string | null;
+  name: string;
+  unit: string;
+  stock_current: number;
+  stock_min: number;
+  merma_pct: number;
+  cost_per_unit: number;
+  archived: boolean;
+}
+
+export type IngredientMovementType = "venta" | "gasto" | "ajuste" | "import";
+
+export interface IngredientMovement {
+  id: string;
+  restaurant_id: string;
+  ingredient_id: string;
+  type: IngredientMovementType;
+  delta: number;
+  balance_after: number;
+  unit_cost: number | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** A shift instance hydrated with its template + tasks + completions for the staff screen. */
 export interface ShiftView {
   shift: ShiftInstance;
