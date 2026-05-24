@@ -17,92 +17,26 @@ export type ProductosSection = {
 };
 
 export const PROD_SECTIONS: readonly ProductosSection[] = [
-  { id: "catalogo", n: "01", label: "Productos · catálogo", href: "/productos/catalogo" },
-  { id: "ingredientes", n: "02", label: "Ingredientes", href: "/productos/ingredientes" },
-  { id: "recetas", n: "03", label: "Recetas", href: "/productos/recetas" },
-  { id: "stock", n: "04", label: "Control de stock", href: "/productos/stock" },
-  { id: "historial", n: "05", label: "Movimientos", href: "/productos/historial" },
-  { id: "notificaciones", n: "06", label: "Notificaciones", href: "/productos/notificaciones" },
-  { id: "conteo", n: "07", label: "Conteo de inventario", href: "/productos/conteo" },
-  { id: "precios", n: "08", label: "Listas de precios", href: "/productos/precios" },
-  { id: "importacion", n: "09", label: "Importación", href: "/productos/importacion" },
-  { id: "modificadores", n: "10", label: "Modificadores", href: "/productos/modificadores" },
-  { id: "combos", n: "11", label: "Combos · vinculaciones", href: "/productos/combos" },
+  { id: "catalogo", n: "01", label: "Productos", href: "/catalogo" },
+  { id: "ingredientes", n: "02", label: "Ingredientes", href: "/ingredientes" },
+  { id: "recetas", n: "03", label: "Recetas", href: "/recetas" },
+  { id: "stock", n: "04", label: "Control de stock", href: "/stock" },
+  { id: "historial", n: "05", label: "Movimientos", href: "/historial" },
+  { id: "notificaciones", n: "06", label: "Notificaciones", href: "/notificaciones" },
+  { id: "conteo", n: "07", label: "Inventario", href: "/conteo" },
+  { id: "precios", n: "08", label: "Listas de precios", href: "/precios" },
+  { id: "importacion", n: "09", label: "Importación", href: "/importacion" },
+  { id: "modificadores", n: "10", label: "Modificadores", href: "/modificadores" },
+  { id: "combos", n: "11", label: "Combos", href: "/combos" },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────
-// 01 · Catálogo
+// 01 · Catálogo — types/data now live in the database; see
+// `lib/db/productos.ts` and `lib/types.ts`. `StockStatus` and `fmtCOP`
+// stay because shared visual primitives in `_components/shared.tsx`
+// (StockBadge) and the other 10 sections' clients still import them.
 // ─────────────────────────────────────────────────────────────
 export type StockStatus = "ok" | "bajo" | "sin";
-
-export type CategoriaRow = {
-  id: string;
-  label: string;
-  count: number;
-  indent?: number;
-  root?: boolean;
-  expanded?: boolean;
-  children?: CategoriaRow[];
-};
-
-export const CATEGORIAS: CategoriaRow[] = [
-  { id: "all", label: "Todas las categorías", count: 86, root: true },
-  {
-    id: "hamb",
-    label: "Hamburguesas",
-    count: 18,
-    indent: 0,
-    expanded: true,
-    children: [
-      { id: "hamb-clas", label: "Clásicas", count: 8, indent: 1 },
-      { id: "hamb-esp", label: "Especiales", count: 7, indent: 1 },
-      { id: "hamb-veg", label: "Vegetarianas", count: 3, indent: 1 },
-    ],
-  },
-  { id: "acomp", label: "Acompañamientos", count: 12, indent: 0 },
-  {
-    id: "beb",
-    label: "Bebidas",
-    count: 22,
-    indent: 0,
-    expanded: true,
-    children: [
-      { id: "beb-gas", label: "Gaseosas", count: 9, indent: 1 },
-      { id: "beb-cer", label: "Cervezas", count: 6, indent: 1 },
-      { id: "beb-jugo", label: "Jugos naturales", count: 7, indent: 1 },
-    ],
-  },
-  { id: "pos", label: "Postres", count: 7, indent: 0 },
-  { id: "salsas", label: "Salsas (extras)", count: 9, indent: 0 },
-  { id: "combos", label: "Combos", count: 18, indent: 0 },
-];
-
-export type Producto = {
-  id: string;
-  name: string;
-  cat: string;
-  sku: string;
-  price: number;
-  cost: number;
-  margin: number;
-  stock: StockStatus;
-  fav: boolean;
-};
-
-export const PRODUCTOS: Producto[] = [
-  { id: "p1", name: "Daniel's Burger Clásica", cat: "Hamburguesas · Clásicas", sku: "HB-001", price: 24900, cost: 9200, margin: 63, stock: "ok", fav: true },
-  { id: "p2", name: "Doble Tocineta", cat: "Hamburguesas · Especiales", sku: "HB-014", price: 32900, cost: 13800, margin: 58, stock: "ok", fav: true },
-  { id: "p3", name: "Triple Bestia", cat: "Hamburguesas · Especiales", sku: "HB-022", price: 42900, cost: 19400, margin: 55, stock: "bajo", fav: true },
-  { id: "p4", name: "Veggie Portobello", cat: "Hamburguesas · Vegetarianas", sku: "HB-031", price: 26900, cost: 10100, margin: 62, stock: "ok", fav: false },
-  { id: "p5", name: "Papas Rústicas grandes", cat: "Acompañamientos", sku: "AC-002", price: 12900, cost: 3400, margin: 73, stock: "ok", fav: false },
-  { id: "p6", name: "Aros de cebolla", cat: "Acompañamientos", sku: "AC-007", price: 11900, cost: 3800, margin: 68, stock: "sin", fav: false },
-  { id: "p7", name: "Coca-Cola 400ml", cat: "Bebidas · Gaseosas", sku: "BG-001", price: 5900, cost: 2100, margin: 64, stock: "ok", fav: true },
-  { id: "p8", name: "Coca-Cola Zero 400ml", cat: "Bebidas · Gaseosas", sku: "BG-002", price: 5900, cost: 2100, margin: 64, stock: "bajo", fav: false },
-  { id: "p9", name: "Cerveza Club Colombia", cat: "Bebidas · Cervezas", sku: "BC-003", price: 8900, cost: 3600, margin: 60, stock: "ok", fav: false },
-  { id: "p10", name: "Limonada de coco", cat: "Bebidas · Jugos naturales", sku: "BJ-005", price: 9900, cost: 2900, margin: 71, stock: "ok", fav: true },
-  { id: "p11", name: "Brownie con helado", cat: "Postres", sku: "PO-002", price: 13900, cost: 4100, margin: 71, stock: "ok", fav: false },
-  { id: "p12", name: "Salsa BBQ casera", cat: "Salsas (extras)", sku: "SX-004", price: 2500, cost: 600, margin: 76, stock: "bajo", fav: false },
-];
 
 // ─────────────────────────────────────────────────────────────
 // 02 · Ingredientes

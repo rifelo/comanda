@@ -3,34 +3,61 @@
 /**
  * 01 · Catálogo — two-pane: categorías tree (left) + product table (right).
  *
- * Client component because the filter chips, search box, and category tree
- * selection all drive a single in-memory filter pipeline over `PRODUCTOS`.
+ * Server fetches `productos` + `categorias` once; this component owns the
+ * in-memory filter pipeline (search box, fav toggle, stock chips, category
+ * pick) so chip taps don't round-trip to Supabase.
  */
 import * as React from "react";
-import {
-  CATEGORIAS,
-  PRODUCTOS,
-  type CategoriaRow,
-  type StockStatus,
-  fmtCOP,
-} from "@/lib/mock/productos";
+import type {
+  CatalogoCategoryNode,
+  CatalogoRow,
+  ProductoStockStatus,
+} from "@/lib/types";
+import { fmtCOP } from "@/lib/mock/productos";
 import {
   SectionCrumb,
   StockBadge,
   Thumb,
   CmdMiniLabel,
 } from "../_components/shared";
-import { Chip, StarFav } from "../_components/chip";
+import { Chip } from "../_components/chip";
+import { NuevoProductoDrawer } from "./nuevo-producto-drawer";
+import { NuevaCategoriaForm } from "./nueva-categoria-form";
+import { FavoriteToggle } from "./favorite-toggle";
+
+function flattenCategorias(
+  nodes: CatalogoCategoryNode[],
+): CatalogoCategoryNode[] {
+  const out: CatalogoCategoryNode[] = [];
+  const walk = (n: CatalogoCategoryNode) => {
+    out.push(n);
+    n.children?.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return out;
+}
+
+function descendantIds(
+  node: CatalogoCategoryNode,
+  acc: Set<string> = new Set(),
+): Set<string> {
+  if (node.id) acc.add(node.id);
+  node.children?.forEach((c) => descendantIds(c, acc));
+  return acc;
+}
 
 function CategoriaTree({
-  active,
+  nodes,
+  activeId,
   onPick,
 }: {
-  active: string;
-  onPick: (id: string) => void;
+  nodes: CatalogoCategoryNode[];
+  activeId: string | null; // null = "Todas"
+  onPick: (id: string | null) => void;
 }) {
-  const Row = ({ row }: { row: CategoriaRow }) => {
-    const isActive = active === row.id;
+  const Row = ({ row }: { row: CatalogoCategoryNode }) => {
+    const isActive = activeId === row.id;
+    const isRoot = row.indent === 0;
     return (
       <button
         type="button"
@@ -42,7 +69,7 @@ function CategoriaTree({
           width: "100%",
           textAlign: "left",
           padding: "5px 8px",
-          paddingLeft: 8 + (row.indent || 0) * 14,
+          paddingLeft: 8 + Math.max(row.indent - 1, 0) * 14,
           background: isActive ? "var(--ink)" : "transparent",
           color: isActive ? "var(--paper-lt)" : "var(--ink)",
           border: "none",
@@ -52,20 +79,15 @@ function CategoriaTree({
           cursor: "pointer",
         }}
       >
-        {row.children ? (
-          <span style={{ fontSize: 9, opacity: 0.6 }}>
-            {row.expanded ? "▾" : "▸"}
-          </span>
+        {row.children?.length ? (
+          <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
         ) : (
           <span style={{ width: 8 }} />
         )}
-        <span style={{ flex: 1, fontWeight: row.root ? 600 : 400 }}>
+        <span style={{ flex: 1, fontWeight: isRoot ? 600 : 400 }}>
           {row.label}
         </span>
-        <span
-          className="cmd-num"
-          style={{ fontSize: 10, opacity: 0.7 }}
-        >
+        <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
           {row.count}
         </span>
       </button>
@@ -73,43 +95,60 @@ function CategoriaTree({
   };
   return (
     <div className="flex flex-col" style={{ gap: 1 }}>
-      {CATEGORIAS.map((r) => (
-        <React.Fragment key={r.id}>
+      {nodes.map((r) => (
+        <React.Fragment key={r.id ?? "all"}>
           <Row row={r} />
-          {r.expanded &&
-            r.children?.map((c) => <Row key={c.id} row={c} />)}
+          {r.children?.map((c) => (
+            <React.Fragment key={c.id ?? "all"}>
+              <Row row={c} />
+              {c.children?.map((g) => <Row key={g.id ?? "all"} row={g} />)}
+            </React.Fragment>
+          ))}
         </React.Fragment>
       ))}
     </div>
   );
 }
 
-export function CatalogoClient() {
-  const [cat, setCat] = React.useState<string>("all");
+export function CatalogoClient({
+  productos,
+  categorias,
+}: {
+  productos: CatalogoRow[];
+  categorias: CatalogoCategoryNode[];
+}) {
+  const [cat, setCat] = React.useState<string | null>(null);
   const [fav, setFav] = React.useState(false);
-  const [stock, setStock] = React.useState<"all" | StockStatus>("all");
+  const [stock, setStock] = React.useState<"all" | ProductoStockStatus>("all");
   const [q, setQ] = React.useState("");
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [catFormOpen, setCatFormOpen] = React.useState(false);
+
+  // Build a category-id -> descendant-ids map so picking a parent also
+  // matches its children's productos.
+  const descendantsByCat = React.useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const node of flattenCategorias(categorias)) {
+      if (node.id) map.set(node.id, descendantIds(node));
+    }
+    return map;
+  }, [categorias]);
 
   const filtered = React.useMemo(() => {
-    const catLabel =
-      cat === "all"
-        ? null
-        : CATEGORIAS.flatMap((c) => [c, ...(c.children ?? [])]).find(
-            (c) => c.id === cat,
-          )?.label.toLowerCase();
+    const allowedCatIds = cat ? descendantsByCat.get(cat) : null;
     const needle = q.trim().toLowerCase();
-    return PRODUCTOS.filter((p) => {
-      if (catLabel && !p.cat.toLowerCase().includes(catLabel.split(" ")[0]))
+    return productos.filter((p) => {
+      if (allowedCatIds && (!p.category_id || !allowedCatIds.has(p.category_id)))
         return false;
-      if (fav && !p.fav) return false;
-      if (stock !== "all" && p.stock !== stock) return false;
+      if (fav && !p.is_favorite) return false;
+      if (stock !== "all" && p.stock_status !== stock) return false;
       if (needle) {
-        const hay = `${p.name} ${p.sku} ${p.cat}`.toLowerCase();
+        const hay = `${p.name} ${p.sku} ${p.category_label ?? ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
     });
-  }, [cat, fav, stock, q]);
+  }, [productos, descendantsByCat, cat, fav, stock, q]);
 
   return (
     <div>
@@ -120,7 +159,11 @@ export function CatalogoClient() {
             <button type="button" className="cmd-btn ghost sm">
               Exportar CSV
             </button>
-            <button type="button" className="cmd-btn sm">
+            <button
+              type="button"
+              className="cmd-btn sm"
+              onClick={() => setDrawerOpen(true)}
+            >
               + Nuevo producto
             </button>
           </>
@@ -143,30 +186,37 @@ export function CatalogoClient() {
           }}
         >
           <CmdMiniLabel>Categorías</CmdMiniLabel>
-          <CategoriaTree active={cat} onPick={setCat} />
-          <button
-            type="button"
-            className="cmd-link"
-            style={{
-              padding: "10px 8px 0",
-              fontSize: 11,
-              color: "var(--muted)",
-              minHeight: 0,
-              background: "none",
-              border: "none",
-            }}
-          >
-            + nueva categoría
-          </button>
+          <CategoriaTree nodes={categorias} activeId={cat} onPick={setCat} />
+          {catFormOpen ? (
+            <NuevaCategoriaForm
+              categorias={categorias}
+              onClose={() => setCatFormOpen(false)}
+              onCreated={(id) => setCat(id)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCatFormOpen(true)}
+              className="cmd-link"
+              style={{
+                padding: "10px 8px 0",
+                fontSize: 11,
+                color: "var(--muted)",
+                minHeight: 0,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              + nueva categoría
+            </button>
+          )}
         </div>
 
         {/* main */}
         <div style={{ padding: "14px 22px 24px" }}>
           {/* search + filter bar */}
-          <div
-            className="flex items-center flex-wrap"
-            style={{ gap: 10 }}
-          >
+          <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
             <div
               className="cmd-paper-lt"
               style={{
@@ -198,9 +248,7 @@ export function CatalogoClient() {
                 }}
               />
             </div>
-            <span
-              style={{ width: 1, height: 22, background: "var(--rule)" }}
-            />
+            <span style={{ width: 1, height: 22, background: "var(--rule)" }} />
             <Chip active={fav} onClick={() => setFav(!fav)}>
               ★ Favoritos
             </Chip>
@@ -210,17 +258,10 @@ export function CatalogoClient() {
             <Chip active={stock === "ok"} onClick={() => setStock("ok")}>
               Disponibles
             </Chip>
-            <Chip
-              active={stock === "bajo"}
-              onClick={() => setStock("bajo")}
-            >
+            <Chip active={stock === "bajo"} onClick={() => setStock("bajo")}>
               Stock bajo
             </Chip>
-            <Chip
-              active={stock === "sin"}
-              danger
-              onClick={() => setStock("sin")}
-            >
+            <Chip active={stock === "sin"} danger onClick={() => setStock("sin")}>
               Sin stock
             </Chip>
             <div
@@ -231,17 +272,14 @@ export function CatalogoClient() {
                 textTransform: "uppercase",
               }}
             >
-              {filtered.length} de {PRODUCTOS.length} productos
+              {filtered.length} de {productos.length} productos
             </div>
           </div>
 
           {/* table */}
           <div
             className="cmd-paper-lt"
-            style={{
-              marginTop: 14,
-              border: "1.5px solid var(--ink)",
-            }}
+            style={{ marginTop: 14, border: "1.5px solid var(--ink)" }}
           >
             <div
               className="bg-paper"
@@ -280,16 +318,13 @@ export function CatalogoClient() {
                   padding: "10px 12px",
                   alignItems: "center",
                   borderBottom: "1px dashed var(--rule-soft)",
-                  background:
-                    i % 2 ? "var(--paper-lt)" : "var(--paper)",
+                  background: i % 2 ? "var(--paper-lt)" : "var(--paper)",
                 }}
               >
-                <StarFav initialOn={p.fav} />
+                <FavoriteToggle productoId={p.id} initial={p.is_favorite} />
                 <Thumb label={p.name.split(" ")[0]} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>
-                    {p.name}
-                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
                   <div
                     className="cmd-num text-muted"
                     style={{ fontSize: 10, marginTop: 2 }}
@@ -298,7 +333,7 @@ export function CatalogoClient() {
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
-                  {p.cat}
+                  {p.category_label ?? "—"}
                 </div>
                 <div
                   className="cmd-num"
@@ -308,13 +343,13 @@ export function CatalogoClient() {
                     fontWeight: 500,
                   }}
                 >
-                  ${fmtCOP(p.price)}
+                  ${fmtCOP(p.price_cop)}
                 </div>
                 <div
                   className="cmd-num text-muted"
                   style={{ textAlign: "right", fontSize: 12 }}
                 >
-                  ${fmtCOP(p.cost)}
+                  ${fmtCOP(p.cost_cop)}
                 </div>
                 <div
                   className="cmd-num"
@@ -323,16 +358,16 @@ export function CatalogoClient() {
                     fontSize: 12,
                     fontWeight: 600,
                     color:
-                      p.margin >= 60
+                      p.margin_pct >= 60
                         ? "var(--green)"
-                        : p.margin >= 50
+                        : p.margin_pct >= 50
                           ? "var(--ink)"
                           : "var(--amber)",
                   }}
                 >
-                  {p.margin}%
+                  {p.margin_pct}%
                 </div>
-                <StockBadge status={p.stock} />
+                <StockBadge status={p.stock_status} />
                 <div
                   className="text-muted"
                   style={{
@@ -383,6 +418,13 @@ export function CatalogoClient() {
           </div>
         </div>
       </div>
+
+      <NuevoProductoDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        categorias={categorias}
+        defaultCategoryId={cat}
+      />
     </div>
   );
 }

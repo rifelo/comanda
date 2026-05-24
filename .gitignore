@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase CLI cache
+supabase/.temp/
+
+# claude code agent-private dir (not part of source)
+.claude/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

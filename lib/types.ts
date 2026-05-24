@@ -78,3 +78,48 @@ export interface ShiftView {
    *  `null` if the shift has not been opened yet. */
   opener: { id: string; full_name: string | null } | null;
 }
+
+// =============================================================================
+// Productos catálogo (module 01)
+// =============================================================================
+
+export type ProductoStockStatus = "ok" | "bajo" | "sin";
+
+export interface ProductoCategoria {
+  id: string;
+  organization_id: string;
+  parent_id: string | null;
+  label: string;
+  position: number;
+  created_at: string;
+}
+
+export interface Producto {
+  id: string;
+  organization_id: string;
+  category_id: string | null;
+  name: string;
+  sku: string;
+  price_cop: number;
+  cost_cop: number;
+  margin_pct: number;
+  stock_status: ProductoStockStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Hydrated row consumed by the catálogo list view. */
+export interface CatalogoRow extends Producto {
+  category_label: string | null; // "Hamburguesas · Clásicas"
+  is_favorite: boolean;
+}
+
+/** Tree node consumed by the catálogo category rail. */
+export interface CatalogoCategoryNode {
+  id: string | null; // null = "Todas las categorías" synthetic root
+  label: string;
+  count: number; // descendant-inclusive product count
+  indent: number; // 0 root, 1 parent, 2 child
+  parent_id: string | null;
+  children?: CatalogoCategoryNode[];
+}
