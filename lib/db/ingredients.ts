@@ -1,34 +1,33 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { Ingredient, IngredientCategory } from "@/lib/types";
+import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
 
 export interface IngredientesView {
-  categories: IngredientCategory[];
-  ingredients: Ingredient[];
+  categorias: IngredienteCategoria[];
+  ingredientes: Ingrediente[];
 }
 
 export async function getIngredientesView(
-  restaurantId: string,
+  organizationId: string,
 ): Promise<IngredientesView> {
   const supabase = await createSupabaseServerClient();
   const [cats, ings] = await Promise.all([
     supabase
-      .from("ingredient_categories")
-      .select("id, restaurant_id, parent_id, name, depth, sort_index")
-      .eq("restaurant_id", restaurantId)
-      .order("depth")
-      .order("sort_index")
-      .order("name"),
+      .from("ingrediente_categorias")
+      .select("id, organization_id, parent_id, label, position")
+      .eq("organization_id", organizationId)
+      .order("position")
+      .order("label"),
     supabase
-      .from("ingredients")
+      .from("ingredientes")
       .select(
-        "id, restaurant_id, category_id, parent_ingredient_id, name, unit, stock_current, stock_min, merma_pct, cost_per_unit, archived",
+        "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
       )
-      .eq("restaurant_id", restaurantId)
+      .eq("organization_id", organizationId)
       .eq("archived", false)
       .order("name"),
   ]);
   return {
-    categories: (cats.data ?? []) as IngredientCategory[],
-    ingredients: (ings.data ?? []) as Ingredient[],
+    categorias: (cats.data ?? []) as IngredienteCategoria[],
+    ingredientes: (ings.data ?? []) as Ingrediente[],
   };
 }

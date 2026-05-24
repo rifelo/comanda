@@ -1,34 +1,32 @@
 "use client";
 
 /**
- * 02 · Ingredientes — 4-level tree + ingredient table, wired to Supabase.
- * Receives initial categories + ingredients from the server component; calls
- * server actions to persist new categories and ingredients.
+ * 02 · Ingredientes — org-scoped catalog + 4-level tree. Receives initial
+ * categorias + ingredientes from the server component; calls server actions
+ * to persist new categories and ingredients.
  */
 import * as React from "react";
-import type { Ingredient, IngredientCategory } from "@/lib/types";
+import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
-import { createIngredient, createIngredientCategory } from "./actions";
+import {
+  createIngrediente,
+  createIngredienteCategoria,
+} from "./actions";
 
-// ── view-model: nested tree built from the flat IngredientCategory list ──
 interface TreeNode {
   id: string;
   label: string;
   depth: number;
   children: TreeNode[];
-  expanded: boolean;
 }
 
-function buildTree(rows: IngredientCategory[]): TreeNode[] {
+function buildTree(rows: IngredienteCategoria[]): {
+  tree: TreeNode[];
+  depthById: Map<string, number>;
+} {
   const byId = new Map<string, TreeNode>();
   for (const r of rows) {
-    byId.set(r.id, {
-      id: r.id,
-      label: r.name,
-      depth: r.depth,
-      children: [],
-      expanded: r.depth <= 1, // open the top two levels by default
-    });
+    byId.set(r.id, { id: r.id, label: r.label, depth: 0, children: [] });
   }
   const roots: TreeNode[] = [];
   for (const r of rows) {
@@ -36,37 +34,43 @@ function buildTree(rows: IngredientCategory[]): TreeNode[] {
     if (r.parent_id) byId.get(r.parent_id)?.children.push(node);
     else roots.push(node);
   }
-  return roots;
+  const depthById = new Map<string, number>();
+  const walk = (nodes: TreeNode[], d: number) => {
+    for (const n of nodes) {
+      n.depth = d;
+      depthById.set(n.id, d);
+      walk(n.children, d + 1);
+    }
+  };
+  walk(roots, 0);
+  return { tree: roots, depthById };
 }
 
 function flattenTree(nodes: TreeNode[]): TreeNode[] {
-  return nodes.flatMap((n) => [n, ...(n.expanded ? flattenTree(n.children) : [])]);
+  return nodes.flatMap((n) => [n, ...flattenTree(n.children)]);
 }
 
 const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
 
-function fmtNumber(n: number): string {
-  return Number.isFinite(n) ? Number(n).toString() : "0";
-}
 function fmtCOP(n: number): string {
   return Number(n).toLocaleString("es-CO");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// IngTree
+// IngTree — left rail
 // ─────────────────────────────────────────────────────────────────────────
 function IngTree({
   total,
-  rows,
+  tree,
   active,
   onPick,
 }: {
   total: number;
-  rows: TreeNode[];
+  tree: TreeNode[];
   active: string;
   onPick: (id: string) => void;
 }) {
-  const flat = flattenTree(rows);
+  const flat = flattenTree(tree);
   const items: { id: string; label: string; depth: number; root?: boolean }[] = [
     { id: "all", label: "Todos los ingredientes", depth: 0, root: true },
     ...flat.map((n) => ({ id: n.id, label: n.label, depth: n.depth })),
@@ -117,18 +121,20 @@ function IngTree({
 // NuevaCategoriaForm — inline form in the tree panel
 // ─────────────────────────────────────────────────────────────────────────
 function NuevaCategoriaForm({
-  categories,
+  categorias,
+  depthById,
   pending,
   onSave,
   onCancel,
 }: {
-  categories: IngredientCategory[];
+  categorias: IngredienteCategoria[];
+  depthById: Map<string, number>;
   pending: boolean;
-  onSave: (input: { name: string; parentId: string | null }) => void;
+  onSave: (input: { label: string; parentId: string | null }) => void;
   onCancel: () => void;
 }) {
-  const [nombre, setNombre] = React.useState("");
-  const [padre, setPadre] = React.useState<string>("root");
+  const [label, setLabel] = React.useState("");
+  const [parent, setParent] = React.useState<string>("root");
   const [error, setError] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -136,18 +142,19 @@ function NuevaCategoriaForm({
     inputRef.current?.focus();
   }, []);
 
-  // Cap parent depth at 2 so a new child stays within the 4-level limit (the
-  // DB trigger enforces this too).
-  const parentCandidates = categories.filter((c) => c.depth <= 2);
+  // Cap parent depth at 2 so a new child stays within the 4-level UI tree.
+  const parentCandidates = categorias.filter(
+    (c) => (depthById.get(c.id) ?? 0) <= 2,
+  );
 
   const handleSave = () => {
-    if (!nombre.trim()) {
+    if (!label.trim()) {
       setError("Requerido");
       return;
     }
     onSave({
-      name: nombre.trim(),
-      parentId: padre === "root" ? null : padre,
+      label: label.trim(),
+      parentId: parent === "root" ? null : parent,
     });
   };
 
@@ -200,10 +207,10 @@ function NuevaCategoriaForm({
         <label style={labelSt}>Nombre *</label>
         <input
           ref={inputRef}
-          value={nombre}
+          value={label}
           disabled={pending}
           onChange={(e) => {
-            setNombre(e.target.value);
+            setLabel(e.target.value);
             setError("");
           }}
           onKeyDown={(e) => {
@@ -221,9 +228,9 @@ function NuevaCategoriaForm({
       <div>
         <label style={labelSt}>Categoría padre</label>
         <select
-          value={padre}
+          value={parent}
           disabled={pending}
-          onChange={(e) => setPadre(e.target.value)}
+          onChange={(e) => setParent(e.target.value)}
           style={{
             ...inputSt,
             marginBottom: 0,
@@ -234,8 +241,8 @@ function NuevaCategoriaForm({
           <option value="root">— Nivel raíz —</option>
           {parentCandidates.map((c) => (
             <option key={c.id} value={c.id}>
-              {"  ".repeat(c.depth)}
-              {c.name}
+              {"  ".repeat(depthById.get(c.id) ?? 0)}
+              {c.label}
             </option>
           ))}
         </select>
@@ -269,13 +276,15 @@ function NuevaCategoriaForm({
 // NuevoIngredienteDrawer
 // ─────────────────────────────────────────────────────────────────────────
 function NuevoIngredienteDrawer({
-  categories,
+  categorias,
+  depthById,
   pending,
   serverError,
   onClose,
   onSave,
 }: {
-  categories: IngredientCategory[];
+  categorias: IngredienteCategoria[];
+  depthById: Map<string, number>;
   pending: boolean;
   serverError: string | null;
   onClose: () => void;
@@ -286,13 +295,12 @@ function NuevoIngredienteDrawer({
     stockCurrent: number;
     stockMin: number;
     mermaPct: number;
-    costPerUnit: number;
+    costCop: number;
   }) => void;
 }) {
-  const defaultCatId = categories[0]?.id ?? "";
   const [form, setForm] = React.useState({
     name: "",
-    categoryId: defaultCatId,
+    categoryId: "" as string,
     unit: "kg" as (typeof UNITS)[number],
     stock: "",
     min: "",
@@ -326,7 +334,7 @@ function NuevoIngredienteDrawer({
       stockCurrent: Number(form.stock),
       stockMin: Number(form.min),
       mermaPct: form.merma ? Number(form.merma) : 0,
-      costPerUnit: Number(form.cost),
+      costCop: Math.round(Number(form.cost)),
     });
   };
 
@@ -470,10 +478,10 @@ function NuevoIngredienteDrawer({
                 style={{ ...inputSt(), appearance: "none", cursor: "pointer" }}
               >
                 <option value="">— Sin categoría —</option>
-                {categories.map((c) => (
+                {categorias.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {"  ".repeat(c.depth)}
-                    {c.name}
+                    {"  ".repeat(depthById.get(c.id) ?? 0)}
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -562,7 +570,7 @@ function NuevoIngredienteDrawer({
               <input
                 type="number"
                 min="0"
-                step="any"
+                step="1"
                 value={form.cost}
                 disabled={pending}
                 onChange={(e) => set("cost", e.target.value)}
@@ -662,18 +670,14 @@ function NuevoIngredienteDrawer({
 const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px";
 
 export function IngredientesClient({
-  restaurantId,
-  sedeName,
-  initialCategories,
-  initialIngredients,
+  initialCategorias,
+  initialIngredientes,
 }: {
-  restaurantId: string | null;
-  sedeName: string | null;
-  initialCategories: IngredientCategory[];
-  initialIngredients: Ingredient[];
+  initialCategorias: IngredienteCategoria[];
+  initialIngredientes: Ingrediente[];
 }) {
-  const [categories, setCategories] = React.useState(initialCategories);
-  const [ingredients, setIngredients] = React.useState(initialIngredients);
+  const [categorias, setCategorias] = React.useState(initialCategorias);
+  const [ingredientes, setIngredientes] = React.useState(initialIngredientes);
   const [cat, setCat] = React.useState("all");
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
@@ -681,45 +685,38 @@ export function IngredientesClient({
   const [catError, setCatError] = React.useState<string | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
-  const tree = React.useMemo(() => buildTree(categories), [categories]);
-
-  // sort categories by depth then name for the parent / category selects
-  const sortedCategories = React.useMemo(
-    () =>
-      [...categories].sort(
-        (a, b) => a.depth - b.depth || a.name.localeCompare(b.name),
-      ),
-    [categories],
+  const { tree, depthById } = React.useMemo(
+    () => buildTree(categorias),
+    [categorias],
   );
 
-  const noBackend = restaurantId === null;
+  // Sort for the parent / category selects: depth-major, then label.
+  const sortedCategorias = React.useMemo(
+    () =>
+      [...categorias].sort(
+        (a, b) =>
+          (depthById.get(a.id) ?? 0) - (depthById.get(b.id) ?? 0) ||
+          a.label.localeCompare(b.label),
+      ),
+    [categorias, depthById],
+  );
 
   const handleAddCategoria = ({
-    name,
+    label,
     parentId,
   }: {
-    name: string;
+    label: string;
     parentId: string | null;
   }) => {
-    if (!restaurantId) {
-      setCatError(
-        "No hay sede activa: crea un restaurante primero para guardar categorías.",
-      );
-      return;
-    }
     setCatError(null);
     startTransition(async () => {
-      const res = await createIngredientCategory({
-        restaurantId,
-        name,
-        parentId,
-      });
+      const res = await createIngredienteCategoria({ label, parentId });
       if (!res.ok) {
         setCatError(res.error);
         return;
       }
-      setCategories((prev) => [...prev, res.category as IngredientCategory]);
-      setCat(res.category.id);
+      setCategorias((prev) => [...prev, res.categoria as IngredienteCategoria]);
+      setCat(res.categoria.id);
       setCatFormOpen(false);
     });
   };
@@ -731,34 +728,34 @@ export function IngredientesClient({
     stockCurrent: number;
     stockMin: number;
     mermaPct: number;
-    costPerUnit: number;
+    costCop: number;
   }) => {
-    if (!restaurantId) {
-      setDrawerError(
-        "No hay sede activa: crea un restaurante primero para guardar ingredientes.",
-      );
-      return;
-    }
     setDrawerError(null);
     startTransition(async () => {
-      const res = await createIngredient({ restaurantId, ...input });
+      const res = await createIngrediente(input);
       if (!res.ok) {
         setDrawerError(res.error);
         return;
       }
-      setIngredients((prev) => [res.ingredient as Ingredient, ...prev]);
+      setIngredientes((prev) => [res.ingrediente as Ingrediente, ...prev]);
       setDrawerOpen(false);
     });
   };
 
-  const lowStockCount = ingredients.filter(
-    (i) => i.stock_current < i.stock_min,
+  const lowStockCount = ingredientes.filter(
+    (i) => Number(i.stock_current) < Number(i.stock_min),
   ).length;
-  const highMermaCount = ingredients.filter((i) => i.merma_pct >= 5).length;
+  const highMermaCount = ingredientes.filter(
+    (i) => Number(i.merma_pct) >= 5,
+  ).length;
 
   const kpis = [
-    { label: "Ingredientes activos", val: String(ingredients.length) },
-    { label: "En stock bajo", val: String(lowStockCount), tone: "var(--amber)" },
+    { label: "Ingredientes activos", val: String(ingredientes.length) },
+    {
+      label: "En stock bajo",
+      val: String(lowStockCount),
+      tone: "var(--amber)",
+    },
     { label: "Merma > 5%", val: String(highMermaCount), tone: "var(--red)" },
     { label: "Costo prom. plato", val: "$ —" },
   ];
@@ -767,7 +764,8 @@ export function IngredientesClient({
     <div style={{ position: "relative" }}>
       {drawerOpen ? (
         <NuevoIngredienteDrawer
-          categories={sortedCategories}
+          categorias={sortedCategorias}
+          depthById={depthById}
           pending={isPending}
           serverError={drawerError}
           onClose={() => {
@@ -782,27 +780,12 @@ export function IngredientesClient({
         section="ingredientes"
         right={
           <>
-            {sedeName ? (
-              <span
-                className="text-muted"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                  marginRight: 6,
-                }}
-              >
-                Sede · {sedeName}
-              </span>
-            ) : null}
             <button type="button" className="cmd-btn ghost sm">
               Importar
             </button>
             <button
               type="button"
               className="cmd-btn sm"
-              disabled={noBackend}
-              title={noBackend ? "Crea una sede para habilitar esta acción" : undefined}
               onClick={() => {
                 setDrawerError(null);
                 setDrawerOpen(true);
@@ -841,14 +824,15 @@ export function IngredientesClient({
             Categoría → Subcat. → Principal → Subingrediente
           </div>
           <IngTree
-            total={ingredients.length}
-            rows={tree}
+            total={ingredientes.length}
+            tree={tree}
             active={cat}
             onPick={setCat}
           />
           {catFormOpen ? (
             <NuevaCategoriaForm
-              categories={sortedCategories}
+              categorias={sortedCategorias}
+              depthById={depthById}
               pending={isPending}
               onSave={handleAddCategoria}
               onCancel={() => {
@@ -863,7 +847,6 @@ export function IngredientesClient({
                 setCatError(null);
                 setCatFormOpen(true);
               }}
-              disabled={noBackend}
               className="cmd-link"
               style={{
                 padding: "10px 8px 0",
@@ -872,7 +855,7 @@ export function IngredientesClient({
                 minHeight: 0,
                 background: "none",
                 border: "none",
-                cursor: noBackend ? "not-allowed" : "pointer",
+                cursor: "pointer",
               }}
             >
               + nueva categoría
@@ -960,7 +943,7 @@ export function IngredientesClient({
               <span style={{ textAlign: "right" }}>Costo / U</span>
             </div>
 
-            {ingredients.length === 0 ? (
+            {ingredientes.length === 0 ? (
               <div
                 className="text-muted"
                 style={{
@@ -969,16 +952,13 @@ export function IngredientesClient({
                   fontSize: 12,
                 }}
               >
-                Aún no hay ingredientes en esta sede.
-                {noBackend
-                  ? " Crea una sede primero para empezar a cargar el catálogo."
-                  : " Usa “+ Nuevo ingrediente” para crear el primero."}
+                Aún no hay ingredientes. Usa “+ Nuevo ingrediente” para crear el primero.
               </div>
             ) : null}
 
-            {ingredients.map((ing, i) => {
+            {ingredientes.map((ing, i) => {
               const categoryName =
-                categories.find((c) => c.id === ing.category_id)?.name ?? "—";
+                categorias.find((c) => c.id === ing.category_id)?.label ?? "—";
               return (
                 <div
                   key={ing.id}
@@ -1015,7 +995,7 @@ export function IngredientesClient({
                       fontWeight: 500,
                     }}
                   >
-                    {fmtNumber(ing.stock_current)}
+                    {Number(ing.stock_current)}
                   </div>
                   <StockBar
                     value={Number(ing.stock_current)}
@@ -1033,20 +1013,20 @@ export function IngredientesClient({
                       textAlign: "right",
                       fontSize: 12,
                       color:
-                        ing.merma_pct >= 5
+                        Number(ing.merma_pct) >= 5
                           ? "var(--red)"
-                          : ing.merma_pct >= 2
+                          : Number(ing.merma_pct) >= 2
                             ? "var(--amber)"
                             : "var(--muted)",
                     }}
                   >
-                    {ing.merma_pct}%
+                    {Number(ing.merma_pct)}%
                   </div>
                   <div
                     className="cmd-num"
                     style={{ textAlign: "right", fontSize: 12 }}
                   >
-                    ${fmtCOP(ing.cost_per_unit)}
+                    ${fmtCOP(ing.cost_cop)}
                   </div>
                 </div>
               );

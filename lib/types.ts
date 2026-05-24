@@ -67,39 +67,37 @@ export interface Novedad {
   body: string;
 }
 
-export interface IngredientCategory {
+export interface IngredienteCategoria {
   id: string;
-  restaurant_id: string;
+  organization_id: string;
   parent_id: string | null;
-  name: string;
-  depth: number; // 0..3
-  sort_index: number;
+  label: string;
+  position: number;
 }
 
-export interface Ingredient {
+export interface Ingrediente {
   id: string;
-  restaurant_id: string;
+  organization_id: string;
   category_id: string | null;
-  parent_ingredient_id: string | null;
   name: string;
   unit: string;
   stock_current: number;
   stock_min: number;
   merma_pct: number;
-  cost_per_unit: number;
+  cost_cop: number;
   archived: boolean;
 }
 
-export type IngredientMovementType = "venta" | "gasto" | "ajuste" | "import";
+export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import";
 
-export interface IngredientMovement {
+export interface IngredienteMovement {
   id: string;
-  restaurant_id: string;
-  ingredient_id: string;
-  type: IngredientMovementType;
+  organization_id: string;
+  ingrediente_id: string;
+  type: IngredienteMovementType;
   delta: number;
   balance_after: number;
-  unit_cost: number | null;
+  unit_cost_cop: number | null;
   note: string | null;
   created_by: string | null;
   created_at: string;
