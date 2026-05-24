@@ -294,6 +294,7 @@ export function CatalogoClient({
   const [stock, setStock] = React.useState<"all" | ProductoStockStatus>("all");
   const [q, setQ] = React.useState("");
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [editProduct, setEditProduct] = React.useState<CatalogoRow | null>(null);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
 
   // Build a category-id -> descendant-ids map so picking a parent also
@@ -334,7 +335,10 @@ export function CatalogoClient({
             <button
               type="button"
               className="cmd-btn sm"
-              onClick={() => setDrawerOpen(true)}
+              onClick={() => {
+                setEditProduct(null);
+                setDrawerOpen(true);
+              }}
             >
               + Nuevo producto
             </button>
@@ -547,16 +551,27 @@ export function CatalogoClient({
                   {p.margin_pct}%
                 </div>
                 <StockBadge status={p.stock_status} />
-                <div
+                <button
+                  type="button"
                   className="text-muted"
+                  aria-label={`Editar ${p.name}`}
+                  onClick={() => {
+                    setEditProduct(p);
+                    setDrawerOpen(true);
+                  }}
                   style={{
                     textAlign: "right",
                     fontSize: 13,
                     cursor: "pointer",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    width: "100%",
+                    minHeight: 0,
                   }}
                 >
                   ···
-                </div>
+                </button>
               </div>
             ))}
             {filtered.length === 0 ? (
@@ -600,9 +615,13 @@ export function CatalogoClient({
 
       <NuevoProductoDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          setEditProduct(null);
+        }}
         categorias={categorias}
         defaultCategoryId={cat}
+        editData={editProduct}
       />
     </div>
   );
