@@ -18,16 +18,14 @@ export type ProductosSection = {
 
 export const PROD_SECTIONS: readonly ProductosSection[] = [
   { id: "catalogo", n: "01", label: "Productos", href: "/catalogo" },
-  { id: "ingredientes", n: "02", label: "Ingredientes", href: "/ingredientes" },
+  { id: "inventario", n: "02", label: "Inventario", href: "/inventario" },
   { id: "recetas", n: "03", label: "Recetas", href: "/recetas" },
-  { id: "stock", n: "04", label: "Control de stock", href: "/stock" },
-  { id: "historial", n: "05", label: "Movimientos", href: "/historial" },
-  { id: "notificaciones", n: "06", label: "Notificaciones", href: "/notificaciones" },
-  { id: "conteo", n: "07", label: "Inventario", href: "/conteo" },
-  { id: "precios", n: "08", label: "Listas de precios", href: "/precios" },
-  { id: "importacion", n: "09", label: "Importación", href: "/importacion" },
-  { id: "modificadores", n: "10", label: "Modificadores", href: "/modificadores" },
-  { id: "combos", n: "11", label: "Combos", href: "/combos" },
+  { id: "historial", n: "04", label: "Movimientos", href: "/historial" },
+  { id: "notificaciones", n: "05", label: "Notificaciones", href: "/notificaciones" },
+  { id: "precios", n: "06", label: "Listas de precios", href: "/precios" },
+  { id: "importacion", n: "07", label: "Importación", href: "/importacion" },
+  { id: "modificadores", n: "08", label: "Modificadores", href: "/modificadores" },
+  { id: "combos", n: "09", label: "Combos", href: "/combos" },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────

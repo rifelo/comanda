@@ -1,0 +1,322 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { requireAdmin } from "@/lib/auth";
+
+// Units the UI exposes; DB column is plain text so adding a new unit is
+// just a Zod change here + the option list in the drawer.
+const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
+
+const CreateCategoriaSchema = z.object({
+  label: z.string().trim().min(1).max(120),
+  parentId: z.string().uuid().nullable(),
+});
+
+const CreateIngredienteSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  categoryId: z.string().uuid().nullable(),
+  unit: z.enum(UNITS),
+  stockCurrent: z.coerce.number().min(0),
+  stockMin: z.coerce.number().min(0),
+  mermaPct: z.coerce.number().min(0).max(100).default(0),
+  costCop: z.coerce.number().int().min(0),
+});
+
+const UpdateIngredienteSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(160),
+  categoryId: z.string().uuid().nullable(),
+  unit: z.enum(UNITS),
+  stockMin: z.coerce.number().min(0),
+  mermaPct: z.coerce.number().min(0).max(100).default(0),
+  costCop: z.coerce.number().int().min(0),
+});
+
+const AdjustStockSchema = z.object({
+  id: z.string().uuid(),
+  newStock: z.coerce.number().min(0),
+  note: z.string().max(200).optional(),
+});
+
+const ApplyConteoSchema = z.object({
+  counts: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        physicalCount: z.coerce.number().min(0),
+      }),
+    )
+    .min(1),
+});
+
+// Result shapes documented for callers; never exported as types from a
+// "use server" file (Next 16 RSC payload gotcha — see
+// app/(admin)/restaurants/new/actions.ts).
+
+export async function createIngredienteCategoria(input: unknown) {
+  const parsed = CreateCategoriaSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const { data, error } = await supabase
+    .from("ingrediente_categorias")
+    .insert({
+      organization_id: profile.organization_id,
+      parent_id: parsed.data.parentId,
+      label: parsed.data.label,
+    })
+    .select("id, organization_id, parent_id, label, position")
+    .single();
+
+  if (error) {
+    console.error("[createIngredienteCategoria]", error);
+    if (error.code === "23505") {
+      return {
+        ok: false as const,
+        error: "Ya existe una categoría con ese nombre en este nivel.",
+      };
+    }
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true as const, categoria: data };
+}
+
+export async function createIngrediente(input: unknown) {
+  const parsed = CreateIngredienteSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const d = parsed.data;
+  const { data, error } = await supabase
+    .from("ingredientes")
+    .insert({
+      organization_id: profile.organization_id,
+      category_id: d.categoryId,
+      name: d.name,
+      unit: d.unit,
+      stock_current: d.stockCurrent,
+      stock_min: d.stockMin,
+      merma_pct: d.mermaPct,
+      cost_cop: d.costCop,
+    })
+    .select(
+      "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
+    )
+    .single();
+
+  if (error) {
+    console.error("[createIngrediente]", error);
+    if (error.code === "23505") {
+      return {
+        ok: false as const,
+        error: "Ya existe un ingrediente con ese nombre.",
+      };
+    }
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true as const, ingrediente: data };
+}
+
+export async function updateIngrediente(input: unknown) {
+  const parsed = UpdateIngredienteSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const d = parsed.data;
+  const { data, error } = await supabase
+    .from("ingredientes")
+    .update({
+      category_id: d.categoryId,
+      name: d.name,
+      unit: d.unit,
+      stock_min: d.stockMin,
+      merma_pct: d.mermaPct,
+      cost_cop: d.costCop,
+    })
+    .eq("id", d.id)
+    .eq("organization_id", profile.organization_id)
+    .select(
+      "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
+    )
+    .single();
+
+  if (error) {
+    console.error("[updateIngrediente]", error);
+    if (error.code === "23505") {
+      return {
+        ok: false as const,
+        error: "Ya existe un ingrediente con ese nombre.",
+      };
+    }
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true as const, ingrediente: data };
+}
+
+export async function deleteIngrediente(input: unknown) {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  // Soft-delete via archived=true so the audit log (movements + recetas
+  // referencing this ingrediente) stays intact.
+  const { error } = await supabase
+    .from("ingredientes")
+    .update({ archived: true })
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) {
+    console.error("[deleteIngrediente]", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true as const };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Stock mutations — write to ingrediente_movements; the BEFORE INSERT
+// trigger atomically updates ingredientes.stock_current and stamps
+// balance_after, so the application never writes stock_current directly.
+// ─────────────────────────────────────────────────────────────────────
+
+export async function adjustIngredienteStock(input: unknown) {
+  const parsed = AdjustStockSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { user, profile, supabase } = await requireAdmin();
+
+  // Need the current stock to compute the delta (movements are signed).
+  const { data: current, error: readErr } = await supabase
+    .from("ingredientes")
+    .select("id, stock_current")
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle();
+
+  if (readErr || !current) {
+    return { ok: false as const, error: "Ingrediente no encontrado." };
+  }
+
+  const delta = Number(parsed.data.newStock) - Number(current.stock_current);
+  if (delta === 0) {
+    return {
+      ok: true as const,
+      ingrediente: { id: current.id, stock_current: current.stock_current },
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("ingrediente_movements")
+    .insert({
+      organization_id: profile.organization_id,
+      ingrediente_id: parsed.data.id,
+      type: "ajuste",
+      delta,
+      note: parsed.data.note ?? "Ajuste manual",
+      created_by: user.id,
+    })
+    .select("balance_after")
+    .single();
+
+  if (error) {
+    console.error("[adjustIngredienteStock]", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return {
+    ok: true as const,
+    ingrediente: { id: current.id, stock_current: data!.balance_after },
+  };
+}
+
+export async function applyConteo(input: unknown) {
+  const parsed = ApplyConteoSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { user, profile, supabase } = await requireAdmin();
+
+  // Read the current stocks for every ingrediente we're counting so we
+  // can build signed deltas (only the trigger sees the final balance).
+  const ids = parsed.data.counts.map((c) => c.id);
+  const { data: rows, error: readErr } = await supabase
+    .from("ingredientes")
+    .select("id, stock_current")
+    .in("id", ids)
+    .eq("organization_id", profile.organization_id);
+  if (readErr) {
+    return { ok: false as const, error: readErr.message };
+  }
+  const stockById = new Map<string, number>(
+    (rows ?? []).map((r) => [r.id, Number(r.stock_current)]),
+  );
+
+  const movements: {
+    organization_id: string;
+    ingrediente_id: string;
+    type: "ajuste";
+    delta: number;
+    note: string;
+    created_by: string;
+  }[] = [];
+
+  for (const c of parsed.data.counts) {
+    const current = stockById.get(c.id);
+    if (current === undefined) continue; // not in our org — skip silently
+    const delta = Number(c.physicalCount) - current;
+    if (delta === 0) continue;
+    movements.push({
+      organization_id: profile.organization_id,
+      ingrediente_id: c.id,
+      type: "ajuste",
+      delta,
+      note: "Conteo físico",
+      created_by: user.id,
+    });
+  }
+
+  if (movements.length === 0) {
+    return { ok: true as const, updated: [] };
+  }
+
+  // Single INSERT is one statement and therefore atomic — if any trigger
+  // raises, the whole conteo rolls back. Returning balance_after lets the
+  // client patch its local row state without a re-fetch.
+  const { data, error } = await supabase
+    .from("ingrediente_movements")
+    .insert(movements)
+    .select("ingrediente_id, balance_after");
+
+  if (error) {
+    console.error("[applyConteo]", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return {
+    ok: true as const,
+    updated: (data ?? []).map((r) => ({
+      id: r.ingrediente_id,
+      stock_current: r.balance_after,
+    })),
+  };
+}

@@ -2,8 +2,7 @@
 
 /**
  * Right slide-in drawer used by create/edit flows in the admin app.
- * Modeled after the AdjustModal in `app/(admin)/stock/stock-client.tsx`:
- * fixed overlay, paper-lt body, 1.5px ink border, Esc + backdrop close.
+ * Fixed overlay, paper-lt body, 1.5px ink border, Esc + backdrop close.
  *
  * Pure presentation — the parent owns form state, submission, and
  * close-on-success logic.

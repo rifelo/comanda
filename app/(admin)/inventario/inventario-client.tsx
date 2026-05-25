@@ -1,20 +1,28 @@
 "use client";
 
 /**
- * 02 · Ingredientes — org-scoped catalog + 4-level tree. Receives initial
- * categorias + ingredientes from the server component; calls server actions
- * to persist new categories and ingredients.
+ * 02 · Inventario — org-scoped catálogo + stock control + conteo físico
+ * collapsed into one section. Receives initial categorías + ingredientes
+ * from the server component and routes every mutation through Supabase
+ * server actions (insert / update for the catalog, ingrediente_movements
+ * for stock-changing operations so the audit log stays the source of
+ * truth for stock_current).
  */
 import * as React from "react";
 import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
 import {
+  adjustIngredienteStock,
+  applyConteo,
   createIngrediente,
   createIngredienteCategoria,
   deleteIngrediente,
   updateIngrediente,
 } from "./actions";
 
+// ─────────────────────────────────────────────────────────────────────────
+// Tree helpers
+// ─────────────────────────────────────────────────────────────────────────
 interface TreeNode {
   id: string;
   label: string;
@@ -53,9 +61,15 @@ function flattenTree(nodes: TreeNode[]): TreeNode[] {
 }
 
 const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
+type Unit = (typeof UNITS)[number];
 
 function fmtCOP(n: number): string {
   return Number(n).toLocaleString("es-CO");
+}
+
+function fmtDelta(d: number): string {
+  const v = Number(d.toFixed(2));
+  return (v > 0 ? "+" : "") + v.toString();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -144,7 +158,6 @@ function NuevaCategoriaForm({
     inputRef.current?.focus();
   }, []);
 
-  // Cap parent depth at 2 so a new child stays within the 4-level UI tree.
   const parentCandidates = categorias.filter(
     (c) => (depthById.get(c.id) ?? 0) <= 2,
   );
@@ -275,57 +288,46 @@ function NuevaCategoriaForm({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// NuevoIngredienteDrawer
+// IngredienteDrawer — both "Nuevo" (create) and "Editar" (update) modes.
+// When `editing` is provided the form pre-fills with that row's data,
+// hides Stock actual (mutated via ± / conteo), and routes save to update.
 // ─────────────────────────────────────────────────────────────────────────
-function NuevoIngredienteDrawer({
+function IngredienteDrawer({
+  editing,
   categorias,
   depthById,
   pending,
   serverError,
-  editData,
   onClose,
   onSave,
 }: {
+  editing: Ingrediente | null;
   categorias: IngredienteCategoria[];
   depthById: Map<string, number>;
   pending: boolean;
   serverError: string | null;
-  editData?: Ingrediente | null;
   onClose: () => void;
   onSave: (input: {
+    id?: string;
     name: string;
     categoryId: string | null;
-    unit: (typeof UNITS)[number];
+    unit: Unit;
     stockCurrent: number;
     stockMin: number;
     mermaPct: number;
     costCop: number;
   }) => void;
 }) {
-  const isEdit = !!editData;
-  const [form, setForm] = React.useState(() =>
-    editData
-      ? {
-          name: editData.name,
-          categoryId: editData.category_id ?? "",
-          unit: (UNITS as readonly string[]).includes(editData.unit)
-            ? (editData.unit as (typeof UNITS)[number])
-            : ("kg" as (typeof UNITS)[number]),
-          stock: String(editData.stock_current),
-          min: String(editData.stock_min),
-          merma: String(editData.merma_pct),
-          cost: String(editData.cost_cop),
-        }
-      : {
-          name: "",
-          categoryId: "" as string,
-          unit: "kg" as (typeof UNITS)[number],
-          stock: "",
-          min: "",
-          merma: "",
-          cost: "",
-        },
-  );
+  const isEdit = editing !== null;
+  const [form, setForm] = React.useState({
+    name: editing?.name ?? "",
+    categoryId: editing?.category_id ?? "",
+    unit: ((editing?.unit as Unit) ?? "kg") as Unit,
+    stock: editing ? String(editing.stock_current) : "",
+    min: editing ? String(editing.stock_min) : "",
+    merma: editing ? String(editing.merma_pct) : "",
+    cost: editing ? String(editing.cost_cop) : "",
+  });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -334,8 +336,10 @@ function NuevoIngredienteDrawer({
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = "Requerido";
-    if (!form.stock || isNaN(Number(form.stock)) || Number(form.stock) < 0)
-      e.stock = "Inválido";
+    if (!isEdit) {
+      if (!form.stock || isNaN(Number(form.stock)) || Number(form.stock) < 0)
+        e.stock = "Inválido";
+    }
     if (!form.min || isNaN(Number(form.min)) || Number(form.min) < 0)
       e.min = "Inválido";
     if (!form.cost || isNaN(Number(form.cost)) || Number(form.cost) <= 0)
@@ -347,10 +351,11 @@ function NuevoIngredienteDrawer({
   const handleSave = () => {
     if (!validate()) return;
     onSave({
+      id: editing?.id,
       name: form.name.trim(),
       categoryId: form.categoryId || null,
       unit: form.unit,
-      stockCurrent: Number(form.stock),
+      stockCurrent: isEdit ? Number(editing!.stock_current) : Number(form.stock),
       stockMin: Number(form.min),
       mermaPct: form.merma ? Number(form.merma) : 0,
       costCop: Math.round(Number(form.cost)),
@@ -409,7 +414,7 @@ function NuevoIngredienteDrawer({
 
       <div
         role="dialog"
-        aria-label="Nuevo ingrediente"
+        aria-label={isEdit ? "Editar ingrediente" : "Nuevo ingrediente"}
         style={{
           position: "relative",
           zIndex: 1,
@@ -442,7 +447,7 @@ function NuevoIngredienteDrawer({
                 textTransform: "uppercase",
               }}
             >
-              Ingredientes · 02
+              Inventario · 02
             </div>
             <div
               className="font-slab"
@@ -510,9 +515,7 @@ function NuevoIngredienteDrawer({
               <select
                 value={form.unit}
                 disabled={pending}
-                onChange={(e) =>
-                  set("unit", e.target.value as (typeof UNITS)[number])
-                }
+                onChange={(e) => set("unit", e.target.value as Unit)}
                 style={{ ...inputSt(), appearance: "none", cursor: "pointer" }}
               >
                 {UNITS.map((u) => (
@@ -532,20 +535,39 @@ function NuevoIngredienteDrawer({
               ...rowGap,
             }}
           >
-            <div>
-              <label style={labelSt}>Stock actual *</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={form.stock}
-                disabled={pending}
-                onChange={(e) => set("stock", e.target.value)}
-                placeholder="Ej. 14.2"
-                style={inputSt(errors.stock)}
-              />
-              {errors.stock ? <div style={errSt}>{errors.stock}</div> : null}
-            </div>
+            {isEdit ? (
+              <div>
+                <label style={labelSt}>Stock actual</label>
+                <div
+                  className="cmd-num"
+                  style={{
+                    padding: "7px 9px",
+                    border: "1.5px dashed var(--rule)",
+                    background: "var(--paper)",
+                    color: "var(--muted)",
+                    fontSize: 12,
+                  }}
+                  title="Edita el stock con el botón ± de la fila o con Modo conteo."
+                >
+                  {Number(editing!.stock_current)} {editing!.unit}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label style={labelSt}>Stock actual *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.stock}
+                  disabled={pending}
+                  onChange={(e) => set("stock", e.target.value)}
+                  placeholder="Ej. 14.2"
+                  style={inputSt(errors.stock)}
+                />
+                {errors.stock ? <div style={errSt}>{errors.stock}</div> : null}
+              </div>
+            )}
             <div>
               <label style={labelSt}>Stock mínimo *</label>
               <input
@@ -600,7 +622,7 @@ function NuevoIngredienteDrawer({
             </div>
           </div>
 
-          {form.stock !== "" && form.min !== "" ? (
+          {!isEdit && form.stock !== "" && form.min !== "" ? (
             <div
               className="bg-paper"
               style={{
@@ -688,11 +710,11 @@ function NuevoIngredienteDrawer({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// IngredientesClient (root)
+// InventarioClient (root)
 // ─────────────────────────────────────────────────────────────────────────
-const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px 64px";
+const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px 70px";
 
-export function IngredientesClient({
+export function InventarioClient({
   initialCategorias,
   initialIngredientes,
 }: {
@@ -703,12 +725,18 @@ export function IngredientesClient({
   const [ingredientes, setIngredientes] = React.useState(initialIngredientes);
   const [cat, setCat] = React.useState("all");
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [editIng, setEditIng] = React.useState<Ingrediente | null>(null);
-  const [confirmDelId, setConfirmDelId] = React.useState<string | null>(null);
+  const [editing, setEditing] = React.useState<Ingrediente | null>(null);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
   const [drawerError, setDrawerError] = React.useState<string | null>(null);
-  const [rowError, setRowError] = React.useState<string | null>(null);
   const [catError, setCatError] = React.useState<string | null>(null);
+  const [rowError, setRowError] = React.useState<string | null>(null);
+  const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [ajustarId, setAjustarId] = React.useState<string | null>(null);
+  const [ajustarVal, setAjustarVal] = React.useState("");
+  const [conteoMode, setConteoMode] = React.useState(false);
+  const [conteoVals, setConteoVals] = React.useState<Record<string, string>>(
+    {},
+  );
   const [isPending, startTransition] = React.useTransition();
 
   const { tree, depthById } = React.useMemo(
@@ -716,7 +744,6 @@ export function IngredientesClient({
     [categorias],
   );
 
-  // Sort for the parent / category selects: depth-major, then label.
   const sortedCategorias = React.useMemo(
     () =>
       [...categorias].sort(
@@ -727,6 +754,17 @@ export function IngredientesClient({
     [categorias, depthById],
   );
 
+  const cancelAjustar = () => {
+    setAjustarId(null);
+    setAjustarVal("");
+  };
+
+  const exitConteo = (discard: boolean) => {
+    if (discard) setConteoVals({});
+    setConteoMode(false);
+  };
+
+  // ── handlers ──────────────────────────────────────────────────────
   const handleAddCategoria = ({
     label,
     parentId,
@@ -748,29 +786,46 @@ export function IngredientesClient({
   };
 
   const handleSaveIngrediente = (input: {
+    id?: string;
     name: string;
     categoryId: string | null;
-    unit: (typeof UNITS)[number];
+    unit: Unit;
     stockCurrent: number;
     stockMin: number;
     mermaPct: number;
     costCop: number;
   }) => {
     setDrawerError(null);
-    const editingId = editIng?.id;
     startTransition(async () => {
-      if (editingId) {
-        const res = await updateIngrediente({ id: editingId, ...input });
+      if (input.id) {
+        const res = await updateIngrediente({
+          id: input.id,
+          name: input.name,
+          categoryId: input.categoryId,
+          unit: input.unit,
+          stockMin: input.stockMin,
+          mermaPct: input.mermaPct,
+          costCop: input.costCop,
+        });
         if (!res.ok) {
           setDrawerError(res.error);
           return;
         }
-        const updated = res.ingrediente as Ingrediente;
         setIngredientes((prev) =>
-          prev.map((i) => (i.id === updated.id ? updated : i)),
+          prev.map((i) =>
+            i.id === input.id ? (res.ingrediente as Ingrediente) : i,
+          ),
         );
       } else {
-        const res = await createIngrediente(input);
+        const res = await createIngrediente({
+          name: input.name,
+          categoryId: input.categoryId,
+          unit: input.unit,
+          stockCurrent: input.stockCurrent,
+          stockMin: input.stockMin,
+          mermaPct: input.mermaPct,
+          costCop: input.costCop,
+        });
         if (!res.ok) {
           setDrawerError(res.error);
           return;
@@ -778,11 +833,11 @@ export function IngredientesClient({
         setIngredientes((prev) => [res.ingrediente as Ingrediente, ...prev]);
       }
       setDrawerOpen(false);
-      setEditIng(null);
+      setEditing(null);
     });
   };
 
-  const handleDeleteIngrediente = (id: string) => {
+  const handleDelete = (id: string) => {
     setRowError(null);
     startTransition(async () => {
       const res = await deleteIngrediente({ id });
@@ -791,10 +846,66 @@ export function IngredientesClient({
         return;
       }
       setIngredientes((prev) => prev.filter((i) => i.id !== id));
-      setConfirmDelId(null);
+      setDeleteId(null);
     });
   };
 
+  const handleConfirmAjustar = (ing: Ingrediente) => {
+    if (ajustarVal === "" || isNaN(Number(ajustarVal))) {
+      cancelAjustar();
+      return;
+    }
+    const newStock = Number(ajustarVal);
+    setRowError(null);
+    startTransition(async () => {
+      const res = await adjustIngredienteStock({ id: ing.id, newStock });
+      if (!res.ok) {
+        setRowError(res.error);
+        return;
+      }
+      setIngredientes((prev) =>
+        prev.map((i) =>
+          i.id === ing.id
+            ? { ...i, stock_current: Number(res.ingrediente.stock_current) }
+            : i,
+        ),
+      );
+      cancelAjustar();
+    });
+  };
+
+  const handleApplyConteo = () => {
+    const counts = Object.entries(conteoVals)
+      .filter(([, v]) => v !== "" && !isNaN(Number(v)))
+      .map(([id, v]) => ({ id, physicalCount: Number(v) }));
+    if (counts.length === 0) {
+      exitConteo(true);
+      return;
+    }
+    setRowError(null);
+    startTransition(async () => {
+      const res = await applyConteo({ counts });
+      if (!res.ok) {
+        setRowError(res.error);
+        return;
+      }
+      const byId = new Map<string, number>(
+        res.updated.map((u: { id: string; stock_current: number }) => [
+          u.id,
+          Number(u.stock_current),
+        ]),
+      );
+      setIngredientes((prev) =>
+        prev.map((i) =>
+          byId.has(i.id) ? { ...i, stock_current: byId.get(i.id)! } : i,
+        ),
+      );
+      setConteoVals({});
+      setConteoMode(false);
+    });
+  };
+
+  // ── derived ───────────────────────────────────────────────────────
   const lowStockCount = ingredientes.filter(
     (i) => Number(i.stock_current) < Number(i.stock_min),
   ).length;
@@ -816,15 +927,15 @@ export function IngredientesClient({
   return (
     <div style={{ position: "relative" }}>
       {drawerOpen ? (
-        <NuevoIngredienteDrawer
+        <IngredienteDrawer
+          editing={editing}
           categorias={sortedCategorias}
           depthById={depthById}
           pending={isPending}
           serverError={drawerError}
-          editData={editIng}
           onClose={() => {
             setDrawerOpen(false);
-            setEditIng(null);
+            setEditing(null);
             setDrawerError(null);
           }}
           onSave={handleSaveIngrediente}
@@ -832,16 +943,45 @@ export function IngredientesClient({
       ) : null}
 
       <SectionCrumb
-        section="ingredientes"
+        section="inventario"
         right={
           <>
-            <button type="button" className="cmd-btn ghost sm">
-              Importar
+            <button
+              type="button"
+              className={`cmd-btn ${conteoMode ? "" : "ghost"} sm`}
+              disabled={isPending}
+              onClick={() => {
+                if (conteoMode) {
+                  handleApplyConteo();
+                } else {
+                  cancelAjustar();
+                  setConteoVals({});
+                  setConteoMode(true);
+                }
+              }}
+            >
+              {conteoMode ? "✓ Aplicar conteo" : "Modo conteo"}
             </button>
+            {conteoMode ? (
+              <button
+                type="button"
+                className="cmd-btn ghost sm"
+                disabled={isPending}
+                onClick={() => exitConteo(true)}
+              >
+                Cancelar conteo
+              </button>
+            ) : (
+              <button type="button" className="cmd-btn ghost sm">
+                Importar
+              </button>
+            )}
             <button
               type="button"
               className="cmd-btn sm"
+              disabled={conteoMode}
               onClick={() => {
+                setEditing(null);
                 setDrawerError(null);
                 setDrawerOpen(true);
               }}
@@ -969,6 +1109,21 @@ export function IngredientesClient({
             ))}
           </div>
 
+          {rowError ? (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: "8px 10px",
+                border: "1px solid var(--red)",
+                color: "var(--red)",
+                fontSize: 11,
+                background: "var(--paper)",
+              }}
+            >
+              {rowError}
+            </div>
+          ) : null}
+
           <div
             className="cmd-paper-lt"
             style={{ border: "1.5px solid var(--ink)" }}
@@ -992,9 +1147,13 @@ export function IngredientesClient({
               <span>Ingrediente</span>
               <span>Categoría</span>
               <span style={{ textAlign: "center" }}>Unidad</span>
-              <span style={{ textAlign: "right" }}>Stock</span>
-              <span>Stock vs mínimo</span>
-              <span style={{ textAlign: "right" }}>Merma</span>
+              <span style={{ textAlign: "right" }}>
+                {conteoMode ? "Sistema" : "Stock"}
+              </span>
+              <span>{conteoMode ? "Conteo físico" : "Stock vs mínimo"}</span>
+              <span style={{ textAlign: "right" }}>
+                {conteoMode ? "Diferencia" : "Merma"}
+              </span>
               <span style={{ textAlign: "right" }}>Costo / U</span>
               <span />
             </div>
@@ -1015,6 +1174,14 @@ export function IngredientesClient({
             {ingredientes.map((ing, i) => {
               const categoryName =
                 categorias.find((c) => c.id === ing.category_id)?.label ?? "—";
+              const fisicoRaw = conteoVals[ing.id];
+              const fisico =
+                conteoMode && fisicoRaw !== undefined && fisicoRaw !== ""
+                  ? Number(fisicoRaw)
+                  : null;
+              const diff = fisico !== null ? fisico - Number(ing.stock_current) : null;
+              const isDeleting = deleteId === ing.id;
+              const isAdjusting = ajustarId === ing.id;
               return (
                 <div
                   key={ing.id}
@@ -1053,37 +1220,146 @@ export function IngredientesClient({
                   >
                     {Number(ing.stock_current)}
                   </div>
-                  <StockBar
-                    value={Number(ing.stock_current)}
-                    min={Number(ing.stock_min)}
-                    max={Math.max(
-                      Number(ing.stock_min) * 2.5,
-                      Number(ing.stock_current) * 1.1,
-                      1,
-                    )}
-                    unit={ing.unit}
-                  />
-                  <div
-                    className="cmd-num"
-                    style={{
-                      textAlign: "right",
-                      fontSize: 12,
-                      color:
-                        Number(ing.merma_pct) >= 5
-                          ? "var(--red)"
-                          : Number(ing.merma_pct) >= 2
-                            ? "var(--amber)"
-                            : "var(--muted)",
-                    }}
-                  >
-                    {Number(ing.merma_pct)}%
-                  </div>
+
+                  {/* col 6: StockBar | ajustar input | conteo input */}
+                  {conteoMode ? (
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={fisicoRaw ?? ""}
+                      onChange={(e) =>
+                        setConteoVals((v) => ({ ...v, [ing.id]: e.target.value }))
+                      }
+                      placeholder="Contar…"
+                      style={{
+                        border: "1.5px solid var(--ink)",
+                        padding: "4px 8px",
+                        fontSize: 12,
+                        width: "100%",
+                        background: "var(--paper-lt)",
+                        color: "var(--ink)",
+                        outline: "none",
+                        textAlign: "right",
+                      }}
+                    />
+                  ) : isAdjusting ? (
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        autoFocus
+                        value={ajustarVal}
+                        disabled={isPending}
+                        onChange={(e) => setAjustarVal(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleConfirmAjustar(ing);
+                          if (e.key === "Escape") cancelAjustar();
+                        }}
+                        style={{
+                          flex: 1,
+                          border: "1.5px solid var(--ink)",
+                          padding: "4px 6px",
+                          fontSize: 11,
+                          background: "var(--paper-lt)",
+                          color: "var(--ink)",
+                          outline: "none",
+                          textAlign: "right",
+                          minWidth: 0,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        title="Confirmar"
+                        disabled={isPending}
+                        onClick={() => handleConfirmAjustar(ing)}
+                        style={{
+                          background: "var(--ink)",
+                          color: "var(--paper-lt)",
+                          border: "none",
+                          fontSize: 10,
+                          padding: "4px 7px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        title="Cancelar"
+                        onClick={cancelAjustar}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid var(--rule)",
+                          fontSize: 10,
+                          padding: "4px 7px",
+                          cursor: "pointer",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <StockBar
+                      value={Number(ing.stock_current)}
+                      min={Number(ing.stock_min)}
+                      max={Math.max(
+                        Number(ing.stock_min) * 2.5,
+                        Number(ing.stock_current) * 1.1,
+                        1,
+                      )}
+                      unit={ing.unit}
+                    />
+                  )}
+
+                  {/* col 7: Merma | Diferencia */}
+                  {conteoMode ? (
+                    <div
+                      className="cmd-num"
+                      style={{
+                        textAlign: "right",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color:
+                          diff === null
+                            ? "var(--muted)"
+                            : diff < 0
+                              ? "var(--red)"
+                              : diff > 0
+                                ? "var(--amber)"
+                                : "var(--green)",
+                      }}
+                    >
+                      {diff === null ? "—" : fmtDelta(diff)}
+                    </div>
+                  ) : (
+                    <div
+                      className="cmd-num"
+                      style={{
+                        textAlign: "right",
+                        fontSize: 12,
+                        color:
+                          Number(ing.merma_pct) >= 5
+                            ? "var(--red)"
+                            : Number(ing.merma_pct) >= 2
+                              ? "var(--amber)"
+                              : "var(--muted)",
+                      }}
+                    >
+                      {Number(ing.merma_pct)}%
+                    </div>
+                  )}
+
                   <div
                     className="cmd-num"
                     style={{ textAlign: "right", fontSize: 12 }}
                   >
                     ${fmtCOP(ing.cost_cop)}
                   </div>
+
+                  {/* col 9: row actions */}
                   <div
                     style={{
                       display: "flex",
@@ -1092,39 +1368,33 @@ export function IngredientesClient({
                       alignItems: "center",
                     }}
                   >
-                    {confirmDelId === ing.id ? (
+                    {isDeleting ? (
                       <>
                         <button
                           type="button"
-                          onClick={() => handleDeleteIngrediente(ing.id)}
                           disabled={isPending}
+                          onClick={() => handleDelete(ing.id)}
                           style={{
                             background: "var(--red)",
                             color: "var(--paper-lt)",
                             border: "none",
-                            fontSize: 9,
+                            fontSize: 10,
                             padding: "3px 6px",
                             cursor: "pointer",
-                            minHeight: 0,
                           }}
                         >
                           Sí
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setConfirmDelId(null);
-                            setRowError(null);
-                          }}
-                          disabled={isPending}
+                          onClick={() => setDeleteId(null)}
                           style={{
                             background: "transparent",
                             border: "1px solid var(--rule)",
-                            fontSize: 9,
+                            fontSize: 10,
                             padding: "3px 6px",
                             cursor: "pointer",
                             color: "var(--ink)",
-                            minHeight: 0,
                           }}
                         >
                           No
@@ -1132,23 +1402,45 @@ export function IngredientesClient({
                       </>
                     ) : (
                       <>
+                        {!conteoMode && !isAdjusting ? (
+                          <button
+                            type="button"
+                            title="Ajustar stock"
+                            disabled={isPending}
+                            onClick={() => {
+                              setRowError(null);
+                              setAjustarId(ing.id);
+                              setAjustarVal(String(ing.stock_current));
+                            }}
+                            style={{
+                              background: "none",
+                              border: "1px solid var(--rule)",
+                              color: "var(--muted)",
+                              fontSize: 10,
+                              cursor: "pointer",
+                              padding: "2px 5px",
+                              letterSpacing: "0.1em",
+                            }}
+                          >
+                            ±
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           title="Editar"
-                          aria-label={`Editar ${ing.name}`}
+                          disabled={conteoMode || isAdjusting}
                           onClick={() => {
+                            setEditing(ing);
                             setDrawerError(null);
-                            setEditIng(ing);
                             setDrawerOpen(true);
                           }}
                           style={{
                             background: "none",
                             border: "none",
                             color: "var(--muted)",
-                            fontSize: 12,
+                            fontSize: 13,
                             cursor: "pointer",
                             padding: "2px 4px",
-                            minHeight: 0,
                           }}
                         >
                           ✏
@@ -1156,19 +1448,18 @@ export function IngredientesClient({
                         <button
                           type="button"
                           title="Eliminar"
-                          aria-label={`Eliminar ${ing.name}`}
+                          disabled={conteoMode || isAdjusting}
                           onClick={() => {
                             setRowError(null);
-                            setConfirmDelId(ing.id);
+                            setDeleteId(ing.id);
                           }}
                           style={{
                             background: "none",
                             border: "none",
                             color: "var(--red)",
-                            fontSize: 11,
+                            fontSize: 12,
                             cursor: "pointer",
                             padding: "2px 4px",
-                            minHeight: 0,
                           }}
                         >
                           ✕
@@ -1179,19 +1470,6 @@ export function IngredientesClient({
                 </div>
               );
             })}
-            {rowError ? (
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderTop: "1px dashed var(--rule)",
-                  color: "var(--red)",
-                  fontSize: 11,
-                  background: "var(--paper)",
-                }}
-              >
-                {rowError}
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
