@@ -100,7 +100,21 @@ function computeCategoryCounts(
   return counts;
 }
 
-const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
+// Keep in sync with the Zod `UNITS` in ./actions.ts — `caja` and `bulto`
+// are pack-level primaries that pair with a secondary unit + conversion
+// factor (e.g. 1 caja = 12 und) via the dual-unit fields on Ingrediente.
+const UNITS = [
+  "kg",
+  "g",
+  "L",
+  "ml",
+  "und",
+  "porción",
+  "loncha",
+  "bola",
+  "caja",
+  "bulto",
+] as const;
 type Unit = (typeof UNITS)[number];
 
 function fmtCOP(n: number): string {
@@ -765,6 +779,8 @@ function IngredienteDrawer({
     name: string;
     categoryId: string | null;
     unit: Unit;
+    unit2: Unit | null;
+    conversionFactor: number | null;
     stockCurrent: number;
     stockMin: number;
     mermaPct: number;
@@ -780,6 +796,15 @@ function IngredienteDrawer({
     min: editing ? String(editing.stock_min) : "",
     merma: editing ? String(editing.merma_pct) : "",
     cost: editing ? String(editing.cost_cop) : "",
+    // Dual-unit fields. `hasUnit2` is the toggle; `unit2` is "" until the
+    // user picks one (avoids forcing a default that disagrees with `unit`).
+    // `convFactor` is a string for input binding — coerced on save.
+    hasUnit2: !!editing?.unit2,
+    unit2: (editing?.unit2 ?? "") as Unit | "",
+    convFactor:
+      editing?.conversion_factor != null
+        ? String(editing.conversion_factor)
+        : "",
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [costFocused, setCostFocused] = React.useState(false);
@@ -803,17 +828,32 @@ function IngredienteDrawer({
       e.min = "Inválido";
     if (!form.cost || isNaN(Number(form.cost)) || Number(form.cost) <= 0)
       e.cost = "Inválido";
+    if (form.hasUnit2) {
+      if (!form.unit2.trim()) e.unit2 = "Selecciona la segunda unidad";
+      // Factor stays optional even with the toggle on — but if provided it
+      // must be a positive number (matches the DB check constraint).
+      if (form.convFactor !== "") {
+        const n = Number(form.convFactor);
+        if (isNaN(n) || n <= 0) e.convFactor = "Inválido";
+      }
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleSave = () => {
     if (!validate()) return;
+    const unit2Send: Unit | null =
+      form.hasUnit2 && form.unit2 ? (form.unit2 as Unit) : null;
+    const factorSend: number | null =
+      form.hasUnit2 && form.convFactor ? Number(form.convFactor) : null;
     onSave({
       id: editing?.id,
       name: form.name.trim(),
       categoryId: form.categoryId || null,
       unit: form.unit,
+      unit2: unit2Send,
+      conversionFactor: factorSend,
       stockCurrent: isEdit ? Number(editing!.stock_current) : Number(form.stock),
       stockMin: Number(form.min),
       mermaPct: form.merma ? Number(form.merma) : 0,
@@ -1082,6 +1122,142 @@ function IngredienteDrawer({
               />
               {errors.cost ? <div style={errSt}>{errors.cost}</div> : null}
             </div>
+          </div>
+
+          {/* Dual-unit toggle. When on, the dashed inner box reveals the
+              secondary-unit dropdown + optional conversion factor. We filter
+              out `form.unit` so the two units can never be the same. */}
+          <div style={rowGap}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "var(--ink)",
+                cursor: pending ? "default" : "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.hasUnit2}
+                disabled={pending}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  // Turning the toggle off clears the inner fields so a
+                  // stale unit2 doesn't sneak through on save.
+                  setForm((f) => ({
+                    ...f,
+                    hasUnit2: next,
+                    unit2: next ? f.unit2 : "",
+                    convFactor: next ? f.convFactor : "",
+                  }));
+                }}
+                style={{ accentColor: "var(--ink)" }}
+              />
+              Activar segunda unidad de medida
+            </label>
+
+            {form.hasUnit2 ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "12px 12px 10px",
+                  border: "1px dashed var(--ink)",
+                  background: "var(--paper)",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <label style={labelSt}>Segunda unidad</label>
+                  <select
+                    value={form.unit2}
+                    disabled={pending}
+                    onChange={(e) =>
+                      set("unit2", e.target.value as Unit | "")
+                    }
+                    style={{
+                      ...inputSt(errors.unit2),
+                      appearance: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="">— Seleccionar —</option>
+                    {UNITS.filter((u) => u !== form.unit).map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.unit2 ? (
+                    <div style={errSt}>{errors.unit2}</div>
+                  ) : null}
+                </div>
+                <div>
+                  <label style={labelSt}>
+                    Factor de conversión (opcional)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={form.convFactor}
+                    disabled={pending}
+                    onChange={(e) => set("convFactor", e.target.value)}
+                    placeholder={`1 ${form.unit} = ? ${form.unit2 || "…"}`}
+                    style={inputSt(errors.convFactor)}
+                  />
+                  {errors.convFactor ? (
+                    <div style={errSt}>{errors.convFactor}</div>
+                  ) : null}
+                </div>
+                {/* Preview row spans both columns. Shows the live conversion
+                    when we have stock + unit2 + factor; otherwise nudges the
+                    user that the factor is missing. */}
+                <div style={{ gridColumn: "1 / -1" }}>
+                  {form.stock !== "" &&
+                  form.unit2 &&
+                  form.convFactor !== "" &&
+                  !isNaN(Number(form.stock)) &&
+                  !isNaN(Number(form.convFactor)) &&
+                  Number(form.convFactor) > 0 ? (
+                    <div
+                      className="cmd-num"
+                      style={{
+                        fontSize: 11,
+                        color: "var(--muted)",
+                      }}
+                    >
+                      Vista previa:{" "}
+                      <span style={{ color: "var(--ink)" }}>
+                        {Number(form.stock)} {form.unit}
+                      </span>{" "}
+                      →{" "}
+                      <span style={{ color: "var(--ink)" }}>
+                        {fmtCOP(
+                          Number(form.stock) * Number(form.convFactor),
+                        )}{" "}
+                        {form.unit2}
+                      </span>
+                    </div>
+                  ) : form.unit2 && form.convFactor === "" ? (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontStyle: "italic",
+                        color: "var(--muted)",
+                      }}
+                    >
+                      Sin factor: se mostrará la unidad secundaria sin
+                      conversión automática
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {!isEdit && form.stock !== "" && form.min !== "" ? (
@@ -1382,6 +1558,8 @@ export function InventarioClient({
     name: string;
     categoryId: string | null;
     unit: Unit;
+    unit2: Unit | null;
+    conversionFactor: number | null;
     stockCurrent: number;
     stockMin: number;
     mermaPct: number;
@@ -1395,6 +1573,8 @@ export function InventarioClient({
           name: input.name,
           categoryId: input.categoryId,
           unit: input.unit,
+          unit2: input.unit2,
+          conversionFactor: input.conversionFactor,
           stockMin: input.stockMin,
           mermaPct: input.mermaPct,
           costCop: input.costCop,
@@ -1413,6 +1593,8 @@ export function InventarioClient({
           name: input.name,
           categoryId: input.categoryId,
           unit: input.unit,
+          unit2: input.unit2,
+          conversionFactor: input.conversionFactor,
           stockCurrent: input.stockCurrent,
           stockMin: input.stockMin,
           mermaPct: input.mermaPct,
@@ -1861,7 +2043,21 @@ export function InventarioClient({
                     className="text-muted cmd-num"
                     style={{ textAlign: "center", fontSize: 11 }}
                   >
-                    {ing.unit}
+                    <div style={{ fontWeight: 600 }}>{ing.unit}</div>
+                    {/* Only show the "+ unit2" hint here when there's NO
+                        conversion factor — otherwise the secondary surfaces
+                        in the stock cell as the converted value. */}
+                    {ing.unit2 && !ing.conversion_factor ? (
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: "var(--muted)",
+                          marginTop: 1,
+                        }}
+                      >
+                        + {ing.unit2}
+                      </div>
+                    ) : null}
                   </div>
                   <div
                     className="cmd-num"
@@ -1871,7 +2067,24 @@ export function InventarioClient({
                       fontWeight: 500,
                     }}
                   >
-                    {Number(ing.stock_current)}
+                    <div>{Number(ing.stock_current)}</div>
+                    {ing.unit2 && ing.conversion_factor ? (
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: "var(--muted)",
+                          fontWeight: 400,
+                          marginTop: 1,
+                        }}
+                      >
+                        →{" "}
+                        {fmtCOP(
+                          Number(ing.stock_current) *
+                            Number(ing.conversion_factor),
+                        )}{" "}
+                        {ing.unit2}
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* col 6: StockBar | ajustar input | conteo input */}

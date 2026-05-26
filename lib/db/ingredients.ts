@@ -20,7 +20,7 @@ export async function getIngredientesView(
     supabase
       .from("ingredientes")
       .select(
-        "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
+        "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, archived",
       )
       .eq("organization_id", organizationId)
       .eq("archived", false)

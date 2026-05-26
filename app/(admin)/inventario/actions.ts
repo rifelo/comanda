@@ -5,33 +5,63 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 
 // Units the UI exposes; DB column is plain text so adding a new unit is
-// just a Zod change here + the option list in the drawer.
-const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
+// just a Zod change here + the option list in the drawer. `caja` and
+// `bulto` are large-pack primaries that pair with a secondary unit
+// (and a conversion_factor) to surface stock in the unit the kitchen
+// actually consumes.
+const UNITS = [
+  "kg",
+  "g",
+  "L",
+  "ml",
+  "und",
+  "porción",
+  "loncha",
+  "bola",
+  "caja",
+  "bulto",
+] as const;
 
 const CreateCategoriaSchema = z.object({
   label: z.string().trim().min(1).max(120),
   parentId: z.string().uuid().nullable(),
 });
 
-const CreateIngredienteSchema = z.object({
-  name: z.string().trim().min(1).max(160),
-  categoryId: z.string().uuid().nullable(),
-  unit: z.enum(UNITS),
-  stockCurrent: z.coerce.number().min(0),
-  stockMin: z.coerce.number().min(0),
-  mermaPct: z.coerce.number().min(0).max(100).default(0),
-  costCop: z.coerce.number().int().min(0),
-});
+const CreateIngredienteSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    categoryId: z.string().uuid().nullable(),
+    unit: z.enum(UNITS),
+    // `null` clears the field; absent is also fine (falls back to null on
+    // insert). Same shape on the update schema below.
+    unit2: z.enum(UNITS).nullable().optional(),
+    conversionFactor: z.coerce.number().positive().nullable().optional(),
+    stockCurrent: z.coerce.number().min(0),
+    stockMin: z.coerce.number().min(0),
+    mermaPct: z.coerce.number().min(0).max(100).default(0),
+    costCop: z.coerce.number().int().min(0),
+  })
+  .refine((d) => !d.unit2 || d.unit2 !== d.unit, {
+    message: "La unidad secundaria debe ser distinta de la primaria.",
+    path: ["unit2"],
+  });
 
-const UpdateIngredienteSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().trim().min(1).max(160),
-  categoryId: z.string().uuid().nullable(),
-  unit: z.enum(UNITS),
-  stockMin: z.coerce.number().min(0),
-  mermaPct: z.coerce.number().min(0).max(100).default(0),
-  costCop: z.coerce.number().int().min(0),
-});
+const UpdateIngredienteSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string().trim().min(1).max(160),
+    categoryId: z.string().uuid().nullable(),
+    unit: z.enum(UNITS),
+    unit2: z.enum(UNITS).nullable().optional(),
+    conversionFactor: z.coerce.number().positive().nullable().optional(),
+    stockMin: z.coerce.number().min(0),
+    mermaPct: z.coerce.number().min(0).max(100).default(0),
+    costCop: z.coerce.number().int().min(0),
+  })
+  .refine((d) => !d.unit2 || d.unit2 !== d.unit, {
+    message: "La unidad secundaria debe ser distinta de la primaria.",
+    path: ["unit2"],
+  });
 
 const AdjustStockSchema = z.object({
   id: z.string().uuid(),
@@ -182,13 +212,15 @@ export async function createIngrediente(input: unknown) {
       category_id: d.categoryId,
       name: d.name,
       unit: d.unit,
+      unit2: d.unit2 ?? null,
+      conversion_factor: d.conversionFactor ?? null,
       stock_current: d.stockCurrent,
       stock_min: d.stockMin,
       merma_pct: d.mermaPct,
       cost_cop: d.costCop,
     })
     .select(
-      "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
+      "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, archived",
     )
     .single();
 
@@ -221,6 +253,8 @@ export async function updateIngrediente(input: unknown) {
       category_id: d.categoryId,
       name: d.name,
       unit: d.unit,
+      unit2: d.unit2 ?? null,
+      conversion_factor: d.conversionFactor ?? null,
       stock_min: d.stockMin,
       merma_pct: d.mermaPct,
       cost_cop: d.costCop,
@@ -228,7 +262,7 @@ export async function updateIngrediente(input: unknown) {
     .eq("id", d.id)
     .eq("organization_id", profile.organization_id)
     .select(
-      "id, organization_id, category_id, name, unit, stock_current, stock_min, merma_pct, cost_cop, archived",
+      "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, archived",
     )
     .single();
 
