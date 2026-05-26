@@ -17,6 +17,7 @@ import {
   createIngrediente,
   createIngredienteCategoria,
   deleteIngrediente,
+  deleteIngredienteCategoria,
   updateIngrediente,
 } from "./actions";
 
@@ -119,18 +120,24 @@ function IngTree({
   active,
   expanded,
   counts,
+  pending,
   onPick,
   onToggle,
+  onRemove,
 }: {
   total: number;
   tree: TreeNode[];
   active: string;
   expanded: Set<string>;
   counts: Map<string, number>;
+  pending: boolean;
   onPick: (id: string) => void;
   onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
   const rows = visibleRows(tree, expanded);
+  const [hoverId, setHoverId] = React.useState<string | null>(null);
+  const [confirmId, setConfirmId] = React.useState<string | null>(null);
   return (
     <div className="flex flex-col" style={{ gap: 1 }}>
       {/* root virtual row */}
@@ -164,80 +171,202 @@ function IngTree({
       </div>
       {rows.map((row) => {
         const isActive = active === row.id;
+        const isHov = hoverId === row.id;
+        const isConfirm = confirmId === row.id;
         const count = counts.get(row.id) ?? 0;
+
+        if (isConfirm) {
+          return (
+            <div
+              key={row.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 8px",
+                paddingLeft: 8 + row.depth * 14,
+                background: "var(--paper)",
+                border: "1px solid var(--red)",
+                fontSize: 10,
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  color: "var(--red)",
+                  letterSpacing: "0.08em",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ¿Eliminar «{row.label}»?
+              </span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(row.id);
+                  setConfirmId(null);
+                }}
+                style={{
+                  background: "var(--red)",
+                  color: "var(--paper-lt)",
+                  border: "none",
+                  fontSize: 9,
+                  padding: "3px 8px",
+                  cursor: "pointer",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Sí
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmId(null);
+                }}
+                style={{
+                  background: "transparent",
+                  color: "var(--ink)",
+                  border: "1px solid var(--rule)",
+                  fontSize: 9,
+                  padding: "3px 8px",
+                  cursor: "pointer",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                }}
+              >
+                No
+              </button>
+            </div>
+          );
+        }
+
         return (
           <div
             key={row.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => onPick(row.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onPick(row.id);
-              }
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "5px 8px",
-              paddingLeft: 8 + row.depth * 14,
-              background: isActive ? "var(--ink)" : "transparent",
-              color: isActive ? "var(--paper-lt)" : "var(--ink)",
-              fontSize: 11,
-              borderRadius: 2,
-              cursor: "pointer",
-            }}
+            onMouseEnter={() => setHoverId(row.id)}
+            onMouseLeave={() =>
+              setHoverId((prev) => (prev === row.id ? null : prev))
+            }
+            style={{ position: "relative", display: "flex" }}
           >
-            {row.hasChildren ? (
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label={
-                  row.expanded ? "Colapsar categoría" : "Expandir categoría"
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => onPick(row.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onPick(row.id);
                 }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle(row.id);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
+              }}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 8px",
+                paddingLeft: 8 + row.depth * 14,
+                background: isActive ? "var(--ink)" : "transparent",
+                color: isActive ? "var(--paper-lt)" : "var(--ink)",
+                fontSize: 11,
+                borderRadius: 2,
+                cursor: "pointer",
+              }}
+            >
+              {row.hasChildren ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={
+                    row.expanded ? "Colapsar categoría" : "Expandir categoría"
+                  }
+                  onClick={(e) => {
                     e.stopPropagation();
                     onToggle(row.id);
-                  }
-                }}
-                style={{
-                  width: 12,
-                  display: "inline-flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  fontSize: 9,
-                  opacity: 0.6,
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-              >
-                {row.expanded ? "▾" : "▸"}
-              </span>
-            ) : (
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onToggle(row.id);
+                    }
+                  }}
+                  style={{
+                    width: 12,
+                    display: "inline-flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    fontSize: 9,
+                    opacity: 0.6,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  {row.expanded ? "▾" : "▸"}
+                </span>
+              ) : (
+                <span
+                  style={{
+                    width: 12,
+                    display: "inline-flex",
+                    justifyContent: "center",
+                    color: isActive ? "var(--paper-lt)" : "var(--muted)",
+                    opacity: 0.7,
+                  }}
+                >
+                  ·
+                </span>
+              )}
+              <span style={{ flex: 1, fontWeight: 400 }}>{row.label}</span>
               <span
+                className="cmd-num"
                 style={{
-                  width: 12,
-                  display: "inline-flex",
-                  justifyContent: "center",
-                  color: isActive ? "var(--paper-lt)" : "var(--muted)",
+                  fontSize: 10,
                   opacity: 0.7,
+                  // leave room for the absolutely-positioned ✕ when it's visible
+                  paddingRight: isHov || isActive ? 22 : 0,
                 }}
               >
-                ·
+                {count}
               </span>
-            )}
-            <span style={{ flex: 1, fontWeight: 400 }}>{row.label}</span>
-            <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
-              {count}
-            </span>
+            </div>
+            {isHov || isActive ? (
+              <button
+                type="button"
+                title="Eliminar categoría"
+                aria-label={`Eliminar categoría ${row.label}`}
+                disabled={pending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmId(row.id);
+                }}
+                style={{
+                  position: "absolute",
+                  right: 4,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "var(--paper)",
+                  color: "var(--red)",
+                  border: "1px solid var(--red)",
+                  borderRadius: 2,
+                  width: 16,
+                  height: 16,
+                  fontSize: 8,
+                  lineHeight: "14px",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                ✕
+              </button>
+            ) : null}
           </div>
         );
       })}
@@ -844,7 +973,14 @@ export function InventarioClient({
 }) {
   const [categorias, setCategorias] = React.useState(initialCategorias);
   const [ingredientes, setIngredientes] = React.useState(initialIngredientes);
-  const [cat, setCat] = React.useState("all");
+  const [cat, setCatRaw] = React.useState("all");
+  const [search, setSearch] = React.useState("");
+  // Clicking a tree node always clears the search so the user can see the
+  // results of the chosen category. Use setCat everywhere instead of setCatRaw.
+  const setCat = React.useCallback((id: string) => {
+    setCatRaw(id);
+    setSearch("");
+  }, []);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Ingrediente | null>(null);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
@@ -887,6 +1023,50 @@ export function InventarioClient({
     [tree, ingredientes],
   );
 
+  // Map each category id → the set of all ids in its subtree (incl. itself),
+  // so the table filter can match descendants of the selected node.
+  const subtreeIds = React.useMemo(() => {
+    const out = new Map<string, Set<string>>();
+    const walk = (n: TreeNode): Set<string> => {
+      const acc = new Set<string>([n.id]);
+      for (const c of n.children) for (const id of walk(c)) acc.add(id);
+      out.set(n.id, acc);
+      return acc;
+    };
+    for (const r of tree) walk(r);
+    return out;
+  }, [tree]);
+
+  const labelByCatId = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of categorias) m.set(c.id, c.label);
+    return m;
+  }, [categorias]);
+
+  // Filter ingredientes for the table. Search wins over the tree selection
+  // (spec: "ignoring the tree selection while typing"); clearing search
+  // falls back to the cat filter (matching the chosen node + its subtree).
+  const filteredIngredientes = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q) {
+      return ingredientes.filter((i) => {
+        const catName = i.category_id
+          ? (labelByCatId.get(i.category_id) ?? "")
+          : "";
+        return (
+          i.name.toLowerCase().includes(q) ||
+          catName.toLowerCase().includes(q)
+        );
+      });
+    }
+    if (cat === "all") return ingredientes;
+    const allowed = subtreeIds.get(cat);
+    if (!allowed) return ingredientes;
+    return ingredientes.filter(
+      (i) => i.category_id !== null && allowed.has(i.category_id),
+    );
+  }, [ingredientes, search, cat, subtreeIds, labelByCatId]);
+
   const sortedCategorias = React.useMemo(
     () =>
       [...categorias].sort(
@@ -923,6 +1103,7 @@ export function InventarioClient({
         return;
       }
       setCategorias((prev) => [...prev, res.categoria as IngredienteCategoria]);
+      setSearch("");
       setExpanded((prev) => {
         const next = new Set(prev);
         next.add(res.categoria.id);
@@ -931,6 +1112,38 @@ export function InventarioClient({
       });
       setCat(res.categoria.id);
       setCatFormOpen(false);
+    });
+  };
+
+  const handleDeleteCategoria = (id: string) => {
+    setCatError(null);
+    // Snapshot the descendants now — once the row is gone from `tree` we
+    // can't recompute the set.
+    const doomed = subtreeIds.get(id) ?? new Set<string>([id]);
+    startTransition(async () => {
+      const res = await deleteIngredienteCategoria({ id });
+      if (!res.ok) {
+        setCatError(res.error ?? "No se pudo eliminar la categoría.");
+        return;
+      }
+      setCategorias((prev) => prev.filter((c) => !doomed.has(c.id)));
+      // DB ON DELETE SET NULL nulls category_id on ingredientes that pointed
+      // at any of the deleted categories — mirror that in local state so the
+      // table doesn't keep showing stale category labels.
+      setIngredientes((prev) =>
+        prev.map((i) =>
+          i.category_id && doomed.has(i.category_id)
+            ? { ...i, category_id: null }
+            : i,
+        ),
+      );
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        for (const d of doomed) next.delete(d);
+        return next;
+      });
+      // Spec: deleting a category resets the filter to "Todos".
+      setCat("all");
     });
   };
 
@@ -1173,8 +1386,10 @@ export function InventarioClient({
             active={cat}
             expanded={expanded}
             counts={categoryCounts}
+            pending={isPending}
             onPick={setCat}
             onToggle={toggleExpanded}
+            onRemove={handleDeleteCategoria}
           />
           {catFormOpen ? (
             <NuevaCategoriaForm
@@ -1225,6 +1440,52 @@ export function InventarioClient({
         </div>
 
         <div style={{ padding: "16px 22px 24px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 14,
+              border: `1.5px solid ${search ? "var(--ink)" : "var(--rule)"}`,
+              padding: "7px 12px",
+              background: "var(--paper-lt)",
+            }}
+          >
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>⌕</span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar ingrediente por nombre o categoría…"
+              style={{
+                flex: 1,
+                border: "none",
+                background: "transparent",
+                fontSize: 12,
+                color: "var(--ink)",
+                outline: "none",
+                padding: 0,
+              }}
+            />
+            {search ? (
+              <button
+                type="button"
+                aria-label="Limpiar búsqueda"
+                onClick={() => setSearch("")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--muted)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            ) : null}
+          </div>
           <div
             className="grid"
             style={{
@@ -1310,7 +1571,7 @@ export function InventarioClient({
               <span />
             </div>
 
-            {ingredientes.length === 0 ? (
+            {filteredIngredientes.length === 0 ? (
               <div
                 className="text-muted"
                 style={{
@@ -1319,13 +1580,18 @@ export function InventarioClient({
                   fontSize: 12,
                 }}
               >
-                Aún no hay ingredientes. Usa “+ Nuevo ingrediente” para crear el primero.
+                {ingredientes.length === 0
+                  ? "Aún no hay ingredientes. Usa “+ Nuevo ingrediente” para crear el primero."
+                  : search.trim()
+                    ? `Ningún ingrediente coincide con «${search.trim()}».`
+                    : "Esta categoría no tiene ingredientes todavía."}
               </div>
             ) : null}
 
-            {ingredientes.map((ing, i) => {
-              const categoryName =
-                categorias.find((c) => c.id === ing.category_id)?.label ?? "—";
+            {filteredIngredientes.map((ing, i) => {
+              const categoryName = ing.category_id
+                ? (labelByCatId.get(ing.category_id) ?? "—")
+                : "—";
               const fisicoRaw = conteoVals[ing.id];
               const fisico =
                 conteoMode && fisicoRaw !== undefined && fisicoRaw !== ""
