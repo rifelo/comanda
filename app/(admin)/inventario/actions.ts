@@ -86,6 +86,46 @@ export async function createIngredienteCategoria(input: unknown) {
   return { ok: true as const, categoria: data };
 }
 
+const UpdateCategoriaSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string().trim().min(1).max(120),
+});
+
+/**
+ * Rename a category. The unique (organization_id, parent_id, label)
+ * constraint surfaces as code 23505 — translate it into a friendly
+ * message so the inline rename input can show it.
+ */
+export async function updateIngredienteCategoria(input: unknown) {
+  const parsed = UpdateCategoriaSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Datos inválidos." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const { data, error } = await supabase
+    .from("ingrediente_categorias")
+    .update({ label: parsed.data.label })
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id)
+    .select("id, organization_id, parent_id, label, position")
+    .single();
+
+  if (error) {
+    console.error("[updateIngredienteCategoria]", error);
+    if (error.code === "23505") {
+      return {
+        ok: false as const,
+        error: "Ya existe una categoría con ese nombre en este nivel.",
+      };
+    }
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true as const, categoria: data };
+}
+
 /**
  * Hard-delete a category. CASCADE on parent_id wipes descendants and the
  * ON DELETE SET NULL on ingredientes.category_id leaves orphan rows under
