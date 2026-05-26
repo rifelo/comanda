@@ -86,6 +86,47 @@ export async function createIngredienteCategoria(input: unknown) {
   return { ok: true as const, categoria: data };
 }
 
+/**
+ * Hard-delete a category. CASCADE on parent_id wipes descendants and the
+ * ON DELETE SET NULL on ingredientes.category_id leaves orphan rows under
+ * "Sin categoría" (still visible under "Todos") rather than archiving them.
+ */
+export async function deleteIngredienteCategoria(
+  input: unknown,
+): Promise<{ ok: boolean; error?: string }> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Categoría inválida." };
+  }
+  const { profile, supabase } = await requireAdmin();
+
+  const { data: existing } = await supabase
+    .from("ingrediente_categorias")
+    .select("id")
+    .eq("id", parsed.data.id)
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle();
+  if (!existing) {
+    return { ok: false, error: "La categoría no existe." };
+  }
+
+  const { error: deleteErr } = await supabase
+    .from("ingrediente_categorias")
+    .delete()
+    .eq("id", parsed.data.id);
+
+  if (deleteErr) {
+    console.error("[deleteIngredienteCategoria] delete failed:", deleteErr);
+    return {
+      ok: false,
+      error: deleteErr.message ?? "No se pudo eliminar la categoría.",
+    };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
 export async function createIngrediente(input: unknown) {
   const parsed = CreateIngredienteSchema.safeParse(input);
   if (!parsed.success) {
