@@ -56,8 +56,46 @@ function buildTree(rows: IngredienteCategoria[]): {
   return { tree: roots, depthById };
 }
 
-function flattenTree(nodes: TreeNode[]): TreeNode[] {
-  return nodes.flatMap((n) => [n, ...flattenTree(n.children)]);
+interface VisibleRow {
+  id: string;
+  label: string;
+  depth: number;
+  hasChildren: boolean;
+  expanded: boolean;
+}
+
+function visibleRows(nodes: TreeNode[], expanded: Set<string>): VisibleRow[] {
+  const out: VisibleRow[] = [];
+  const walk = (arr: TreeNode[]) => {
+    for (const n of arr) {
+      const hasChildren = n.children.length > 0;
+      const isExp = expanded.has(n.id);
+      out.push({ id: n.id, label: n.label, depth: n.depth, hasChildren, expanded: isExp });
+      if (hasChildren && isExp) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return out;
+}
+
+function computeCategoryCounts(
+  tree: TreeNode[],
+  ingredientes: Ingrediente[],
+): Map<string, number> {
+  const direct = new Map<string, number>();
+  for (const ing of ingredientes) {
+    if (!ing.category_id) continue;
+    direct.set(ing.category_id, (direct.get(ing.category_id) ?? 0) + 1);
+  }
+  const counts = new Map<string, number>();
+  const walk = (n: TreeNode): number => {
+    let total = direct.get(n.id) ?? 0;
+    for (const c of n.children) total += walk(c);
+    counts.set(n.id, total);
+    return total;
+  };
+  for (const r of tree) walk(r);
+  return counts;
 }
 
 const UNITS = ["kg", "g", "L", "ml", "und", "porción", "loncha", "bola"] as const;
@@ -79,54 +117,128 @@ function IngTree({
   total,
   tree,
   active,
+  expanded,
+  counts,
   onPick,
+  onToggle,
 }: {
   total: number;
   tree: TreeNode[];
   active: string;
+  expanded: Set<string>;
+  counts: Map<string, number>;
   onPick: (id: string) => void;
+  onToggle: (id: string) => void;
 }) {
-  const flat = flattenTree(tree);
-  const items: { id: string; label: string; depth: number; root?: boolean }[] = [
-    { id: "all", label: "Todos los ingredientes", depth: 0, root: true },
-    ...flat.map((n) => ({ id: n.id, label: n.label, depth: n.depth })),
-  ];
+  const rows = visibleRows(tree, expanded);
   return (
     <div className="flex flex-col" style={{ gap: 1 }}>
-      {items.map((row) => {
+      {/* root virtual row */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onPick("all")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onPick("all");
+          }
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "5px 8px",
+          background: active === "all" ? "var(--ink)" : "transparent",
+          color: active === "all" ? "var(--paper-lt)" : "var(--ink)",
+          fontSize: 11,
+          borderRadius: 2,
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ width: 8 }} />
+        <span style={{ flex: 1, fontWeight: 600 }}>Todos los ingredientes</span>
+        <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
+          {total}
+        </span>
+      </div>
+      {rows.map((row) => {
         const isActive = active === row.id;
+        const count = counts.get(row.id) ?? 0;
         return (
-          <button
+          <div
             key={row.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => onPick(row.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onPick(row.id);
+              }
+            }}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
-              width: "100%",
-              textAlign: "left",
               padding: "5px 8px",
               paddingLeft: 8 + row.depth * 14,
               background: isActive ? "var(--ink)" : "transparent",
               color: isActive ? "var(--paper-lt)" : "var(--ink)",
-              border: "none",
               fontSize: 11,
               borderRadius: 2,
-              minHeight: 0,
               cursor: "pointer",
             }}
           >
-            <span style={{ width: 8 }} />
-            <span style={{ flex: 1, fontWeight: row.root ? 600 : 400 }}>
-              {row.label}
-            </span>
-            {row.root ? (
-              <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
-                {total}
+            {row.hasChildren ? (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={
+                  row.expanded ? "Colapsar categoría" : "Expandir categoría"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle(row.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggle(row.id);
+                  }
+                }}
+                style={{
+                  width: 12,
+                  display: "inline-flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  fontSize: 9,
+                  opacity: 0.6,
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
+              >
+                {row.expanded ? "▾" : "▸"}
               </span>
-            ) : null}
-          </button>
+            ) : (
+              <span
+                style={{
+                  width: 12,
+                  display: "inline-flex",
+                  justifyContent: "center",
+                  color: isActive ? "var(--paper-lt)" : "var(--muted)",
+                  opacity: 0.7,
+                }}
+              >
+                ·
+              </span>
+            )}
+            <span style={{ flex: 1, fontWeight: 400 }}>{row.label}</span>
+            <span className="cmd-num" style={{ fontSize: 10, opacity: 0.7 }}>
+              {count}
+            </span>
+          </div>
         );
       })}
     </div>
@@ -329,9 +441,15 @@ function IngredienteDrawer({
     cost: editing ? String(editing.cost_cop) : "",
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [costFocused, setCostFocused] = React.useState(false);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const costDisplay =
+    costFocused || form.cost === ""
+      ? form.cost
+      : `$ ${fmtCOP(Number(form.cost))}`;
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -609,12 +727,15 @@ function IngredienteDrawer({
             <div>
               <label style={labelSt}>Costo / unidad (COP) *</label>
               <input
-                type="number"
-                min="0"
-                step="1"
-                value={form.cost}
+                type="text"
+                inputMode="numeric"
+                value={costDisplay}
                 disabled={pending}
-                onChange={(e) => set("cost", e.target.value)}
+                onFocus={() => setCostFocused(true)}
+                onBlur={() => setCostFocused(false)}
+                onChange={(e) =>
+                  set("cost", e.target.value.replace(/[^\d]/g, ""))
+                }
                 placeholder="Ej. 18900"
                 style={inputSt(errors.cost)}
               />
@@ -744,6 +865,28 @@ export function InventarioClient({
     [categorias],
   );
 
+  // Tree expansion state — start with every parent expanded so the rail
+  // looks identical to today's flat list on first load. New categories
+  // created in this session are added to the set inside handleAddCategoria.
+  const [expanded, setExpanded] = React.useState<Set<string>>(() => {
+    const s = new Set<string>();
+    for (const c of initialCategorias) s.add(c.id);
+    return s;
+  });
+  const toggleExpanded = React.useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const categoryCounts = React.useMemo(
+    () => computeCategoryCounts(tree, ingredientes),
+    [tree, ingredientes],
+  );
+
   const sortedCategorias = React.useMemo(
     () =>
       [...categorias].sort(
@@ -780,6 +923,12 @@ export function InventarioClient({
         return;
       }
       setCategorias((prev) => [...prev, res.categoria as IngredienteCategoria]);
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(res.categoria.id);
+        if (parentId) next.add(parentId);
+        return next;
+      });
       setCat(res.categoria.id);
       setCatFormOpen(false);
     });
@@ -1022,7 +1171,10 @@ export function InventarioClient({
             total={ingredientes.length}
             tree={tree}
             active={cat}
+            expanded={expanded}
+            counts={categoryCounts}
             onPick={setCat}
+            onToggle={toggleExpanded}
           />
           {catFormOpen ? (
             <NuevaCategoriaForm
