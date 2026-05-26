@@ -155,11 +155,14 @@ function IngTree({
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: "2px 8px",
+          padding: "5px 8px",
           background: active === "all" ? "var(--ink)" : "transparent",
           color: active === "all" ? "var(--paper-lt)" : "var(--ink)",
           fontSize: 11,
           borderRadius: 2,
+          // globals.css forces 44px min-height on every [role="button"] for
+          // kitchen-staff touch targets; opt out so the row stays compact.
+          minHeight: 0,
           cursor: "pointer",
         }}
       >
@@ -183,7 +186,7 @@ function IngTree({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "2px 8px",
+                padding: "5px 8px",
                 paddingLeft: 8 + row.depth * 14,
                 background: "var(--paper)",
                 border: "1px solid var(--red)",
@@ -219,6 +222,7 @@ function IngTree({
                   cursor: "pointer",
                   letterSpacing: "0.12em",
                   textTransform: "uppercase",
+                  minHeight: 0,
                 }}
               >
                 Sí
@@ -238,6 +242,7 @@ function IngTree({
                   cursor: "pointer",
                   letterSpacing: "0.12em",
                   textTransform: "uppercase",
+                  minHeight: 0,
                 }}
               >
                 No
@@ -270,12 +275,13 @@ function IngTree({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "2px 8px",
+                padding: "5px 8px",
                 paddingLeft: 8 + row.depth * 14,
                 background: isActive ? "var(--ink)" : "transparent",
                 color: isActive ? "var(--paper-lt)" : "var(--ink)",
                 fontSize: 11,
                 borderRadius: 2,
+                minHeight: 0,
                 cursor: "pointer",
               }}
             >
@@ -306,6 +312,7 @@ function IngTree({
                     opacity: 0.6,
                     cursor: "pointer",
                     userSelect: "none",
+                    minHeight: 0,
                   }}
                 >
                   {row.expanded ? "▾" : "▸"}
@@ -357,6 +364,9 @@ function IngTree({
                   borderRadius: 2,
                   width: 16,
                   height: 16,
+                  // globals.css clamps every <button> to 44px min-height;
+                  // opt out so the 16px square actually renders.
+                  minHeight: 0,
                   fontSize: 8,
                   lineHeight: "14px",
                   textAlign: "center",
