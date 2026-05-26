@@ -1350,7 +1350,7 @@ function IngredienteDrawer({
 // ─────────────────────────────────────────────────────────────────────────
 // InventarioClient (root)
 // ─────────────────────────────────────────────────────────────────────────
-const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px 70px";
+const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px 32px";
 
 export function InventarioClient({
   initialCategorias,
@@ -1376,6 +1376,7 @@ export function InventarioClient({
   const [catError, setCatError] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [rowMenuId, setRowMenuId] = React.useState<string | null>(null);
   const [ajustarId, setAjustarId] = React.useState<string | null>(null);
   const [ajustarVal, setAjustarVal] = React.useState("");
   const [conteoMode, setConteoMode] = React.useState(false);
@@ -1383,6 +1384,21 @@ export function InventarioClient({
     {},
   );
   const [isPending, startTransition] = React.useTransition();
+
+  // Outside-click closes the row ··· popover. Scoped to `[data-row-menu]`
+  // so it stays out of the tree menu's `[data-tree-menu]` listener — both
+  // run only while their respective ids are non-null, and a click on the
+  // popover container itself is preserved by the closest() guard.
+  React.useEffect(() => {
+    if (!rowMenuId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest("[data-row-menu]")) return;
+      setRowMenuId(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [rowMenuId]);
 
   const { tree, depthById } = React.useMemo(
     () => buildTree(categorias),
@@ -2225,17 +2241,45 @@ export function InventarioClient({
                     ${fmtCOP(ing.cost_cop)}
                   </div>
 
-                  {/* col 9: row actions */}
+                  {/* col 9: row actions — single ··· popover + delete pill.
+                      The cell wrapper is relative so both the popover (top:
+                      100%) and the delete confirm pill (overlay) anchor to
+                      it without pushing the column wider. */}
                   <div
+                    data-row-menu
                     style={{
                       display: "flex",
-                      gap: 4,
-                      justifyContent: "flex-end",
+                      justifyContent: "center",
                       alignItems: "center",
+                      position: "relative",
                     }}
                   >
                     {isDeleting ? (
-                      <>
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: 0,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          zIndex: 20,
+                          display: "flex",
+                          gap: 4,
+                          alignItems: "center",
+                          background: "var(--paper-lt)",
+                          border: "1px solid var(--red)",
+                          padding: "3px 6px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 9,
+                            color: "var(--red)",
+                            marginRight: 4,
+                          }}
+                        >
+                          ¿Eliminar?
+                        </span>
                         <button
                           type="button"
                           disabled={isPending}
@@ -2244,9 +2288,10 @@ export function InventarioClient({
                             background: "var(--red)",
                             color: "var(--paper-lt)",
                             border: "none",
-                            fontSize: 10,
-                            padding: "3px 6px",
+                            fontSize: 9,
+                            padding: "2px 6px",
                             cursor: "pointer",
+                            minHeight: 0,
                           }}
                         >
                           Sí
@@ -2257,79 +2302,149 @@ export function InventarioClient({
                           style={{
                             background: "transparent",
                             border: "1px solid var(--rule)",
-                            fontSize: 10,
-                            padding: "3px 6px",
+                            fontSize: 9,
+                            padding: "2px 6px",
                             cursor: "pointer",
                             color: "var(--ink)",
+                            minHeight: 0,
                           }}
                         >
                           No
                         </button>
-                      </>
+                      </div>
                     ) : (
                       <>
-                        {!conteoMode && !isAdjusting ? (
-                          <button
-                            type="button"
-                            title="Ajustar stock"
-                            disabled={isPending}
-                            onClick={() => {
-                              setRowError(null);
-                              setAjustarId(ing.id);
-                              setAjustarVal(String(ing.stock_current));
-                            }}
-                            style={{
-                              background: "none",
-                              border: "1px solid var(--rule)",
-                              color: "var(--muted)",
-                              fontSize: 10,
-                              cursor: "pointer",
-                              padding: "2px 5px",
-                              letterSpacing: "0.1em",
-                            }}
-                          >
-                            ±
-                          </button>
-                        ) : null}
                         <button
                           type="button"
-                          title="Editar"
-                          disabled={conteoMode || isAdjusting}
-                          onClick={() => {
-                            setEditing(ing);
-                            setDrawerError(null);
-                            setDrawerOpen(true);
+                          aria-label={`Acciones de ${ing.name}`}
+                          aria-haspopup="menu"
+                          aria-expanded={rowMenuId === ing.id}
+                          disabled={isAdjusting}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRowError(null);
+                            setRowMenuId(
+                              rowMenuId === ing.id ? null : ing.id,
+                            );
                           }}
                           style={{
                             background: "none",
                             border: "none",
                             color: "var(--muted)",
-                            fontSize: 13,
+                            fontSize: 14,
+                            letterSpacing: "0.08em",
+                            lineHeight: 1,
+                            padding: "0 2px",
                             cursor: "pointer",
-                            padding: "2px 4px",
+                            minHeight: 0,
                           }}
                         >
-                          ✏
+                          ···
                         </button>
-                        <button
-                          type="button"
-                          title="Eliminar"
-                          disabled={conteoMode || isAdjusting}
-                          onClick={() => {
-                            setRowError(null);
-                            setDeleteId(ing.id);
-                          }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "var(--red)",
-                            fontSize: 12,
-                            cursor: "pointer",
-                            padding: "2px 4px",
-                          }}
-                        >
-                          ✕
-                        </button>
+                        {rowMenuId === ing.id ? (
+                          <div
+                            role="menu"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: "absolute",
+                              right: 0,
+                              top: "100%",
+                              zIndex: 30,
+                              background: "var(--paper-lt)",
+                              border: "1.5px solid var(--ink)",
+                              minWidth: 130,
+                              boxShadow: "2px 4px 12px rgba(0,0,0,0.12)",
+                            }}
+                          >
+                            {!conteoMode ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={isPending}
+                                onClick={() => {
+                                  setRowMenuId(null);
+                                  setRowError(null);
+                                  setAjustarId(ing.id);
+                                  setAjustarVal(String(ing.stock_current));
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  fontSize: 11,
+                                  textAlign: "left",
+                                  background: "none",
+                                  border: "none",
+                                  color: "var(--ink)",
+                                  cursor: "pointer",
+                                  minHeight: 0,
+                                }}
+                              >
+                                ± Ajustar stock
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setRowMenuId(null);
+                                setEditing(ing);
+                                setDrawerError(null);
+                                setDrawerOpen(true);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                width: "100%",
+                                padding: "8px 12px",
+                                fontSize: 11,
+                                textAlign: "left",
+                                background: "none",
+                                border: "none",
+                                color: "var(--ink)",
+                                cursor: "pointer",
+                                minHeight: 0,
+                              }}
+                            >
+                              ✏ Editar
+                            </button>
+                            <div
+                              style={{
+                                height: 1,
+                                background: "var(--rule)",
+                              }}
+                            />
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={isPending}
+                              onClick={() => {
+                                setRowMenuId(null);
+                                setRowError(null);
+                                setDeleteId(ing.id);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                width: "100%",
+                                padding: "8px 12px",
+                                fontSize: 11,
+                                textAlign: "left",
+                                background: "none",
+                                border: "none",
+                                color: "var(--red)",
+                                cursor: "pointer",
+                                minHeight: 0,
+                              }}
+                            >
+                              ✕ Eliminar
+                            </button>
+                          </div>
+                        ) : null}
                       </>
                     )}
                   </div>
