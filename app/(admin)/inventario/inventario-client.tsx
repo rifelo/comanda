@@ -359,6 +359,7 @@ function IngTree({
         }
 
         // ── Normal row ────────────────────────────────────────────────
+        const showMenuBtn = isHov || isActive || isMenuOpen;
         return (
           <div
             key={row.id}
@@ -367,10 +368,11 @@ function IngTree({
               setHoverId((prev) => (prev === row.id ? null : prev))
             }
             style={{
-              position: "relative",
               display: "flex",
               alignItems: "center",
               minHeight: ROW_H,
+              background: isActive ? "var(--ink)" : "transparent",
+              borderRadius: 2,
             }}
           >
             <div
@@ -388,16 +390,15 @@ function IngTree({
               }}
               style={{
                 flex: 1,
+                minWidth: 0,
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
                 minHeight: ROW_H,
-                padding: "0 8px",
+                padding: "0 0 0 8px",
                 paddingLeft: 8 + row.depth * 14,
-                background: isActive ? "var(--ink)" : "transparent",
                 color: isActive ? "var(--paper-lt)" : "var(--ink)",
                 fontSize: 11,
-                borderRadius: 2,
                 cursor: "pointer",
               }}
             >
@@ -446,119 +447,138 @@ function IngTree({
                   ·
                 </span>
               )}
-              <span style={{ flex: 1, fontWeight: 400 }}>{row.label}</span>
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontWeight: 400,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {row.label}
+              </span>
               <span
                 className="cmd-num"
                 style={{
                   fontSize: 10,
                   opacity: 0.7,
-                  // leave room for the absolutely-positioned ··· button
-                  paddingRight: isHov || isActive || isMenuOpen ? 22 : 0,
+                  flexShrink: 0,
                 }}
               >
                 {count}
               </span>
             </div>
 
-            {/* ··· menu — visible on hover or while open */}
-            {isHov || isMenuOpen ? (
-              <div
-                data-tree-menu
+            {/*
+              ··· menu slot — always in flex flow so the row's width
+              never jitters and the count never sits under the button.
+              The button itself is hidden via `visibility` unless the
+              row is hovered, active, or the menu is open, so the slot
+              still reserves its space at rest.
+            */}
+            <div
+              data-tree-menu
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                flexShrink: 0,
+                padding: "0 4px 0 2px",
+                color: isActive ? "var(--paper-lt)" : "var(--muted)",
+              }}
+            >
+              <button
+                type="button"
+                aria-label={`Acciones de ${row.label}`}
+                aria-haspopup="menu"
+                aria-expanded={isMenuOpen}
+                tabIndex={showMenuBtn ? 0 : -1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuId(isMenuOpen ? null : row.id);
+                }}
                 style={{
-                  position: "absolute",
-                  right: 4,
-                  top: "50%",
-                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "inherit",
+                  fontSize: 13,
+                  letterSpacing: "0.1em",
+                  cursor: "pointer",
+                  padding: "0 4px",
+                  lineHeight: 1,
+                  minHeight: 0,
+                  visibility: showMenuBtn ? "visible" : "hidden",
                 }}
               >
-                <button
-                  type="button"
-                  aria-label={`Acciones de ${row.label}`}
-                  aria-haspopup="menu"
-                  aria-expanded={isMenuOpen}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuId(isMenuOpen ? null : row.id);
-                  }}
+                ···
+              </button>
+              {isMenuOpen ? (
+                <div
+                  role="menu"
+                  onClick={(e) => e.stopPropagation()}
                   style={{
-                    background: "none",
-                    border: "none",
-                    color: isActive ? "var(--paper-lt)" : "var(--muted)",
-                    fontSize: 13,
-                    letterSpacing: "0.1em",
-                    cursor: "pointer",
-                    padding: "0 4px",
-                    lineHeight: 1,
-                    minHeight: 0,
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    zIndex: 30,
+                    background: "var(--paper-lt)",
+                    border: "1.5px solid var(--ink)",
+                    minWidth: 130,
+                    boxShadow: "2px 4px 12px rgba(0,0,0,0.12)",
+                    color: "var(--ink)",
                   }}
                 >
-                  ···
-                </button>
-                {isMenuOpen ? (
-                  <div
-                    role="menu"
-                    onClick={(e) => e.stopPropagation()}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setRenameVal(row.label);
+                      setRenameId(row.id);
+                      setMenuId(null);
+                    }}
                     style={{
-                      position: "absolute",
-                      right: 0,
-                      top: "100%",
-                      zIndex: 30,
-                      background: "var(--paper-lt)",
-                      border: "1.5px solid var(--ink)",
-                      minWidth: 130,
-                      boxShadow: "2px 4px 12px rgba(0,0,0,0.12)",
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      padding: "8px 12px",
+                      fontSize: 11,
+                      color: "var(--ink)",
+                      cursor: "pointer",
+                      minHeight: 0,
                     }}
                   >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setRenameVal(row.label);
-                        setRenameId(row.id);
-                        setMenuId(null);
-                      }}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        background: "none",
-                        border: "none",
-                        padding: "8px 12px",
-                        fontSize: 11,
-                        color: "var(--ink)",
-                        cursor: "pointer",
-                        minHeight: 0,
-                      }}
-                    >
-                      ✏ Renombrar
-                    </button>
-                    <div style={{ height: 1, background: "var(--rule)" }} />
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setConfirmId(row.id);
-                        setMenuId(null);
-                      }}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        background: "none",
-                        border: "none",
-                        padding: "8px 12px",
-                        fontSize: 11,
-                        color: "var(--red)",
-                        cursor: "pointer",
-                        minHeight: 0,
-                      }}
-                    >
-                      ✕ Eliminar
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+                    ✏ Renombrar
+                  </button>
+                  <div style={{ height: 1, background: "var(--rule)" }} />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setConfirmId(row.id);
+                      setMenuId(null);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      padding: "8px 12px",
+                      fontSize: 11,
+                      color: "var(--red)",
+                      cursor: "pointer",
+                      minHeight: 0,
+                    }}
+                  >
+                    ✕ Eliminar
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         );
       })}
