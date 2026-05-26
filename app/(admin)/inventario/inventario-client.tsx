@@ -19,6 +19,7 @@ import {
   deleteIngrediente,
   deleteIngredienteCategoria,
   updateIngrediente,
+  updateIngredienteCategoria,
 } from "./actions";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -114,6 +115,8 @@ function fmtDelta(d: number): string {
 // ─────────────────────────────────────────────────────────────────────────
 // IngTree — left rail
 // ─────────────────────────────────────────────────────────────────────────
+const ROW_H = 32;
+
 function IngTree({
   total,
   tree,
@@ -124,6 +127,7 @@ function IngTree({
   onPick,
   onToggle,
   onRemove,
+  onRename,
 }: {
   total: number;
   tree: TreeNode[];
@@ -134,10 +138,37 @@ function IngTree({
   onPick: (id: string) => void;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  onRename: (id: string, label: string) => void;
 }) {
   const rows = visibleRows(tree, expanded);
   const [hoverId, setHoverId] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
+  const [menuId, setMenuId] = React.useState<string | null>(null);
+  const [renameId, setRenameId] = React.useState<string | null>(null);
+  const [renameVal, setRenameVal] = React.useState("");
+
+  // Outside-click closes the ··· popover. Scoped to mousedown so we
+  // close *before* the click lands on a tree row underneath.
+  React.useEffect(() => {
+    if (!menuId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest("[data-tree-menu]")) return;
+      setMenuId(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuId]);
+
+  // Optimistic-close: surface the new label immediately and rely on the
+  // parent's catError banner if the server action rejects.
+  const commitRename = (id: string) => {
+    const v = renameVal.trim();
+    if (!v) return;
+    onRename(id, v);
+    setRenameId(null);
+    setRenameVal("");
+  };
   return (
     <div className="flex flex-col" style={{ gap: 1 }}>
       {/* root virtual row */}
@@ -155,14 +186,15 @@ function IngTree({
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: "8px 8px",
+          padding: "0 8px",
           background: active === "all" ? "var(--ink)" : "transparent",
           color: active === "all" ? "var(--paper-lt)" : "var(--ink)",
           fontSize: 11,
           borderRadius: 2,
-          // globals.css forces 44px min-height on every [role="button"] for
-          // kitchen-staff touch targets; opt out so the row stays compact.
-          minHeight: 0,
+          // Unified row height — every node (root, parent, leaf, rename,
+          // confirm) aligns to the same 32px grid. globals.css forces 44px
+          // min-height on every [role="button"] so we override explicitly.
+          minHeight: ROW_H,
           cursor: "pointer",
         }}
       >
@@ -176,8 +208,82 @@ function IngTree({
         const isActive = active === row.id;
         const isHov = hoverId === row.id;
         const isConfirm = confirmId === row.id;
+        const isRenaming = renameId === row.id;
+        const isMenuOpen = menuId === row.id;
         const count = counts.get(row.id) ?? 0;
 
+        // ── Inline rename strip ───────────────────────────────────────
+        if (isRenaming) {
+          return (
+            <div
+              key={row.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                minHeight: ROW_H,
+                padding: "0 6px",
+                paddingLeft: 8 + row.depth * 14,
+              }}
+            >
+              <input
+                autoFocus
+                value={renameVal}
+                disabled={pending}
+                onChange={(e) => setRenameVal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename(row.id);
+                  if (e.key === "Escape") setRenameId(null);
+                }}
+                style={{
+                  flex: 1,
+                  border: "1.5px solid var(--ink)",
+                  padding: "3px 6px",
+                  fontSize: 11,
+                  background: "var(--paper-lt)",
+                  color: "var(--ink)",
+                  outline: "none",
+                  minHeight: 0,
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Confirmar renombrar"
+                disabled={pending}
+                onClick={() => commitRename(row.id)}
+                style={{
+                  background: "var(--ink)",
+                  color: "var(--paper-lt)",
+                  border: "none",
+                  fontSize: 9,
+                  padding: "4px 7px",
+                  cursor: "pointer",
+                  minHeight: 0,
+                }}
+              >
+                ✓
+              </button>
+              <button
+                type="button"
+                aria-label="Cancelar renombrar"
+                onClick={() => setRenameId(null)}
+                style={{
+                  background: "transparent",
+                  color: "var(--muted)",
+                  border: "1px solid var(--rule)",
+                  fontSize: 9,
+                  padding: "3px 7px",
+                  cursor: "pointer",
+                  minHeight: 0,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          );
+        }
+
+        // ── Delete confirm strip ──────────────────────────────────────
         if (isConfirm) {
           return (
             <div
@@ -186,7 +292,8 @@ function IngTree({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "8px 8px",
+                minHeight: ROW_H,
+                padding: "0 8px",
                 paddingLeft: 8 + row.depth * 14,
                 background: "var(--paper)",
                 border: "1px solid var(--red)",
@@ -251,6 +358,7 @@ function IngTree({
           );
         }
 
+        // ── Normal row ────────────────────────────────────────────────
         return (
           <div
             key={row.id}
@@ -258,12 +366,20 @@ function IngTree({
             onMouseLeave={() =>
               setHoverId((prev) => (prev === row.id ? null : prev))
             }
-            style={{ position: "relative", display: "flex" }}
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              minHeight: ROW_H,
+            }}
           >
             <div
               role="button"
               tabIndex={0}
-              onClick={() => onPick(row.id)}
+              onClick={() => {
+                onPick(row.id);
+                setMenuId(null);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -275,13 +391,13 @@ function IngTree({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "8px 8px",
+                minHeight: ROW_H,
+                padding: "0 8px",
                 paddingLeft: 8 + row.depth * 14,
                 background: isActive ? "var(--ink)" : "transparent",
                 color: isActive ? "var(--paper-lt)" : "var(--ink)",
                 fontSize: 11,
                 borderRadius: 2,
-                minHeight: 0,
                 cursor: "pointer",
               }}
             >
@@ -336,46 +452,112 @@ function IngTree({
                 style={{
                   fontSize: 10,
                   opacity: 0.7,
-                  // leave room for the absolutely-positioned ✕ when it's visible
-                  paddingRight: isHov || isActive ? 22 : 0,
+                  // leave room for the absolutely-positioned ··· button
+                  paddingRight: isHov || isActive || isMenuOpen ? 22 : 0,
                 }}
               >
                 {count}
               </span>
             </div>
-            {isHov || isActive ? (
-              <button
-                type="button"
-                title="Eliminar categoría"
-                aria-label={`Eliminar categoría ${row.label}`}
-                disabled={pending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmId(row.id);
-                }}
+
+            {/* ··· menu — visible on hover or while open */}
+            {isHov || isMenuOpen ? (
+              <div
+                data-tree-menu
                 style={{
                   position: "absolute",
                   right: 4,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  background: "var(--paper)",
-                  color: "var(--red)",
-                  border: "1px solid var(--red)",
-                  borderRadius: 2,
-                  width: 16,
-                  height: 16,
-                  // globals.css clamps every <button> to 44px min-height;
-                  // opt out so the 16px square actually renders.
-                  minHeight: 0,
-                  fontSize: 8,
-                  lineHeight: "14px",
-                  textAlign: "center",
-                  cursor: "pointer",
-                  padding: 0,
                 }}
               >
-                ✕
-              </button>
+                <button
+                  type="button"
+                  aria-label={`Acciones de ${row.label}`}
+                  aria-haspopup="menu"
+                  aria-expanded={isMenuOpen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuId(isMenuOpen ? null : row.id);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: isActive ? "var(--paper-lt)" : "var(--muted)",
+                    fontSize: 13,
+                    letterSpacing: "0.1em",
+                    cursor: "pointer",
+                    padding: "0 4px",
+                    lineHeight: 1,
+                    minHeight: 0,
+                  }}
+                >
+                  ···
+                </button>
+                {isMenuOpen ? (
+                  <div
+                    role="menu"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: "100%",
+                      zIndex: 30,
+                      background: "var(--paper-lt)",
+                      border: "1.5px solid var(--ink)",
+                      minWidth: 130,
+                      boxShadow: "2px 4px 12px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setRenameVal(row.label);
+                        setRenameId(row.id);
+                        setMenuId(null);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        padding: "8px 12px",
+                        fontSize: 11,
+                        color: "var(--ink)",
+                        cursor: "pointer",
+                        minHeight: 0,
+                      }}
+                    >
+                      ✏ Renombrar
+                    </button>
+                    <div style={{ height: 1, background: "var(--rule)" }} />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setConfirmId(row.id);
+                        setMenuId(null);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        padding: "8px 12px",
+                        fontSize: 11,
+                        color: "var(--red)",
+                        cursor: "pointer",
+                        minHeight: 0,
+                      }}
+                    >
+                      ✕ Eliminar
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         );
@@ -1125,6 +1307,24 @@ export function InventarioClient({
     });
   };
 
+  const handleRenameCategoria = (id: string, label: string) => {
+    setCatError(null);
+    startTransition(async () => {
+      const res = await updateIngredienteCategoria({ id, label });
+      if (!res.ok) {
+        setCatError(res.error ?? "No se pudo renombrar la categoría.");
+        return;
+      }
+      setCategorias((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? { ...c, label: res.categoria?.label ?? label }
+            : c,
+        ),
+      );
+    });
+  };
+
   const handleDeleteCategoria = (id: string) => {
     setCatError(null);
     // Snapshot the descendants now — once the row is gone from `tree` we
@@ -1400,6 +1600,7 @@ export function InventarioClient({
             onPick={setCat}
             onToggle={toggleExpanded}
             onRemove={handleDeleteCategoria}
+            onRename={handleRenameCategoria}
           />
           {catFormOpen ? (
             <NuevaCategoriaForm
@@ -1489,6 +1690,10 @@ export function InventarioClient({
                   fontSize: 13,
                   cursor: "pointer",
                   padding: 0,
+                  // globals.css clamps every <button> to 44px min-height;
+                  // without this opt-out, the clear ✕ inflates the search
+                  // bar the moment the user starts typing.
+                  minHeight: 0,
                   lineHeight: 1,
                 }}
               >
