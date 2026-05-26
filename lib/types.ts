@@ -142,6 +142,14 @@ export interface Ingrediente {
   category_id: string | null;
   name: string;
   unit: string;
+  // Optional secondary unit (same domain as `unit`, e.g. ml/L/g/kg/und/...).
+  // When set it must differ from `unit`. Persisted as null when unused so
+  // single-unit ingredientes render unchanged.
+  unit2: string | null;
+  // Positive factor expressing 1 primary unit = N secondary units (e.g. 12
+  // when 1 caja = 12 und). Nullable: a non-null `unit2` with a null factor
+  // means "show the secondary label, but skip automatic conversion".
+  conversion_factor: number | null;
   stock_current: number;
   stock_min: number;
   merma_pct: number;
