@@ -8,9 +8,10 @@
 -- This seed bypasses RLS because supabase db reset runs as the superuser.
 -- =============================================================================
 
--- Demo org + restaurant
-insert into organizations (id, name) values
-  ('00000000-0000-0000-0000-000000000001', 'Daniel''s Burger Co.');
+-- Demo org + restaurant (slug + onboarded_at so the demo tenant resolves at
+-- danielsburger.<root-domain> and skips the onboarding gate).
+insert into organizations (id, name, slug, onboarded_at) values
+  ('00000000-0000-0000-0000-000000000001', 'Daniel''s Burger Co.', 'danielsburger', now());
 
 insert into restaurants (id, organization_id, name, timezone) values
   ('00000000-0000-0000-0000-000000000002',
