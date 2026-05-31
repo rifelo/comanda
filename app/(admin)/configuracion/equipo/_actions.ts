@@ -1,13 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { makeInitials } from "@/lib/db/roster";
+import type { RosterMember } from "@/lib/types";
 
 // Result shapes (documented — `"use server"` files cannot export type-only
 // declarations):
-//   inviteMember  → { ok: true; id: string } | { error: string; pending?: true }
+//   inviteMember  → { ok: true; member: RosterMember } | { error: string }
 //   updateMember  → { ok: true } | { error: string }
 //   removeMember  → { ok: true } | { error: string }
 //   toggleActive  → { ok: true } | { error: string }
@@ -26,33 +30,84 @@ const UpdateSchema = z.object({
 });
 
 /**
- * Invite a person to the sede's roster.
+ * Invite a person to the sede's roster as a staff member.
  *
- * Creating an auth user from a server action requires the service-role
- * client (admin API) and an invite email flow we haven't wired yet. Until
- * then this returns `pending: true` so the UI can show "pendiente de
- * activar". When we wire the admin invite, we'll create the auth user with
- * `organization_id` metadata and let the existing `handle_new_user` trigger
- * provision the profile, then INSERT into `restaurant_members`.
+ * Sends a Supabase invite email (service-role admin API) seeded with the
+ * `organization_id` + `role: 'staff'` metadata the `handle_new_user` trigger
+ * reads to provision the profile in the right org. Once the auth user exists
+ * (the trigger runs synchronously), we add the per-sede `restaurant_members`
+ * row so the person shows in the roster and sees their shifts in `/today`.
  *
- * TODO: wire createUser via SUPABASE_SERVICE_ROLE_KEY + send invite email.
+ * The invitee accepts via the email link, which lands them on `/auth/callback`
+ * with an active session. (They sign in afterwards with Google or by setting a
+ * password through "olvidé mi contraseña".)
  */
 export async function inviteMember(input: z.infer<typeof InviteSchema>) {
   const parsed = InviteSchema.safeParse(input);
   if (!parsed.success) return { error: "Datos inválidos." };
 
+  const { profile } = await requireAdmin();
   const sede = await getActiveSede();
   if (!sede) return { error: "Sin sede activa." };
 
-  await requireAdmin();
-  void parsed.data;
-  // Surface the gap explicitly so the UI can render a "Pendiente" stamp
-  // until the admin invite flow lands.
-  return {
-    error:
-      "Invitar persona aún no está conectado al backend (pendiente del flujo de invitación por email).",
-    pending: true,
+  const { name, email, phone } = parsed.data;
+  const admin = createSupabaseAdminClient();
+
+  // Where Supabase sends the invitee after they accept. Falls back to the
+  // project's configured Site URL when we can't derive the origin.
+  const h = await headers();
+  const origin =
+    h.get("origin") ?? (h.get("host") ? `https://${h.get("host")}` : null);
+  const redirectTo = origin ? `${origin}/auth/callback` : undefined;
+
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+    data: {
+      role: "staff",
+      organization_id: profile.organization_id,
+      full_name: name,
+    },
+    redirectTo,
+  });
+
+  if (error || !data?.user) {
+    const already = /already.*(registered|exist)|been registered/i.test(
+      error?.message ?? "",
+    );
+    return {
+      error: already
+        ? "Ya existe una cuenta con ese correo."
+        : (error?.message ?? "No se pudo enviar la invitación."),
+    };
+  }
+
+  // The trigger created the staff profile in our org; link it to this sede.
+  const { error: memErr } = await admin
+    .from("restaurant_members")
+    .upsert(
+      {
+        user_id: data.user.id,
+        restaurant_id: sede.id,
+        phone: phone ?? null,
+        active: true,
+      },
+      { onConflict: "user_id,restaurant_id" },
+    );
+  if (memErr) return { error: memErr.message };
+
+  revalidatePath("/configuracion/equipo");
+  revalidatePath("/turnos/asignacion");
+
+  const member: RosterMember = {
+    id: data.user.id,
+    initials: makeInitials(name),
+    name,
+    email,
+    phone: phone ?? null,
+    active: true,
+    role: "staff",
+    isMember: true,
   };
+  return { ok: true as const, member };
 }
 
 export async function updateMember(input: z.infer<typeof UpdateSchema>) {

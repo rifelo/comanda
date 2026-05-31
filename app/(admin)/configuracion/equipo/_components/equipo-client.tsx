@@ -88,7 +88,11 @@ export function EquipoClient({
         phone: draft.phone.trim() || undefined,
       });
       if ("error" in r && r.error) setError(r.error);
-      else {
+      else if ("member" in r && r.member) {
+        const added = r.member;
+        setRoster((prev) =>
+          [...prev, added].sort((a, b) => a.name.localeCompare(b.name, "es")),
+        );
         setDraft({ name: "", email: "", phone: "" });
         setAdding(false);
       }
