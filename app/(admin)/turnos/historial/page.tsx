@@ -63,16 +63,22 @@ export default async function TurnosHistorialPage() {
     };
   });
 
-  // Hydrate the selected shift's tasks once on the server (the client just
-  // swaps selection between already-loaded rows — re-fetching on click would
-  // be more accurate but adds a round-trip per row). For per-shift task
-  // detail we fetch only the first row's template tasks.
+  // First-paint fallback only: row 0's template tasks WITHOUT completion data
+  // (the join is expensive for the list). The client fetches each shift's real
+  // detail — including which specific tasks were completed, by whom, photos and
+  // novedades — via getShiftDetail on selection (and for row 0 on mount), so
+  // these placeholder values are replaced as soon as that resolves.
   const firstTemplateId = rows[0]?.template_id;
   let firstTasks: {
     id: string;
     title: string;
     due_time: string | null;
     requires_photo: boolean;
+    completed: boolean;
+    completed_at: string | null;
+    completed_by_name: string | null;
+    photo_url: string | null;
+    note: string | null;
   }[] = [];
   if (firstTemplateId) {
     const { data } = await supabase
@@ -85,6 +91,11 @@ export default async function TurnosHistorialPage() {
       title: t.title as string,
       due_time: ((t.due_time as string | null) ?? null)?.slice(0, 5) ?? null,
       requires_photo: t.requires_photo as boolean,
+      completed: false,
+      completed_at: null,
+      completed_by_name: null,
+      photo_url: null,
+      note: null,
     }));
   }
 
