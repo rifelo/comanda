@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { requireAdmin } from "@/lib/auth";
+import { getActiveSede } from "@/lib/data/sede";
 import { Wordmark } from "@/components/comanda/primitives";
 import { AdminSidebarNav } from "./_components/admin-sidebar-nav";
 
@@ -9,16 +10,12 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile, user, supabase } = await requireAdmin();
-
-  const [{ data: restaurants }, { count: myShiftCount }] = await Promise.all([
-    supabase.from("restaurants").select("id, name").order("name"),
-    supabase
-      .from("restaurant_members")
-      .select("user_id", { count: "exact", head: true })
-      .eq("user_id", user.id),
-  ]);
-  const showMyShift = (myShiftCount ?? 0) > 0;
+  // requireAdmin gates auth + admin role; getActiveSede races against it to
+  // pick the single restaurant we show across Hoy / Turnos / Productos. The
+  // multi-sede `restaurants` fetch + `myShiftCount` are gone — collapsed by
+  // the redesign.
+  const [{ profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const sedeName = sede?.name ?? "Daniel's Burger";
 
   return (
     <div className="cmd-paper flex min-h-screen text-ink">
@@ -32,47 +29,54 @@ export default async function AdminLayout({
           flexShrink: 0,
         }}
       >
-        <Link href="/dashboard">
+        <Link href="/hoy">
           <Wordmark size={28} />
         </Link>
 
-        <div
-          style={{
-            height: 1,
-            background: "var(--rule)",
-            margin: "0 -14px",
-          }}
-        />
-
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-          <AdminSidebarNav
-            showMyShift={showMyShift}
-            sedes={restaurants ?? []}
-          />
+          <AdminSidebarNav sedeTz={sede?.tz} />
         </div>
 
+        {/* Sede footer — replaces the prior `Owner · N sedes` block. */}
         <div
           className="pt-3"
           style={{ borderTop: "1px dashed var(--rule)" }}
         >
-          <div style={{ fontSize: 11, fontWeight: 500 }}>{profile.full_name}</div>
-          <div className="text-muted" style={{ fontSize: 10 }}>
-            Owner · {(restaurants ?? []).length}{" "}
-            {(restaurants ?? []).length === 1 ? "sede" : "sedes"}
+          <div
+            className="text-muted"
+            style={{
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              marginBottom: 4,
+            }}
+          >
+            Sede
           </div>
-          <form action={signOut} className="mt-2">
-            <button
-              type="submit"
-              className="cmd-link"
-              style={{
-                fontSize: 10,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}
-            >
-              Salir
-            </button>
-          </form>
+          <div style={{ fontSize: 11, fontWeight: 500 }}>{sedeName}</div>
+          <div className="text-muted" style={{ fontSize: 10, marginTop: 2 }}>
+            2 turnos / día · UTC-5
+          </div>
+
+          <div
+            className="mt-3 pt-3"
+            style={{ borderTop: "1px dashed var(--rule)" }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 500 }}>{profile.full_name}</div>
+            <form action={signOut} className="mt-1">
+              <button
+                type="submit"
+                className="cmd-link"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Salir
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
 
@@ -86,17 +90,16 @@ export default async function AdminLayout({
           zIndex: 20,
         }}
       >
-        <Link href="/dashboard">
+        <Link href="/hoy">
           <Wordmark size={22} />
         </Link>
         <nav
           className="flex items-center gap-3 text-ink-2"
           style={{ fontSize: 11, letterSpacing: "0.06em" }}
         >
-          <Link href="/dashboard">Hoy</Link>
+          <Link href="/hoy">Hoy</Link>
+          <Link href="/turnos">Turnos</Link>
           <Link href="/catalogo">Productos</Link>
-          <Link href="/restaurants">Sedes</Link>
-          <Link href="/reports">Reportes</Link>
           <form action={signOut}>
             <button
               type="submit"

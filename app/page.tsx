@@ -7,6 +7,6 @@ import { requireUser } from "@/lib/auth";
  */
 export default async function Index() {
   const { profile } = await requireUser();
-  if (profile.role === "admin") redirect("/dashboard");
+  if (profile.role === "admin") redirect("/hoy");
   redirect("/today");
 }
