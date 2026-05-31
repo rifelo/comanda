@@ -18,7 +18,7 @@ export default async function AdminLayout({
   const initial = (sedeName[0] ?? "D").toUpperCase();
 
   return (
-    <div className="cmd-paper flex min-h-screen text-ink">
+    <div className="cmd-paper flex h-screen overflow-hidden text-ink">
       <aside
         className="hidden md:flex flex-col cmd-paper-lt"
         style={{
