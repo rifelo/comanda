@@ -174,6 +174,7 @@ function TimeInput12({
           fontWeight: 600,
           letterSpacing: "0.04em",
           height: 28,
+          minHeight: 0,
           boxSizing: "border-box",
           border: "1px solid var(--rule)",
           padding: "0 7px",
