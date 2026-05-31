@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isValidSlug, RESERVED_SUBDOMAINS, SLUG_RE } from "@/lib/tenant";
+import { isValidSlug, RESERVED_SUBDOMAINS, ROOT_HOST, SLUG_RE } from "@/lib/tenant";
+import { addProjectDomain } from "@/lib/vercel-domains";
 
 // Result shapes (documented — `"use server"` files only export async fns):
 //   checkSlug          → { available: boolean; reason?: string }
@@ -93,6 +94,17 @@ export async function completeOnboarding(input: z.infer<typeof CompleteSchema>) 
       timezone: parsed.data.timezone.trim(),
     });
     if (rErr) return { error: rErr.message };
+  }
+
+  // Provision the subdomain on Vercel so it gets a TLS cert (HTTP-01 per host;
+  // the domain is on Cloudflare Registrar, so a wildcard cert isn't possible).
+  // Best-effort: the slug is already claimed, so don't fail onboarding on a
+  // provisioning hiccup — it can be re-added from the Vercel dashboard.
+  const prov = await addProjectDomain(`${slug}.${ROOT_HOST}`);
+  if (!prov.ok) {
+    console.error(
+      `[onboarding] Vercel domain provisioning failed for ${slug}.${ROOT_HOST}: ${prov.error}`,
+    );
   }
 
   revalidatePath("/", "layout");
