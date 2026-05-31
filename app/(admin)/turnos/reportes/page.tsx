@@ -1,18 +1,26 @@
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
-import { listShifts } from "@/lib/db/shifts";
+import { getWeeklyCompliance } from "@/lib/db/compliance";
+import { formatDateLabelEs } from "@/lib/utils";
 import { TurnosHeader } from "../../_components/turnos-header";
 
 export const dynamic = "force-dynamic";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"] as const;
 
+/** Semantic bar color by compliance threshold (mirrors the design). */
+function barColor(value: number): string {
+  return value >= 90
+    ? "var(--green)"
+    : value >= 75
+      ? "var(--amber)"
+      : "var(--red)";
+}
+
 /**
- * Reporte de cumplimiento — weekly compliance chart + per-shift table.
- *
- * Until we have historical task_completions to aggregate, we render the
- * shift definitions in the table and a "sin datos" empty-state for the
- * chart. Bar colors still follow the design's semantic thresholds.
+ * Reporte de cumplimiento — weekly compliance chart + per-shift table built
+ * from real `task_completions` aggregated for the current week (in the sede's
+ * timezone). Days/shifts with no instances render a muted "sin datos" marker.
  */
 export default async function TurnosReportesPage() {
   const [, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
@@ -30,7 +38,15 @@ export default async function TurnosReportesPage() {
     );
   }
 
-  const shifts = await listShifts(sede.id);
+  const report = await getWeeklyCompliance(sede.id, sede.tz);
+  const { kpis } = report;
+  const weekLabel = `${formatDateLabelEs(report.weekDates[0])} – ${formatDateLabelEs(
+    report.weekDates[6],
+  )}`;
+
+  // Max pixel height for the big chart bars (container is 140px tall, leaving
+  // room for the value label above each bar).
+  const MAX_BAR = 116;
 
   return (
     <div>
@@ -76,21 +92,36 @@ export default async function TurnosReportesPage() {
                 className="cmd-num font-slab"
                 style={{ fontSize: 64, lineHeight: 1, marginTop: 4 }}
               >
-                —<span className="text-muted" style={{ fontSize: 24 }}>%</span>
+                {report.globalPct ?? "—"}
+                <span className="text-muted" style={{ fontSize: 24 }}>
+                  %
+                </span>
               </div>
-              <div
-                className="text-muted"
-                style={{ fontSize: 11, marginTop: 4 }}
-              >
-                Sin datos suficientes para esta semana.
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                {report.hasData
+                  ? `Semana ${weekLabel}`
+                  : "Sin datos suficientes para esta semana."}
               </div>
             </div>
             <div className="flex" style={{ gap: 24, fontSize: 11 }}>
               {[
-                { l: "Tareas completadas", v: "—" },
-                { l: "Fotos verificadas", v: "—" },
-                { l: "Novedades", v: "—" },
-                { l: "Tareas en retraso", v: "—" },
+                {
+                  l: "Tareas completadas",
+                  v: report.hasData
+                    ? `${kpis.tasksDone} / ${kpis.tasksTotal}`
+                    : "—",
+                },
+                {
+                  l: "Fotos verificadas",
+                  v: report.hasData
+                    ? `${kpis.photosDone} / ${kpis.photosTotal}`
+                    : "—",
+                },
+                { l: "Novedades", v: report.hasData ? kpis.novedades : "—" },
+                {
+                  l: "Tareas en retraso",
+                  v: report.hasData ? kpis.late : "—",
+                },
               ].map((s) => (
                 <div
                   key={s.l}
@@ -126,25 +157,32 @@ export default async function TurnosReportesPage() {
               borderBottom: "1.5px solid var(--ink)",
             }}
           >
-            {WEEKDAYS.map((_, i) => (
+            {report.daily.map((value, i) => (
               <div
                 key={i}
-                className="flex flex-col items-center"
-                style={{ flex: 1, gap: 6 }}
+                className="flex flex-col items-center justify-end"
+                style={{ flex: 1, gap: 6, height: "100%" }}
               >
-                <span
-                  className="cmd-num text-muted"
-                  style={{ fontSize: 10 }}
-                >
-                  —
+                <span className="cmd-num text-muted" style={{ fontSize: 10 }}>
+                  {value ?? "—"}
                 </span>
-                <div
-                  style={{
-                    width: "100%",
-                    height: "0%",
-                    border: "1px dashed var(--rule)",
-                  }}
-                />
+                {value === null ? (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: 2,
+                      border: "1px dashed var(--rule)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: Math.max(2, (value / 100) * MAX_BAR),
+                      background: barColor(value),
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -185,7 +223,7 @@ export default async function TurnosReportesPage() {
             <span style={{ textAlign: "right" }}>Promedio</span>
             <span style={{ textAlign: "right" }}>Acción</span>
           </div>
-          {shifts.length === 0 ? (
+          {report.perShift.length === 0 ? (
             <div
               className="text-muted"
               style={{ padding: 16, fontSize: 12, textAlign: "center" }}
@@ -193,15 +231,15 @@ export default async function TurnosReportesPage() {
               Sin turnos configurados.
             </div>
           ) : (
-            shifts.map((s, i) => (
+            report.perShift.map((s, i) => (
               <div
-                key={s.id}
+                key={s.template_id}
                 className="grid items-center"
                 style={{
                   gridTemplateColumns: "2fr 3fr 1fr 1fr",
                   padding: "14px 16px",
                   borderBottom:
-                    i < shifts.length - 1
+                    i < report.perShift.length - 1
                       ? "1px solid var(--rule-soft)"
                       : "none",
                   background: "var(--paper-lt)",
@@ -224,33 +262,47 @@ export default async function TurnosReportesPage() {
                     {s.inicio} – {s.fin}
                   </span>
                 </span>
-                <div
-                  className="flex items-end"
-                  style={{ gap: 4, height: 36 }}
-                >
-                  {WEEKDAYS.map((_, j) => (
-                    <div
-                      key={j}
-                      style={{
-                        flex: 1,
-                        height: "0%",
-                        border: "1px dashed var(--rule)",
-                      }}
-                    />
-                  ))}
+                <div className="flex items-end" style={{ gap: 4, height: 36 }}>
+                  {s.vals.map((value, j) =>
+                    value === null ? (
+                      <div
+                        key={j}
+                        style={{
+                          flex: 1,
+                          height: 2,
+                          border: "1px dashed var(--rule)",
+                        }}
+                        title={`${WEEKDAYS[j]} · sin datos`}
+                      />
+                    ) : (
+                      <div
+                        key={j}
+                        style={{
+                          flex: 1,
+                          height: Math.max(2, (value / 100) * 36),
+                          background: barColor(value),
+                        }}
+                        title={`${WEEKDAYS[j]} · ${value}%`}
+                      />
+                    ),
+                  )}
                 </div>
                 <span
-                  className="cmd-num font-slab text-muted"
-                  style={{ textAlign: "right", fontSize: 22 }}
+                  className="cmd-num font-slab"
+                  style={{
+                    textAlign: "right",
+                    fontSize: 22,
+                    color: s.avg === null ? "var(--muted)" : "var(--ink)",
+                  }}
                 >
-                  —
+                  {s.avg === null ? "—" : `${s.avg}%`}
                 </span>
                 <span style={{ textAlign: "right" }}>
                   <span
                     className="cmd-link text-muted"
                     style={{ fontSize: 12, cursor: "default" }}
                   >
-                    sin datos
+                    {s.avg === null ? "sin datos" : "ver detalle"}
                   </span>
                 </span>
               </div>
