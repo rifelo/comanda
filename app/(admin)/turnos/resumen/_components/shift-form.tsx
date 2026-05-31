@@ -151,10 +151,12 @@ function TimeInput12({
         placeholder="h:mm"
         style={{
           fontSize: 12,
+          height: 28,
+          boxSizing: "border-box",
           border: "1px solid var(--rule)",
-          padding: "4px 6px",
+          padding: "0 6px",
           background: "var(--paper)",
-          width: 46,
+          width: 60,
           textAlign: "center",
           outline: "none",
           color: "var(--ink)",
@@ -171,8 +173,10 @@ function TimeInput12({
           fontSize: 10,
           fontWeight: 600,
           letterSpacing: "0.04em",
+          height: 28,
+          boxSizing: "border-box",
           border: "1px solid var(--rule)",
-          padding: "4px 5px",
+          padding: "0 7px",
           background: "var(--paper-lt)",
           cursor: "pointer",
           color: "var(--ink)",
@@ -629,7 +633,7 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
                 onDragEnd={() => setDraggedIdx(null)}
                 className="grid items-center"
                 style={{
-                  gridTemplateColumns: "18px 92px 1fr auto auto",
+                  gridTemplateColumns: "18px 108px 1fr auto auto",
                   gap: 12,
                   padding: "10px 12px",
                   background:
