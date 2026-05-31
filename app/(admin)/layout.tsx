@@ -11,11 +11,11 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   // requireAdmin gates auth + admin role; getActiveSede races against it to
-  // pick the single restaurant we show across Hoy / Turnos / Productos. The
-  // multi-sede `restaurants` fetch + `myShiftCount` are gone — collapsed by
-  // the redesign.
+  // pick the single restaurant we show across Hoy / Turnos / Productos /
+  // Configuración.
   const [{ profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const sedeName = sede?.name ?? "Daniel's Burger";
+  const initial = (sedeName[0] ?? "D").toUpperCase();
 
   return (
     <div className="cmd-paper flex min-h-screen text-ink">
@@ -37,25 +37,60 @@ export default async function AdminLayout({
           <AdminSidebarNav sedeTz={sede?.tz} />
         </div>
 
-        {/* Sede footer — replaces the prior `Owner · N sedes` block. */}
+        {/* Sede footer — 34×34 logo box + name + UTC-5 · COP per the design.
+            Mirrors `comanda-turnos.jsx:147-157`. */}
         <div
           className="pt-3"
           style={{ borderTop: "1px dashed var(--rule)" }}
         >
           <div
-            className="text-muted"
-            style={{
-              fontSize: 9,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              marginBottom: 4,
-            }}
+            className="flex items-center"
+            style={{ gap: 10 }}
           >
-            Sede
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 500 }}>{sedeName}</div>
-          <div className="text-muted" style={{ fontSize: 10, marginTop: 2 }}>
-            2 turnos / día · UTC-5
+            <div
+              className="flex items-center justify-center overflow-hidden flex-shrink-0"
+              style={{
+                width: 34,
+                height: 34,
+                border: "1.5px solid var(--ink)",
+                background: "var(--paper-lt)",
+              }}
+            >
+              {sede?.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={sede.logo_url}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <span
+                  className="font-slab"
+                  style={{ fontSize: 16, color: "var(--muted)" }}
+                >
+                  {initial}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {sedeName}
+              </div>
+              <div
+                className="text-muted"
+                style={{ fontSize: 10, marginTop: 1 }}
+              >
+                UTC-5 · {sede?.currency ?? "COP"}
+              </div>
+            </div>
           </div>
 
           <div
@@ -100,6 +135,7 @@ export default async function AdminLayout({
           <Link href="/hoy">Hoy</Link>
           <Link href="/turnos">Turnos</Link>
           <Link href="/catalogo">Productos</Link>
+          <Link href="/configuracion">Config</Link>
           <form action={signOut}>
             <button
               type="submit"

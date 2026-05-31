@@ -24,6 +24,53 @@ export interface ChecklistTemplate {
   name: string;
   active: boolean;
   version: number;
+  /** "HH:MM" (24h). Shift start. Added 0009. */
+  inicio: string;
+  /** "HH:MM" (24h). Shift end (may wrap past midnight). Added 0009. */
+  fin: string;
+  /** Length-7 mask, Mon-indexed (index 0 = Monday). Added 0009. */
+  dias: boolean[];
+}
+
+/** Alias for the redesign — turnos own their tasks; the table is still
+ *  `checklist_templates` (see migration 0009) so callers can use either name. */
+export type Shift = ChecklistTemplate;
+
+export type ShiftTask = TemplateTask;
+
+/** Single-sede settings (column-extended on `restaurants` by migration 0009). */
+export type ThemeName = "papel" | "sepia" | "carbon" | "indigo" | "rojo";
+
+export interface Sede {
+  id: string;
+  name: string;
+  timezone: string;
+  logo_url: string | null;
+  currency: string;
+  theme: ThemeName;
+}
+
+/** Team member as displayed in the Equipo UI + Asignación picker. */
+export interface RosterMember {
+  /** profiles.id (a UUID). */
+  id: string;
+  /** Derived from `full_name` — first letter of first two parts, uppercase. */
+  initials: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  active: boolean;
+}
+
+/** A single cell in the per-week assignment grid. */
+export interface WeeklyAssignment {
+  /** YYYY-MM-DD (ISO Monday). */
+  week_start: string;
+  template_id: string;
+  /** 0 = Monday … 6 = Sunday. */
+  dia_idx: number;
+  /** profiles.id, or null when cleared. */
+  member_id: string | null;
 }
 
 export interface TemplateTask {

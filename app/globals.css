@@ -1,7 +1,13 @@
 @import "tailwindcss";
 
-/* ── Comanda · paper-ticket palette ──────────────────────────── */
-:root {
+/* ── Comanda · paper-ticket palette ──────────────────────────────
+ * Values mirror `comanda-system.jsx:5-40` (COMANDA_THEMES). Default
+ * theme is `papel`; the other four override on `[data-theme="…"]`.
+ * The cookie-driven attribute is set in `app/layout.tsx` so the
+ * paint matches without a client-side flash.
+ * ───────────────────────────────────────────────────────────── */
+:root,
+:root[data-theme="papel"] {
   --paper: #f4ecdc;
   --paper-dk: #ebe2cf;
   --paper-lt: #faf5e8;
@@ -15,6 +21,70 @@
   --green: #3f6b3a;
   --amber: #b9871f;
   --stamp: #aa3322;
+}
+
+:root[data-theme="sepia"] {
+  --paper: #ece0c8;
+  --paper-dk: #e0d2b4;
+  --paper-lt: #f6ecd6;
+  --ink: #2b2013;
+  --ink-2: #473721;
+  --muted: #857149;
+  --rule: #c3b189;
+  --rule-soft: #d7c6a0;
+  --red: #a23b22;
+  --red-dk: #742612;
+  --green: #4a6b30;
+  --amber: #b07d18;
+  --stamp: #9c3618;
+}
+
+:root[data-theme="carbon"] {
+  --paper: #221e18;
+  --paper-dk: #1a1712;
+  --paper-lt: #2b261e;
+  --ink: #f1e9d9;
+  --ink-2: #d6cbb5;
+  --muted: #9b8c74;
+  --rule: #4a4030;
+  --rule-soft: #39312562;
+  --red: #e2674f;
+  --red-dk: #c54a34;
+  --green: #7bb061;
+  --amber: #d8a53a;
+  --stamp: #e2674f;
+}
+
+:root[data-theme="indigo"] {
+  --paper: #eceef4;
+  --paper-dk: #dfe2ec;
+  --paper-lt: #f6f7fb;
+  --ink: #1b1f2e;
+  --ink-2: #333a4d;
+  --muted: #6b7283;
+  --rule: #bcc2d2;
+  --rule-soft: #d3d8e4;
+  --red: #3a4fb0;
+  --red-dk: #26367e;
+  --green: #2f7d5b;
+  --amber: #b07d18;
+  --stamp: #3346a0;
+}
+
+:root[data-theme="rojo"] {
+  --paper: #faf6f5;
+  --paper-dk: #f0e7e5;
+  --paper-lt: #ffffff;
+  --ink: #1a1411;
+  --ink-2: #3a302d;
+  --muted: #8a7b77;
+  --rule: #e4d7d4;
+  --rule-soft: #efe4e2;
+  --red: #cc3a2c;
+  --red-dk: #a32619;
+  --green: #3f6b3a;
+  --amber: #b9871f;
+  --stamp: #cc3a2c;
 }
 
 @theme inline {

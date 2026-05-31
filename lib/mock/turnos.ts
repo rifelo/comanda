@@ -18,10 +18,15 @@ export type TurnosSection = {
 
 export const TURNOS_SECTIONS: readonly TurnosSection[] = [
   { id: "resumen", n: "01", label: "Resumen", href: "/turnos/resumen" },
-  { id: "plantillas", n: "02", label: "Plantillas", href: "/turnos/plantillas" },
-  { id: "asignacion", n: "03", label: "Asignación", href: "/turnos/asignacion" },
-  { id: "historial", n: "04", label: "Historial", href: "/turnos/historial" },
-  { id: "reportes", n: "05", label: "Reportes", href: "/turnos/reportes" },
+  { id: "asignacion", n: "02", label: "Asignación", href: "/turnos/asignacion" },
+  { id: "historial", n: "03", label: "Historial", href: "/turnos/historial" },
+  { id: "reportes", n: "04", label: "Reportes", href: "/turnos/reportes" },
+] as const;
+
+export const CONFIG_SECTIONS: readonly TurnosSection[] = [
+  { id: "sede", n: "01", label: "Sede", href: "/configuracion/sede" },
+  { id: "equipo", n: "02", label: "Equipo", href: "/configuracion/equipo" },
+  { id: "preferencias", n: "03", label: "Preferencias", href: "/configuracion/preferencias" },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────

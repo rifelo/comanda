@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PROD_SECTIONS } from "@/lib/mock/productos";
-import { TURNOS_SECTIONS } from "@/lib/mock/turnos";
+import { CONFIG_SECTIONS, TURNOS_SECTIONS } from "@/lib/mock/turnos";
 import { todayInTz } from "@/lib/utils";
 import { ComandaModuleNav, activeModuleFor } from "./comanda-module-nav";
 
@@ -34,6 +34,8 @@ export function AdminSidebarNav({ sedeTz }: { sedeTz?: string }) {
           <TurnosSecciones pathname={pathname} />
         ) : active === "productos" ? (
           <ProductosSecciones pathname={pathname} />
+        ) : active === "configuracion" ? (
+          <ConfigSecciones pathname={pathname} />
         ) : (
           <HoySecciones pathname={pathname} sedeTz={sedeTz} />
         )}
@@ -75,6 +77,17 @@ function ProductosSecciones({ pathname }: { pathname: string }) {
   return (
     <>
       {PROD_SECTIONS.map((s) => {
+        const active = pathname === s.href || pathname.startsWith(s.href + "/");
+        return <SectionLink key={s.id} {...s} active={active} />;
+      })}
+    </>
+  );
+}
+
+function ConfigSecciones({ pathname }: { pathname: string }) {
+  return (
+    <>
+      {CONFIG_SECTIONS.map((s) => {
         const active = pathname === s.href || pathname.startsWith(s.href + "/");
         return <SectionLink key={s.id} {...s} active={active} />;
       })}

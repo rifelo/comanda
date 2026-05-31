@@ -21,13 +21,26 @@ const MODULES = [
   { id: "hoy", label: "Hoy", href: "/hoy" },
   { id: "turnos", label: "Turnos", href: "/turnos" },
   { id: "productos", label: "Productos", href: "/catalogo" },
+  { id: "configuracion", label: "Configuración", href: "/configuracion" },
 ] as const;
 
 const PROD_HREFS = new Set(PROD_SECTIONS.map((s) => s.href));
 
-export function activeModuleFor(pathname: string): "hoy" | "turnos" | "productos" | null {
+export type ActiveModule =
+  | "hoy"
+  | "turnos"
+  | "productos"
+  | "configuracion"
+  | null;
+
+export function activeModuleFor(pathname: string): ActiveModule {
   if (pathname === "/hoy" || pathname.startsWith("/hoy/")) return "hoy";
   if (pathname === "/turnos" || pathname.startsWith("/turnos/")) return "turnos";
+  if (
+    pathname === "/configuracion" ||
+    pathname.startsWith("/configuracion/")
+  )
+    return "configuracion";
   for (const href of PROD_HREFS) {
     if (pathname === href || pathname.startsWith(href + "/")) return "productos";
   }

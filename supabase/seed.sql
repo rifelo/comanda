@@ -18,11 +18,14 @@ insert into restaurants (id, organization_id, name, timezone) values
    'Daniel''s Burger - Sede Demo',
    'America/Bogota');
 
--- ---------- Cajero · Día template ----------
-insert into checklist_templates (id, restaurant_id, name) values
+-- ---------- Cajero · Día template (operating: every day, 10:30–14:30) ----------
+insert into checklist_templates (id, restaurant_id, name, inicio, fin, dias) values
   ('00000000-0000-0000-0000-0000000000d1',
    '00000000-0000-0000-0000-000000000002',
-   'Cajero - Turno Día');
+   'día',
+   '10:30',
+   '14:30',
+   array[true,true,true,true,true,true,true]);
 
 insert into template_tasks (template_id, order_index, title, instructions, due_time, requires_photo) values
   ('00000000-0000-0000-0000-0000000000d1', 1,  'Abrir arqueo a las 10:30', null, '10:30', false),
@@ -46,11 +49,14 @@ insert into template_tasks (template_id, order_index, title, instructions, due_t
   ('00000000-0000-0000-0000-0000000000d1', 11, 'A la 1:30 organizar recibos para entrega de caja', null, '13:30', false),
   ('00000000-0000-0000-0000-0000000000d1', 12, 'Cerrar arqueo 02:30 pm según procedimiento entrega de caja', null, '14:30', false);
 
--- ---------- Cajero · Noche template ----------
-insert into checklist_templates (id, restaurant_id, name) values
+-- ---------- Cajero · Noche template (operating: Tue–Sun, 14:30–02:30; closed Monday) ----------
+insert into checklist_templates (id, restaurant_id, name, inicio, fin, dias) values
   ('00000000-0000-0000-0000-0000000000d2',
    '00000000-0000-0000-0000-000000000002',
-   'Cajero - Turno Noche');
+   'noche',
+   '14:30',
+   '02:30',
+   array[false,true,true,true,true,true,true]);
 
 insert into template_tasks (template_id, order_index, title, instructions, due_time, requires_photo) values
   ('00000000-0000-0000-0000-0000000000d2', 1, 'Recibir caja según procedimiento de entrega y apertura de caja 6:00 pm',

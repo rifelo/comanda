@@ -1,6 +1,12 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInTz } from "@/lib/utils";
-import type { ShiftInstance, ShiftView, TaskCompletion } from "@/lib/types";
+import type {
+  Shift,
+  ShiftInstance,
+  ShiftView,
+  TaskCompletion,
+  TemplateTask,
+} from "@/lib/types";
 
 /** Hydrated row returned by `getTodayShifts`: shift fields the /today list needs
  *  + the joined restaurant/template names so the page doesn't need a second
@@ -156,3 +162,62 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
 // Shift generation lives in the cron route at app/api/cron/generate-shifts/route.ts —
 // it needs the service-role client to bypass RLS across orgs and so doesn't share
 // code with this RLS-aware module.
+
+// ─────────────────────────────────────────────────────────────────
+// Shift (= checklist_template) CRUD reads for the redesigned Turnos module.
+// The table is still `checklist_templates` (see 0009) — the rename would
+// have rippled through every FK + policy without changing behavior, so we
+// kept the storage name and aliased the type.
+// ─────────────────────────────────────────────────────────────────
+
+type ShiftWithTasks = Shift & { tasks: TemplateTask[] };
+
+function normalizeShiftRow(row: Record<string, unknown>): ShiftWithTasks | null {
+  if (!row || typeof row !== "object") return null;
+  const tasksRaw = Array.isArray(row.template_tasks) ? row.template_tasks : [];
+  const tasks = (tasksRaw as TemplateTask[]).slice().sort(
+    (a, b) => a.order_index - b.order_index,
+  );
+  return {
+    id: row.id as string,
+    restaurant_id: row.restaurant_id as string,
+    name: row.name as string,
+    active: (row.active as boolean) ?? true,
+    version: (row.version as number) ?? 1,
+    inicio: ((row.inicio as string) ?? "10:30").slice(0, 5),
+    fin: ((row.fin as string) ?? "14:30").slice(0, 5),
+    dias: Array.isArray(row.dias)
+      ? (row.dias as boolean[])
+      : [true, true, true, true, true, true, true],
+    tasks,
+  };
+}
+
+/** List active shifts for a restaurant, each with its ordered task list. */
+export async function listShifts(
+  restaurantId: string,
+): Promise<ShiftWithTasks[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("checklist_templates")
+    .select("*, template_tasks(*)")
+    .eq("restaurant_id", restaurantId)
+    .eq("active", true)
+    .order("inicio");
+  if (!data) return [];
+  return data
+    .map((r) => normalizeShiftRow(r as Record<string, unknown>))
+    .filter((r): r is ShiftWithTasks => r !== null);
+}
+
+/** Get one shift by id including its ordered tasks. Returns null if missing. */
+export async function getShift(id: string): Promise<ShiftWithTasks | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("checklist_templates")
+    .select("*, template_tasks(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return normalizeShiftRow(data as Record<string, unknown>);
+}
