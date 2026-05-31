@@ -29,7 +29,7 @@ export async function listRoster(restaurantId: string): Promise<RosterMember[]> 
   const { data } = await supabase
     .from("restaurant_members")
     .select(
-      "user_id, phone, active, profile:profiles!inner(id, full_name)",
+      "user_id, phone, active, profile:profiles!inner(id, full_name, role)",
     )
     .eq("restaurant_id", restaurantId);
 
@@ -44,7 +44,11 @@ export async function listRoster(restaurantId: string): Promise<RosterMember[]> 
         user_id: string;
         phone: string | null;
         active: boolean;
-        profile: { id: string; full_name: string } | null;
+        profile: {
+          id: string;
+          full_name: string;
+          role: "admin" | "staff" | null;
+        } | null;
       };
       if (!r.profile) return null;
       const name = r.profile.full_name ?? "—";
@@ -55,6 +59,7 @@ export async function listRoster(restaurantId: string): Promise<RosterMember[]> 
         email: "",
         phone: r.phone,
         active: r.active ?? true,
+        role: r.profile.role ?? "staff",
       } satisfies RosterMember;
     })
     .filter((m): m is RosterMember => m !== null)

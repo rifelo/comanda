@@ -223,7 +223,7 @@ export function EquipoClient({
         <div
           className="grid"
           style={{
-            gridTemplateColumns: "2fr 2fr 1.3fr .9fr 40px",
+            gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 40px",
             padding: "10px 16px",
             background: "var(--ink)",
             color: "var(--paper-lt)",
@@ -235,6 +235,7 @@ export function EquipoClient({
           <span>Persona</span>
           <span>Email</span>
           <span>Teléfono</span>
+          <span style={{ textAlign: "center" }}>Rol</span>
           <span style={{ textAlign: "center" }}>Activo</span>
           <span></span>
         </div>
@@ -243,7 +244,7 @@ export function EquipoClient({
             key={p.id}
             className="grid items-center"
             style={{
-              gridTemplateColumns: "2fr 2fr 1.3fr .9fr 40px",
+              gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 40px",
               padding: "12px 16px",
               borderBottom:
                 i < roster.length - 1 ? "1px solid var(--rule-soft)" : "none",
@@ -288,6 +289,26 @@ export function EquipoClient({
               className="cmd-num text-muted"
               style={{ ...cellInput, fontSize: 12 }}
             />
+            <div style={{ textAlign: "center" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  padding: "3px 8px",
+                  borderRadius: 2,
+                  border: `1px solid ${p.role === "admin" ? "var(--ink)" : "var(--rule)"}`,
+                  background:
+                    p.role === "admin" ? "var(--ink)" : "transparent",
+                  color:
+                    p.role === "admin" ? "var(--paper-lt)" : "var(--muted)",
+                }}
+              >
+                {p.role === "admin" ? "Dueño" : "Staff"}
+              </span>
+            </div>
             <div style={{ textAlign: "center" }}>
               <button
                 type="button"

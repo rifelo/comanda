@@ -60,6 +60,8 @@ export interface RosterMember {
   email: string;
   phone: string | null;
   active: boolean;
+  /** Only two roles exist: 'admin' (owner) and 'staff'. */
+  role: "admin" | "staff";
 }
 
 /** A single cell in the per-week assignment grid. */
