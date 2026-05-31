@@ -55,5 +55,46 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Role gate: staff may only reach the staff routes (`/today`, `/shift`).
+  // Every other authenticated app route is admin-only, so a staff user who
+  // lands on one is bounced to `/today`. The role-aware `/` landing page and
+  // the `requireAdmin` layout guard still apply — this just makes the
+  // boundary explicit and central, and turns the old `/ → /today` double
+  // bounce into a single redirect.
+  if (user && !isPublic && !isStaffPath(path)) {
+    // Skip the lookup on prefetch requests — they never render, and the real
+    // navigation (plus the layout guard) still enforces the boundary.
+    const isPrefetch =
+      request.headers.get("next-router-prefetch") === "1" ||
+      (request.headers.get("sec-purpose") ?? "").includes("prefetch");
+    if (!isPrefetch) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single<{ role: string }>();
+      if (profile?.role === "staff") {
+        const url = request.nextUrl.clone();
+        url.pathname = "/today";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
   return response;
+}
+
+/**
+ * The routes a staff member is allowed to reach. `/` is included because it's
+ * the role-aware landing page that immediately bounces them to `/today`.
+ */
+function isStaffPath(path: string): boolean {
+  return (
+    path === "/" ||
+    path === "/today" ||
+    path.startsWith("/today/") ||
+    path === "/shift" ||
+    path.startsWith("/shift/")
+  );
 }
