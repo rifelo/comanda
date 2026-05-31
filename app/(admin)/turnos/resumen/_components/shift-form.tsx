@@ -65,6 +65,25 @@ function toMin(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
+/** Format the time field while typing: keep only digits and insert the ":"
+ *  automatically after the hour pair — the user types numbers, nothing else.
+ *  e.g. "1" → "1", "14" → "14", "143" → "14:3", "1430" → "14:30". */
+function formatTimeTyping(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 4);
+  return d.length <= 2 ? d : `${d.slice(0, 2)}:${d.slice(2)}`;
+}
+
+/** Normalize on blur to a valid "HH:MM" (or "" when empty), padding partial
+ *  entries and clamping hours to 23 / minutes to 59. Guarantees the value the
+ *  server validates against /^\d{2}:\d{2}$/ is always well-formed. */
+function normalizeTime(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  if (!d) return "";
+  const h = Math.min(23, Number(d.slice(0, 2)));
+  const m = Math.min(59, Number(d.slice(2, 4).padEnd(2, "0")));
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
   const editing = !!initial;
   const [name, setName] = React.useState(initial?.name ?? "");
@@ -527,7 +546,14 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
                 </span>
                 <input
                   value={t.due_time}
-                  onChange={(e) => setTask(i, { due_time: e.target.value })}
+                  onChange={(e) =>
+                    setTask(i, { due_time: formatTimeTyping(e.target.value) })
+                  }
+                  onBlur={(e) =>
+                    setTask(i, { due_time: normalizeTime(e.target.value) })
+                  }
+                  inputMode="numeric"
+                  maxLength={5}
                   placeholder="hh:mm"
                   style={{
                     fontSize: 12,
