@@ -44,13 +44,15 @@ export default async function TurnosAsignacionPage() {
         inicio: s.inicio,
         dias: s.dias,
       }))}
-      roster={roster.map((r) => ({
-        id: r.id,
-        initials: r.initials,
-        name: r.name,
-        email: r.email,
-        active: r.active,
-      }))}
+      roster={roster
+        .filter((r) => r.isMember)
+        .map((r) => ({
+          id: r.id,
+          initials: r.initials,
+          name: r.name,
+          email: r.email,
+          active: r.active,
+        }))}
       initialAssignments={assignments.map((a) => ({
         template_id: a.template_id,
         dia_idx: a.dia_idx,

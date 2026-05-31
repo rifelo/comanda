@@ -286,6 +286,7 @@ export function EquipoClient({
               onChange={(e) => patchLocal(p.id, { phone: e.target.value })}
               onBlur={(e) => commitNameOrPhone(p.id, "phone", e.target.value)}
               placeholder="—"
+              readOnly={!p.isMember}
               className="cmd-num text-muted"
               style={{ ...cellInput, fontSize: 12 }}
             />
@@ -310,55 +311,66 @@ export function EquipoClient({
               </span>
             </div>
             <div style={{ textAlign: "center" }}>
+              {p.isMember ? (
+                <button
+                  type="button"
+                  onClick={() => commitActive(p.id, !p.active)}
+                  title={p.active ? "Activo" : "Inactivo"}
+                  style={{
+                    width: 34,
+                    height: 20,
+                    borderRadius: 10,
+                    border: `1px solid ${p.active ? "var(--green)" : "var(--rule)"}`,
+                    background: p.active
+                      ? "rgba(31,138,91,.15)"
+                      : "transparent",
+                    position: "relative",
+                    cursor: "pointer",
+                    padding: 0,
+                    minHeight: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 2,
+                      left: p.active ? 16 : 2,
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      background: p.active ? "var(--green)" : "var(--muted)",
+                      transition: "left .12s",
+                    }}
+                  />
+                </button>
+              ) : (
+                // Owners aren't sede members — nothing to toggle.
+                <span className="text-muted" style={{ fontSize: 12 }}>
+                  —
+                </span>
+              )}
+            </div>
+            {p.isMember ? (
               <button
                 type="button"
-                onClick={() => commitActive(p.id, !p.active)}
-                title={p.active ? "Activo" : "Inactivo"}
+                onClick={() => remove(p.id)}
+                title="Eliminar"
+                className="text-muted"
                 style={{
-                  width: 34,
-                  height: 20,
-                  borderRadius: 10,
-                  border: `1px solid ${p.active ? "var(--green)" : "var(--rule)"}`,
-                  background: p.active
-                    ? "rgba(31,138,91,.15)"
-                    : "transparent",
-                  position: "relative",
+                  background: "transparent",
+                  border: "none",
                   cursor: "pointer",
-                  padding: 0,
+                  fontSize: 16,
+                  lineHeight: 1,
+                  justifySelf: "center",
                   minHeight: 0,
                 }}
               >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: p.active ? 16 : 2,
-                    width: 14,
-                    height: 14,
-                    borderRadius: "50%",
-                    background: p.active ? "var(--green)" : "var(--muted)",
-                    transition: "left .12s",
-                  }}
-                />
+                ×
               </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => remove(p.id)}
-              title="Eliminar"
-              className="text-muted"
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 16,
-                lineHeight: 1,
-                justifySelf: "center",
-                minHeight: 0,
-              }}
-            >
-              ×
-            </button>
+            ) : (
+              <span />
+            )}
           </div>
         ))}
         {roster.length === 0 ? (

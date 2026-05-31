@@ -62,6 +62,13 @@ export interface RosterMember {
   active: boolean;
   /** Only two roles exist: 'admin' (owner) and 'staff'. */
   role: "admin" | "staff";
+  /**
+   * Whether this person has a `restaurant_members` row for the sede. Owners
+   * (org admins) are listed even without one — for them this is false, so the
+   * UI hides per-member controls (active toggle, remove, phone) that have no
+   * row to write to.
+   */
+  isMember: boolean;
 }
 
 /** A single cell in the per-week assignment grid. */
