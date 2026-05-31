@@ -199,7 +199,7 @@ export default async function TurnosResumenPage() {
                         className="font-slab"
                         style={{ fontSize: 26, lineHeight: 1, textTransform: "capitalize" }}
                       >
-                        Turno {t.name}
+                        {t.name}
                       </div>
                       <div
                         className="cmd-num text-muted"
