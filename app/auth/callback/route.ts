@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { withCookieDomain } from "@/lib/supabase/cookie-domain";
 
 /**
  * OAuth callback for Supabase Google sign-in (PKCE flow).
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
+            response.cookies.set(name, value, withCookieDomain(options)),
           );
         },
       },
