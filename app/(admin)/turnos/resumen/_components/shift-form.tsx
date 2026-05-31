@@ -65,23 +65,124 @@ function toMin(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-/** Format the time field while typing: keep only digits and insert the ":"
- *  automatically after the hour pair — the user types numbers, nothing else.
- *  e.g. "1" → "1", "14" → "14", "143" → "14:3", "1430" → "14:30". */
-function formatTimeTyping(raw: string): string {
+// ─── 12-hour AM/PM time entry ────────────────────────────────────────────────
+// The field is entered/displayed in 12-hour AM/PM form, but `due_time` stays
+// canonical 24-hour "HH:MM" (what the DB `time` column and the server's
+// /^\d{2}:\d{2}$/ validator expect) — so only the UI is 12-hour.
+
+type Meridiem = "AM" | "PM";
+
+/** Format while typing: digits only, colon inserted before the last two so the
+ *  minutes are unambiguous. "2"→"2", "230"→"2:30", "1230"→"12:30". */
+function format12Typing(raw: string): string {
   const d = raw.replace(/\D/g, "").slice(0, 4);
-  return d.length <= 2 ? d : `${d.slice(0, 2)}:${d.slice(2)}`;
+  return d.length <= 2 ? d : `${d.slice(0, d.length - 2)}:${d.slice(d.length - 2)}`;
 }
 
-/** Normalize on blur to a valid "HH:MM" (or "" when empty), padding partial
- *  entries and clamping hours to 23 / minutes to 59. Guarantees the value the
- *  server validates against /^\d{2}:\d{2}$/ is always well-formed. */
-function normalizeTime(raw: string): string {
-  const d = raw.replace(/\D/g, "");
-  if (!d) return "";
-  const h = Math.min(23, Number(d.slice(0, 2)));
-  const m = Math.min(59, Number(d.slice(2, 4).padEnd(2, "0")));
+/** Parse a typed 12-hour string → clamped {h12 (1-12), m (0-59)}, or null when
+ *  empty. Last two digits are minutes; the rest is the hour. */
+function parse12(text: string): { h12: number; m: number } | null {
+  const d = text.replace(/\D/g, "");
+  if (!d) return null;
+  const [hStr, mStr] = d.length <= 2 ? [d, "0"] : [d.slice(0, d.length - 2), d.slice(d.length - 2)];
+  let h12 = Number(hStr) || 12; // "0.." → 12
+  h12 = Math.min(12, Math.max(1, h12));
+  const m = Math.min(59, Number(mStr));
+  return { h12, m };
+}
+
+/** Canonical 12-hour display, e.g. {9,5} → "9:05". */
+function display12(p: { h12: number; m: number }): string {
+  return `${p.h12}:${String(p.m).padStart(2, "0")}`;
+}
+
+/** 12-hour + meridiem → canonical 24-hour "HH:MM". */
+function to24h(h12: number, m: number, mer: Meridiem): string {
+  const h = (h12 % 12) + (mer === "PM" ? 12 : 0);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Canonical 24-hour "HH:MM" → {12-hour text, meridiem} for first paint. */
+function from24h(v: string): { text: string; mer: Meridiem } {
+  const d = v.replace(/\D/g, "");
+  if (d.length < 3) return { text: "", mer: "AM" };
+  const h = Number(d.slice(0, 2));
+  const m = Number(d.slice(2, 4));
+  const h12 = h % 12 || 12;
+  return { text: display12({ h12, m }), mer: h >= 12 ? "PM" : "AM" };
+}
+
+/** Compact 12-hour time entry: numeric h:mm field + an AM/PM toggle. Emits the
+ *  canonical 24-hour value (or "" when cleared) via `onChange`. */
+function TimeInput12({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  // Seed once from the incoming 24h value; thereafter we own the display.
+  const init = React.useMemo(() => from24h(value), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [text, setText] = React.useState(init.text);
+  const [mer, setMer] = React.useState<Meridiem>(init.mer);
+
+  function emit(t: string, m: Meridiem) {
+    const p = parse12(t);
+    onChange(p ? to24h(p.h12, p.m, m) : "");
+  }
+
+  return (
+    <div className="flex items-center" style={{ gap: 4 }}>
+      <input
+        value={text}
+        onChange={(e) => {
+          const t = format12Typing(e.target.value);
+          setText(t);
+          emit(t, mer);
+        }}
+        onBlur={() => {
+          const p = parse12(text);
+          const t = p ? display12(p) : "";
+          setText(t);
+          emit(t, mer);
+        }}
+        inputMode="numeric"
+        maxLength={5}
+        placeholder="h:mm"
+        style={{
+          fontSize: 12,
+          border: "1px solid var(--rule)",
+          padding: "4px 6px",
+          background: "var(--paper)",
+          width: 46,
+          textAlign: "center",
+          outline: "none",
+          color: "var(--ink)",
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          const m2: Meridiem = mer === "AM" ? "PM" : "AM";
+          setMer(m2);
+          emit(text, m2);
+        }}
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          border: "1px solid var(--rule)",
+          padding: "4px 5px",
+          background: "var(--paper-lt)",
+          cursor: "pointer",
+          color: "var(--ink)",
+          lineHeight: 1,
+        }}
+      >
+        {mer}
+      </button>
+    </div>
+  );
 }
 
 export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
@@ -528,7 +629,7 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
                 onDragEnd={() => setDraggedIdx(null)}
                 className="grid items-center"
                 style={{
-                  gridTemplateColumns: "18px 64px 1fr auto auto",
+                  gridTemplateColumns: "18px 92px 1fr auto auto",
                   gap: 12,
                   padding: "10px 12px",
                   background:
@@ -544,27 +645,9 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
                 >
                   ⠿
                 </span>
-                <input
+                <TimeInput12
                   value={t.due_time}
-                  onChange={(e) =>
-                    setTask(i, { due_time: formatTimeTyping(e.target.value) })
-                  }
-                  onBlur={(e) =>
-                    setTask(i, { due_time: normalizeTime(e.target.value) })
-                  }
-                  inputMode="numeric"
-                  maxLength={5}
-                  placeholder="hh:mm"
-                  style={{
-                    fontSize: 12,
-                    border: "1px solid var(--rule)",
-                    padding: "4px 6px",
-                    background: "var(--paper)",
-                    width: 56,
-                    textAlign: "center",
-                    outline: "none",
-                    color: "var(--ink)",
-                  }}
+                  onChange={(v) => setTask(i, { due_time: v })}
                 />
                 <div>
                   <input
