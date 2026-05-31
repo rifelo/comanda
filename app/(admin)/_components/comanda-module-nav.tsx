@@ -20,7 +20,7 @@ import { PROD_SECTIONS } from "@/lib/mock/productos";
 const MODULES = [
   { id: "hoy", label: "Hoy", href: "/hoy" },
   { id: "turnos", label: "Turnos", href: "/turnos" },
-  { id: "productos", label: "Productos", href: "/catalogo" },
+  { id: "productos", label: "Productos", href: "/catalogo", badge: "En desarrollo" },
   { id: "configuracion", label: "Configuración", href: "/configuracion" },
 ] as const;
 
@@ -67,10 +67,12 @@ export function ComandaModuleNav() {
       <div className="flex flex-col">
         {MODULES.map((m) => {
           const isActive = m.id === active;
+          const badge = "badge" in m ? m.badge : null;
           return (
             <Link
               key={m.id}
               href={m.href}
+              className="flex items-center justify-between"
               style={{
                 textAlign: "left",
                 background: isActive ? "var(--ink)" : "transparent",
@@ -81,11 +83,33 @@ export function ComandaModuleNav() {
                 marginBottom: 2,
                 fontWeight: isActive ? 600 : 400,
                 minHeight: 0,
-                whiteSpace: "pre",
+                gap: 6,
               }}
             >
-              <span>{isActive ? "▸ " : "  "}</span>
-              <span>{m.label}</span>
+              <span style={{ whiteSpace: "pre" }}>
+                {isActive ? "▸ " : "  "}
+                {m.label}
+              </span>
+              {badge ? (
+                <span
+                  title="Módulo en desarrollo"
+                  style={{
+                    flexShrink: 0,
+                    fontSize: 7.5,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    padding: "2px 5px",
+                    borderRadius: 2,
+                    border: "1px solid var(--amber)",
+                    color: "var(--amber)",
+                    whiteSpace: "nowrap",
+                    lineHeight: 1,
+                  }}
+                >
+                  {badge}
+                </span>
+              ) : null}
             </Link>
           );
         })}
