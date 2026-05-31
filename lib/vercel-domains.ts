@@ -59,3 +59,40 @@ export async function addProjectDomain(
     };
   }
 }
+
+/**
+ * Detach a hostname from the Vercel project (on tenant deletion, so abandoned
+ * slugs don't accumulate). No-op without a token; a host that's already gone
+ * (404) counts as success.
+ */
+export async function removeProjectDomain(
+  name: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const token = process.env.VERCEL_TOKEN;
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  if (!token || !projectId) return { ok: true };
+
+  const teamId = process.env.VERCEL_TEAM_ID;
+  const qs = teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
+
+  try {
+    const res = await fetch(
+      `${VERCEL_API}/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(name)}${qs}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (res.ok || res.status === 404) return { ok: true };
+
+    const body = (await res.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    return {
+      ok: false,
+      error: body?.error?.message ?? `Vercel API responded ${res.status}`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Vercel API request failed",
+    };
+  }
+}
