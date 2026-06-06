@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { withCookieDomain } from "./cookie-domain";
 
 /**
  * Supabase client for Server Components and Server Actions.
@@ -21,7 +20,7 @@ export async function createSupabaseServerClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, withCookieDomain(options)),
+              cookieStore.set(name, value, options),
             );
           } catch {
             // setAll is called from a Server Component; cookies are read-only there.

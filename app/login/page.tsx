@@ -1,7 +1,4 @@
-import { headers } from "next/headers";
 import { Wordmark } from "@/components/comanda/primitives";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { tenantFromHeaders } from "@/lib/tenant";
 import { GoogleSignInButton } from "./google-signin-button";
 
 export default async function LoginPage({
@@ -10,17 +7,6 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const sp = await searchParams;
-
-  // On a tenant subdomain, greet by org name (public, pre-auth — safe RPC).
-  const tenant = tenantFromHeaders(await headers());
-  let tenantName: string | null = null;
-  if (tenant) {
-    const supabase = await createSupabaseServerClient();
-    const { data } = await supabase.rpc("org_public_by_slug", {
-      p_slug: tenant.slug,
-    });
-    tenantName = (data as { name: string }[] | null)?.[0]?.name ?? null;
-  }
   return (
     <main className="cmd-paper flex min-h-screen flex-col px-6 pt-16 pb-10">
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col">
@@ -29,9 +15,7 @@ export default async function LoginPage({
           className="text-muted mt-3 leading-relaxed"
           style={{ fontSize: 12, letterSpacing: "0.04em" }}
         >
-          {tenantName
-            ? `Inicia sesión en ${tenantName}.`
-            : "Lista de actividades de cajero, en el bolsillo."}
+          Lista de actividades de cajero, en el bolsillo.
         </p>
 
         <div className="mt-14">

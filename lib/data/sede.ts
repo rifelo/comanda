@@ -1,6 +1,4 @@
-import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { tenantFromHeaders } from "@/lib/tenant";
 import type { ThemeName } from "@/lib/types";
 
 /**
@@ -40,26 +38,19 @@ export async function getActiveSede(): Promise<ActiveSede | null> {
 
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, organization_id, name, timezone, logo_url, currency, theme")
+    .select("id, name, timezone, logo_url, currency, theme")
     .order("name")
     .limit(1);
 
   if (error || !data || data.length === 0) return null;
   const r = data[0] as {
     id: string;
-    organization_id: string;
     name: string | null;
     timezone: string | null;
     logo_url: string | null;
     currency: string | null;
     theme: string | null;
   };
-
-  // Defensive: RLS already scopes to the user's org and middleware guarantees
-  // user-org == subdomain-org before this runs, but if the injected tenant
-  // header ever disagrees with the restaurant's org, refuse to serve it.
-  const tenant = tenantFromHeaders(await headers());
-  if (tenant && tenant.orgId !== r.organization_id) return null;
   return {
     id: r.id,
     name: r.name ?? "Daniel's Burger",

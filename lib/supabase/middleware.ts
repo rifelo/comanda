@@ -1,36 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { parseHost, rootUrl, tenantUrl } from "@/lib/tenant";
-import { withCookieDomain } from "./cookie-domain";
 
 /**
- * Middleware-side Supabase session refresh + multi-tenant host routing.
+ * Middleware-side Supabase session refresh.
  *
- * Runs on every request (see proxy.ts). Responsibilities:
- *   1. Refresh the auth token cookie (scoped to the apex domain so the session
- *      is shared across `<slug>.<root>` subdomains).
- *   2. Resolve the request Host → tenant, and inject `x-tenant-slug` /
- *      `x-tenant-org` request headers so Server Components/Actions can read the
- *      active tenant (see lib/tenant.ts `tenantFromHeaders`).
- *   3. Gate: unauth → /login; wrong-tenant subdomain → the user's own home;
- *      not-onboarded admin → /onboarding; staff → staff routes only.
+ * Runs on every request (see middleware.ts) so the auth token cookie stays
+ * fresh, and so server-rendered pages read a valid session.
  */
-
-// slug -> orgId cache. Slugs are immutable once claimed, so positive results
-// are safe to memoize across invocations on a warm instance. Negatives are NOT
-// cached, so a freshly-registered slug resolves on its first request.
-const slugOrgCache = new Map<string, string>();
-
 export async function updateSession(request: NextRequest) {
-  const host = parseHost(request.headers.get("host"));
-
-  // Downstream request headers: strip any spoofed tenant headers up front; the
-  // genuine ones are injected after we resolve the slug below.
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.delete("x-tenant-slug");
-  requestHeaders.delete("x-tenant-org");
-
-  let response = NextResponse.next({ request: { headers: requestHeaders } });
+  let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,9 +22,9 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          response = NextResponse.next({ request: { headers: requestHeaders } });
+          response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, withCookieDomain(options)),
+            response.cookies.set(name, value, options),
           );
         },
       },
@@ -58,8 +36,8 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Auth gate baseline. Public paths: /login, /auth/* (OAuth callback),
-  // /api/cron/*, static assets.
+  // Auth gate: anyone hitting an app route without a session bounces to /login.
+  // Public paths: /login, /auth/* (OAuth callback), /api/cron/*, static assets.
   const path = request.nextUrl.pathname;
   const isPublic =
     path.startsWith("/login") ||
@@ -70,34 +48,6 @@ export async function updateSession(request: NextRequest) {
     path === "/manifest.json" ||
     path === "/favicon.ico";
 
-  // Prefetch requests never render, so they must never trigger an enforcement
-  // redirect (it would poison the router cache for the real navigation).
-  const isPrefetch =
-    request.headers.get("next-router-prefetch") === "1" ||
-    (request.headers.get("sec-purpose") ?? "").includes("prefetch");
-
-  // ── Tenant host: resolve <slug> → org id, inject tenant headers ──
-  let tenantOrgId: string | null = null;
-  if (host.kind === "tenant") {
-    tenantOrgId = slugOrgCache.get(host.slug) ?? null;
-    if (!tenantOrgId) {
-      const { data } = await supabase.rpc("org_id_for_slug", {
-        p_slug: host.slug,
-      });
-      tenantOrgId = (data as string | null) ?? null;
-      if (tenantOrgId) slugOrgCache.set(host.slug, tenantOrgId);
-    }
-    if (!tenantOrgId) {
-      // Unknown subdomain → apex (don't reveal whether it exists).
-      if (isPrefetch) return response;
-      return NextResponse.redirect(rootUrl("/"));
-    }
-    requestHeaders.set("x-tenant-slug", host.slug);
-    requestHeaders.set("x-tenant-org", tenantOrgId);
-    response = NextResponse.next({ request: { headers: requestHeaders } });
-  }
-
-  // ── Auth gate: unauth on a private route → /login (same host) ──
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -105,48 +55,29 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // ── Authed enforcement (never on prefetch / public routes) ──
-  if (user && !isPublic && !isPrefetch) {
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("role, organization_id, org:organizations!inner(slug)")
-      .eq("id", user.id)
-      .single<{
-        role: string;
-        organization_id: string;
-        org: { slug: string | null } | null;
-      }>();
-
-    // No profile row yet → let requireUser() sign them out (avoid a loop).
-    if (prof) {
-      const userSlug = prof.org?.slug ?? null;
-
-      if (host.kind === "tenant") {
-        // Wrong tenant → send the user to their own home.
-        if (prof.organization_id !== tenantOrgId) {
-          return NextResponse.redirect(
-            userSlug ? tenantUrl(userSlug, "/") : rootUrl("/onboarding"),
-          );
-        }
-        // Correct tenant: staff may only reach the staff routes.
-        if (prof.role === "staff" && !isStaffPath(path)) {
-          const url = request.nextUrl.clone();
-          url.pathname = "/today";
-          url.search = "";
-          return NextResponse.redirect(url);
-        }
-      } else {
-        // Marketing / apex host.
-        if (!userSlug) {
-          // Only an admin can finish onboarding; staff in an un-onboarded org
-          // (a pathological state) are left alone to avoid a redirect loop.
-          if (prof.role === "admin" && path !== "/onboarding") {
-            return NextResponse.redirect(rootUrl("/onboarding"));
-          }
-        } else {
-          // Onboarded users have no app on the apex → their own subdomain.
-          return NextResponse.redirect(tenantUrl(userSlug, "/"));
-        }
+  // Role gate: staff may only reach the staff routes (`/today`, `/shift`).
+  // Every other authenticated app route is admin-only, so a staff user who
+  // lands on one is bounced to `/today`. The role-aware `/` landing page and
+  // the `requireAdmin` layout guard still apply — this just makes the
+  // boundary explicit and central, and turns the old `/ → /today` double
+  // bounce into a single redirect.
+  if (user && !isPublic && !isStaffPath(path)) {
+    // Skip the lookup on prefetch requests — they never render, and the real
+    // navigation (plus the layout guard) still enforces the boundary.
+    const isPrefetch =
+      request.headers.get("next-router-prefetch") === "1" ||
+      (request.headers.get("sec-purpose") ?? "").includes("prefetch");
+    if (!isPrefetch) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single<{ role: string }>();
+      if (profile?.role === "staff") {
+        const url = request.nextUrl.clone();
+        url.pathname = "/today";
+        url.search = "";
+        return NextResponse.redirect(url);
       }
     }
   }

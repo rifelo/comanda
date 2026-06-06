@@ -2,20 +2,11 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 
 /**
- * Landing route — bounce to the right home depending on role. Middleware
- * enforces auth + host routing before this runs; the onboarding gate here is a
- * defensive backstop (an admin whose org hasn't claimed a slug yet).
+ * Landing route — bounce to the right home depending on role.
+ * Middleware already enforces an authenticated session here.
  */
 export default async function Index() {
-  const { profile, supabase } = await requireUser();
-  if (profile.role === "admin") {
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("slug")
-      .eq("id", profile.organization_id)
-      .single<{ slug: string | null }>();
-    if (!org?.slug) redirect("/onboarding");
-    redirect("/hoy");
-  }
+  const { profile } = await requireUser();
+  if (profile.role === "admin") redirect("/hoy");
   redirect("/today");
 }
