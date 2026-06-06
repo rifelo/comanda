@@ -300,7 +300,7 @@ export default async function HoyPage() {
                 >
                   {t.data ? (
                     <Link
-                      href={`/hoy/${today}`}
+                      href={`/hoy/${today}?turno=${t.data.shift_id}`}
                       className="cmd-link"
                       style={{ fontSize: 11 }}
                     >

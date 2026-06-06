@@ -24,10 +24,12 @@ export const dynamic = "force-dynamic";
  */
 export default async function HoyDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ date: string }>;
+  searchParams: Promise<{ turno?: string }>;
 }) {
-  const { date } = await params;
+  const [{ date }, { turno }] = await Promise.all([params, searchParams]);
   const [{ supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
 
   if (!sede) {
@@ -35,16 +37,21 @@ export default async function HoyDetailPage({
     notFound();
   }
 
-  // Find the (sede, date) shift. Prefer the day-shift (one row per template);
-  // if there are two we still render the first — UI is single-shift per day.
-  const { data: shiftRow } = await supabase
+  // All shifts for (sede, date). The dashboard card links here with
+  // `?turno=<shift_id>`, so honor that selection first; otherwise prefer the
+  // ongoing (open) turno, and finally fall back to the first by id.
+  const { data: shiftRows } = await supabase
     .from("shift_instances")
-    .select("id")
+    .select("id, status")
     .eq("restaurant_id", sede.id)
     .eq("date", date)
-    .order("id")
-    .limit(1)
-    .maybeSingle();
+    .order("id");
+
+  const shiftRow =
+    (turno ? shiftRows?.find((r) => r.id === turno) : undefined) ??
+    shiftRows?.find((r) => r.status === "open") ??
+    shiftRows?.[0] ??
+    null;
 
   if (!shiftRow) {
     return <EmptyDetail date={date} sedeName={sede.name} />;
