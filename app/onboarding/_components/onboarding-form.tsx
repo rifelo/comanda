@@ -37,19 +37,9 @@ export function OnboardingForm({
 }: {
   defaultRestaurantName: string;
 }) {
+  const [slug, setSlug] = React.useState("");
   const [name, setName] = React.useState(defaultRestaurantName);
-  // The subdomain is derived from the restaurant name (sanitized) until the
-  // admin edits it directly — handy for resolving a name collision.
-  const [slug, setSlug] = React.useState(() =>
-    normalizeSlug(defaultRestaurantName),
-  );
-  const [slugTouched, setSlugTouched] = React.useState(false);
   const [tz, setTz] = React.useState("America/Bogota");
-
-  function onNameChange(value: string) {
-    setName(value);
-    if (!slugTouched) setSlug(normalizeSlug(value));
-  }
   // Availability result is keyed by the slug it was computed for, so we can
   // derive "checking" without a synchronous setState in the effect.
   const [avail, setAvail] = React.useState<{
@@ -103,28 +93,14 @@ export function OnboardingForm({
 
   return (
     <div className="space-y-5">
-      {/* restaurant name (drives the subdomain) */}
-      <div>
-        <div style={labelStyle}>Nombre del restaurante</div>
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          placeholder="ej. Daniel's Burger"
-          style={formInput}
-        />
-      </div>
-
-      {/* subdomain — derived from the name, editable to resolve collisions */}
+      {/* subdomain */}
       <div>
         <div style={labelStyle}>Subdominio</div>
         <div className="flex items-center" style={{ gap: 6 }}>
           <input
+            autoFocus
             value={slug}
-            onChange={(e) => {
-              setSlug(normalizeSlug(e.target.value));
-              setSlugTouched(true);
-            }}
+            onChange={(e) => setSlug(normalizeSlug(e.target.value))}
             placeholder="mi-restaurante"
             inputMode="text"
             style={{ ...formInput, width: 200 }}
@@ -135,9 +111,7 @@ export function OnboardingForm({
         </div>
         <div style={{ fontSize: 11, marginTop: 6, minHeight: 16 }}>
           {!slug ? (
-            <span className="text-muted">
-              Se genera con el nombre del restaurante.
-            </span>
+            <span className="text-muted">Esta será la dirección de tu equipo.</span>
           ) : checking ? (
             <span className="text-muted">Comprobando…</span>
           ) : current?.available ? (
@@ -148,6 +122,17 @@ export function OnboardingForm({
             <span style={{ color: "var(--red)" }}>{current?.reason}</span>
           )}
         </div>
+      </div>
+
+      {/* restaurant name */}
+      <div>
+        <div style={labelStyle}>Nombre del restaurante</div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="ej. Daniel's Burger"
+          style={formInput}
+        />
       </div>
 
       {/* timezone */}
