@@ -1,12 +1,26 @@
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
-import { getWeeklyCompliance } from "@/lib/db/compliance";
-import { formatDateLabelEs } from "@/lib/utils";
+import { getWeeklyCompliance, weekDatesFor } from "@/lib/db/compliance";
+import { formatDateLabelEs, todayInTz } from "@/lib/utils";
 import { TurnosHeader } from "../../_components/turnos-header";
+import { ReportesToolbar } from "./_components/reportes-toolbar";
 
 export const dynamic = "force-dynamic";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"] as const;
+
+/** Build the last `count` Monday-anchored weeks (most recent first). */
+function recentWeeks(today: string, count: number) {
+  const thisMonday = weekDatesFor(today)[0];
+  return Array.from({ length: count }, (_, i) => {
+    const base = new Date(`${thisMonday}T12:00:00Z`);
+    base.setUTCDate(base.getUTCDate() - i * 7);
+    const monday = base.toISOString().slice(0, 10);
+    const dates = weekDatesFor(monday);
+    const label = `${formatDateLabelEs(dates[0])} – ${formatDateLabelEs(dates[6])}`;
+    return { value: monday, label: i === 0 ? `${label} · esta semana` : label };
+  });
+}
 
 /** Semantic bar color by compliance threshold (mirrors the design). */
 function barColor(value: number): string {
@@ -22,7 +36,11 @@ function barColor(value: number): string {
  * from real `task_completions` aggregated for the current week (in the sede's
  * timezone). Days/shifts with no instances render a muted "sin datos" marker.
  */
-export default async function TurnosReportesPage() {
+export default async function TurnosReportesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string; template?: string }>;
+}) {
   const [, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
 
   if (!sede) {
@@ -38,11 +56,45 @@ export default async function TurnosReportesPage() {
     );
   }
 
-  const report = await getWeeklyCompliance(sede.id, sede.tz);
+  const sp = await searchParams;
+  const today = todayInTz(sede.tz);
+  const weekParam =
+    sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : today;
+
+  const report = await getWeeklyCompliance(sede.id, sede.tz, weekParam);
   const { kpis } = report;
-  const weekLabel = `${formatDateLabelEs(report.weekDates[0])} – ${formatDateLabelEs(
-    report.weekDates[6],
-  )}`;
+  const weekStart = report.weekDates[0];
+  const weekEnd = report.weekDates[6];
+  const weekLabel = `${formatDateLabelEs(weekStart)} – ${formatDateLabelEs(weekEnd)}`;
+
+  // Week + shift filter options. Only accept a template that exists in this sede.
+  const weekOptions = recentWeeks(today, 8);
+  if (!weekOptions.some((w) => w.value === weekStart)) {
+    weekOptions.unshift({ value: weekStart, label: weekLabel });
+  }
+  const shiftOptions = [
+    { value: "", label: "Todos los turnos" },
+    ...report.perShift.map((s) => ({
+      value: s.template_id,
+      label: `Turno ${s.name}`,
+    })),
+  ];
+  const selectedTemplate = report.perShift.some(
+    (s) => s.template_id === sp.template,
+  )
+    ? sp.template!
+    : "";
+
+  // Per-shift table respects the shift filter; the global chart stays global.
+  const perShift = selectedTemplate
+    ? report.perShift.filter((s) => s.template_id === selectedTemplate)
+    : report.perShift;
+
+  // CSV export of the displayed scope. Auth rides on the session cookie; the
+  // route sets `content-disposition: attachment`, so the link downloads.
+  const csvParams = new URLSearchParams({ start: weekStart, end: weekEnd });
+  if (selectedTemplate) csvParams.set("template", selectedTemplate);
+  const csvHref = `/api/reports/csv?${csvParams.toString()}`;
 
   // Max pixel height for the big chart bars (container is 140px tall, leaving
   // room for the value label above each bar).
@@ -54,15 +106,20 @@ export default async function TurnosReportesPage() {
         kicker={`${sede.name.toUpperCase()} · CUMPLIMIENTO`}
         title="Reporte de cumplimiento"
       >
-        <button type="button" className="cmd-btn ghost sm">
-          Esta semana ▾
-        </button>
-        <button type="button" className="cmd-btn ghost sm">
-          Todos los turnos ▾
-        </button>
-        <button type="button" className="cmd-btn sm">
+        <ReportesToolbar
+          weeks={weekOptions}
+          selectedWeek={weekStart}
+          shifts={shiftOptions}
+          selectedTemplate={selectedTemplate}
+        />
+        <a
+          href={csvHref}
+          className="cmd-btn sm"
+          download
+          style={{ textDecoration: "none" }}
+        >
           ↓ Exportar CSV
-        </button>
+        </a>
       </TurnosHeader>
 
       <div style={{ padding: 32 }}>
@@ -223,7 +280,7 @@ export default async function TurnosReportesPage() {
             <span style={{ textAlign: "right" }}>Promedio</span>
             <span style={{ textAlign: "right" }}>Acción</span>
           </div>
-          {report.perShift.length === 0 ? (
+          {perShift.length === 0 ? (
             <div
               className="text-muted"
               style={{ padding: 16, fontSize: 12, textAlign: "center" }}
@@ -231,7 +288,7 @@ export default async function TurnosReportesPage() {
               Sin turnos configurados.
             </div>
           ) : (
-            report.perShift.map((s, i) => (
+            perShift.map((s, i) => (
               <div
                 key={s.template_id}
                 className="grid items-center"
@@ -239,7 +296,7 @@ export default async function TurnosReportesPage() {
                   gridTemplateColumns: "2fr 3fr 1fr 1fr",
                   padding: "14px 16px",
                   borderBottom:
-                    i < report.perShift.length - 1
+                    i < perShift.length - 1
                       ? "1px solid var(--rule-soft)"
                       : "none",
                   background: "var(--paper-lt)",

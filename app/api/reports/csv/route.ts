@@ -11,11 +11,17 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const start = url.searchParams.get("start");
   const end = url.searchParams.get("end");
+  const template = url.searchParams.get("template");
   if (!start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
     return NextResponse.json({ error: "invalid_range" }, { status: 400 });
   }
+  // Optional shift filter — must be a UUID when present.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (template && !UUID.test(template)) {
+    return NextResponse.json({ error: "invalid_template" }, { status: 400 });
+  }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("shift_instances")
     .select(
       `id, date, status,
@@ -24,8 +30,9 @@ export async function GET(req: NextRequest) {
        completions:task_completions(count)`,
     )
     .gte("date", start)
-    .lte("date", end)
-    .order("date", { ascending: true });
+    .lte("date", end);
+  if (template) query = query.eq("template_id", template);
+  const { data, error } = await query.order("date", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
