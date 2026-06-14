@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { lineTotal, recipeCost, margenOf } from "@/lib/cost";
 
 /**
  * Recetas (module 03) — a recipe is the bill of materials for a producto.
@@ -45,9 +46,6 @@ export interface RecetasView {
   /** All active ingredientes, for the add-ingredient picker. */
   ingredientes: IngredienteOption[];
 }
-
-const margenOf = (price: number, cost: number): number =>
-  price > 0 ? Math.round(((price - cost) / price) * 100) : 0;
 
 export async function getRecetasView(
   organizationId: string,
@@ -108,7 +106,7 @@ export async function getRecetasView(
       qty,
       unit: (it.unit as string) ?? ing?.unit ?? "",
       cost_cop: costPerUnit,
-      total: Math.round(qty * costPerUnit),
+      total: lineTotal(qty, costPerUnit),
       note: (it.note as string | null) ?? null,
     };
     const arr = byProducto.get(it.producto_id as string) ?? [];
@@ -169,11 +167,13 @@ export async function recomputeProductoCost(
     .eq("organization_id", organizationId)
     .eq("producto_id", productoId);
 
-  const cost = (items ?? []).reduce((s, it) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const c = ((it as any).ingredientes?.cost_cop ?? 0) as number;
-    return s + Math.round(Number(it.qty) * c);
-  }, 0);
+  const cost = recipeCost(
+    (items ?? []).map((it) => ({
+      qty: Number(it.qty),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      cost_cop: ((it as any).ingredientes?.cost_cop ?? 0) as number,
+    })),
+  );
 
   // Only cost_cop is writable — productos.margin_pct is a generated column
   // (round((price - cost) / price * 100)), so the DB recomputes margin itself.
