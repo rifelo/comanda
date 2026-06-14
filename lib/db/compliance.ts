@@ -44,7 +44,7 @@ export type WeeklyCompliance = {
 };
 
 /** The 7 dates (Mon→Sun) of the week containing `today` (a YYYY-MM-DD string). */
-function weekDatesFor(today: string): string[] {
+export function weekDatesFor(today: string): string[] {
   // Anchor at UTC noon so day arithmetic never crosses a DST boundary.
   const base = new Date(`${today}T12:00:00Z`);
   const dow = base.getUTCDay(); // 0=Sun … 6=Sat
@@ -65,10 +65,13 @@ function pct(done: number, total: number): number | null {
 export async function getWeeklyCompliance(
   restaurantId: string,
   tz: string,
+  /** Any YYYY-MM-DD inside the target week; defaults to the current week. */
+  weekOf?: string,
 ): Promise<WeeklyCompliance> {
   const supabase = await createSupabaseServerClient();
   const today = todayInTz(tz);
-  const weekDates = weekDatesFor(today);
+  const anchor = weekOf && /^\d{4}-\d{2}-\d{2}$/.test(weekOf) ? weekOf : today;
+  const weekDates = weekDatesFor(anchor);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
 
