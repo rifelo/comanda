@@ -116,7 +116,7 @@ export function TaskRow({
               fontSize: 14,
               fontWeight: 500,
               lineHeight: 1.25,
-              textDecoration: isComplete ? "line-through" : "none",
+              textDecorationLine: isComplete ? "line-through" : "none",
               textDecorationColor: "rgba(31,26,20,0.5)",
             }}
           >
