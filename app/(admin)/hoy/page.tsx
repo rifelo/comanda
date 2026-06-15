@@ -2,6 +2,9 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { getDashboardSummary } from "@/lib/db/reports";
+import { listShifts } from "@/lib/db/shifts";
+import { listAssignments, isoMonday } from "@/lib/db/assignments";
+import { listRoster } from "@/lib/db/roster";
 import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 import { CmdProgress, Stamp } from "@/components/comanda/primitives";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -28,33 +31,67 @@ export default async function HoyPage() {
   const summary = await getDashboardSummary(today);
 
   const sedeName = sede?.name ?? "Daniel's Burger";
-  const sedeShifts = sede ? summary.filter((s) => s.restaurant_id === sede.id) : [];
 
-  const turnoDia = sedeShifts[0] ?? null;
-  const turnoNoche = sedeShifts[1] ?? null;
-  const turnos = [
-    { shift: "día" as const, horario: "10:30 – 14:30", data: turnoDia, defaultTotal: 11 },
-    { shift: "noche" as const, horario: "14:30 – 02:30", data: turnoNoche, defaultTotal: 10 },
-  ];
+  // The dashboard turnos are the SAME templates shown in Turnos · Resumen
+  // (listShifts), overlaid with today's live instance status/progress + the
+  // assigned person — so the two screens never disagree.
+  const [shifts, assignments, roster] = await Promise.all([
+    sede ? listShifts(sede.id) : Promise.resolve([]),
+    sede ? listAssignments(sede.id, isoMonday(today)) : Promise.resolve([]),
+    sede ? listRoster(sede.id) : Promise.resolve([]),
+  ]);
+  const sedeSummary = sede ? summary.filter((s) => s.restaurant_id === sede.id) : [];
+  const summaryByTemplate = new Map(sedeSummary.map((s) => [s.template_id, s]));
+  const rosterById = new Map(roster.map((r) => [r.id, r]));
 
-  const activeTurno =
-    turnoDia?.status === "open" ? "Día" : turnoNoche?.status === "open" ? "Noche" : "—";
-  const totalTasks = sedeShifts.reduce((a, s) => a + s.total_tasks, 0);
-  const doneTasks = sedeShifts.reduce((a, s) => a + s.completed_tasks, 0);
+  // Mon-indexed day-of-week for today (0 = Monday … 6 = Sunday).
+  const [yy, mm, dd] = today.split("-").map(Number);
+  const dowToday = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay();
+  const todayIdx = dowToday === 0 ? 6 : dowToday - 1;
+
+  const shiftIds = sedeSummary.map((s) => s.shift_id);
+  const bitacora = shiftIds.length ? await loadBitacora(supabase, shiftIds) : [];
+  const lastMovement = new Map<string, string>();
+  for (const e of bitacora) {
+    if (e.tag === "task" && !lastMovement.has(e.shiftId)) lastMovement.set(e.shiftId, e.body);
+  }
+
+  const cards = shifts.map((t) => {
+    const s = summaryByTemplate.get(t.id);
+    const isOpen = s?.status === "open";
+    const closed = s?.status === "closed";
+    const cell = assignments.find((a) => a.template_id === t.id && a.dia_idx === todayIdx);
+    const member = cell?.member_id ? rosterById.get(cell.member_id) ?? null : null;
+    return {
+      id: t.id,
+      name: t.name,
+      horario: `${t.inicio} – ${t.fin}`,
+      isOpen,
+      statusLabel: isOpen ? "EN CURSO" : closed ? "CERRADO" : "POR ABRIR",
+      hasData: !!s,
+      shiftId: s?.shift_id ?? null,
+      done: s?.completed_tasks ?? 0,
+      total: s?.total_tasks ?? t.tasks.length,
+      novedades: s?.novedad_count ?? 0,
+      folio: s ? `DR-${s.shift_id.slice(0, 4).toUpperCase()}` : "—",
+      lastTask: s ? lastMovement.get(s.shift_id) ?? null : null,
+      memberName: member?.name ?? null,
+      memberInitials: member?.initials ?? null,
+    };
+  });
+
+  const openCount = cards.filter((c) => c.isOpen).length;
+  const totalTasks = cards.reduce((a, c) => a + c.total, 0);
+  const doneTasks = cards.reduce((a, c) => a + c.done, 0);
   const globalPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const totalNovedades = sedeShifts.reduce((a, s) => a + s.novedad_count, 0);
+  const totalNovedades = cards.reduce((a, c) => a + c.novedades, 0);
   const photosPending = 1; // No DB field for "pending verified photos" yet; mirror the design's static count.
 
   const kpis = [
     {
-      label: "Turno activo",
-      val: activeTurno,
-      sub:
-        activeTurno === "Día"
-          ? "noche por abrir"
-          : activeTurno === "Noche"
-            ? "día cerrado"
-            : "sin turnos abiertos",
+      label: "Turnos en curso",
+      val: String(openCount),
+      sub: `de ${cards.length} hoy`,
     },
     { label: "Avance del día", val: `${globalPct}%`, sub: `${doneTasks} / ${totalTasks} tareas` },
     {
@@ -64,35 +101,6 @@ export default async function HoyPage() {
     },
     { label: "Fotos pendientes", val: String(photosPending), sub: "por verificar" },
   ];
-
-  const shiftIds = sedeShifts.map((s) => s.shift_id);
-  const bitacora = shiftIds.length ? await loadBitacora(supabase, shiftIds) : [];
-  const lastMovement = new Map<string, string>();
-  for (const e of bitacora) {
-    if (e.tag === "task" && !lastMovement.has(e.shiftId)) lastMovement.set(e.shiftId, e.body);
-  }
-
-  const cards = turnos.map((t) => {
-    const isOpen = t.data?.status === "open";
-    const done = t.data?.completed_tasks ?? 0;
-    const total = t.data?.total_tasks ?? t.defaultTotal;
-    return {
-      shift: t.shift,
-      horario: t.horario,
-      hasData: !!t.data,
-      shiftId: t.data?.shift_id ?? null,
-      isOpen,
-      done,
-      total,
-      novedades: t.data?.novedad_count ?? 0,
-      folio: t.data
-        ? `DR-${t.data.shift_id.slice(0, 4).toUpperCase()}`
-        : t.shift === "día"
-          ? "DR-184"
-          : "DR-185",
-      lastTask: t.data ? lastMovement.get(t.data.shift_id) ?? null : null,
-    };
-  });
 
   return (
     <>
@@ -144,7 +152,7 @@ export default async function HoyPage() {
         <div style={{ padding: "0 14px" }}>
           {cards.map((c) => (
             <div
-              key={c.shift}
+              key={c.id}
               className="cmd-noise"
               style={{
                 border: "1.5px solid var(--ink)",
@@ -155,22 +163,23 @@ export default async function HoyPage() {
                 opacity: c.hasData ? 1 : 0.9,
               }}
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700 }}>
-                    Turno {c.shift}
+              <div className="flex justify-between items-start" style={{ gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="font-slab" style={{ fontSize: 20, lineHeight: 1.05, textTransform: "capitalize" }}>
+                    {c.name}
                   </div>
-                  <div className="cmd-num text-muted" style={{ fontSize: 11.5, marginTop: 3 }}>
+                  <div className="cmd-num text-muted" style={{ fontSize: 11.5, marginTop: 5 }}>
                     {c.horario}
                   </div>
                 </div>
                 <span
-                  className="inline-flex items-center"
+                  className="inline-flex items-center whitespace-nowrap"
                   style={{
                     fontSize: 9,
                     letterSpacing: "0.12em",
                     padding: "3px 7px",
                     gap: 5,
+                    flexShrink: 0,
                     border: `1px solid ${c.isOpen ? "var(--green)" : "var(--rule)"}`,
                     color: c.isOpen ? "var(--green)" : "var(--muted)",
                   }}
@@ -178,7 +187,7 @@ export default async function HoyPage() {
                   {c.isOpen ? (
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
                   ) : null}
-                  {c.isOpen ? "EN CURSO" : "POR ABRIR"}
+                  {c.statusLabel}
                 </span>
               </div>
 
@@ -197,14 +206,20 @@ export default async function HoyPage() {
                   <div className="text-muted" style={{ fontSize: 8.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                     Personal
                   </div>
-                  <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 3 }}>
-                    {c.isOpen ? "Mariana Castaño" : "— sin asignar —"}
-                  </div>
-                  {c.isOpen ? (
-                    <div className="text-muted" style={{ fontSize: 10, marginTop: 1 }}>
-                      Cajero · abrió 10:30
+                  {c.memberName ? (
+                    <>
+                      <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 3 }}>{c.memberName}</div>
+                      <div className="text-muted" style={{ fontSize: 10, marginTop: 1 }}>
+                        {c.isOpen ? `${c.total} tareas hoy` : "asignado"}
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      style={{ fontSize: 12.5, fontWeight: 500, marginTop: 3, fontStyle: "italic", color: "var(--muted)" }}
+                    >
+                      — sin asignar —
                     </div>
-                  ) : null}
+                  )}
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <div className="text-muted" style={{ fontSize: 8.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
@@ -356,124 +371,141 @@ export default async function HoyPage() {
         <div style={{ padding: "24px 32px" }}>
           <DesktopSectionLabel>Turnos de hoy</DesktopSectionLabel>
           <div className="grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
-            {turnos.map((t) => {
-              const isOpen = t.data?.status === "open";
-              const done = t.data?.completed_tasks ?? 0;
-              const total = t.data?.total_tasks ?? t.defaultTotal;
-              const novedades = t.data?.novedad_count ?? 0;
-              const folio = t.data
-                ? `DR-${t.data.shift_id.slice(0, 4).toUpperCase()}`
-                : t.shift === "día"
-                  ? "DR-184"
-                  : "DR-185";
-
-              return (
-                <article
-                  key={t.shift}
-                  className="cmd-noise relative"
-                  style={{
-                    border: "1.5px solid var(--ink)",
-                    background: "var(--paper-lt)",
-                    padding: 20,
-                    boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
-                    opacity: t.data ? 1 : 0.82,
-                  }}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div style={{ fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", fontWeight: 700 }}>
-                        Turno {t.shift}
-                      </div>
-                      <div className="text-muted cmd-num" style={{ fontSize: 11, marginTop: 3 }}>
-                        {t.horario}
-                      </div>
+            {cards.map((c) => (
+              <article
+                key={c.id}
+                className="cmd-noise relative"
+                style={{
+                  border: "1.5px solid var(--ink)",
+                  background: "var(--paper-lt)",
+                  padding: 20,
+                  boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
+                  opacity: c.hasData ? 1 : 0.82,
+                }}
+              >
+                <div className="flex justify-between items-start" style={{ gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="font-slab" style={{ fontSize: 24, lineHeight: 1.05, textTransform: "capitalize" }}>
+                      {c.name}
                     </div>
-                    <span
-                      style={{
-                        fontSize: 9,
-                        letterSpacing: "0.14em",
-                        padding: "3px 7px",
-                        border: `1px solid ${isOpen ? "var(--ink)" : "var(--rule)"}`,
-                        color: isOpen ? "var(--ink)" : "var(--muted)",
-                      }}
-                    >
-                      {isOpen ? "EN CURSO" : "POR ABRIR"}
-                    </span>
+                    <div className="text-muted cmd-num" style={{ fontSize: 11, marginTop: 5 }}>
+                      {c.horario}
+                    </div>
                   </div>
-
-                  <div className="flex items-center" style={{ gap: 10, marginTop: 18 }}>
-                    <CmdProgress done={done} total={total} color={isOpen ? "var(--ink)" : "var(--muted)"} />
-                    <span className="cmd-num font-slab ml-auto" style={{ fontSize: 24, lineHeight: 1 }}>
-                      {done}/{total}
-                    </span>
-                  </div>
-
-                  <div
-                    className="grid"
+                  <span
+                    className="inline-flex items-center whitespace-nowrap"
                     style={{
-                      marginTop: 16,
-                      paddingTop: 14,
-                      borderTop: "1px dashed var(--rule)",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 12,
-                      fontSize: 11,
+                      fontSize: 9,
+                      letterSpacing: "0.14em",
+                      padding: "3px 7px",
+                      gap: 5,
+                      flexShrink: 0,
+                      border: `1px solid ${c.isOpen ? "var(--green)" : "var(--rule)"}`,
+                      color: c.isOpen ? "var(--green)" : "var(--muted)",
+                      background: c.isOpen ? "rgba(31,138,91,.08)" : "transparent",
                     }}
                   >
-                    <div>
-                      <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-                        Personal
-                      </div>
-                      <div style={{ marginTop: 3, fontWeight: 500 }}>
-                        {isOpen ? "Mariana Castaño" : "— sin asignar —"}
-                      </div>
-                      {isOpen ? (
-                        <div className="text-muted" style={{ marginTop: 1 }}>
-                          Cajero · abrió 10:30
-                        </div>
-                      ) : null}
-                    </div>
-                    <div>
-                      <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-                        Folio · Novedades
-                      </div>
-                      <div className="cmd-num" style={{ marginTop: 3 }}>
-                        {folio} · <strong>{novedades}</strong>
-                      </div>
-                    </div>
-                  </div>
+                    {c.isOpen ? (
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
+                    ) : null}
+                    {c.statusLabel}
+                  </span>
+                </div>
 
-                  <div
-                    className="flex items-center justify-between"
-                    style={{ marginTop: 16, paddingTop: 12, borderTop: "1.5px solid var(--ink)" }}
-                  >
-                    {t.data && isOpen ? (
-                      <Link
-                        href={`/hoy/${today}?turno=${t.data.shift_id}#asignar`}
-                        className="cmd-link"
-                        style={{ fontSize: 11, color: "var(--red)" }}
-                      >
-                        + asignar tarea
-                      </Link>
-                    ) : (
-                      <span />
-                    )}
-                    {t.data ? (
-                      <Link
-                        href={`/hoy/${today}?turno=${t.data.shift_id}`}
-                        className="cmd-link"
-                        style={{ fontSize: 11 }}
-                      >
-                        {isOpen ? "abrir detalle →" : "ver plantilla →"}
-                      </Link>
-                    ) : (
-                      <span className="cmd-link" style={{ fontSize: 11, opacity: 0.5 }}>
-                        ver plantilla →
-                      </span>
-                    )}
+                <div className="flex items-center" style={{ gap: 10, marginTop: 18 }}>
+                  <CmdProgress done={c.done} total={c.total} color={c.isOpen ? "var(--ink)" : "var(--muted)"} />
+                  <span className="cmd-num font-slab ml-auto" style={{ fontSize: 24, lineHeight: 1 }}>
+                    {c.done}/{c.total}
+                  </span>
+                </div>
+
+                <div
+                  className="grid"
+                  style={{
+                    marginTop: 16,
+                    paddingTop: 14,
+                    borderTop: "1px dashed var(--rule)",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    fontSize: 11,
+                  }}
+                >
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                      Personal
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 3,
+                        fontWeight: 500,
+                        fontStyle: c.memberName ? "normal" : "italic",
+                        color: c.memberName ? "var(--ink)" : "var(--muted)",
+                      }}
+                    >
+                      {c.memberName ?? "— sin asignar —"}
+                    </div>
+                    {c.memberName ? (
+                      <div className="text-muted" style={{ marginTop: 1 }}>
+                        {c.isOpen ? `${c.total} tareas hoy` : "asignado"}
+                      </div>
+                    ) : null}
                   </div>
-                </article>
-              );
-            })}
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                      Folio · Novedades
+                    </div>
+                    <div className="cmd-num" style={{ marginTop: 3 }}>
+                      {c.folio} · <strong>{c.novedades}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {c.lastTask ? (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--rule)" }}>
+                    <div
+                      className="text-muted"
+                      style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 5 }}
+                    >
+                      Último movimiento
+                    </div>
+                    <div className="text-ink-2 flex" style={{ fontSize: 12, gap: 8 }}>
+                      <span style={{ color: "var(--green)" }}>✓</span>
+                      <span>{c.lastTask}</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div
+                  className="flex items-center justify-between"
+                  style={{ marginTop: 16, paddingTop: 12, borderTop: "1.5px solid var(--ink)" }}
+                >
+                  {c.shiftId && c.isOpen ? (
+                    <Link
+                      href={`/hoy/${today}?turno=${c.shiftId}#asignar`}
+                      className="cmd-link"
+                      style={{ fontSize: 11, color: "var(--red)" }}
+                    >
+                      + asignar tarea
+                    </Link>
+                  ) : (
+                    <span />
+                  )}
+                  {c.shiftId ? (
+                    <Link
+                      href={`/hoy/${today}?turno=${c.shiftId}`}
+                      className="cmd-link"
+                      style={{ fontSize: 11 }}
+                    >
+                      {c.isOpen ? "abrir detalle →" : "ver detalle →"}
+                    </Link>
+                  ) : (
+                    <span className="cmd-link" style={{ fontSize: 11, opacity: 0.5 }}>
+                      ver plantilla →
+                    </span>
+                  )}
+                </div>
+              </article>
+            ))}
           </div>
 
           {bitacora.length > 0 ? (
