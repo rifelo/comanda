@@ -120,6 +120,9 @@ export default async function TurnosResumenPage() {
       duration: dur(t.inicio, t.fin),
       statusLabel: open ? "EN CURSO" : closed ? "CERRADO" : "POR ABRIR",
       open,
+      // today's shift instance — present once the turno has been opened, so we
+      // can deep-link into its live checklist (the Hoy detalle view).
+      instanceId: (inst?.id as string | undefined) ?? null,
       total: t.tasks.length,
       photoCount: t.tasks.filter((tk) => tk.requires_photo).length,
       memberName: member?.name ?? null,
@@ -240,14 +243,29 @@ export default async function TurnosResumenPage() {
 
               <div
                 className="flex justify-between items-center"
-                style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--rule)" }}
+                style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--rule)", gap: 8 }}
               >
-                <span className="cmd-num text-muted" style={{ fontSize: 10.5 }}>
+                <span className="cmd-num text-muted" style={{ fontSize: 10.5, minWidth: 0 }}>
                   {c.total} tareas · {c.photoCount} con foto
                 </span>
-                <Link href={`/turnos/resumen/${c.id}/editar`} className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>
-                  Editar turno →
-                </Link>
+                <div className="flex" style={{ gap: 8, flexShrink: 0 }}>
+                  {c.instanceId ? (
+                    <Link
+                      href={`/hoy/${today}?turno=${c.instanceId}`}
+                      className="cmd-btn sm"
+                      style={{ textDecoration: "none" }}
+                    >
+                      Ver tareas →
+                    </Link>
+                  ) : null}
+                  <Link
+                    href={`/turnos/resumen/${c.id}/editar`}
+                    className="cmd-btn ghost sm"
+                    style={{ textDecoration: "none" }}
+                  >
+                    Editar
+                  </Link>
+                </div>
               </div>
             </div>
           ))
@@ -577,6 +595,25 @@ export default async function TurnosResumenPage() {
                   {open ? (
                     <div style={{ marginTop: 16 }}>
                       <CmdProgress done={0} total={total || 1} />
+                    </div>
+                  ) : null}
+
+                  {inst ? (
+                    <div
+                      className="flex justify-end"
+                      style={{
+                        marginTop: 16,
+                        paddingTop: 12,
+                        borderTop: "1.5px solid var(--ink)",
+                      }}
+                    >
+                      <Link
+                        href={`/hoy/${today}?turno=${inst.id}`}
+                        className="cmd-link"
+                        style={{ fontSize: 11, color: open ? "var(--red)" : "var(--ink)" }}
+                      >
+                        {open ? "ver tareas del turno →" : "ver detalle →"}
+                      </Link>
                     </div>
                   ) : null}
                 </article>
