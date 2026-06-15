@@ -127,6 +127,29 @@ export interface Novedad {
   body: string;
 }
 
+export type AdHocStatus = "pending" | "done" | "cancelled";
+
+/** A one-off task raised during a running shift (not part of the template).
+ *  Admin-created; staff on the shift complete it. `due_time` null = inmediata. */
+export interface AdHocTask {
+  id: string;
+  shift_instance_id: string;
+  restaurant_id: string;
+  title: string;
+  instructions: string | null;
+  /** profiles.id, or null when the task is for the whole shift. */
+  assigned_to: string | null;
+  /** Hydrated from the joined assignee profile (full_name), when present. */
+  assignee_name?: string | null;
+  created_by: string;
+  /** 'HH:MM:SS' | null. Null = inmediata / ASAP; set = scheduled later today. */
+  due_time: string | null;
+  status: AdHocStatus;
+  completed_by: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 /** A shift instance hydrated with its template + tasks + completions for the staff screen. */
 export interface ShiftView {
   shift: ShiftInstance;
@@ -137,6 +160,8 @@ export interface ShiftView {
   /** Profile of whoever opened the shift, embedded from `shift_instances.opened_by`.
    *  `null` if the shift has not been opened yet. */
   opener: { id: string; full_name: string | null } | null;
+  /** Ad-hoc tasks raised during this shift (see migration 0015). */
+  adHocTasks: AdHocTask[];
 }
 
 // =============================================================================

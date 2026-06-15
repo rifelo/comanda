@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getActiveSede } from "@/lib/data/sede";
 import { getShiftView } from "@/lib/db/shifts";
+import { listRoster } from "@/lib/db/roster";
 import {
   CmdCheck,
   CmdProgress,
@@ -12,6 +13,7 @@ import {
   PhotoPlaceholder,
 } from "@/components/comanda/primitives";
 import { formatTime, formatDateLabelEs } from "@/lib/utils";
+import { AsignarTareaForm } from "./asignar-tarea-form";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +60,7 @@ export default async function HoyDetailPage({
   }
 
   const shiftId = shiftRow.id as string;
-  const [view, novedadesRes, completionsRes] = await Promise.all([
+  const [view, novedadesRes, completionsRes, roster] = await Promise.all([
     getShiftView(shiftId),
     supabase
       .from("novedades")
@@ -73,6 +75,7 @@ export default async function HoyDetailPage({
         "id, template_task_id, completed_at, photo_url, note, profiles:profiles!task_completions_completed_by_fkey(full_name)",
       )
       .eq("shift_instance_id", shiftId),
+    listRoster(sede.id),
   ]);
 
   if (!view) notFound();
@@ -102,6 +105,15 @@ export default async function HoyDetailPage({
   const done = Object.keys(completionsByTask).length;
   const photos = (completionDetails ?? []).filter((c) => c.photo_url);
   const opener = view.opener?.full_name ?? "—";
+
+  // Ad-hoc tasks (0015): drop cancelled, immediate (no due_time) first.
+  const adHoc = view.adHocTasks
+    .filter((t) => t.status !== "cancelled")
+    .sort((a, b) => {
+      if (!a.due_time && b.due_time) return -1;
+      if (a.due_time && !b.due_time) return 1;
+      return (a.due_time ?? "").localeCompare(b.due_time ?? "");
+    });
 
   return (
     <div>
@@ -165,6 +177,76 @@ export default async function HoyDetailPage({
             borderRight: "1px dashed var(--rule)",
           }}
         >
+          <SectionLabel>Tareas inmediatas</SectionLabel>
+          <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} />
+          {adHoc.length === 0 ? (
+            <div
+              className="text-muted"
+              style={{ fontSize: 12, marginBottom: 20 }}
+            >
+              Sin tareas asignadas en el turno.
+            </div>
+          ) : (
+            <div style={{ marginBottom: 24 }}>
+              {adHoc.map((t) => {
+                const isDone = t.status === "done";
+                const whenLabel = t.due_time
+                  ? t.due_time.slice(0, 5)
+                  : "Inmediata";
+                const whoLabel = t.assigned_to
+                  ? (t.assignee_name ?? "Asignada")
+                  : "Para todos";
+                return (
+                  <div
+                    key={t.id}
+                    className="flex gap-3"
+                    style={{
+                      padding: "10px 0",
+                      borderBottom: "1px solid var(--rule-soft)",
+                    }}
+                  >
+                    <CmdCheck checked={isDone} mode="check" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between gap-3">
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>
+                          {t.title}
+                        </span>
+                        <span
+                          className="whitespace-nowrap"
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            color: t.due_time ? "var(--muted)" : "var(--red)",
+                          }}
+                        >
+                          {whenLabel}
+                        </span>
+                      </div>
+                      {t.instructions ? (
+                        <div
+                          className="text-muted"
+                          style={{ fontSize: 11, marginTop: 2 }}
+                        >
+                          {t.instructions}
+                        </div>
+                      ) : null}
+                      <div
+                        className="text-muted"
+                        style={{ fontSize: 11, marginTop: 2 }}
+                      >
+                        {whoLabel}
+                        {isDone && t.completed_at
+                          ? ` · ✓ ${formatTime(t.completed_at)}`
+                          : " · pendiente"}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <SectionLabel>Tareas · {view.template.name}</SectionLabel>
           {view.tasks.map((task) => {
             const c = completionsByTask[task.id];

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import type { ShiftView } from "@/lib/types";
 import { TaskRow } from "@/components/task-row";
+import { AdHocTaskRow } from "@/components/ad-hoc-task-row";
 import { CmdSectionLabel, Folio } from "@/components/comanda/primitives";
 import { closeShift } from "./actions";
 
@@ -42,9 +43,34 @@ export function ShiftBoard({
 
   const remaining = view.tasks.length - Object.keys(view.completions).length;
 
+  // Ad-hoc tasks (0015): drop cancelled, immediate (no due_time) first.
+  const adHoc = view.adHocTasks
+    .filter((t) => t.status !== "cancelled")
+    .sort((a, b) => {
+      if (!a.due_time && b.due_time) return -1;
+      if (a.due_time && !b.due_time) return 1;
+      return (a.due_time ?? "").localeCompare(b.due_time ?? "");
+    });
+
   return (
     <>
       <div className="cmd-paper pb-32">
+        {adHoc.length > 0 ? (
+          <section>
+            <CmdSectionLabel>● Tareas inmediatas</CmdSectionLabel>
+            <ul>
+              {adHoc.map((task) => (
+                <AdHocTaskRow
+                  key={task.id}
+                  task={task}
+                  userId={userId}
+                  disabled={view.shift.status === "closed"}
+                />
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         {groups.map(([bucket, tasks]) => (
           <section key={bucket}>
             <CmdSectionLabel>

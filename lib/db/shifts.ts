@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInTz } from "@/lib/utils";
 import type {
+  AdHocTask,
   Shift,
   ShiftInstance,
   ShiftView,
@@ -112,6 +113,13 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
     .select("*")
     .eq("shift_instance_id", shiftId);
 
+  // Ad-hoc tasks raised during the shift (0015), with the assignee name joined.
+  const adHocPromise = supabase
+    .from("ad_hoc_tasks")
+    .select("*, assignee:profiles!ad_hoc_tasks_assigned_to_fkey(full_name)")
+    .eq("shift_instance_id", shiftId)
+    .order("created_at");
+
   const { data: shiftRow, error } = await shiftPromise;
   if (error || !shiftRow) return null;
 
@@ -123,19 +131,41 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
   const opener = ((shiftRow as any).opener ?? null) as ShiftView["opener"];
   if (!template || !restaurant) return null;
 
-  const [{ data: tasks }, { data: completions }] = await Promise.all([
-    supabase
-      .from("template_tasks")
-      .select("*")
-      .eq("template_id", template.id)
-      .order("order_index"),
-    completionsPromise,
-  ]);
+  const [{ data: tasks }, { data: completions }, { data: adHocRows }] =
+    await Promise.all([
+      supabase
+        .from("template_tasks")
+        .select("*")
+        .eq("template_id", template.id)
+        .order("order_index"),
+      completionsPromise,
+      adHocPromise,
+    ]);
   if (!tasks) return null;
 
   const completionsMap: Record<string, TaskCompletion> = {};
   (completions ?? []).forEach((c) => {
     completionsMap[c.template_task_id] = c as TaskCompletion;
+  });
+
+  const adHocTasks: AdHocTask[] = (adHocRows ?? []).map((r) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = r as any;
+    return {
+      id: row.id,
+      shift_instance_id: row.shift_instance_id,
+      restaurant_id: row.restaurant_id,
+      title: row.title,
+      instructions: row.instructions ?? null,
+      assigned_to: row.assigned_to ?? null,
+      assignee_name: row.assignee?.full_name ?? null,
+      created_by: row.created_by,
+      due_time: row.due_time ?? null,
+      status: row.status,
+      completed_by: row.completed_by ?? null,
+      completed_at: row.completed_at ?? null,
+      created_at: row.created_at,
+    };
   });
 
   // Strip the embedded relations off the shift row so the returned
@@ -156,6 +186,7 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
     tasks,
     completions: completionsMap,
     opener,
+    adHocTasks,
   };
 }
 

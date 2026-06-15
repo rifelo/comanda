@@ -10,6 +10,7 @@ import {
 } from "@/components/comanda/primitives";
 import { formatTime, formatDateLabelEs } from "@/lib/utils";
 import { ShiftBoard } from "./shift-board";
+import { RealtimeAdHoc } from "./realtime-adhoc";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,7 @@ export default async function ShiftPage({
       </div>
 
       <ShiftBoard view={view} userId={profile.id} />
+      <RealtimeAdHoc shiftId={view.shift.id} />
     </div>
   );
 }
