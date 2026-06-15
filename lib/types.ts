@@ -6,7 +6,11 @@ export type ShiftStatus = "open" | "closed";
 
 export interface Profile {
   id: string;
-  organization_id: string;
+  /** Currently-active org pointer. Nullable since 0014: a brand-new user with
+   *  no org yet lands on /organizaciones to pick or create one. `requireUser`
+   *  narrows this back to `string` for the dozen call sites that pass it to
+   *  org-scoped queries. */
+  organization_id: string | null;
   full_name: string;
   role: UserRole;
 }
