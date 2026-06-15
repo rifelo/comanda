@@ -40,6 +40,11 @@ export function TurnosMobileTabs({ sedeName }: { sedeName: string }) {
               href={s.href}
               style={{
                 flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                lineHeight: 1,
+                textAlign: "center",
                 fontSize: 12,
                 letterSpacing: "0.03em",
                 padding: "8px 14px",
