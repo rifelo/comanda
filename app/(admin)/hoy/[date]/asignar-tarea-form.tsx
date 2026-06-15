@@ -16,7 +16,7 @@ export function AsignarTareaForm({
   shiftInstanceId: string;
   roster: RosterMember[];
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(true);
   const [titulo, setTitulo] = React.useState("");
   const [detalle, setDetalle] = React.useState("");
   const [asignado, setAsignado] = React.useState("");
