@@ -124,30 +124,52 @@ export default async function OrganizacionesPage() {
                       </div>
                     </div>
 
-                    {isActive ? (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          letterSpacing: "0.18em",
-                          textTransform: "uppercase",
-                          color: "var(--paper)",
-                          flexShrink: 0,
-                        }}
-                      >
-                        Actual
-                      </span>
-                    ) : (
-                      <form action={switchOrganization} style={{ flexShrink: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isActive ? (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.18em",
+                            textTransform: "uppercase",
+                            color: "var(--paper)",
+                            opacity: 0.85,
+                          }}
+                        >
+                          Activa
+                        </span>
+                      ) : null}
+                      <form action={switchOrganization}>
                         <input
                           type="hidden"
                           name="organization_id"
                           value={m.organization_id}
                         />
-                        <button type="submit" className="cmd-btn ghost sm">
+                        <button
+                          type="submit"
+                          className={isActive ? "cmd-btn sm" : "cmd-btn ghost sm"}
+                          // On the dark active row, render a light button so it
+                          // stays visible (ghost = ink-on-ink would disappear).
+                          style={
+                            isActive
+                              ? {
+                                  background: "var(--paper)",
+                                  color: "var(--ink)",
+                                  borderColor: "var(--paper)",
+                                }
+                              : undefined
+                          }
+                        >
                           Entrar
                         </button>
                       </form>
-                    )}
+                    </div>
                   </li>
                 );
               })}
