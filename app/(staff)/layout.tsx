@@ -21,8 +21,28 @@ export default async function StaffLayout({
         className="bg-paper flex items-center justify-between px-4 py-2.5"
         style={{ borderBottom: "1.5px solid var(--ink)" }}
       >
-        <Link href="/" aria-label="Inicio">
-          <Wordmark size={22} />
+        <Link href="/" aria-label="Inicio" className="flex items-center">
+          {sede?.logo_url ? (
+            <span
+              className="flex items-center justify-center overflow-hidden flex-shrink-0"
+              style={{
+                height: 30,
+                maxWidth: 140,
+                border: "1.5px solid var(--ink)",
+                background: "var(--paper-lt)",
+              }}
+            >
+              {/* Logo is stored as a dataURL on restaurants.logo_url. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={sede.logo_url}
+                alt={sedeName}
+                style={{ height: "100%", width: "auto", objectFit: "contain" }}
+              />
+            </span>
+          ) : (
+            <Wordmark size={22} />
+          )}
         </Link>
         <div
           className="flex items-center gap-3 text-muted"
