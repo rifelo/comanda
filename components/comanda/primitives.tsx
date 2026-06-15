@@ -182,8 +182,25 @@ export function ComandaPlate({
         padding: compact ? "10px 16px 10px" : "14px 16px 12px",
       }}
     >
+      {/* The global staff top bar (see app/(staff)/layout.tsx) already shows
+          the co-manda wordmark, so the plate no longer repeats it — that was
+          rendering the logo twice. The subtitle becomes the plate's title. */}
       <div className="flex items-baseline justify-between">
-        <Wordmark size={compact ? 22 : 28} />
+        {subtitle ? (
+          <div
+            className="text-ink"
+            style={{
+              fontSize: compact ? 12 : 14,
+              fontWeight: 600,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {subtitle}
+          </div>
+        ) : (
+          <span />
+        )}
         {time ? (
           <div
             className="text-muted"
@@ -197,18 +214,6 @@ export function ComandaPlate({
           </div>
         ) : null}
       </div>
-      {subtitle ? (
-        <div
-          className="text-ink-2 mt-1"
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-          }}
-        >
-          {subtitle}
-        </div>
-      ) : null}
       {restaurant || date ? (
         <div
           className="mt-2 flex justify-between text-muted"
