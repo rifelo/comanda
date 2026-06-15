@@ -307,8 +307,10 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       {/* page header */}
       <div
+        className="px-4 md:px-8"
         style={{
-          padding: "16px 32px 16px",
+          paddingTop: 16,
+          paddingBottom: 16,
           borderBottom: "1.5px solid var(--ink)",
         }}
       >
@@ -319,7 +321,7 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
         >
           ‹ Volver a turnos
         </Link>
-        <div className="flex justify-between items-end">
+        <div className="flex flex-wrap justify-between items-end" style={{ gap: 12 }}>
           <div>
             <div
               className="text-muted"
@@ -364,9 +366,8 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
 
       {/* tabs */}
       <div
-        className="flex"
+        className="flex px-4 md:px-8"
         style={{
-          padding: "0 32px",
           borderBottom: "1px dashed var(--rule)",
           gap: 0,
         }}
@@ -430,7 +431,7 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
       </div>
 
       {/* body */}
-      <div style={{ flex: 1, padding: "28px 32px", maxWidth: 860 }}>
+      <div className="px-4 md:px-8" style={{ flex: 1, paddingTop: 28, paddingBottom: 28, maxWidth: 860 }}>
         {error ? (
           <div
             style={{
@@ -628,105 +629,113 @@ export function ShiftForm({ initial }: { initial?: ShiftFormInitial }) {
             {tasks.map((t, i) => (
               <div
                 key={t.key}
-                draggable
-                onDragStart={onDragStart(i)}
                 onDragOver={onDragOver(i)}
                 onDragEnd={() => setDraggedIdx(null)}
-                className="grid items-center"
                 style={{
-                  gridTemplateColumns: "18px 108px 1fr auto auto",
-                  gap: 12,
-                  padding: "10px 12px",
-                  background:
-                    draggedIdx === i ? "var(--paper-lt)" : "transparent",
+                  padding: "12px",
+                  background: draggedIdx === i ? "var(--paper-lt)" : "var(--paper-lt)",
                   border: `1px solid ${draggedIdx === i ? "var(--ink)" : "var(--rule-soft)"}`,
-                  marginBottom: 6,
-                  cursor: "grab",
+                  borderRadius: 3,
+                  marginBottom: 8,
                 }}
               >
-                <span
-                  className="text-muted select-none"
-                  style={{ fontSize: 14, lineHeight: 1 }}
-                >
-                  ⠿
-                </span>
-                <TimeInput12
-                  value={t.due_time}
-                  onChange={(v) => setTask(i, { due_time: v })}
-                />
-                <div>
-                  <input
-                    value={t.title}
-                    onChange={(e) => setTask(i, { title: e.target.value })}
-                    placeholder="Título de la tarea"
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      border: "none",
-                      background: "transparent",
-                      width: "100%",
-                      padding: 0,
-                      outline: "none",
-                      color: "var(--ink)",
-                    }}
+                {/* row 1 — drag handle · time · number · delete */}
+                <div className="flex items-center" style={{ gap: 8 }}>
+                  <span
+                    draggable
+                    onDragStart={onDragStart(i)}
+                    className="text-muted select-none"
+                    aria-label="Reordenar"
+                    title="Arrastra para reordenar"
+                    style={{ fontSize: 15, lineHeight: 1, cursor: "grab", flexShrink: 0 }}
+                  >
+                    ⠿
+                  </span>
+                  <TimeInput12
+                    value={t.due_time}
+                    onChange={(v) => setTask(i, { due_time: v })}
                   />
-                  <input
-                    value={t.instructions}
-                    onChange={(e) =>
-                      setTask(i, { instructions: e.target.value })
-                    }
-                    placeholder="Instrucciones (opcional)"
+                  <span
+                    className="cmd-num text-muted"
+                    style={{ fontSize: 10, letterSpacing: "0.1em", marginLeft: "auto" }}
+                  >
+                    #{i + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => delTask(i)}
                     className="text-muted"
+                    aria-label="Eliminar tarea"
                     style={{
-                      fontSize: 11,
-                      border: "none",
                       background: "transparent",
-                      width: "100%",
-                      padding: "2px 0 0",
-                      outline: "none",
-                      marginTop: 1,
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 18,
+                      lineHeight: 1,
+                      padding: "0 2px",
+                      flexShrink: 0,
                     }}
-                  />
+                  >
+                    ×
+                  </button>
                 </div>
-                <label
-                  className="text-muted flex items-center"
+
+                {/* row 2 — full-width title */}
+                <input
+                  value={t.title}
+                  onChange={(e) => setTask(i, { title: e.target.value })}
+                  placeholder="Título de la tarea"
+                  className="w-full"
                   style={{
-                    fontSize: 10,
-                    letterSpacing: "0.12em",
-                    gap: 6,
-                    cursor: "pointer",
+                    marginTop: 10,
+                    boxSizing: "border-box",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    border: "1px solid var(--rule)",
+                    borderRadius: 3,
+                    background: "var(--paper)",
+                    padding: "9px 11px",
+                    outline: "none",
+                    color: "var(--ink)",
                   }}
+                />
+
+                {/* row 3 — multi-line instructions (wraps + resizes so long text is visible) */}
+                <textarea
+                  value={t.instructions}
+                  onChange={(e) => setTask(i, { instructions: e.target.value })}
+                  placeholder="Instrucciones (opcional) — describe el paso a paso"
+                  rows={2}
+                  className="w-full"
+                  style={{
+                    marginTop: 8,
+                    boxSizing: "border-box",
+                    fontSize: 13,
+                    lineHeight: 1.45,
+                    color: "var(--ink-2)",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 3,
+                    background: "var(--paper)",
+                    padding: "8px 11px",
+                    outline: "none",
+                    resize: "vertical",
+                    minHeight: 64,
+                  }}
+                />
+
+                {/* row 4 — photo toggle */}
+                <label
+                  className="flex items-center"
+                  style={{ marginTop: 10, gap: 8, fontSize: 11, letterSpacing: "0.1em", color: "var(--muted)", cursor: "pointer" }}
                 >
                   <input
                     type="checkbox"
                     checked={t.requires_photo}
-                    onChange={(e) =>
-                      setTask(i, { requires_photo: e.target.checked })
-                    }
-                    style={{
-                      accentColor: "var(--red)",
-                      width: 14,
-                      height: 14,
-                    }}
+                    onChange={(e) => setTask(i, { requires_photo: e.target.checked })}
+                    style={{ accentColor: "var(--red)", width: 16, height: 16 }}
                   />
-                  FOTO
+                  REQUIERE FOTO DE EVIDENCIA
                 </label>
-                <button
-                  type="button"
-                  onClick={() => delTask(i)}
-                  className="text-muted"
-                  aria-label="Eliminar tarea"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 16,
-                    lineHeight: 1,
-                    minHeight: 0,
-                  }}
-                >
-                  ×
-                </button>
               </div>
             ))}
 

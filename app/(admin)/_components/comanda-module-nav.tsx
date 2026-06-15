@@ -19,7 +19,8 @@ import { PROD_SECTIONS } from "@/lib/mock/productos";
  */
 const MODULES = [
   { id: "hoy", label: "Hoy", href: "/hoy" },
-  { id: "turnos", label: "Turnos", href: "/turnos" },
+  // link straight to the section (skip the /turnos → /turnos/resumen redirect)
+  { id: "turnos", label: "Turnos", href: "/turnos/resumen" },
   { id: "productos", label: "Productos", href: "/catalogo", badge: "En desarrollo" },
   { id: "configuracion", label: "Configuración", href: "/configuracion" },
 ] as const;
