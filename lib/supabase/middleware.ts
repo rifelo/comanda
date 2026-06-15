@@ -92,6 +92,10 @@ export async function updateSession(request: NextRequest) {
 function isStaffPath(path: string): boolean {
   return (
     path === "/" ||
+    // The org selector must be reachable by any authenticated user. A no-org
+    // user defaults to role 'staff', which would otherwise bounce them off the
+    // selector and loop /organizaciones → /today → …
+    path === "/organizaciones" ||
     path === "/today" ||
     path.startsWith("/today/") ||
     path === "/shift" ||
