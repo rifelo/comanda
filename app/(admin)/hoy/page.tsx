@@ -291,13 +291,24 @@ export default async function HoyPage() {
                 </div>
 
                 <div
-                  className="flex justify-end"
+                  className="flex items-center justify-between"
                   style={{
                     marginTop: 16,
                     paddingTop: 12,
                     borderTop: "1.5px solid var(--ink)",
                   }}
                 >
+                  {t.data && isOpen ? (
+                    <Link
+                      href={`/hoy/${today}?turno=${t.data.shift_id}#asignar`}
+                      className="cmd-link"
+                      style={{ fontSize: 11, color: "var(--red)" }}
+                    >
+                      + asignar tarea
+                    </Link>
+                  ) : (
+                    <span />
+                  )}
                   {t.data ? (
                     <Link
                       href={`/hoy/${today}?turno=${t.data.shift_id}`}

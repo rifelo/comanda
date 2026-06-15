@@ -177,8 +177,10 @@ export default async function HoyDetailPage({
             borderRight: "1px dashed var(--rule)",
           }}
         >
-          <SectionLabel>Tareas inmediatas</SectionLabel>
-          <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} />
+          <div id="asignar" style={{ scrollMarginTop: 16 }}>
+            <SectionLabel>Tareas inmediatas</SectionLabel>
+            <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} />
+          </div>
           {adHoc.length === 0 ? (
             <div
               className="text-muted"
