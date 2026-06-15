@@ -101,7 +101,126 @@ export default async function TurnosReportesPage({
   const MAX_BAR = 116;
 
   return (
-    <div>
+    <>
+      {/* ── Mobile · stacked charts ──────────────────────────────── */}
+      <div className="md:hidden" style={{ padding: "4px 14px 28px" }}>
+        <div className="flex justify-between items-center" style={{ padding: "12px 0 4px" }}>
+          <span
+            className="text-muted"
+            style={{ fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase" }}
+          >
+            {weekLabel}
+          </span>
+          <a href={csvHref} download className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>
+            ↓ CSV
+          </a>
+        </div>
+
+        <div
+          className="cmd-noise"
+          style={{ border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: 18, marginTop: 8 }}
+        >
+          <div className="text-muted" style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase" }}>
+            Cumplimiento global
+          </div>
+          <div className="cmd-num font-slab" style={{ fontSize: 56, lineHeight: 1, marginTop: 2 }}>
+            {report.globalPct ?? "—"}
+            <span className="text-muted" style={{ fontSize: 20 }}>%</span>
+          </div>
+          <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+            {report.hasData ? `Semana ${weekLabel}` : "Sin datos suficientes para esta semana."}
+          </div>
+          <div
+            className="flex items-end"
+            style={{ gap: 6, height: 96, padding: "14px 4px 0", borderBottom: "1.5px solid var(--ink)" }}
+          >
+            {report.daily.map((value, i) => (
+              <div key={i} className="flex flex-col items-center justify-end" style={{ flex: 1, gap: 5, height: "100%" }}>
+                <span className="cmd-num text-muted" style={{ fontSize: 9 }}>{value ?? "—"}</span>
+                {value === null ? (
+                  <div style={{ width: "100%", height: 2, border: "1px dashed var(--rule)" }} />
+                ) : (
+                  <div style={{ width: "100%", height: Math.max(2, (value / 100) * 74), background: barColor(value) }} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex" style={{ gap: 6, padding: "6px 4px 0" }}>
+            {WEEKDAYS.map((w, i) => (
+              <div key={i} className="text-muted" style={{ flex: 1, textAlign: "center", fontSize: 10 }}>
+                {w}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* stat chips */}
+        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          {[
+            { l: "Tareas completadas", v: report.hasData ? `${kpis.tasksDone} / ${kpis.tasksTotal}` : "—" },
+            { l: "Fotos verificadas", v: report.hasData ? `${kpis.photosDone} / ${kpis.photosTotal}` : "—" },
+            { l: "Novedades", v: report.hasData ? kpis.novedades : "—" },
+            { l: "Tareas en retraso", v: report.hasData ? kpis.late : "—" },
+          ].map((s) => (
+            <div key={s.l} style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)", padding: "11px 13px", borderRadius: 3 }}>
+              <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                {s.l}
+              </div>
+              <div className="cmd-num" style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* per-shift */}
+        <div className="flex items-center text-muted" style={{ gap: 8, padding: "20px 0 8px" }}>
+          <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+            Cumplimiento por turno
+          </span>
+          <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
+        </div>
+        {perShift.length === 0 ? (
+          <div className="text-muted" style={{ fontSize: 12, textAlign: "center", padding: 16 }}>
+            Sin turnos configurados.
+          </div>
+        ) : (
+          perShift.map((s) => (
+            <div key={s.template_id} style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)", padding: 14, marginBottom: 10 }}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, textTransform: "capitalize" }}>Turno {s.name}</div>
+                  <div className="cmd-num text-muted" style={{ fontSize: 10, marginTop: 2 }}>
+                    {s.inicio} – {s.fin}
+                  </div>
+                </div>
+                <div
+                  className="cmd-num font-slab"
+                  style={{ fontSize: 26, lineHeight: 1, color: s.avg === null ? "var(--muted)" : barColor(s.avg) }}
+                >
+                  {s.avg === null ? "—" : `${s.avg}%`}
+                </div>
+              </div>
+              <div className="flex items-end" style={{ gap: 5, height: 44, marginTop: 12 }}>
+                {s.vals.map((value, j) => (
+                  <div key={j} className="flex flex-col items-center" style={{ flex: 1, gap: 4 }}>
+                    {value === null ? (
+                      <div style={{ width: "100%", height: 2, border: "1px dashed var(--rule)" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: Math.max(2, (value / 100) * 36), background: barColor(value), borderRadius: "2px 2px 0 0" }} />
+                    )}
+                    <span className="text-muted" style={{ fontSize: 9 }}>{WEEKDAYS[j]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+        <div className="text-muted" style={{ fontSize: 9.5, letterSpacing: "0.04em", marginTop: 10, textAlign: "center" }}>
+          generado · {sede.name}
+        </div>
+      </div>
+
+      {/* ── Desktop (unchanged) ──────────────────────────────────── */}
+      <div className="hidden md:block">
       <TurnosHeader
         kicker={`${sede.name.toUpperCase()} · CUMPLIMIENTO`}
         title="Reporte de cumplimiento"
@@ -379,6 +498,7 @@ export default async function TurnosReportesPage({
           generado · {sede.name}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

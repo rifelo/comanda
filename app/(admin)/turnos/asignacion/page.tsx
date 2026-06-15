@@ -6,6 +6,7 @@ import { isoMonday, listAssignments } from "@/lib/db/assignments";
 import { todayInTz } from "@/lib/utils";
 import { TurnosHeader } from "../../_components/turnos-header";
 import { AsignacionGrid } from "./_components/asignacion-grid";
+import { AsignacionMobile } from "./_components/asignacion-mobile";
 
 export const dynamic = "force-dynamic";
 
@@ -34,30 +35,50 @@ export default async function TurnosAsignacionPage() {
     listAssignments(sede.id, weekStart),
   ]);
 
+  const gridShifts = shifts.map((s) => ({
+    id: s.id,
+    name: s.name,
+    inicio: s.inicio,
+    dias: s.dias,
+  }));
+  const gridRoster = roster
+    .filter((r) => r.isMember)
+    .map((r) => ({
+      id: r.id,
+      initials: r.initials,
+      name: r.name,
+      email: r.email,
+      active: r.active,
+    }));
+  const gridAssignments = assignments.map((a) => ({
+    template_id: a.template_id,
+    dia_idx: a.dia_idx,
+    member_id: a.member_id,
+  }));
+
   return (
-    <AsignacionGrid
-      initialWeekStart={weekStart}
-      today={today}
-      shifts={shifts.map((s) => ({
-        id: s.id,
-        name: s.name,
-        inicio: s.inicio,
-        dias: s.dias,
-      }))}
-      roster={roster
-        .filter((r) => r.isMember)
-        .map((r) => ({
-          id: r.id,
-          initials: r.initials,
-          name: r.name,
-          email: r.email,
-          active: r.active,
-        }))}
-      initialAssignments={assignments.map((a) => ({
-        template_id: a.template_id,
-        dia_idx: a.dia_idx,
-        member_id: a.member_id,
-      }))}
-    />
+    <>
+      {/* ── Mobile · day picker + bottom-sheet picker ────────────── */}
+      <div className="md:hidden">
+        <AsignacionMobile
+          initialWeekStart={weekStart}
+          today={today}
+          shifts={gridShifts}
+          roster={gridRoster}
+          initialAssignments={gridAssignments}
+        />
+      </div>
+
+      {/* ── Desktop · week grid (unchanged) ──────────────────────── */}
+      <div className="hidden md:block">
+        <AsignacionGrid
+          initialWeekStart={weekStart}
+          today={today}
+          shifts={gridShifts}
+          roster={gridRoster}
+          initialAssignments={gridAssignments}
+        />
+      </div>
+    </>
   );
 }
