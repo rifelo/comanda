@@ -6,6 +6,7 @@ import type { AdHocTask } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
 import { setAdHocDone } from "@/app/(staff)/shift/[id]/actions";
 import { CmdCheck } from "@/components/comanda/primitives";
+import { LockBox, ScheduleTag, WhoChip, whoForViewer } from "@/components/comanda/task-bits";
 
 interface AdHocTaskRowProps {
   task: AdHocTask;
@@ -20,10 +21,9 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
   const [error, setError] = useState<string | null>(null);
 
   const isComplete = task.status === "done";
+  const who = whoForViewer(task.assigned_to, userId, task.assignee_name);
   // RLS only lets staff complete unassigned tasks or ones assigned to them.
-  const canComplete =
-    task.assigned_to === null || task.assigned_to === userId;
-  const locked = disabled || !canComplete;
+  const locked = !!disabled || who.locked;
 
   function toggle() {
     if (locked || pending) return;
@@ -38,33 +38,30 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
     });
   }
 
-  const whenLabel = task.due_time ? task.due_time.slice(0, 5) : "Inmediata";
-  const whoLabel =
-    task.assigned_to === null
-      ? "Para todos"
-      : task.assigned_to === userId
-        ? "Para ti"
-        : (task.assignee_name ?? "Asignada a otra persona");
+  const immediate = !task.due_time;
+  const whenLabel = immediate ? "INMEDIATA" : task.due_time!.slice(0, 5);
 
   return (
     <li
       onClick={toggle}
       className={cn(
-        "flex gap-3 relative px-4 py-3",
-        locked ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
+        "flex relative",
+        locked ? "opacity-50 cursor-default" : "cursor-pointer",
       )}
       style={{
+        gap: 12,
+        padding: "13px 16px",
         borderBottom: "1px solid var(--rule-soft)",
-        background: isComplete ? "rgba(63,107,58,0.06)" : "transparent",
+        background: isComplete ? "rgba(63,107,58,0.07)" : "transparent",
       }}
     >
-      <div className="pt-0.5">
+      <div style={{ paddingTop: 1 }}>
         {pending ? (
           <span
             className="inline-flex items-center justify-center"
             style={{
-              width: 22,
-              height: 22,
+              width: 26,
+              height: 26,
               border: "1.5px solid var(--ink)",
               borderRadius: 3,
               background: "var(--paper-lt)",
@@ -72,14 +69,17 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           </span>
+        ) : locked ? (
+          <LockBox />
         ) : (
           <CmdCheck
             checked={isComplete}
+            mode="check"
+            size={26}
             onClick={(e) => {
               e.stopPropagation();
               toggle();
             }}
-            disabled={locked}
           />
         )}
       </div>
@@ -88,33 +88,30 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
         <div
           className="text-ink"
           style={{
-            fontSize: 14,
+            fontSize: 14.5,
             fontWeight: 500,
             lineHeight: 1.25,
             textDecorationLine: isComplete ? "line-through" : "none",
-            textDecorationColor: "rgba(31,26,20,0.5)",
+            textDecorationColor: "rgba(31,26,20,0.45)",
           }}
         >
           {task.title}
         </div>
         {task.instructions ? (
-          <div
-            className="text-muted mt-0.5"
-            style={{ fontSize: 11, lineHeight: 1.3 }}
-          >
+          <div className="text-muted" style={{ fontSize: 11.5, marginTop: 2, lineHeight: 1.35 }}>
             {task.instructions}
           </div>
         ) : null}
-        <div
-          className="mt-1.5"
-          style={{ fontSize: 10, letterSpacing: "0.06em" }}
-        >
+        <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 7 }}>
           {isComplete && task.completed_at ? (
-            <span style={{ color: "var(--green)" }}>
+            <span style={{ fontSize: 10.5, color: "var(--green)", letterSpacing: "0.04em" }}>
               ✓ {formatTime(task.completed_at)}
             </span>
           ) : (
-            <span className="text-muted">{whoLabel}</span>
+            <>
+              <ScheduleTag label={whenLabel} immediate={immediate} />
+              <WhoChip kind={who.kind} text={who.text} />
+            </>
           )}
         </div>
         {error ? (
@@ -123,21 +120,6 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
           </p>
         ) : null}
       </div>
-
-      <span
-        className="self-start whitespace-nowrap"
-        style={{
-          border: `1px solid ${task.due_time ? "var(--ink)" : "var(--red)"}`,
-          color: task.due_time ? "var(--ink)" : "var(--red)",
-          padding: "2px 5px",
-          fontSize: 8,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          borderRadius: 2,
-        }}
-      >
-        {whenLabel}
-      </span>
     </li>
   );
 }

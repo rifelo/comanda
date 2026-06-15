@@ -358,57 +358,61 @@ export function PhotoCapture({
       ) : null}
 
       {/* shutter / confirm */}
-      <div
-        className="flex items-center justify-center gap-7"
-        style={{ padding: "12px 0 calc(env(safe-area-inset-bottom) + 32px)" }}
-      >
-        {preview ? (
-          <>
-            <button
-              type="button"
-              onClick={onRetake}
-              disabled={uploading}
-              style={{
-                fontSize: 10,
-                opacity: 0.7,
-                letterSpacing: "0.18em",
-                background: "transparent",
-                border: "none",
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              VOLVER A TOMAR
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={uploading}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: "50%",
-                border: "3px solid #fff",
-                background: "var(--green)",
-                color: "#fff",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                letterSpacing: "0.12em",
-              }}
-            >
-              {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : "OK"}
-            </button>
-            <span
-              style={{ fontSize: 10, opacity: 0, letterSpacing: "0.18em" }}
-              aria-hidden
-            >
-              VOLVER
-            </span>
-          </>
-        ) : (
+      {preview ? (
+        <div
+          className="flex items-center"
+          style={{ gap: 10, padding: "12px 16px calc(env(safe-area-inset-bottom) + 32px)" }}
+        >
+          <button
+            type="button"
+            onClick={onRetake}
+            disabled={uploading}
+            style={{
+              flex: 1,
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontSize: 11,
+              padding: "13px 16px",
+              borderRadius: 3,
+              border: "1.5px solid rgba(255,255,255,.5)",
+              background: "transparent",
+              color: "rgba(255,255,255,.92)",
+              cursor: "pointer",
+            }}
+          >
+            Volver a tomar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={uploading}
+            className="inline-flex items-center justify-center"
+            style={{
+              flex: 1,
+              gap: 6,
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontSize: 11,
+              padding: "13px 16px",
+              borderRadius: 3,
+              border: "1.5px solid var(--red)",
+              background: "var(--red)",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usar foto ✓"}
+          </button>
+        </div>
+      ) : (
+        <div
+          className="flex items-center justify-center gap-7"
+          style={{ padding: "12px 0 calc(env(safe-area-inset-bottom) + 32px)" }}
+        >
           <>
             <button
               type="button"
@@ -471,8 +475,8 @@ export function PhotoCapture({
               VOLTEAR
             </button>
           </>
-        )}
-      </div>
+        </div>
+      )}
 
       <input
         ref={fileInputRef}

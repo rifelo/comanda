@@ -4,7 +4,6 @@ import { listTasks } from "@/lib/db/tasks";
 import { listRoster } from "@/lib/db/roster";
 import { todayInTz } from "@/lib/utils";
 import { TurnosHeader } from "../../_components/turnos-header";
-import { NuevaTareaForm } from "./_components/nueva-tarea-form";
 import { TareasManager } from "./_components/tareas-manager";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +38,13 @@ export default async function TurnosTareasPage() {
         kicker={`${sede.name.toUpperCase()} · ${pendingCount} PENDIENTES`}
         title="Tareas"
       />
-      <div style={{ padding: "24px 32px", maxWidth: 760 }}>
-        <NuevaTareaForm restaurantId={sede.id} roster={roster} />
-        <TareasManager tasks={tasks} roster={roster} today={today} />
-      </div>
+      <TareasManager
+        tasks={tasks}
+        roster={roster}
+        today={today}
+        restaurantId={sede.id}
+        sedeName={sede.name}
+      />
     </div>
   );
 }

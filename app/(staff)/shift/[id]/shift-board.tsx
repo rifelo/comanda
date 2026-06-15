@@ -57,7 +57,38 @@ export function ShiftBoard({
       <div className="cmd-paper pb-32">
         {adHoc.length > 0 ? (
           <section>
-            <CmdSectionLabel>● Tareas inmediatas</CmdSectionLabel>
+            <div
+              className="flex items-center"
+              style={{
+                gap: 8,
+                padding: "11px 16px 8px",
+                background: "rgba(176,58,46,0.06)",
+                borderBottom: "1px solid var(--rule-soft)",
+              }}
+            >
+              <span
+                aria-hidden
+                style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--red)" }}
+              />
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--red)",
+                }}
+              >
+                Tareas inmediatas
+              </span>
+              <span
+                className="flex-1"
+                style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }}
+              />
+              <span className="text-muted" style={{ fontSize: 10 }}>
+                {adHoc.filter((t) => t.status !== "done").length}
+              </span>
+            </div>
             <ul>
               {adHoc.map((task) => (
                 <AdHocTaskRow

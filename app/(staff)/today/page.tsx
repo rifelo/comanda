@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getTodayShifts } from "@/lib/db/shifts";
-import { listMyTasks } from "@/lib/db/tasks";
+import { listMyTasks, listMyCompletedToday } from "@/lib/db/tasks";
 import {
   ComandaPlate,
   CmdSectionLabel,
@@ -15,13 +15,15 @@ export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
   // Profile, shift list, and assigned tasks are independent — fan them out.
-  const [{ profile }, items, myTasks] = await Promise.all([
+  const [{ profile }, items, myTasks, myDone] = await Promise.all([
     requireUser(),
     getTodayShifts(),
     listMyTasks(),
+    listMyCompletedToday(),
   ]);
   const today = todayInTz();
   const dateLabel = formatDateLabelEs(today);
+  const hasTareas = myTasks.length > 0 || myDone.length > 0;
 
   // Staff are usually assigned to a single sede, but admins-on-shift can
   // have today-shifts across more than one. Dedupe + join so the nameplate
@@ -45,14 +47,36 @@ export default async function TodayPage() {
         time={formatTime(new Date())}
       />
 
-      {myTasks.length > 0 ? (
+      {hasTareas ? (
         <>
-          <CmdSectionLabel>Tareas asignadas</CmdSectionLabel>
-          <ul>
-            {myTasks.map((t) => (
-              <TaskTodoRow key={t.id} task={t} userId={profile.id} />
-            ))}
-          </ul>
+          <CmdSectionLabel>Tareas asignadas · {myTasks.length}</CmdSectionLabel>
+          {myTasks.length > 0 ? (
+            <ul>
+              {myTasks.map((t) => (
+                <TaskTodoRow key={t.id} task={t} userId={profile.id} today={today} />
+              ))}
+            </ul>
+          ) : (
+            <div className="px-4 py-6 text-center">
+              <Stamp rotate={-6} size={11} color="var(--green)">
+                Todo al día
+              </Stamp>
+              <p className="text-muted mt-3" style={{ fontSize: 12, lineHeight: 1.5 }}>
+                No tienes tareas pendientes.
+              </p>
+            </div>
+          )}
+
+          {myDone.length > 0 ? (
+            <>
+              <CmdSectionLabel>Completadas hoy · {myDone.length}</CmdSectionLabel>
+              <ul>
+                {myDone.map((t) => (
+                  <TaskTodoRow key={t.id} task={t} userId={profile.id} today={today} />
+                ))}
+              </ul>
+            </>
+          ) : null}
         </>
       ) : null}
 
