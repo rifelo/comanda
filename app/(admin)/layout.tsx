@@ -3,8 +3,9 @@ import { signOut } from "@/app/login/actions";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { Wordmark } from "@/components/comanda/primitives";
+import { todayInTz } from "@/lib/utils";
 import { AdminSidebarNav } from "./_components/admin-sidebar-nav";
-import { AdminMobileDrawer } from "./_components/admin-mobile-drawer";
+import { AdminMobileHeader } from "./_components/admin-mobile-header";
 
 export default async function AdminLayout({
   children,
@@ -116,28 +117,16 @@ export default async function AdminLayout({
         </div>
       </aside>
 
-      <header
-        className="md:hidden flex items-center justify-between px-4 py-2.5 w-full"
-        style={{
-          position: "fixed",
-          inset: "0 0 auto 0",
-          background: "var(--paper)",
-          borderBottom: "1.5px solid var(--ink)",
-          zIndex: 20,
-        }}
-      >
-        <Link href="/hoy">
-          <Wordmark size={22} />
-        </Link>
-        <AdminMobileDrawer
+      <main className="flex-1 overflow-auto">
+        <AdminMobileHeader
           userName={profile.full_name}
           role={profile.role}
           sedeName={sedeName}
           sedeCurrency={sede?.currency ?? "COP"}
+          today={todayInTz(sede?.tz)}
         />
-      </header>
-
-      <main className="flex-1 overflow-auto pt-[60px] md:pt-0">{children}</main>
+        {children}
+      </main>
     </div>
   );
 }

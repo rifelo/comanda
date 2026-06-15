@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getActiveSede } from "@/lib/data/sede";
 import { getShiftView } from "@/lib/db/shifts";
 import { listRoster } from "@/lib/db/roster";
@@ -115,8 +114,246 @@ export default async function HoyDetailPage({
       return (a.due_time ?? "").localeCompare(b.due_time ?? "");
     });
 
+  const prevDate = addDays(date, -1);
+  const nextDate = addDays(date, 1);
+  const lateMin = (due: string | null, completedAt: string | null) => {
+    if (!due || !completedAt) return 0;
+    const [dh, dm] = due.split(":").map(Number);
+    const [ch, cm] = formatTime(completedAt, sede.tz).split(":").map(Number);
+    return ch * 60 + cm - (dh * 60 + dm);
+  };
+
   return (
-    <div>
+    <>
+      {/* ── Mobile · detalle de hoy ───────────────────────────── */}
+      <div className="md:hidden" style={{ paddingBottom: 28 }}>
+        {/* turno header */}
+        <div style={{ padding: "14px 14px", borderBottom: "1px dashed var(--rule)" }}>
+          <div className="text-muted" style={{ fontSize: 9.5, letterSpacing: "0.12em" }}>
+            HOY · {formatDateLabelEs(date)} · {view.template.name.toUpperCase()} · DR-
+            {shiftId.slice(0, 4).toUpperCase()}
+          </div>
+          <div className="font-slab" style={{ fontSize: 24, margin: "4px 0 0" }}>
+            {sede.name}
+          </div>
+          <div className="text-muted" style={{ fontSize: 11.5, marginTop: 5 }}>
+            {opener} ·{" "}
+            {view.shift.opened_at ? `abrió ${formatTime(view.shift.opened_at)}` : "sin abrir"}
+          </div>
+          <div className="flex" style={{ gap: 8, marginTop: 12 }}>
+            <Link href={`/hoy/${prevDate}`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
+              ‹ día ant.
+            </Link>
+            <span className="cmd-btn ghost sm" style={{ flex: 1.4, textAlign: "center", cursor: "default" }}>
+              {formatDateLabelEs(date)}
+            </span>
+            <Link href={`/hoy/${nextDate}`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
+              día sig. ›
+            </Link>
+          </div>
+        </div>
+
+        {/* tareas inmediatas */}
+        <HMLabel>Tareas inmediatas</HMLabel>
+        <div style={{ padding: "0 14px" }}>
+          <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} />
+          {adHoc.length === 0 ? (
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Sin tareas asignadas en el turno.
+            </div>
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              {adHoc.map((t) => {
+                const isDone = t.status === "done";
+                const whenLabel = t.due_time ? t.due_time.slice(0, 5) : "Inmediata";
+                const whoLabel = t.assigned_to ? (t.assignee_name ?? "Asignada") : "Para todos";
+                return (
+                  <div
+                    key={t.id}
+                    className="flex"
+                    style={{ gap: 10, padding: "10px 0", borderBottom: "1px solid var(--rule-soft)" }}
+                  >
+                    <CmdCheck checked={isDone} mode="check" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between" style={{ gap: 8 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 500 }}>{t.title}</span>
+                        <span
+                          className="whitespace-nowrap"
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            color: t.due_time ? "var(--muted)" : "var(--red)",
+                          }}
+                        >
+                          {whenLabel}
+                        </span>
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>
+                        {whoLabel}
+                        {isDone && t.completed_at ? ` · ✓ ${formatTime(t.completed_at)}` : " · pendiente"}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* tareas template */}
+        <HMLabel right={`${done}/${total}`}>Tareas · {view.template.name}</HMLabel>
+        <div style={{ padding: "0 14px" }}>
+          <div style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)" }}>
+            {view.tasks.map((task, i) => {
+              const c = completionsByTask[task.id];
+              const isDone = !!c;
+              const dueLabel = task.due_time?.slice(0, 5);
+              const late = isDone ? lateMin(task.due_time, c.completed_at) : 0;
+              return (
+                <div
+                  key={task.id}
+                  className="flex items-start"
+                  style={{
+                    gap: 10,
+                    padding: "10px 12px",
+                    borderBottom: i < view.tasks.length - 1 ? "1px solid var(--rule-soft)" : "none",
+                    opacity: isDone ? 1 : 0.65,
+                  }}
+                >
+                  <span
+                    className="inline-flex items-center justify-center"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      minWidth: 18,
+                      marginTop: 1,
+                      borderRadius: 4,
+                      border: `1.5px solid ${isDone ? "var(--green)" : "var(--rule)"}`,
+                      background: isDone ? "var(--green)" : "transparent",
+                      color: "var(--paper-lt)",
+                      fontSize: 11,
+                    }}
+                  >
+                    {isDone ? "✓" : ""}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div style={{ fontSize: 12.5, fontWeight: 500 }}>{task.title}</div>
+                    {isDone ? (
+                      <div
+                        className="text-muted flex flex-wrap"
+                        style={{ fontSize: 10, marginTop: 2, gap: 10 }}
+                      >
+                        <span>✓ {formatTime(c.completed_at)} · {c.who}</span>
+                        {task.requires_photo && c.photo_url ? (
+                          <span style={{ color: "var(--green)" }}>📷 verificada</span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="cmd-num text-muted" style={{ fontSize: 10, marginTop: 2 }}>
+                        {dueLabel ? `programada ${dueLabel}` : "pendiente"}
+                      </div>
+                    )}
+                  </div>
+                  {!isDone && task.requires_photo ? (
+                    <span
+                      className="self-start whitespace-nowrap"
+                      style={{ border: "1px solid var(--red)", color: "var(--red)", padding: "2px 5px", fontSize: 8, letterSpacing: "0.12em" }}
+                    >
+                      FOTO PEND.
+                    </span>
+                  ) : null}
+                  {isDone && late > 0 ? (
+                    <span className="cmd-num self-start" style={{ fontSize: 9.5, color: "var(--amber)", flexShrink: 0 }}>
+                      +{late}m
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* evidencia */}
+        <HMLabel right={`${photos.length} fotos`}>Evidencia fotográfica</HMLabel>
+        {photos.length === 0 ? (
+          <div className="text-muted" style={{ padding: "0 14px", fontSize: 12 }}>
+            Sin fotos todavía.
+          </div>
+        ) : (
+          <div className="grid" style={{ padding: "0 14px", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {photos.map((p) => {
+              const tt = view.tasks.find((x) => x.id === p.template_task_id);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const who = ((p as any).profiles?.full_name ?? "—")
+                .split(" ")
+                .map((s: string) => s[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+              return (
+                <div key={p.id} style={{ border: "1px solid var(--ink)" }}>
+                  {p.photo_url ? (
+                    <a href={p.photo_url} target="_blank" rel="noreferrer" className="relative block" style={{ width: "100%", height: 84 }}>
+                      <Image
+                        src={p.photo_url}
+                        alt={tt?.title ?? "Foto de evidencia"}
+                        fill
+                        sizes="50vw"
+                        unoptimized
+                        style={{ objectFit: "cover" }}
+                      />
+                    </a>
+                  ) : (
+                    <PhotoPlaceholder w="100%" h={84} label={tt?.title ?? ""} />
+                  )}
+                  <div
+                    className="text-muted flex items-center justify-between"
+                    style={{ padding: 5, fontSize: 8.5, letterSpacing: "0.12em" }}
+                  >
+                    <span className="cmd-num">{formatTime(p.completed_at)}</span>
+                    <span>{who}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* novedades */}
+        <HMLabel right={(novedades ?? []).length}>Novedades</HMLabel>
+        <div style={{ padding: "0 14px" }}>
+          {(novedades ?? []).length === 0 ? (
+            <div className="text-muted" style={{ fontSize: 12 }}>
+              Sin novedades reportadas.
+            </div>
+          ) : (
+            (novedades ?? []).map((n, idx) => (
+              <div
+                key={n.id}
+                style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)", padding: 11, marginBottom: 8 }}
+              >
+                <div className="flex justify-between" style={{ marginBottom: 5 }}>
+                  <Folio n={`N-${44 + idx}`} />
+                  <span className="cmd-num text-muted" style={{ fontSize: 10 }}>
+                    {formatTime(n.submitted_at)}
+                  </span>
+                </div>
+                <p className="text-ink-2 whitespace-pre-wrap" style={{ fontSize: 12.5, lineHeight: 1.4 }}>
+                  {n.body}
+                </p>
+                <div className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(n as any).profiles?.full_name ?? "—"}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── Desktop (unchanged) ──────────────────────────────── */}
+      <div className="hidden md:block">
       <header
         className="flex items-end justify-between"
         style={{
@@ -472,6 +709,30 @@ export default async function HoyDetailPage({
           </div>
         </section>
       </div>
+      </div>
+    </>
+  );
+}
+
+/** YYYY-MM-DD shifted by `delta` days (UTC, so it never drifts). */
+function addDays(yyyyMMdd: string, delta: number): string {
+  const [y, m, d] = yyyyMMdd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
+}
+
+function HMLabel({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-center" style={{ gap: 8, padding: "16px 14px 8px" }}>
+      <span
+        className="text-muted"
+        style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}
+      >
+        {children}
+      </span>
+      <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
+      {right != null ? <span className="text-muted" style={{ fontSize: 10 }}>{right}</span> : null}
     </div>
   );
 }
