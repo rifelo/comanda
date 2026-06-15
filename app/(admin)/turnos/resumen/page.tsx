@@ -95,8 +95,175 @@ export default async function TurnosResumenPage() {
   const [nowH, nowM] = nowLabel.split(":").map(Number);
   const NOW_MIN = nowH * 60 + nowM;
 
+  // Compact per-shift card data — reused by the mobile stacked-card view. The
+  // desktop grid below computes its own locals inline (left untouched).
+  const dur = (a: string, b: string) => {
+    const [ah, am] = a.split(":").map(Number);
+    const [bh, bm] = b.split(":").map(Number);
+    let mins = bh * 60 + bm - (ah * 60 + am);
+    if (mins <= 0) mins += 1440;
+    return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+  };
+  const cards = shifts.map((t) => {
+    const inst = instanceByTemplate.get(t.id);
+    const open = inst?.status === "open";
+    const closed = inst?.status === "closed";
+    const cell = assignments.find(
+      (a) => a.template_id === t.id && a.dia_idx === todayIdx,
+    );
+    const member = cell?.member_id ? rosterById.get(cell.member_id) ?? null : null;
+    return {
+      id: t.id,
+      name: t.name,
+      inicio: t.inicio,
+      fin: t.fin,
+      duration: dur(t.inicio, t.fin),
+      statusLabel: open ? "EN CURSO" : closed ? "CERRADO" : "POR ABRIR",
+      open,
+      total: t.tasks.length,
+      photoCount: t.tasks.filter((tk) => tk.requires_photo).length,
+      memberName: member?.name ?? null,
+      memberInitials: member?.initials ?? null,
+    };
+  });
+
   return (
-    <div>
+    <>
+      {/* ── Mobile · stacked turno cards ─────────────────────────── */}
+      <div className="md:hidden" style={{ padding: "8px 14px 28px" }}>
+        <div
+          className="flex items-center text-muted"
+          style={{ gap: 8, padding: "12px 0 10px" }}
+        >
+          <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+            Turnos configurados
+          </span>
+          <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
+          <span style={{ fontSize: 10 }}>{shifts.length} por día</span>
+        </div>
+
+        {shifts.length === 0 ? (
+          <div
+            style={{ border: "1px dashed var(--rule)", padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}
+          >
+            Aún no hay turnos configurados.
+          </div>
+        ) : (
+          cards.map((c) => (
+            <div
+              key={c.id}
+              className="cmd-noise relative"
+              style={{
+                border: "1.5px solid var(--ink)",
+                background: "var(--paper-lt)",
+                padding: 16,
+                marginBottom: 14,
+                boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
+              }}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-slab" style={{ fontSize: 24, lineHeight: 1, textTransform: "capitalize" }}>
+                    {c.name}
+                  </div>
+                  <div className="cmd-num text-muted" style={{ fontSize: 12, marginTop: 6 }}>
+                    {c.inicio} – {c.fin} · {c.duration}
+                  </div>
+                </div>
+                <span
+                  className="inline-flex items-center whitespace-nowrap"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.14em",
+                    padding: "4px 8px",
+                    gap: 5,
+                    border: `1px solid ${c.open ? "var(--green)" : "var(--rule)"}`,
+                    color: c.open ? "var(--green)" : "var(--muted)",
+                    background: c.open ? "rgba(31,138,91,.08)" : "transparent",
+                  }}
+                >
+                  {c.open ? (
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
+                  ) : null}
+                  {c.statusLabel}
+                </span>
+              </div>
+
+              <div style={{ marginTop: 14, paddingTop: 13, borderTop: "1px dashed var(--rule)" }}>
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 7 }}
+                >
+                  Personal de hoy
+                </div>
+                {c.memberName ? (
+                  <div className="flex items-center" style={{ gap: 10 }}>
+                    <span
+                      className="inline-flex items-center justify-center"
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: "50%",
+                        border: "1.5px solid var(--ink)",
+                        background: "var(--paper)",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {c.memberInitials}
+                    </span>
+                    <div className="min-w-0">
+                      <div style={{ fontSize: 13.5, fontWeight: 500 }}>{c.memberName}</div>
+                      <div className="text-muted" style={{ fontSize: 10.5 }}>
+                        {c.open ? `${c.total} tareas hoy` : "asignado"}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="text-muted flex justify-between items-center"
+                    style={{ fontSize: 12.5, fontStyle: "italic" }}
+                  >
+                    <span>— sin asignar —</span>
+                    <Link href="/turnos/asignacion" className="cmd-link" style={{ fontSize: 11, fontStyle: "normal" }}>
+                      asignar →
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {c.open ? (
+                <div style={{ marginTop: 14 }}>
+                  <CmdProgress done={0} total={c.total || 1} />
+                </div>
+              ) : null}
+
+              <div
+                className="flex justify-between items-center"
+                style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--rule)" }}
+              >
+                <span className="cmd-num text-muted" style={{ fontSize: 10.5 }}>
+                  {c.total} tareas · {c.photoCount} con foto
+                </span>
+                <Link href={`/turnos/resumen/${c.id}/editar`} className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>
+                  Editar turno →
+                </Link>
+              </div>
+            </div>
+          ))
+        )}
+
+        <Link
+          href="/turnos/resumen/nuevo"
+          className="cmd-btn"
+          style={{ width: "100%", padding: 14, marginTop: 4, textDecoration: "none", textAlign: "center" }}
+        >
+          + Nuevo turno
+        </Link>
+      </div>
+
+      {/* ── Desktop · two-column grid (unchanged) ────────────────── */}
+      <div className="hidden md:block">
       <TurnosHeader
         kicker={`DEFINICIÓN · ${sede.name.toUpperCase()}`}
         title="Resumen de turnos"
@@ -418,6 +585,7 @@ export default async function TurnosResumenPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

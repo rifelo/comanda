@@ -1,9 +1,9 @@
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDateLabelEs } from "@/lib/utils";
 import { TurnosHeader } from "../../_components/turnos-header";
 import { HistorialClient } from "./_components/historial-client";
+import { HistorialMobile } from "./_components/historial-mobile";
 
 export const dynamic = "force-dynamic";
 
@@ -100,22 +100,27 @@ export default async function TurnosHistorialPage() {
   }
 
   return (
-    <div>
-      <TurnosHeader
-        kicker={`${sede.name.toUpperCase()} · TURNOS PASADOS`}
-        title="Historial"
-      >
-        <button type="button" className="cmd-btn ghost sm">
-          Filtrar ▾
-        </button>
-        <button type="button" className="cmd-btn ghost sm">
-          ↓ Exportar
-        </button>
-      </TurnosHeader>
-      <HistorialClient
-        rows={rows}
-        initialTasks={firstTasks}
-      />
-    </div>
+    <>
+      {/* ── Mobile · list → push detail ──────────────────────────── */}
+      <div className="md:hidden">
+        <HistorialMobile rows={rows} initialTasks={firstTasks} />
+      </div>
+
+      {/* ── Desktop (unchanged) ──────────────────────────────────── */}
+      <div className="hidden md:block">
+        <TurnosHeader
+          kicker={`${sede.name.toUpperCase()} · TURNOS PASADOS`}
+          title="Historial"
+        >
+          <button type="button" className="cmd-btn ghost sm">
+            Filtrar ▾
+          </button>
+          <button type="button" className="cmd-btn ghost sm">
+            ↓ Exportar
+          </button>
+        </TurnosHeader>
+        <HistorialClient rows={rows} initialTasks={firstTasks} />
+      </div>
+    </>
   );
 }
