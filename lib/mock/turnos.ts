@@ -21,6 +21,7 @@ export const TURNOS_SECTIONS: readonly TurnosSection[] = [
   { id: "asignacion", n: "02", label: "Asignación", href: "/turnos/asignacion" },
   { id: "historial", n: "03", label: "Historial", href: "/turnos/historial" },
   { id: "reportes", n: "04", label: "Reportes", href: "/turnos/reportes" },
+  { id: "tareas", n: "05", label: "Tareas", href: "/turnos/tareas" },
 ] as const;
 
 export const CONFIG_SECTIONS: readonly TurnosSection[] = [

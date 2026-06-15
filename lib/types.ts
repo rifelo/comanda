@@ -150,6 +150,30 @@ export interface AdHocTask {
   created_at: string;
 }
 
+export type TaskStatus = "pending" | "done" | "cancelled";
+
+/** A standalone to-do (outside a shift) — see migration 0016. Scoped to a
+ *  sede; optionally assigned, scheduled, and photo-gated. */
+export interface Task {
+  id: string;
+  restaurant_id: string;
+  title: string;
+  details: string | null;
+  /** profiles.id, or null when the task is for anyone at the sede. */
+  assigned_to: string | null;
+  /** Hydrated from the joined assignee profile (full_name), when present. */
+  assignee_name?: string | null;
+  created_by: string;
+  scheduled_date: string | null; // 'YYYY-MM-DD' | null = sin fecha
+  due_time: string | null; // 'HH:MM:SS' | null = sin hora
+  requires_photo: boolean;
+  status: TaskStatus;
+  completed_by: string | null;
+  completed_at: string | null;
+  photo_url: string | null;
+  created_at: string;
+}
+
 /** A shift instance hydrated with its template + tasks + completions for the staff screen. */
 export interface ShiftView {
   shift: ShiftInstance;
