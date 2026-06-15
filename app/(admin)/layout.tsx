@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { Wordmark } from "@/components/comanda/primitives";
 import { AdminSidebarNav } from "./_components/admin-sidebar-nav";
+import { AdminMobileDrawer } from "./_components/admin-mobile-drawer";
 
 export default async function AdminLayout({
   children,
@@ -128,24 +129,12 @@ export default async function AdminLayout({
         <Link href="/hoy">
           <Wordmark size={22} />
         </Link>
-        <nav
-          className="flex items-center gap-3 text-ink-2"
-          style={{ fontSize: 11, letterSpacing: "0.06em" }}
-        >
-          <Link href="/hoy">Hoy</Link>
-          <Link href="/turnos">Turnos</Link>
-          <Link href="/catalogo">Productos</Link>
-          <Link href="/configuracion">Config</Link>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="cmd-link"
-              style={{ fontSize: 11, letterSpacing: "0.06em" }}
-            >
-              Salir
-            </button>
-          </form>
-        </nav>
+        <AdminMobileDrawer
+          userName={profile.full_name}
+          role={profile.role}
+          sedeName={sedeName}
+          sedeCurrency={sede?.currency ?? "COP"}
+        />
       </header>
 
       <main className="flex-1 overflow-auto pt-[60px] md:pt-0">{children}</main>
