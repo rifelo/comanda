@@ -9,7 +9,9 @@ import { createServerClient } from "@supabase/ssr";
  *   2. Google → Supabase auth callback
  *   3. Supabase → here with `?code=<one-time-code>` (+ optional `next`)
  *   4. We exchange `code` for a session, which sets the auth cookies, and
- *      redirect to `next` (default `/`).
+ *      redirect to `next` (default `/organizaciones` — the org chooser, where
+ *      the user picks which organization to enter and continues to their
+ *      role portal). An explicit `next` deep-link is still honored.
  *
  * Errors bounce back to /login with a readable message.
  */
@@ -58,7 +60,11 @@ export async function GET(request: NextRequest) {
 }
 
 function safeNext(next: string | null) {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  // Default post-login landing is the org chooser: the user picks which
+  // organization to enter, and switch_organization routes them on to the
+  // admin panel or the staff side per their role in that org.
+  if (!next || !next.startsWith("/") || next.startsWith("//"))
+    return "/organizaciones";
   return next;
 }
 
