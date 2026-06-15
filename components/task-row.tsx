@@ -102,7 +102,10 @@ export function TaskRow({
               checked={isComplete}
               onClick={(e) => {
                 e.stopPropagation();
-                toggleSimple();
+                // Route through the photo-aware handler so completing a
+                // photo-required task opens the camera (tapping the checkbox
+                // directly previously bypassed it).
+                onClick();
               }}
               disabled={disabled}
             />

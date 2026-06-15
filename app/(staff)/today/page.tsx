@@ -1,21 +1,24 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getTodayShifts } from "@/lib/db/shifts";
+import { listMyTasks } from "@/lib/db/tasks";
 import {
   ComandaPlate,
   CmdSectionLabel,
   CmdProgress,
   Stamp,
 } from "@/components/comanda/primitives";
+import { TaskTodoRow } from "@/components/task-todo-row";
 import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
-  // Both the profile and the shift list are independent — fan them out.
-  const [{ profile }, items] = await Promise.all([
+  // Profile, shift list, and assigned tasks are independent — fan them out.
+  const [{ profile }, items, myTasks] = await Promise.all([
     requireUser(),
     getTodayShifts(),
+    listMyTasks(),
   ]);
   const today = todayInTz();
   const dateLabel = formatDateLabelEs(today);
@@ -41,6 +44,17 @@ export default async function TodayPage() {
         date={dateLabel}
         time={formatTime(new Date())}
       />
+
+      {myTasks.length > 0 ? (
+        <>
+          <CmdSectionLabel>Tareas asignadas</CmdSectionLabel>
+          <ul>
+            {myTasks.map((t) => (
+              <TaskTodoRow key={t.id} task={t} userId={profile.id} />
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       {items.length === 0 ? (
         <div className="px-4 py-12 text-center">
