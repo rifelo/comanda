@@ -100,6 +100,42 @@ export async function submitNovedad(input: z.infer<typeof SubmitNovedadSchema>) 
   return { ok: true };
 }
 
+const SetAdHocDoneSchema = z.object({
+  id: z.string().uuid(),
+  shift_instance_id: z.string().uuid(),
+  done: z.boolean(),
+});
+
+/** Staff marks an ad-hoc task done / not-done. RLS enforces that the task is
+ *  assigned to this user or to the whole shift. */
+export async function setAdHocDone(input: z.infer<typeof SetAdHocDoneSchema>) {
+  const parsed = SetAdHocDoneSchema.safeParse(input);
+  if (!parsed.success) return { error: "invalid_input" };
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "unauthorized" };
+
+  const { error } = await supabase
+    .from("ad_hoc_tasks")
+    .update(
+      parsed.data.done
+        ? {
+            status: "done",
+            completed_by: user.id,
+            completed_at: new Date().toISOString(),
+          }
+        : { status: "pending", completed_by: null, completed_at: null },
+    )
+    .eq("id", parsed.data.id);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/shift/${parsed.data.shift_instance_id}`);
+  return { ok: true };
+}
+
 const CloseSchema = z.object({ shift_instance_id: z.string().uuid() });
 
 export async function closeShift(input: z.infer<typeof CloseSchema>) {
