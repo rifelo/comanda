@@ -18,6 +18,9 @@ export interface TodayShiftRow {
   status: "open" | "closed";
   restaurant_name: string | null;
   template_name: string | null;
+  /** Template-task completion counts so the /today list can show progress. */
+  total_tasks: number;
+  completed_tasks: number;
 }
 
 /**
@@ -62,11 +65,17 @@ export async function getTodayShifts(): Promise<TodayShiftRow[]> {
   }
   if (restaurantIds.length === 0) return [];
 
-  // Single query for the shifts with their joined restaurant/template names.
+  // Single query for the shifts with their joined restaurant/template names
+  // plus template-task + completion counts (same embedded-count technique as
+  // getDashboardSummary) so the list can render a progress indicator.
   const { data: shifts } = await supabase
     .from("shift_instances")
     .select(
-      "id, restaurant_id, status, restaurant:restaurants(name), template:checklist_templates(name)",
+      `id, restaurant_id, status,
+       restaurant:restaurants(name),
+       template:checklist_templates!inner(name),
+       completions:task_completions(count),
+       template_tasks_count:checklist_templates!inner(template_tasks(count))`,
     )
     .in("restaurant_id", restaurantIds)
     .in("date", Array.from(dates));
@@ -79,6 +88,13 @@ export async function getTodayShifts(): Promise<TodayShiftRow[]> {
     restaurant_name: ((s as any).restaurant?.name as string | undefined) ?? null,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     template_name: ((s as any).template?.name as string | undefined) ?? null,
+    total_tasks:
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((s as any).template_tasks_count?.template_tasks?.[0]?.count as
+        | number
+        | undefined) ?? 0,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    completed_tasks: ((s as any).completions?.[0]?.count as number | undefined) ?? 0,
   }));
 }
 
