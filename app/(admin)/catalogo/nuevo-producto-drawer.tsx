@@ -47,17 +47,50 @@ const STOCK_OPTIONS: { value: ProductoStockStatus; label: string; danger?: boole
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
+// ── SKU auto-suggest ──────────────────────────────────────────────────
+// SKUs follow a `PREFIX-NNN` shape (e.g. HB-001). We derive the prefix
+// from the selected category's leaf label and pick the next free number
+// among existing SKUs that share that prefix. The suggestion is only a
+// starting point — the field stays fully editable.
+
+function skuPrefix(label: string): string {
+  // Use just the leaf segment of a "Parent · Child" label.
+  const leaf = label.split("·").pop()?.trim() ?? label;
+  const words = leaf.split(/\s+/).filter(Boolean);
+  const raw =
+    words.length >= 2
+      ? words
+          .slice(0, 3)
+          .map((w) => w[0])
+          .join("")
+      : leaf.slice(0, 3);
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "") || "PR";
+}
+
+function suggestNextSku(prefix: string, existingSkus: string[]): string {
+  // prefix is already restricted to [A-Z0-9], so it's regex-safe.
+  const re = new RegExp(`^${prefix}-(\\d+)$`);
+  let max = 0;
+  for (const s of existingSkus) {
+    const m = s.trim().toUpperCase().match(re);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
+}
+
 export function NuevoProductoDrawer({
   open,
   onClose,
   categorias,
   defaultCategoryId,
+  existingSkus = [],
   editData = null,
 }: {
   open: boolean;
   onClose: () => void;
   categorias: CatalogoCategoryNode[];
   defaultCategoryId: string | null;
+  existingSkus?: string[];
   editData?: CatalogoRow | null;
 }) {
   const isEdit = !!editData;
@@ -78,6 +111,9 @@ export function NuevoProductoDrawer({
 
   const [name, setName] = React.useState(editData?.name ?? "");
   const [sku, setSku] = React.useState(editData?.sku ?? "");
+  // Tracks whether the user has typed their own SKU. While false (create
+  // mode, untouched), the SKU auto-follows the selected category.
+  const [skuTouched, setSkuTouched] = React.useState(false);
   const [categoryId, setCategoryId] = React.useState(initialCategory);
   const [price, setPrice] = React.useState(
     editData ? String(editData.price_cop) : "",
@@ -105,13 +141,14 @@ export function NuevoProductoDrawer({
     if (editData) {
       setName(editData.name);
       setSku(editData.sku);
+      setSkuTouched(true); // keep the existing SKU as-is in edit mode
       setCategoryId(initialCategory);
       setPrice(String(editData.price_cop));
       setCost(String(editData.cost_cop));
       setStock(editData.stock_status);
     } else {
       setName("");
-      setSku("");
+      setSkuTouched(false); // re-arm auto-suggest for the fresh product
       setCategoryId(initialCategory);
       setPrice("");
       setCost("");
@@ -122,6 +159,15 @@ export function NuevoProductoDrawer({
     setWarning(null);
     setFieldErrors({});
   }, [open, editData, initialCategory]);
+
+  // Auto-fill the SKU from the selected category while the user hasn't
+  // typed their own. Runs on open and whenever the category changes, so
+  // switching category in create mode re-derives the prefix + next number.
+  React.useEffect(() => {
+    if (!open || isEdit || skuTouched) return;
+    const label = leafOptions.find((o) => o.id === categoryId)?.label ?? "";
+    setSku(suggestNextSku(skuPrefix(label), existingSkus));
+  }, [open, isEdit, skuTouched, categoryId, leafOptions, existingSkus]);
 
   const priceNum = Number(price);
   const costNum = Number(cost);
@@ -262,7 +308,11 @@ export function NuevoProductoDrawer({
             name="sku"
             label="SKU *"
             value={sku}
-            onChange={(v) => setSku(v)}
+            onChange={(v) => {
+              setSku(v);
+              // Emptying the field re-arms category-based auto-suggest.
+              setSkuTouched(v.trim().length > 0);
+            }}
             placeholder="HB-001"
             error={fieldErrors.sku}
             disabled={pending}

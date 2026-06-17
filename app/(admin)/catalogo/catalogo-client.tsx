@@ -524,6 +524,13 @@ export function CatalogoClient({
 
   // Build a category-id -> descendant-ids map so picking a parent also
   // matches its children's productos.
+  // Memoized so the drawer's auto-suggest effect doesn't re-run on every
+  // parent render (a fresh array each render would change its deps).
+  const existingSkus = React.useMemo(
+    () => productos.map((p) => p.sku),
+    [productos],
+  );
+
   const descendantsByCat = React.useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const node of flattenCategorias(categorias)) {
@@ -836,6 +843,7 @@ export function CatalogoClient({
         }}
         categorias={categorias}
         defaultCategoryId={cat}
+        existingSkus={existingSkus}
         editData={editProduct}
       />
     </div>
