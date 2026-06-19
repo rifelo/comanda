@@ -110,6 +110,9 @@ export function NuevoProductoDrawer({
   }, [editData, defaultCategoryId, leafOptions]);
 
   const [name, setName] = React.useState(editData?.name ?? "");
+  const [description, setDescription] = React.useState(
+    editData?.description ?? "",
+  );
   const [sku, setSku] = React.useState(editData?.sku ?? "");
   // Tracks whether the user has typed their own SKU. While false (create
   // mode, untouched), the SKU auto-follows the selected category.
@@ -140,6 +143,7 @@ export function NuevoProductoDrawer({
     if (!open) return;
     if (editData) {
       setName(editData.name);
+      setDescription(editData.description ?? "");
       setSku(editData.sku);
       setSkuTouched(true); // keep the existing SKU as-is in edit mode
       setCategoryId(initialCategory);
@@ -148,6 +152,7 @@ export function NuevoProductoDrawer({
       setStock(editData.stock_status);
     } else {
       setName("");
+      setDescription("");
       setSkuTouched(false); // re-arm auto-suggest for the fresh product
       setCategoryId(initialCategory);
       setPrice("");
@@ -293,6 +298,19 @@ export function NuevoProductoDrawer({
           onChange={(v) => setName(v)}
           placeholder="Ej. Daniel's Burger Clásica"
           error={fieldErrors.name}
+          disabled={pending}
+        />
+
+        <TextareaField
+          id="np-description"
+          name="description"
+          label="Descripción"
+          value={description}
+          onChange={(v) => setDescription(v)}
+          placeholder="Ingredientes, notas o detalles para el equipo…"
+          rows={3}
+          maxLength={500}
+          error={fieldErrors.description}
           disabled={pending}
         />
 
@@ -584,6 +602,60 @@ function Field({
           fontSize: 15,
           color: "var(--ink)",
           fontFamily: "inherit",
+        }}
+      />
+      {error ? (
+        <p
+          style={{
+            color: "var(--red)",
+            fontSize: 10,
+            marginTop: 4,
+          }}
+        >
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function TextareaField({
+  id,
+  name,
+  label,
+  value,
+  onChange,
+  error,
+  ...rest
+}: {
+  id: string;
+  name: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+} & Omit<
+  React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "id" | "name" | "value" | "onChange"
+>) {
+  return (
+    <div>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <textarea
+        id={id}
+        name={name}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        {...rest}
+        className="block w-full bg-transparent outline-none"
+        style={{
+          borderBottom: `1.5px solid ${error ? "var(--red)" : "var(--ink)"}`,
+          padding: "6px 0",
+          marginTop: 4,
+          fontSize: 15,
+          color: "var(--ink)",
+          fontFamily: "inherit",
+          resize: "vertical",
         }}
       />
       {error ? (

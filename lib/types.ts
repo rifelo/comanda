@@ -208,6 +208,7 @@ export interface Producto {
   organization_id: string;
   category_id: string | null;
   name: string;
+  description: string | null;
   sku: string;
   price_cop: number;
   cost_cop: number;

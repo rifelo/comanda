@@ -158,6 +158,7 @@ const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"] as const;
 
 const ProductoSchema = z.object({
   name: z.string().min(1).max(160),
+  description: z.string().max(500).nullable(),
   sku: z.string().min(1).max(60),
   category_id: z.string().uuid().nullable(),
   price_cop: z.coerce.number().int().min(0),
@@ -182,8 +183,13 @@ export async function createProducto(
   fieldErrors?: Record<string, string>;
 }> {
   const rawCategory = formData.get("category_id");
+  const rawDescription = formData.get("description");
   const parsed = ProductoSchema.safeParse({
     name: formData.get("name"),
+    description:
+      typeof rawDescription === "string" && rawDescription.trim() !== ""
+        ? rawDescription.trim()
+        : null,
     sku: formData.get("sku"),
     category_id:
       rawCategory && rawCategory !== "" ? rawCategory : null,
@@ -235,6 +241,7 @@ export async function createProducto(
       organization_id: profile.organization_id,
       category_id: parsed.data.category_id,
       name: parsed.data.name.trim(),
+      description: parsed.data.description,
       sku,
       price_cop: parsed.data.price_cop,
       cost_cop: parsed.data.cost_cop,
@@ -336,9 +343,14 @@ export async function updateProducto(
   fieldErrors?: Record<string, string>;
 }> {
   const rawCategory = formData.get("category_id");
+  const rawDescription = formData.get("description");
   const parsed = UpdateProductoSchema.safeParse({
     id: formData.get("id"),
     name: formData.get("name"),
+    description:
+      typeof rawDescription === "string" && rawDescription.trim() !== ""
+        ? rawDescription.trim()
+        : null,
     sku: formData.get("sku"),
     category_id:
       rawCategory && rawCategory !== "" ? rawCategory : null,
@@ -401,6 +413,7 @@ export async function updateProducto(
     .update({
       category_id: parsed.data.category_id,
       name: parsed.data.name.trim(),
+      description: parsed.data.description,
       sku,
       price_cop: parsed.data.price_cop,
       cost_cop: parsed.data.cost_cop,
