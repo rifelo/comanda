@@ -7,7 +7,7 @@ import type {
 } from "@/lib/types";
 
 const PRODUCTO_COLUMNS =
-  "id, organization_id, category_id, name, sku, price_cop, cost_cop, margin_pct, stock_status, created_at, updated_at" as const;
+  "id, organization_id, category_id, name, description, sku, price_cop, cost_cop, margin_pct, stock_status, created_at, updated_at" as const;
 
 const CATEGORIA_COLUMNS =
   "id, organization_id, parent_id, label, position, created_at" as const;
