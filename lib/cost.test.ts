@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   lineTotal,
+  unitCostFromPack,
   recipeCost,
   margenOf,
   stockLevel,
@@ -20,6 +21,21 @@ describe("lineTotal", () => {
   it("is zero for zero qty or cost", () => {
     expect(lineTotal(0, 999)).toBe(0);
     expect(lineTotal(999, 0)).toBe(0);
+  });
+});
+
+describe("unitCostFromPack", () => {
+  it("divides pack cost by pack quantity and rounds", () => {
+    expect(unitCostFromPack(4400, 12)).toBe(367); // 366.67 → 367 (vasos 12oz)
+    expect(unitCostFromPack(10200, 50)).toBe(204); // tapa domo Darnel x50
+    expect(unitCostFromPack(18000, 24)).toBe(750);
+  });
+  it("is zero when the pack quantity is not positive (no divide-by-zero)", () => {
+    expect(unitCostFromPack(4400, 0)).toBe(0);
+    expect(unitCostFromPack(4400, -3)).toBe(0);
+  });
+  it("is zero for a free pack", () => {
+    expect(unitCostFromPack(0, 12)).toBe(0);
   });
 });
 

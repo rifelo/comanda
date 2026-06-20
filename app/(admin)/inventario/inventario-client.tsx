@@ -10,6 +10,7 @@
  */
 import * as React from "react";
 import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
+import { unitCostFromPack } from "@/lib/cost";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
 import {
   adjustIngredienteStock,
@@ -785,6 +786,8 @@ function IngredienteDrawer({
     stockMin: number;
     mermaPct: number;
     costCop: number;
+    packCostCop: number | null;
+    packQty: number | null;
   }) => void;
 }) {
   const isEdit = editing !== null;
@@ -796,6 +799,12 @@ function IngredienteDrawer({
     min: editing ? String(editing.stock_min) : "",
     merma: editing ? String(editing.merma_pct) : "",
     cost: editing ? String(editing.cost_cop) : "",
+    // Pack-purchase costing. `byPack` is the toggle; when on, the per-unit
+    // cost is derived from packCost / packQty instead of typed directly.
+    byPack: editing?.pack_qty != null,
+    packCost:
+      editing?.pack_cost_cop != null ? String(editing.pack_cost_cop) : "",
+    packQty: editing?.pack_qty != null ? String(editing.pack_qty) : "",
     // Dual-unit fields. `hasUnit2` is the toggle; `unit2` is "" until the
     // user picks one (avoids forcing a default that disagrees with `unit`).
     // `convFactor` is a string for input binding — coerced on save.
@@ -812,8 +821,25 @@ function IngredienteDrawer({
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const costDisplay =
-    costFocused || form.cost === ""
+  // Per-unit cost derived from the pack inputs (0 until both are valid).
+  const packCostNum = Number(form.packCost);
+  const packQtyNum = Number(form.packQty);
+  const packUnitCost =
+    form.packCost !== "" &&
+    form.packQty !== "" &&
+    !isNaN(packCostNum) &&
+    !isNaN(packQtyNum) &&
+    packQtyNum > 0
+      ? unitCostFromPack(packCostNum, packQtyNum)
+      : 0;
+  // The effective per-unit cost: derived in pack mode, typed otherwise.
+  const effectiveCost = form.byPack ? packUnitCost : Number(form.cost);
+
+  const costDisplay = form.byPack
+    ? packUnitCost > 0
+      ? `$ ${fmtCOP(packUnitCost)}`
+      : "—"
+    : costFocused || form.cost === ""
       ? form.cost
       : `$ ${fmtCOP(Number(form.cost))}`;
 
@@ -826,8 +852,16 @@ function IngredienteDrawer({
     }
     if (!form.min || isNaN(Number(form.min)) || Number(form.min) < 0)
       e.min = "Inválido";
-    if (!form.cost || isNaN(Number(form.cost)) || Number(form.cost) <= 0)
+    if (form.byPack) {
+      // Pack mode: validate the two inputs; cost is derived from them.
+      if (!form.packCost || isNaN(packCostNum) || packCostNum <= 0)
+        e.packCost = "Inválido";
+      if (!form.packQty || isNaN(packQtyNum) || packQtyNum <= 0)
+        e.packQty = "Inválido";
+      if (packUnitCost <= 0) e.packCost = e.packCost ?? "Inválido";
+    } else if (!form.cost || isNaN(Number(form.cost)) || Number(form.cost) <= 0) {
       e.cost = "Inválido";
+    }
     if (form.hasUnit2) {
       if (!form.unit2.trim()) e.unit2 = "Selecciona la segunda unidad";
       // Factor stays optional even with the toggle on — but if provided it
@@ -857,7 +891,11 @@ function IngredienteDrawer({
       stockCurrent: isEdit ? Number(editing!.stock_current) : Number(form.stock),
       stockMin: Number(form.min),
       mermaPct: form.merma ? Number(form.merma) : 0,
-      costCop: Math.round(Number(form.cost)),
+      // In pack mode the server derives cost_cop from the pack fields; we still
+      // send the derived value so optimistic state matches. Otherwise null.
+      costCop: Math.round(effectiveCost),
+      packCostCop: form.byPack ? Math.round(packCostNum) : null,
+      packQty: form.byPack ? packQtyNum : null,
     });
   };
 
@@ -1106,22 +1144,138 @@ function IngredienteDrawer({
               />
             </div>
             <div>
-              <label style={labelSt}>Costo / unidad (COP) *</label>
+              <label style={labelSt}>
+                Costo / unidad (COP) {form.byPack ? "(auto)" : "*"}
+              </label>
               <input
                 type="text"
                 inputMode="numeric"
                 value={costDisplay}
+                readOnly={form.byPack}
                 disabled={pending}
-                onFocus={() => setCostFocused(true)}
+                onFocus={() => !form.byPack && setCostFocused(true)}
                 onBlur={() => setCostFocused(false)}
                 onChange={(e) =>
+                  !form.byPack &&
                   set("cost", e.target.value.replace(/[^\d]/g, ""))
                 }
                 placeholder="Ej. 18900"
-                style={inputSt(errors.cost)}
+                style={{
+                  ...inputSt(errors.cost),
+                  ...(form.byPack
+                    ? { background: "var(--paper)", color: "var(--muted)" }
+                    : null),
+                }}
               />
               {errors.cost ? <div style={errSt}>{errors.cost}</div> : null}
             </div>
+          </div>
+
+          {/* Pack-purchase toggle. When on, the cost / unidad above turns
+              read-only and is derived from "precio del paquete ÷ unidades por
+              paquete" — e.g. un paquete de 12 vasos a 4.400 = 367 / und. */}
+          <div style={rowGap}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "var(--ink)",
+                cursor: pending ? "default" : "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.byPack}
+                disabled={pending}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  // Leaving pack mode clears the pack fields so a stale pack
+                  // price doesn't sneak through on save.
+                  setForm((f) => ({
+                    ...f,
+                    byPack: next,
+                    packCost: next ? f.packCost : "",
+                    packQty: next ? f.packQty : "",
+                  }));
+                  setErrors((er) => ({
+                    ...er,
+                    cost: undefined as unknown as string,
+                    packCost: undefined as unknown as string,
+                    packQty: undefined as unknown as string,
+                  }));
+                }}
+                style={{ accentColor: "var(--ink)" }}
+              />
+              Comprado por paquete (calcular costo por unidad)
+            </label>
+
+            {form.byPack ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "12px 12px 10px",
+                  border: "1px dashed var(--ink)",
+                  background: "var(--paper)",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <label style={labelSt}>Precio del paquete (COP) *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={
+                      form.packCost === ""
+                        ? ""
+                        : `$ ${fmtCOP(Number(form.packCost))}`
+                    }
+                    disabled={pending}
+                    onChange={(e) =>
+                      set("packCost", e.target.value.replace(/[^\d]/g, ""))
+                    }
+                    placeholder="Ej. 4400"
+                    style={inputSt(errors.packCost)}
+                  />
+                  {errors.packCost ? (
+                    <div style={errSt}>{errors.packCost}</div>
+                  ) : null}
+                </div>
+                <div>
+                  <label style={labelSt}>Unidades por paquete *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={form.packQty}
+                    disabled={pending}
+                    onChange={(e) => set("packQty", e.target.value)}
+                    placeholder="Ej. 12"
+                    style={inputSt(errors.packQty)}
+                  />
+                  {errors.packQty ? (
+                    <div style={errSt}>{errors.packQty}</div>
+                  ) : null}
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  {packUnitCost > 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--ink)" }}>
+                      ={" "}
+                      <strong>$ {fmtCOP(packUnitCost)}</strong> / {form.unit}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 10, color: "var(--muted)" }}>
+                      Ingresa precio y unidades para calcular el costo por
+                      unidad.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Dual-unit toggle. When on, the dashed inner box reveals the
@@ -1580,6 +1734,8 @@ export function InventarioClient({
     stockMin: number;
     mermaPct: number;
     costCop: number;
+    packCostCop: number | null;
+    packQty: number | null;
   }) => {
     setDrawerError(null);
     startTransition(async () => {
@@ -1594,6 +1750,8 @@ export function InventarioClient({
           stockMin: input.stockMin,
           mermaPct: input.mermaPct,
           costCop: input.costCop,
+          packCostCop: input.packCostCop,
+          packQty: input.packQty,
         });
         if (!res.ok) {
           setDrawerError(res.error);
@@ -1615,6 +1773,8 @@ export function InventarioClient({
           stockMin: input.stockMin,
           mermaPct: input.mermaPct,
           costCop: input.costCop,
+          packCostCop: input.packCostCop,
+          packQty: input.packQty,
         });
         if (!res.ok) {
           setDrawerError(res.error);

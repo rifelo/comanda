@@ -183,3 +183,27 @@ export async function recomputeProductoCost(
     .eq("id", productoId)
     .eq("organization_id", organizationId);
 }
+
+/**
+ * Recompute every producto whose recipe uses a given ingrediente. Call after
+ * an ingrediente's cost_cop changes (e.g. a new pack price) so the rolled-up
+ * producto cost_cop / margin_pct stay in sync — receta mutations recompute on
+ * their own, but editing the ingrediente itself otherwise wouldn't cascade.
+ */
+export async function recomputeProductosForIngrediente(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  organizationId: string,
+  ingredienteId: string,
+): Promise<void> {
+  const { data: rows } = await supabase
+    .from("receta_items")
+    .select("producto_id")
+    .eq("organization_id", organizationId)
+    .eq("ingrediente_id", ingredienteId);
+
+  const productoIds = [...new Set((rows ?? []).map((r) => r.producto_id as string))];
+  for (const productoId of productoIds) {
+    await recomputeProductoCost(supabase, organizationId, productoId);
+  }
+}

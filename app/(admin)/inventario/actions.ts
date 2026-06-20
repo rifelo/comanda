@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { unitCostFromPack } from "@/lib/cost";
+import { recomputeProductosForIngrediente } from "@/lib/db/recetas";
 
 // Units the UI exposes; DB column is plain text so adding a new unit is
 // just a Zod change here + the option list in the drawer. `caja` and
@@ -40,11 +42,25 @@ const CreateIngredienteSchema = z
     stockMin: z.coerce.number().min(0),
     mermaPct: z.coerce.number().min(0).max(100).default(0),
     costCop: z.coerce.number().int().min(0),
+    // Pack-purchase costing (optional). When both are present, cost_cop is
+    // derived server-side as round(packCostCop / packQty). Both null/absent
+    // means costCop is taken as the manual per-unit cost.
+    packCostCop: z.coerce.number().int().min(0).nullable().optional(),
+    packQty: z.coerce.number().positive().nullable().optional(),
   })
   .refine((d) => !d.unit2 || d.unit2 !== d.unit, {
     message: "La unidad secundaria debe ser distinta de la primaria.",
     path: ["unit2"],
-  });
+  })
+  .refine(
+    (d) =>
+      (d.packCostCop == null && d.packQty == null) ||
+      (d.packCostCop != null && d.packQty != null),
+    {
+      message: "Indica precio y unidades del paquete, o ninguno.",
+      path: ["packQty"],
+    },
+  );
 
 const UpdateIngredienteSchema = z
   .object({
@@ -57,11 +73,25 @@ const UpdateIngredienteSchema = z
     stockMin: z.coerce.number().min(0),
     mermaPct: z.coerce.number().min(0).max(100).default(0),
     costCop: z.coerce.number().int().min(0),
+    // Pack-purchase costing (optional). When both are present, cost_cop is
+    // derived server-side as round(packCostCop / packQty). Both null/absent
+    // means costCop is taken as the manual per-unit cost.
+    packCostCop: z.coerce.number().int().min(0).nullable().optional(),
+    packQty: z.coerce.number().positive().nullable().optional(),
   })
   .refine((d) => !d.unit2 || d.unit2 !== d.unit, {
     message: "La unidad secundaria debe ser distinta de la primaria.",
     path: ["unit2"],
-  });
+  })
+  .refine(
+    (d) =>
+      (d.packCostCop == null && d.packQty == null) ||
+      (d.packCostCop != null && d.packQty != null),
+    {
+      message: "Indica precio y unidades del paquete, o ninguno.",
+      path: ["packQty"],
+    },
+  );
 
 const AdjustStockSchema = z.object({
   id: z.string().uuid(),
@@ -205,6 +235,12 @@ export async function createIngrediente(input: unknown) {
   const { profile, supabase } = await requireAdmin();
 
   const d = parsed.data;
+  // When bought by pack, derive the per-unit cost authoritatively (don't
+  // trust client math) and keep the pack fields so a later price change just
+  // needs the new pack cost. Otherwise cost_cop is the manual per-unit entry.
+  const byPack = d.packCostCop != null && d.packQty != null;
+  const costCop = byPack ? unitCostFromPack(d.packCostCop!, d.packQty!) : d.costCop;
+
   const { data, error } = await supabase
     .from("ingredientes")
     .insert({
@@ -217,10 +253,12 @@ export async function createIngrediente(input: unknown) {
       stock_current: d.stockCurrent,
       stock_min: d.stockMin,
       merma_pct: d.mermaPct,
-      cost_cop: d.costCop,
+      cost_cop: costCop,
+      pack_cost_cop: byPack ? d.packCostCop : null,
+      pack_qty: byPack ? d.packQty : null,
     })
     .select(
-      "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, archived",
+      "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, pack_cost_cop, pack_qty, archived",
     )
     .single();
 
@@ -247,6 +285,9 @@ export async function updateIngrediente(input: unknown) {
   const { profile, supabase } = await requireAdmin();
 
   const d = parsed.data;
+  const byPack = d.packCostCop != null && d.packQty != null;
+  const costCop = byPack ? unitCostFromPack(d.packCostCop!, d.packQty!) : d.costCop;
+
   const { data, error } = await supabase
     .from("ingredientes")
     .update({
@@ -257,12 +298,14 @@ export async function updateIngrediente(input: unknown) {
       conversion_factor: d.conversionFactor ?? null,
       stock_min: d.stockMin,
       merma_pct: d.mermaPct,
-      cost_cop: d.costCop,
+      cost_cop: costCop,
+      pack_cost_cop: byPack ? d.packCostCop : null,
+      pack_qty: byPack ? d.packQty : null,
     })
     .eq("id", d.id)
     .eq("organization_id", profile.organization_id)
     .select(
-      "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, archived",
+      "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, pack_cost_cop, pack_qty, archived",
     )
     .single();
 
@@ -277,7 +320,23 @@ export async function updateIngrediente(input: unknown) {
     return { ok: false as const, error: error.message };
   }
 
+  // A changed unit cost must flow into every producto that uses this
+  // ingrediente — receta edits recompute on their own, but editing the
+  // ingrediente here otherwise wouldn't cascade. Best-effort: the update
+  // already succeeded, so don't fail the whole action if the rollup hiccups.
+  try {
+    await recomputeProductosForIngrediente(
+      supabase,
+      profile.organization_id,
+      d.id,
+    );
+  } catch (err) {
+    console.error("[updateIngrediente] cost cascade failed:", err);
+  }
+
   revalidatePath("/inventario");
+  revalidatePath("/recetas");
+  revalidatePath("/catalogo");
   return { ok: true as const, ingrediente: data };
 }
 
