@@ -129,6 +129,8 @@ interface PosState {
   listening: boolean;
   thinking: boolean;
   micNote: string | null;
+  /** Live (not-yet-final) speech being recognized, shown under the transcript. */
+  interim: string;
   transcript: TranscriptLine[];
   suggestions: SuggestionCardState[];
   flags: string[];
@@ -151,6 +153,7 @@ const POS_INITIAL: PosState = {
   listening: false,
   thinking: false,
   micNote: null,
+  interim: "",
   transcript: [],
   suggestions: [],
   flags: [],
@@ -439,7 +442,21 @@ async function sendOrder() {
   else posStore.set({ sending: false, sendError: res.error });
 }
 
-// ── browser speech-to-text (Chrome/Edge; es-CO) ─────────────────
+// ── browser speech-to-text (Chrome/Edge desktop; es-CO) ─────────
+// Errors that can't recover by restarting — surface a reason and flip the mic
+// OFF (which also stops the onend restart loop, e.g. Brave blocking the
+// speech service, a denied permission, or no microphone).
+const FATAL_SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed":
+    "Micrófono bloqueado. Toca el candado 🔒 junto a la URL → Micrófono → Permitir, y reactiva el micrófono.",
+  "service-not-allowed":
+    "Tu navegador bloqueó el dictado por voz. En Brave desactiva los Shields para este sitio, o usa Chrome/Edge de escritorio.",
+  "audio-capture":
+    "No se detectó ningún micrófono. Conecta uno y reactiva el micrófono.",
+  network:
+    "El servicio de voz no respondió (suele estar bloqueado en Brave/Firefox). Usa Chrome/Edge de escritorio, o escribe abajo.",
+};
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function useSpeech(listening: boolean) {
   const recRef = React.useRef<any>(null);
@@ -452,12 +469,22 @@ function useSpeech(listening: boolean) {
         } catch {}
         recRef.current = null;
       }
+      posStore.set({ interim: "" });
       return;
     }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       posStore.set({
-        micNote: "Este navegador no admite dictado por voz. Usa Chrome/Edge, o escribe la conversación abajo.",
+        listening: false,
+        micNote:
+          "Este navegador no admite dictado por voz. Usa Chrome/Edge de escritorio, o escribe la conversación abajo.",
+      });
+      return;
+    }
+    if (!window.isSecureContext) {
+      posStore.set({
+        listening: false,
+        micNote: "El micrófono solo funciona en HTTPS (o localhost). Ábrelo en el sitio seguro, o escribe abajo.",
       });
       return;
     }
@@ -465,21 +492,29 @@ function useSpeech(listening: boolean) {
     rec.lang = "es-CO";
     rec.continuous = true;
     rec.interimResults = true;
+    rec.onstart = () => posStore.set({ micNote: null });
     rec.onresult = (e: any) => {
+      let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
+        const txt = String(r[0].transcript);
         if (r.isFinal) {
-          const t = String(r[0].transcript).trim();
+          const t = txt.trim();
           if (t) appendTranscript("cliente", t);
+        } else {
+          interim += txt;
         }
       }
+      posStore.set({ interim: interim.trim() });
     };
     rec.onerror = (e: any) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        posStore.set({ micNote: "Permiso de micrófono denegado. Actívalo para usar la voz." });
-      }
+      console.warn("[pos speech] error:", e?.error);
+      const note = FATAL_SPEECH_ERRORS[e?.error];
+      if (note) posStore.set({ listening: false, micNote: note, interim: "" });
+      // "no-speech" / "aborted" are transient — onend will restart.
     };
     rec.onend = () => {
+      posStore.set({ interim: "" });
       // Chrome ends recognition after a pause — restart while still listening.
       if (posStore.get().listening && recRef.current === rec) {
         try {
@@ -489,8 +524,9 @@ function useSpeech(listening: boolean) {
     };
     try {
       rec.start();
-      posStore.set({ micNote: null });
-    } catch {}
+    } catch (err) {
+      console.warn("[pos speech] start failed:", err);
+    }
     recRef.current = rec;
     return () => {
       rec.onend = null;
@@ -498,6 +534,7 @@ function useSpeech(listening: boolean) {
         rec.stop();
       } catch {}
       if (recRef.current === rec) recRef.current = null;
+      posStore.set({ interim: "" });
     };
   }, [listening]);
 }
@@ -964,7 +1001,7 @@ function TranscriptDock() {
   const ref = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [s.transcript.length]);
+  }, [s.transcript.length, s.interim]);
   return (
     <div style={{ height: 176, borderTop: "1px solid rgba(244,236,220,.16)", background: "rgba(0,0,0,.18)", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "9px 14px 4px", display: "flex", alignItems: "center", gap: 8, fontFamily: F.mono, fontSize: 9.5, letterSpacing: ".16em", color: "rgba(244,236,220,.5)", textTransform: "uppercase" }}>
@@ -972,7 +1009,11 @@ function TranscriptDock() {
         <span className="cmd-num">{s.transcript.length}</span>
       </div>
       <div ref={ref} className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 14px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-        {s.transcript.length === 0 && <div style={{ fontFamily: F.mono, fontSize: 11, color: "rgba(244,236,220,.4)", paddingTop: 8 }}>Esperando la conversación…</div>}
+        {s.transcript.length === 0 && !s.interim && (
+          <div style={{ fontFamily: F.mono, fontSize: 11, color: "rgba(244,236,220,.4)", paddingTop: 8 }}>
+            {s.listening ? "Escuchando… habla y aparecerá aquí." : "Esperando la conversación…"}
+          </div>
+        )}
         {s.transcript.map((t, i) =>
           t.who === "sistema" ? (
             <div key={i} style={{ textAlign: "center", fontFamily: F.mono, fontSize: 9.5, color: "rgba(244,236,220,.4)", letterSpacing: ".06em", fontStyle: "italic" }}>· {t.text} ·</div>
@@ -983,6 +1024,12 @@ function TranscriptDock() {
               <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 8.5, color: "rgba(244,236,220,.35)" }}>{t.time}</span>
             </div>
           ),
+        )}
+        {s.interim && (
+          <div style={{ display: "flex", gap: 8, alignItems: "baseline", opacity: 0.7 }}>
+            <span style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: C.amber, minWidth: 50, textTransform: "uppercase" }}>···</span>
+            <span style={{ fontFamily: F.mono, fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1, fontStyle: "italic" }}>{s.interim}</span>
+          </div>
         )}
       </div>
     </div>
