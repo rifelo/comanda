@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { PosCatalog, PosSuggest, PosAct } from "@/lib/pos/types";
+import type { PosCatalog, PosSuggest, PosAct, PosCatalogFilter } from "@/lib/pos/types";
 import { POS_SUGGEST_KINDS } from "@/lib/pos/types";
 
 /**
@@ -52,7 +52,15 @@ const SuggestSchema = z.object({
   focusHighlightId: z.string().nullable(),
   act: ActSchema,
 });
-const ResultSchema = z.object({ suggestions: z.array(SuggestSchema) });
+const FilterSchema = z.object({
+  active: z.boolean(),
+  label: z.string().max(60).default(""),
+  productIds: z.array(z.string()).default([]),
+});
+const ResultSchema = z.object({
+  suggestions: z.array(SuggestSchema),
+  filter: FilterSchema,
+});
 
 const OUTPUT_SCHEMA = {
   type: "object",
@@ -106,8 +114,24 @@ const OUTPUT_SCHEMA = {
         ],
       },
     },
+    filter: {
+      type: "object",
+      additionalProperties: false,
+      description:
+        "Filtra el catálogo del cajero a lo que pidió el cliente. Úsalo cuando el cliente exprese un requisito o preferencia que reduzca el menú.",
+      properties: {
+        active: { type: "boolean", description: "true para filtrar el catálogo; false si no aplica" },
+        label: { type: "string", description: "Descripción corta del filtro, ej. 'Bebidas frías', 'Sin gluten'" },
+        productIds: {
+          type: "array",
+          description: "ids del catálogo que cumplen el requisito del cliente",
+          items: { type: "string" },
+        },
+      },
+      required: ["active", "label", "productIds"],
+    },
   },
-  required: ["suggestions"],
+  required: ["suggestions", "filter"],
 } as const;
 
 const SYSTEM = `Eres el asistente de IA de un Punto de Venta (POS) para un restaurante en Colombia. Escuchas la conversación entre el cajero y el cliente (transcrita por voz) y ayudas al cajero a atender mejor y completar el pedido.
@@ -129,7 +153,8 @@ Reglas:
 - Cuando detectes oportunidad de combo que le ahorre al cliente, propón swapCombo (kind "combo").
 - Si el cliente menciona alergia/celiaquía, marca el pedido (kind "alergia", act flag) y luego evita recomendar productos que la violen (kind "atencion").
 - focusCatId/focusHighlightId son opcionales: úsalos para abrir una categoría o resaltar un producto en la pantalla del cajero. null si no aplica.
-- "actionLabel" describe el botón (ej. "Agregar Limonada de coco"). Déjalo vacío si act.type es "none".`;
+- "actionLabel" describe el botón (ej. "Agregar Limonada de coco"). Déjalo vacío si act.type es "none".
+- filter: filtra el catálogo del cajero a lo que pidió el cliente. Pon active=true SOLO cuando el cliente exprese un requisito o preferencia que reduzca el menú (ej. "algo frío", "sin gluten", "vegetariano", "una hamburguesa", "algo dulce", "sin carne"). Entonces label = una etiqueta corta del filtro y productIds = TODOS los ids del catálogo que cumplen (no solo uno). Si el cliente no expresó un criterio que filtre, active=false, label vacío y productIds vacío. El filtro es independiente de las sugerencias: puedes filtrar el catálogo y además sugerir productos.`;
 
 function compactCatalog(catalog: PosCatalog): string {
   const modGroups = Object.values(catalog.modGroups).map((g) => ({
@@ -185,14 +210,20 @@ function normalizeAct(a: z.infer<typeof ActSchema>): PosAct | undefined {
   }
 }
 
+export interface PosAssistantOutput {
+  suggestions: PosSuggest[];
+  /** Catalog filter the customer's words imply, or null. Caller validates ids. */
+  filter: PosCatalogFilter | null;
+}
+
 /**
- * Ask Claude for POS suggestions. Returns raw suggestions; the caller is
- * responsible for validating that every act id exists in the catalog.
+ * Ask Claude for POS suggestions + an optional catalog filter. Returns raw
+ * data; the caller validates that every id exists in the catalog.
  * @throws MissingApiKeyError when the API key isn't configured.
  */
 export async function suggestPosActions(
   input: PosAssistantInput,
-): Promise<PosSuggest[]> {
+): Promise<PosAssistantOutput> {
   if (!process.env.ANTHROPIC_API_KEY) throw new MissingApiKeyError();
 
   const transcriptText = input.transcript
@@ -243,18 +274,22 @@ Sugiere las próximas acciones útiles para el cajero.`;
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
-  if (!text.trim()) return [];
+  if (!text.trim()) return { suggestions: [], filter: null };
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    return [];
+    return { suggestions: [], filter: null };
   }
   const result = ResultSchema.safeParse(parsed);
-  if (!result.success) return [];
+  if (!result.success) return { suggestions: [], filter: null };
 
-  return result.data.suggestions.map((s) => {
+  const f = result.data.filter;
+  const filter: PosCatalogFilter | null =
+    f.active && f.productIds.length ? { label: f.label, ids: f.productIds } : null;
+
+  const suggestions = result.data.suggestions.map((s) => {
     const act = normalizeAct(s.act);
     const suggest: PosSuggest = {
       kind: s.kind as PosSuggest["kind"],
@@ -274,4 +309,6 @@ Sugiere las próximas acciones útiles para el cajero.`;
     };
     return suggest;
   });
+
+  return { suggestions, filter };
 }

@@ -70,6 +70,12 @@ export interface PosCatalog {
   orgName: string;
 }
 
+/** Catalog narrowed by the assistant to what the customer asked for. */
+export interface PosCatalogFilter {
+  label: string; // short description, e.g. "Bebidas frías" / "Sin gluten"
+  ids: string[]; // matching product ids
+}
+
 // ── AI assistant shapes ─────────────────────────────────────────
 export type PosSuggestKind =
   | "pedido"
