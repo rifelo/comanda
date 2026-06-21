@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { loadPosCatalog, resolvePosSede } from "@/lib/pos/server";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
-import type { PosCatalog, PosSuggest, PosAct } from "@/lib/pos/types";
+import type { PosCatalog, PosSuggest, PosAct, PosCatalogFilter } from "@/lib/pos/types";
 
 // ── price recomputation (server is the source of truth, never the client) ────
 const ModSelectionSchema = z.record(
@@ -148,7 +148,7 @@ const SuggestSchema = z.object({
 });
 
 export type PosSuggestResult =
-  | { ok: true; suggestions: PosSuggest[] }
+  | { ok: true; suggestions: PosSuggest[]; filter: PosCatalogFilter | null }
   | { ok: false; error: string; missingKey?: boolean };
 
 /** Keep only suggestions whose action ids all exist in the live catalog. */
@@ -230,10 +230,16 @@ export async function posSuggest(input: unknown): Promise<PosSuggestResult> {
       orderType: parsed.data.orderType,
       sinGluten: parsed.data.sinGluten,
     });
-    const suggestions = raw
+    const suggestions = raw.suggestions
       .map((s) => validateSuggestion(catalog, s))
       .filter((s): s is PosSuggest => s !== null);
-    return { ok: true, suggestions };
+    // Keep only filter ids that exist in the live catalog; drop empty filters.
+    let filter: PosCatalogFilter | null = null;
+    if (raw.filter) {
+      const ids = raw.filter.ids.filter((id) => id in catalog.byId);
+      if (ids.length) filter = { label: raw.filter.label, ids };
+    }
+    return { ok: true, suggestions, filter };
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
       return {

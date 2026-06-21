@@ -39,6 +39,7 @@ import {
   type PosSuggest,
   type PosSuggestKind,
   type PosAct,
+  type PosCatalogFilter,
 } from "@/lib/pos/types";
 import { crearOrden, posSuggest, transcribeAudio } from "./actions";
 
@@ -126,6 +127,8 @@ interface PosState {
   cat: string;
   highlightId: string | null;
   catSource: "manual" | "ia";
+  /** Catalog narrowed by the assistant to what the customer asked for. */
+  catalogFilter: PosCatalogFilter | null;
   listening: boolean;
   thinking: boolean;
   micNote: string | null;
@@ -150,6 +153,7 @@ const POS_INITIAL: PosState = {
   cat: FAV_CAT,
   highlightId: null,
   catSource: "manual",
+  catalogFilter: null,
   listening: false,
   thinking: false,
   micNote: null,
@@ -427,7 +431,18 @@ async function runSuggest() {
       }
       if ("highlightId" in f.focus) highlightId = f.focus.highlightId ?? null;
     }
-    return { ...st, thinking: false, suggestions: [...fresh, ...st.suggestions], cat, highlightId, catSource };
+    // Apply the assistant's catalog filter (replace on a new one; keep the
+    // current one if this turn had none, so it doesn't flicker off).
+    const catalogFilter = res.filter ?? st.catalogFilter;
+    return {
+      ...st,
+      thinking: false,
+      suggestions: [...fresh, ...st.suggestions],
+      cat,
+      highlightId,
+      catSource,
+      catalogFilter,
+    };
   });
 }
 function resetConversation() {
@@ -704,10 +719,17 @@ function CatalogColumn() {
   const gridRef = React.useRef<HTMLDivElement>(null);
   const hlRef = React.useRef<HTMLButtonElement>(null);
 
-  const setCat = (id: string) => posStore.set({ cat: id, catSource: "manual", highlightId: null });
+  const filter = s.catalogFilter;
+  // Manually choosing a category clears an AI filter.
+  const setCat = (id: string) =>
+    posStore.set({ cat: id, catSource: "manual", highlightId: null, catalogFilter: null });
+  const clearFilter = () => posStore.set({ catalogFilter: null });
 
   let sections: { label: string | null; items?: PosMenuItem[]; combos?: PosCombo[] }[];
-  if (cat === COMBO_CAT) sections = [{ label: null, combos: catalog.combos }];
+  if (filter) {
+    const set = new Set(filter.ids);
+    sections = [{ label: null, items: catalog.menu.filter((p) => set.has(p.id)) }];
+  } else if (cat === COMBO_CAT) sections = [{ label: null, combos: catalog.combos }];
   else if (cat === FAV_CAT) sections = [{ label: null, items: catalog.menu.filter((p) => p.fav) }];
   else {
     const items = catalog.menu.filter((p) => p.catId === cat);
@@ -724,7 +746,7 @@ function CatalogColumn() {
         el = hlRef.current;
       g.scrollTop = Math.max(0, el.offsetTop - g.offsetTop - 16);
     }
-  }, [s.highlightId, cat]);
+  }, [s.highlightId, cat, filter]);
 
   return (
     <div style={{ width: 556, height: "100%", display: "flex", flexDirection: "column", borderRight: `1.5px solid ${C.ink}`, background: C.paperLt }}>
@@ -737,7 +759,7 @@ function CatalogColumn() {
       </div>
       <div style={{ display: "flex", gap: 6, padding: "11px 14px", flexWrap: "wrap" }}>
         {catalog.cats.map((c) => {
-          const on = cat === c.id;
+          const on = !filter && cat === c.id;
           const iaOn = on && s.catSource === "ia";
           return (
             <button key={c.id} onClick={() => setCat(c.id)} style={{
@@ -747,7 +769,18 @@ function CatalogColumn() {
           );
         })}
       </div>
-      {s.catSource === "ia" && (
+      {filter && (
+        <div className="pos-card" style={{ margin: "0 14px 4px", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.red}`, background: C.paper, borderRadius: 3 }}>
+          <span style={{ width: 18, height: 18, borderRadius: 18, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
+          <span style={{ flex: 1, fontFamily: F.mono, fontSize: 11, color: C.ink2, lineHeight: 1.4 }}>
+            Filtrado por lo que pidió el cliente: <strong>{filter.label}</strong> · {filter.ids.length} opcion{filter.ids.length === 1 ? "" : "es"}
+          </span>
+          <button onClick={clearFilter} style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: C.red, border: `1px solid ${C.red}`, background: "transparent", padding: "4px 8px", borderRadius: 2, cursor: "pointer", flexShrink: 0 }}>
+            Ver todo ✕
+          </button>
+        </div>
+      )}
+      {!filter && s.catSource === "ia" && (
         <div className="pos-card" style={{ margin: "0 14px 4px", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.red}`, background: C.paper, borderRadius: 3 }}>
           <span style={{ width: 18, height: 18, borderRadius: 18, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
           <span style={{ fontFamily: F.mono, fontSize: 11, color: C.ink2, lineHeight: 1.4 }}>
