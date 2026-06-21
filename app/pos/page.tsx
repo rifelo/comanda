@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireUser } from "@/lib/auth";
+import { loadPosCatalog } from "@/lib/pos/server";
 import { PosTerminal } from "./pos-terminal";
 
 export const metadata: Metadata = {
@@ -9,9 +9,10 @@ export const metadata: Metadata = {
 /**
  * Punto de venta (POS) + asistente de IA. Full-screen terminal that inherits
  * only the root layout (theme + fonts) — no admin sidebar or staff chrome.
- * Staff-operated, so it's gated behind requireUser().
+ * Staff-operated, so it's gated behind requireUser() (inside loadPosCatalog),
+ * which also loads the org's live catalog (productos · combos · modificadores).
  */
 export default async function PosPage() {
-  await requireUser();
-  return <PosTerminal />;
+  const { catalog } = await loadPosCatalog();
+  return <PosTerminal catalog={catalog} />;
 }
