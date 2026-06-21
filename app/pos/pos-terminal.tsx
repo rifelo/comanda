@@ -442,12 +442,18 @@ async function sendOrder() {
   else posStore.set({ sending: false, sendError: res.error });
 }
 
-// ── cloud speech-to-text (MediaRecorder → Groq Whisper) ─────────
-// We record the mic in short self-contained segments and send each to the
-// transcribeAudio server action. (The browser's own Web Speech API is avoided
-// because it relies on Google's backend, which is blocked on some networks.)
-const SEGMENT_MS = 4500; // length of each recorded chunk before it's sent
-const MIN_SEGMENT_BYTES = 1600; // skip near-silent blobs
+// ── cloud speech-to-text (MediaRecorder + VAD → Groq Whisper) ───
+// We record the mic continuously but cut a segment the moment the speaker
+// pauses (voice-activity detection via Web Audio), so each utterance is sent
+// to the transcribeAudio server action right after it ends — snappy, and we
+// never send silent clips (which Whisper would hallucinate text for). The
+// browser's own Web Speech API is avoided: it relies on Google's backend,
+// which is blocked on some networks.
+const MIN_SEGMENT_BYTES = 1600; // skip near-empty blobs
+const VAD_RMS_THRESHOLD = 0.018; // loudness above this counts as speech
+const VAD_SILENCE_MS = 600; // a pause this long ends an utterance
+const VAD_MIN_UTTERANCE_MS = 350; // ignore blips shorter than this
+const VAD_MAX_SEGMENT_MS = 9000; // flush long continuous speech anyway
 
 function pickAudioMime(): string {
   const MR = typeof window !== "undefined" ? window.MediaRecorder : undefined;
@@ -491,10 +497,15 @@ function micErrorNote(err: unknown): string {
   return "No se pudo acceder al micrófono. Revisa los permisos, o escribe la conversación abajo.";
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 function useMicTranscribe(listening: boolean) {
   React.useEffect(() => {
     if (!listening) return;
-    if (typeof window === "undefined" || !navigator.mediaDevices || !window.MediaRecorder) {
+    const AudioCtx =
+      typeof window !== "undefined"
+        ? window.AudioContext || (window as any).webkitAudioContext
+        : undefined;
+    if (typeof window === "undefined" || !navigator.mediaDevices || !window.MediaRecorder || !AudioCtx) {
       posStore.set({
         listening: false,
         micNote: "Este navegador no permite grabar audio. Usa un navegador moderno, o escribe abajo.",
@@ -505,26 +516,42 @@ function useMicTranscribe(listening: boolean) {
     let cancelled = false;
     let stream: MediaStream | null = null;
     let recorder: MediaRecorder | null = null;
-    let stopTimer: ReturnType<typeof setTimeout> | null = null;
+    let audioCtx: AudioContext | null = null;
+    let raf = 0;
     const mime = pickAudioMime();
 
-    const recordSegment = () => {
+    // VAD state for the current segment.
+    let chunks: BlobPart[] = [];
+    let segStart = 0;
+    let hadSpeech = false;
+    let silenceSince = 0;
+
+    const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+    const startSegment = () => {
       if (cancelled || !stream) return;
-      const chunks: BlobPart[] = [];
+      chunks = [];
+      hadSpeech = false;
+      silenceSince = 0;
+      segStart = now();
       recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size) chunks.push(e.data);
       };
       recorder.onstop = () => {
-        // Chain the next segment immediately so listening stays continuous.
-        if (!cancelled && posStore.get().listening) recordSegment();
+        const sawSpeech = hadSpeech;
         const blob = new Blob(chunks, { type: recorder?.mimeType || mime || "audio/webm" });
-        void sendSegment(blob);
+        // Open the next segment immediately so we never miss the next utterance.
+        if (!cancelled && posStore.get().listening) startSegment();
+        // Only transcribe segments that actually contained speech — sending
+        // silence makes Whisper hallucinate phantom phrases.
+        if (sawSpeech) void sendSegment(blob);
       };
       recorder.start();
-      stopTimer = setTimeout(() => {
-        if (recorder && recorder.state === "recording") recorder.stop();
-      }, SEGMENT_MS);
+    };
+
+    const cutSegment = () => {
+      if (recorder && recorder.state === "recording") recorder.stop();
     };
 
     (async () => {
@@ -535,7 +562,44 @@ function useMicTranscribe(listening: boolean) {
           return;
         }
         posStore.set({ micNote: null });
-        recordSegment();
+
+        audioCtx = new AudioCtx();
+        if (audioCtx.state === "suspended") await audioCtx.resume().catch(() => {});
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        const buf = new Uint8Array(analyser.fftSize);
+
+        startSegment();
+
+        const tick = () => {
+          if (cancelled) return;
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const x = (buf[i] - 128) / 128;
+            sum += x * x;
+          }
+          const rms = Math.sqrt(sum / buf.length);
+          const t = now();
+
+          if (rms > VAD_RMS_THRESHOLD) {
+            hadSpeech = true;
+            silenceSince = 0;
+            if (posStore.get().interim !== "Escuchando…") posStore.set({ interim: "Escuchando…" });
+          } else if (hadSpeech && !silenceSince) {
+            silenceSince = t;
+          }
+
+          const endedByPause =
+            hadSpeech && silenceSince && t - silenceSince > VAD_SILENCE_MS && t - segStart > VAD_MIN_UTTERANCE_MS;
+          const tooLong = t - segStart > VAD_MAX_SEGMENT_MS;
+          if (endedByPause || tooLong) cutSegment();
+
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
       } catch (err) {
         console.warn("[pos stt] getUserMedia failed:", err);
         posStore.set({ listening: false, micNote: micErrorNote(err) });
@@ -544,18 +608,20 @@ function useMicTranscribe(listening: boolean) {
 
     return () => {
       cancelled = true;
-      if (stopTimer) clearTimeout(stopTimer);
+      if (raf) cancelAnimationFrame(raf);
       try {
         if (recorder && recorder.state !== "inactive") {
           recorder.onstop = null;
           recorder.stop();
         }
       } catch {}
+      if (audioCtx) audioCtx.close().catch(() => {});
       if (stream) stream.getTracks().forEach((t) => t.stop());
       posStore.set({ interim: "" });
     };
   }, [listening]);
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ════════════════════════════════════════════════════════════════
 // Tablet bezel
