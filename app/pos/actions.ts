@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { loadPosCatalog, resolvePosSede } from "@/lib/pos/server";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
-import { transcribeSegment, MissingSttKeyError } from "@/lib/ai/transcribe";
+import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type { PosCatalog, PosSuggest, PosAct } from "@/lib/pos/types";
 
 // ── price recomputation (server is the source of truth, never the client) ────
@@ -252,7 +252,13 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // ~8 MB per short segment is plenty
 
 export type TranscribeResult =
   | { ok: true; text: string }
-  | { ok: false; error: string; fatal?: boolean };
+  | {
+      ok: false;
+      error: string;
+      fatal?: boolean;
+      rateLimited?: boolean;
+      retryAfterMs?: number;
+    };
 
 /**
  * Transcribe one recorded audio segment from the POS mic via Groq Whisper.
@@ -281,6 +287,14 @@ export async function transcribeAudio(
         ok: false,
         fatal: true,
         error: "Falta configurar GROQ_API_KEY para el dictado por voz.",
+      };
+    }
+    if (err instanceof RateLimitError) {
+      return {
+        ok: false,
+        rateLimited: true,
+        retryAfterMs: err.retryAfterMs,
+        error: "Límite del plan gratis de Groq alcanzado. Pausando la voz unos segundos… (puedes escribir abajo).",
       };
     }
     console.error("[transcribeAudio]", err);

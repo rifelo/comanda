@@ -385,7 +385,9 @@ function appendTranscript(who: string, text: string) {
   posStore.set((s) => ({ ...s, transcript: [...s.transcript, { who, text, time: fmtTime() }] }));
   scheduleSuggest();
 }
-function scheduleSuggest(delay = 1100) {
+function scheduleSuggest(delay = 350) {
+  // Short debounce: VAD already cuts on a pause, so each transcript line is a
+  // finished phrase — fire fast, just coalescing back-to-back segments.
   if (suggestTimer) clearTimeout(suggestTimer);
   suggestTimer = setTimeout(runSuggest, delay);
 }
@@ -464,8 +466,13 @@ function pickAudioMime(): string {
   return "";
 }
 
+// When Groq's free-tier rate limit (429) hits, pause uploads until this time
+// instead of hammering the quota every utterance.
+let sttCooldownUntil = 0;
+
 async function sendSegment(blob: Blob) {
   if (blob.size < MIN_SEGMENT_BYTES) return;
+  if (Date.now() < sttCooldownUntil) return; // backing off after a 429
   posStore.set({ interim: "Transcribiendo…" });
   try {
     const fd = new FormData();
@@ -474,8 +481,13 @@ async function sendSegment(blob: Blob) {
     if (res.ok) {
       const t = res.text.trim();
       if (t) appendTranscript("cliente", t);
+      // A success clears any lingering rate-limit / error note.
+      if (posStore.get().micNote) posStore.set({ micNote: null });
     } else if (res.fatal) {
       posStore.set({ listening: false, micNote: res.error });
+    } else if (res.rateLimited) {
+      sttCooldownUntil = Date.now() + (res.retryAfterMs ?? 6000);
+      posStore.set({ micNote: res.error });
     } else if (res.error) {
       posStore.set({ micNote: res.error });
     }

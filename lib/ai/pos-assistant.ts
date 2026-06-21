@@ -222,13 +222,15 @@ ${transcriptText || "(aún nada)"}
 Sugiere las próximas acciones útiles para el cajero.`;
 
   const client = new Anthropic();
+  // Haiku 4.5 — fastest model, for near-real-time suggestions as the customer
+  // speaks. Supports structured outputs (output_config.format) but NOT the
+  // `effort` parameter (it 400s on Haiku), so effort is intentionally omitted.
   const response = await client.messages.create({
-    model: "claude-opus-4-8",
+    model: "claude-haiku-4-5",
     max_tokens: 2000,
     system: SYSTEM,
     output_config: {
       format: { type: "json_schema", schema: OUTPUT_SCHEMA },
-      effort: "low",
     },
     messages: [{ role: "user", content: [{ type: "text", text: userText }] }],
   });
