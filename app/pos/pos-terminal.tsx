@@ -112,10 +112,10 @@ interface OrderLine {
   hasMods?: boolean;
   expanded?: boolean;
 }
-type SuggestionCardState = PosSuggest & {
-  uid: string;
-  status: "open" | "done" | "dismissed";
-};
+// The suggestions array holds only the currently-open cards — each refresh
+// replaces it (no indefinite stacking). Dismissed/accepted titles live in
+// handledKeys so they don't pop back.
+type SuggestionCardState = PosSuggest & { uid: string };
 interface TranscriptLine {
   who: string;
   text: string;
@@ -136,6 +136,8 @@ interface PosState {
   interim: string;
   transcript: TranscriptLine[];
   suggestions: SuggestionCardState[];
+  /** Titles the cashier dismissed/accepted — suppressed on future refreshes. */
+  handledKeys: string[];
   flags: string[];
   noteSinGluten: boolean;
   loyalty: boolean;
@@ -160,6 +162,7 @@ const POS_INITIAL: PosState = {
   interim: "",
   transcript: [],
   suggestions: [],
+  handledKeys: [],
   flags: [],
   noteSinGluten: false,
   loyalty: false,
@@ -372,13 +375,18 @@ function applyAct(act?: PosAct) {
   else if (act.type === "flag") posStore.set((s) => ({ ...s, noteSinGluten: true }));
   else if (act.type === "loyalty") posStore.set((s) => ({ ...s, loyalty: true }));
 }
-function dismissSuggestion(uid: string, accepted: boolean) {
-  posStore.set((s) => ({
-    ...s,
-    suggestions: s.suggestions.map((g) =>
-      g.uid === uid ? { ...g, status: accepted ? "done" : "dismissed" } : g,
-    ),
-  }));
+function dismissSuggestion(uid: string, _accepted: boolean) {
+  void _accepted;
+  posStore.set((s) => {
+    const card = s.suggestions.find((g) => g.uid === uid);
+    return {
+      ...s,
+      suggestions: s.suggestions.filter((g) => g.uid !== uid),
+      handledKeys: card && !s.handledKeys.includes(card.title)
+        ? [...s.handledKeys, card.title]
+        : s.handledKeys,
+    };
+  });
 }
 
 // ── live assistant: transcript + debounced suggestions ──────────
@@ -416,10 +424,13 @@ async function runSuggest() {
     if (!res.ok) {
       return { ...st, thinking: false, micNote: res.missingKey ? res.error : st.micNote };
     }
-    const seen = new Set(st.suggestions.map((g) => g.title));
+    const handled = new Set(st.handledKeys);
     const fresh = res.suggestions
-      .filter((g) => !seen.has(g.title))
-      .map((g, i) => ({ ...g, uid: `sg${seq}_${i}`, status: "open" as const }));
+      .filter((g) => !handled.has(g.title))
+      .map((g, i) => ({ ...g, uid: `sg${seq}_${i}` }));
+    // Replace the open set with this turn's suggestions (no stacking). If the
+    // model returned nothing this turn, keep what's already shown.
+    const suggestions = res.suggestions.length ? fresh : st.suggestions;
     let cat = st.cat,
       highlightId = st.highlightId,
       catSource = st.catSource;
@@ -437,7 +448,7 @@ async function runSuggest() {
     return {
       ...st,
       thinking: false,
-      suggestions: [...fresh, ...st.suggestions],
+      suggestions,
       cat,
       highlightId,
       catSource,
@@ -693,6 +704,16 @@ const POS_TABLET_W = 1320,
 function PosCashier() {
   const s = usePos();
   useMicTranscribe(s.listening);
+
+  // Refresh suggestions when the order changes, so they track the current
+  // products (debounced; only once a conversation has started and not sent).
+  const orderSig = s.order
+    .map((l) => `${l.id}:${l.qty}:${JSON.stringify(l.mods ?? {})}`)
+    .join("|");
+  React.useEffect(() => {
+    const st = posStore.get();
+    if (st.transcript.length && !st.sent) scheduleSuggest(800);
+  }, [orderSig]);
 
   return (
     <div style={{ display: "flex", width: "100%", height: "100%", fontFamily: F.mono }}>
@@ -1024,7 +1045,7 @@ function LineModGroup({ idx, gid, line }: { idx: number; gid: string; line: Orde
 // ════════════════════════════════════════════════════════════════
 function AiPanel() {
   const s = usePos();
-  const open = s.suggestions.filter((g) => g.status === "open");
+  const open = s.suggestions;
   const idle = s.transcript.length === 0;
 
   return (
@@ -1198,7 +1219,7 @@ function PosClient() {
   const s = usePos();
   const catalog = useCatalog();
   const total = orderTotal(s.order, catalog);
-  const comboOffer = s.suggestions.find((g) => g.status === "open" && g.kind === "combo");
+  const comboOffer = s.suggestions.find((g) => g.kind === "combo");
   const typeLabel = (ORDER_TYPES.find((t) => t.id === s.orderType) || ({} as { label?: string })).label;
 
   if (s.sent) return <ClientThanks />;
