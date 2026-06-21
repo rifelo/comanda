@@ -20,6 +20,16 @@ export class MissingSttKeyError extends Error {
   }
 }
 
+/** Groq returned 429 — free-tier rate limit hit. Carries a backoff hint. */
+export class RateLimitError extends Error {
+  retryAfterMs: number;
+  constructor(retryAfterMs: number) {
+    super("Límite de transcripción de Groq alcanzado.");
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 /**
  * Transcribe one short audio segment (Spanish). Returns the recognized text
  * (possibly empty for silence).
@@ -49,6 +59,12 @@ export async function transcribeSegment(file: Blob): Promise<string> {
     body: form,
   });
 
+  if (res.status === 429) {
+    // Honor Retry-After (seconds, possibly fractional); default to 6s.
+    const ra = res.headers.get("retry-after");
+    const secs = ra ? parseFloat(ra) : NaN;
+    throw new RateLimitError(Number.isFinite(secs) ? Math.ceil(secs * 1000) : 6000);
+  }
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`Groq STT ${res.status}: ${detail.slice(0, 200)}`);
