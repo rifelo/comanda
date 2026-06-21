@@ -1,8 +1,10 @@
 "use server";
 
 import { z } from "zod";
+import { requireUser } from "@/lib/auth";
 import { loadPosCatalog, resolvePosSede } from "@/lib/pos/server";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
+import { transcribeSegment, MissingSttKeyError } from "@/lib/ai/transcribe";
 import type { PosCatalog, PosSuggest, PosAct } from "@/lib/pos/types";
 
 // ── price recomputation (server is the source of truth, never the client) ────
@@ -242,5 +244,46 @@ export async function posSuggest(input: unknown): Promise<PosSuggestResult> {
     }
     console.error("[posSuggest]", err);
     return { ok: false, error: "El asistente no está disponible ahora." };
+  }
+}
+
+// ── speech-to-text (Groq Whisper) ─────────────────────────────────────────────
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // ~8 MB per short segment is plenty
+
+export type TranscribeResult =
+  | { ok: true; text: string }
+  | { ok: false; error: string; fatal?: boolean };
+
+/**
+ * Transcribe one recorded audio segment from the POS mic via Groq Whisper.
+ * `fatal: true` means the mic should stop (missing key / bad request) rather
+ * than keep retrying every segment.
+ */
+export async function transcribeAudio(
+  formData: FormData,
+): Promise<TranscribeResult> {
+  await requireUser();
+
+  const file = formData.get("audio");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Sin audio." };
+  }
+  if (file.size > MAX_AUDIO_BYTES) {
+    return { ok: false, error: "El segmento de audio es demasiado grande." };
+  }
+
+  try {
+    const text = await transcribeSegment(file);
+    return { ok: true, text };
+  } catch (err) {
+    if (err instanceof MissingSttKeyError) {
+      return {
+        ok: false,
+        fatal: true,
+        error: "Falta configurar GROQ_API_KEY para el dictado por voz.",
+      };
+    }
+    console.error("[transcribeAudio]", err);
+    return { ok: false, error: "No se pudo transcribir el audio." };
   }
 }

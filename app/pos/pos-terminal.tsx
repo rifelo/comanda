@@ -12,10 +12,10 @@
  *    handed in as `catalog` (see lib/pos/catalog.ts), exposed via context.
  *  · Orders — "Cobrar y enviar" persists through the crearOrden server action
  *    and shows the real folio.
- *  · Assistant — the cashier's microphone (browser SpeechRecognition, es-CO)
- *    feeds a transcript; debounced calls to the posSuggest server action ask
- *    Claude for suggestions whose actions reference live catalog ids. A typed
- *    fallback input covers browsers without speech recognition.
+ *  · Assistant — the cashier's microphone (MediaRecorder → Groq Whisper via the
+ *    transcribeAudio server action) feeds a transcript; debounced calls to the
+ *    posSuggest server action ask Claude for suggestions whose actions reference
+ *    live catalog ids. A typed fallback input is always available.
  *
  * Design tokens map straight onto the app's CSS variables (C.ink → var(--ink)).
  */
@@ -40,7 +40,7 @@ import {
   type PosSuggestKind,
   type PosAct,
 } from "@/lib/pos/types";
-import { crearOrden, posSuggest } from "./actions";
+import { crearOrden, posSuggest, transcribeAudio } from "./actions";
 
 // ── design tokens → app CSS variables ───────────────────────────
 const C = {
@@ -442,103 +442,120 @@ async function sendOrder() {
   else posStore.set({ sending: false, sendError: res.error });
 }
 
-// ── browser speech-to-text (Chrome/Edge desktop; es-CO) ─────────
-// Errors that can't recover by restarting — surface a reason and flip the mic
-// OFF (which also stops the onend restart loop, e.g. Brave blocking the
-// speech service, a denied permission, or no microphone).
-const FATAL_SPEECH_ERRORS: Record<string, string> = {
-  "not-allowed":
-    "Micrófono bloqueado. Toca el candado 🔒 junto a la URL → Micrófono → Permitir, y reactiva el micrófono.",
-  "service-not-allowed":
-    "Tu navegador bloqueó el dictado por voz. En Brave desactiva los Shields para este sitio, o usa Chrome/Edge de escritorio.",
-  "audio-capture":
-    "No se detectó ningún micrófono. Conecta uno y reactiva el micrófono.",
-  network:
-    "El servicio de voz no respondió (suele estar bloqueado en Brave/Firefox). Usa Chrome/Edge de escritorio, o escribe abajo.",
-};
+// ── cloud speech-to-text (MediaRecorder → Groq Whisper) ─────────
+// We record the mic in short self-contained segments and send each to the
+// transcribeAudio server action. (The browser's own Web Speech API is avoided
+// because it relies on Google's backend, which is blocked on some networks.)
+const SEGMENT_MS = 4500; // length of each recorded chunk before it's sent
+const MIN_SEGMENT_BYTES = 1600; // skip near-silent blobs
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function useSpeech(listening: boolean) {
-  const recRef = React.useRef<any>(null);
+function pickAudioMime(): string {
+  const MR = typeof window !== "undefined" ? window.MediaRecorder : undefined;
+  if (!MR) return "";
+  for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]) {
+    if (MR.isTypeSupported(m)) return m;
+  }
+  return "";
+}
+
+async function sendSegment(blob: Blob) {
+  if (blob.size < MIN_SEGMENT_BYTES) return;
+  posStore.set({ interim: "Transcribiendo…" });
+  try {
+    const fd = new FormData();
+    fd.append("audio", blob, "segment.webm");
+    const res = await transcribeAudio(fd);
+    if (res.ok) {
+      const t = res.text.trim();
+      if (t) appendTranscript("cliente", t);
+    } else if (res.fatal) {
+      posStore.set({ listening: false, micNote: res.error });
+    } else if (res.error) {
+      posStore.set({ micNote: res.error });
+    }
+  } catch (err) {
+    console.warn("[pos stt] segment failed:", err);
+  } finally {
+    if (posStore.get().interim === "Transcribiendo…") posStore.set({ interim: "" });
+  }
+}
+
+function micErrorNote(err: unknown): string {
+  const name = (err as { name?: string })?.name;
+  if (name === "NotAllowedError" || name === "SecurityError")
+    return "Micrófono bloqueado. Toca el candado 🔒 junto a la URL → Micrófono → Permitir, y reactiva el micrófono.";
+  if (name === "NotFoundError" || name === "OverconstrainedError")
+    return "No se detectó ningún micrófono. Conecta uno y reactiva el micrófono.";
+  if (typeof window !== "undefined" && !window.isSecureContext)
+    return "El micrófono solo funciona en HTTPS (o localhost). Ábrelo en el sitio seguro, o escribe abajo.";
+  return "No se pudo acceder al micrófono. Revisa los permisos, o escribe la conversación abajo.";
+}
+
+function useMicTranscribe(listening: boolean) {
   React.useEffect(() => {
-    if (!listening) {
-      if (recRef.current) {
-        recRef.current.onend = null;
-        try {
-          recRef.current.stop();
-        } catch {}
-        recRef.current = null;
-      }
-      posStore.set({ interim: "" });
-      return;
-    }
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
+    if (!listening) return;
+    if (typeof window === "undefined" || !navigator.mediaDevices || !window.MediaRecorder) {
       posStore.set({
         listening: false,
-        micNote:
-          "Este navegador no admite dictado por voz. Usa Chrome/Edge de escritorio, o escribe la conversación abajo.",
+        micNote: "Este navegador no permite grabar audio. Usa un navegador moderno, o escribe abajo.",
       });
       return;
     }
-    if (!window.isSecureContext) {
-      posStore.set({
-        listening: false,
-        micNote: "El micrófono solo funciona en HTTPS (o localhost). Ábrelo en el sitio seguro, o escribe abajo.",
-      });
-      return;
-    }
-    const rec = new SR();
-    rec.lang = "es-CO";
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onstart = () => posStore.set({ micNote: null });
-    rec.onresult = (e: any) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        const txt = String(r[0].transcript);
-        if (r.isFinal) {
-          const t = txt.trim();
-          if (t) appendTranscript("cliente", t);
-        } else {
-          interim += txt;
-        }
-      }
-      posStore.set({ interim: interim.trim() });
+
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    let recorder: MediaRecorder | null = null;
+    let stopTimer: ReturnType<typeof setTimeout> | null = null;
+    const mime = pickAudioMime();
+
+    const recordSegment = () => {
+      if (cancelled || !stream) return;
+      const chunks: BlobPart[] = [];
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+      recorder.onstop = () => {
+        // Chain the next segment immediately so listening stays continuous.
+        if (!cancelled && posStore.get().listening) recordSegment();
+        const blob = new Blob(chunks, { type: recorder?.mimeType || mime || "audio/webm" });
+        void sendSegment(blob);
+      };
+      recorder.start();
+      stopTimer = setTimeout(() => {
+        if (recorder && recorder.state === "recording") recorder.stop();
+      }, SEGMENT_MS);
     };
-    rec.onerror = (e: any) => {
-      console.warn("[pos speech] error:", e?.error);
-      const note = FATAL_SPEECH_ERRORS[e?.error];
-      if (note) posStore.set({ listening: false, micNote: note, interim: "" });
-      // "no-speech" / "aborted" are transient — onend will restart.
-    };
-    rec.onend = () => {
-      posStore.set({ interim: "" });
-      // Chrome ends recognition after a pause — restart while still listening.
-      if (posStore.get().listening && recRef.current === rec) {
-        try {
-          rec.start();
-        } catch {}
-      }
-    };
-    try {
-      rec.start();
-    } catch (err) {
-      console.warn("[pos speech] start failed:", err);
-    }
-    recRef.current = rec;
-    return () => {
-      rec.onend = null;
+
+    (async () => {
       try {
-        rec.stop();
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        posStore.set({ micNote: null });
+        recordSegment();
+      } catch (err) {
+        console.warn("[pos stt] getUserMedia failed:", err);
+        posStore.set({ listening: false, micNote: micErrorNote(err) });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (stopTimer) clearTimeout(stopTimer);
+      try {
+        if (recorder && recorder.state !== "inactive") {
+          recorder.onstop = null;
+          recorder.stop();
+        }
       } catch {}
-      if (recRef.current === rec) recRef.current = null;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
       posStore.set({ interim: "" });
     };
   }, [listening]);
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ════════════════════════════════════════════════════════════════
 // Tablet bezel
@@ -582,7 +599,7 @@ const POS_TABLET_W = 1320,
 // ════════════════════════════════════════════════════════════════
 function PosCashier() {
   const s = usePos();
-  useSpeech(s.listening);
+  useMicTranscribe(s.listening);
 
   return (
     <div style={{ display: "flex", width: "100%", height: "100%", fontFamily: F.mono }}>
@@ -949,7 +966,7 @@ function AiHeader() {
       </div>
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 7, fontFamily: F.mono, fontSize: 9.5, color: "rgba(244,236,220,.62)", lineHeight: 1.4 }}>
         <span className={s.listening ? "pos-rec" : ""} style={{ width: 7, height: 7, borderRadius: 7, background: s.listening ? C.red : "rgba(244,236,220,.4)", flexShrink: 0 }} />
-        <span>Cliente informado · audio analizado en vivo, no se graba. El cajero puede pausar cuando quiera.</span>
+        <span>Cliente informado · el audio se transcribe en la nube para asistirte; no se almacena. El cajero puede pausar cuando quiera.</span>
       </div>
     </div>
   );
@@ -1140,7 +1157,7 @@ function PosClient() {
           <span className={s.listening ? "pos-rec" : ""} style={{ width: 9, height: 9, borderRadius: 9, background: s.listening ? C.red : C.muted, flexShrink: 0 }} />
           <span style={{ fontFamily: F.mono, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>
             {s.listening
-              ? "Un asistente de IA escucha esta conversación para ayudar a nuestro equipo a atenderte mejor. El audio no se graba; pídenos pausarlo cuando quieras."
+              ? "Un asistente de IA transcribe esta conversación para ayudar a nuestro equipo a atenderte mejor. El audio no se almacena; pídenos pausarlo cuando quieras."
               : "Asistente de IA en pausa. No estamos analizando la conversación."}
           </span>
         </div>
