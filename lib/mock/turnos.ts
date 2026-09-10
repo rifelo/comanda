@@ -28,6 +28,7 @@ export const CONFIG_SECTIONS: readonly TurnosSection[] = [
   { id: "sede", n: "01", label: "Sede", href: "/configuracion/sede" },
   { id: "equipo", n: "02", label: "Equipo", href: "/configuracion/equipo" },
   { id: "preferencias", n: "03", label: "Preferencias", href: "/configuracion/preferencias" },
+  { id: "pos", n: "04", label: "Punto de venta", href: "/configuracion/pos" },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────

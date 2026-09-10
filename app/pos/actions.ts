@@ -1,8 +1,9 @@
 "use server";
 
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
-import { loadPosCatalog, resolvePosSede } from "@/lib/pos/server";
+import { revalidatePath } from "next/cache";
+import { requirePosContext } from "@/lib/pos/server";
+import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type { PosCatalog, PosSuggest, PosAct, PosCatalogFilter } from "@/lib/pos/types";
@@ -18,10 +19,18 @@ const LineSchema = z.object({
   qty: z.coerce.number().int().min(1).max(99),
   mods: ModSelectionSchema.optional(),
 });
+const PaymentSchema = z.object({
+  method: z.enum(["efectivo", "tarjeta", "transferencia"]),
+  /** Cash received; only meaningful for efectivo. */
+  tendered: z.coerce.number().int().min(0).max(100_000_000).nullable().optional(),
+});
 const CrearOrdenSchema = z.object({
   orderType: z.enum(["aqui", "llevar", "domicilio"]),
   sinGluten: z.boolean(),
   lines: z.array(LineSchema).min(1).max(60),
+  payment: PaymentSchema.optional(),
+  customerName: z.string().trim().max(80).optional(),
+  note: z.string().trim().max(500).optional(),
 });
 
 function lineUnitPrice(
@@ -49,7 +58,7 @@ function lineUnitPrice(
 }
 
 export type CrearOrdenResult =
-  | { ok: true; folio: string; ordenId: string }
+  | { ok: true; folio: string; ordenId: string; total: number; change: number }
   | { ok: false; error: string };
 
 /**
@@ -61,8 +70,8 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
   const parsed = CrearOrdenSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
 
-  const { catalog, profile, supabase } = await loadPosCatalog();
-  const orgId = profile.organization_id;
+  const { catalog, supabase, organizationId: orgId, actor } =
+    await requirePosContext();
 
   const items = parsed.data.lines.map((l, i) => {
     const priced = lineUnitPrice(catalog, l);
@@ -74,7 +83,17 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
   const valid = items as NonNullable<(typeof items)[number]>[];
   const subtotal = valid.reduce((s, it) => s + it.unit * it.line.qty, 0);
 
-  const restaurantId = await resolvePosSede(supabase, orgId, profile.id);
+  // Tender: change is computed here from the recomputed total, never trusted
+  // from the client. Cash short of the total is rejected.
+  const payment = parsed.data.payment ?? { method: "efectivo" as const, tendered: null };
+  const tendered = payment.method === "efectivo" ? payment.tendered ?? subtotal : null;
+  if (tendered !== null && tendered < subtotal) {
+    return { ok: false, error: "El efectivo recibido es menor que el total." };
+  }
+  const change = tendered !== null ? tendered - subtotal : 0;
+
+  const restaurantId =
+    actor.kind === "device" ? actor.device.restaurantId : actor.restaurantId;
 
   // Atomic per-org folio.
   const { data: seq, error: seqErr } = await supabase.rpc("next_orden_folio", {
@@ -96,7 +115,13 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
       subtotal_cop: subtotal,
       total_cop: subtotal,
       sin_gluten: parsed.data.sinGluten,
-      created_by: profile.id,
+      notes: parsed.data.note || null,
+      payment_method: payment.method,
+      tendered_cop: tendered,
+      change_cop: change,
+      customer_name: parsed.data.customerName || null,
+      created_by: actor.kind === "user" ? actor.profileId : null,
+      pos_device_id: actor.kind === "device" ? actor.device.id : null,
     })
     .select("id")
     .single();
@@ -126,7 +151,7 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
     return { ok: false, error: "No se pudieron guardar los productos." };
   }
 
-  return { ok: true, folio, ordenId: orden.id as string };
+  return { ok: true, folio, ordenId: orden.id as string, total: subtotal, change };
 }
 
 // ── live AI suggestions ──────────────────────────────────────────────────────
@@ -220,7 +245,7 @@ export async function posSuggest(input: unknown): Promise<PosSuggestResult> {
   const parsed = SuggestSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Entrada inválida." };
 
-  const { catalog } = await loadPosCatalog();
+  const { catalog } = await requirePosContext();
 
   try {
     const raw = await suggestPosActions({
@@ -274,7 +299,7 @@ export type TranscribeResult =
 export async function transcribeAudio(
   formData: FormData,
 ): Promise<TranscribeResult> {
-  await requireUser();
+  await requirePosContext();
 
   const file = formData.get("audio");
   if (!(file instanceof File) || file.size === 0) {
@@ -306,4 +331,36 @@ export async function transcribeAudio(
     console.error("[transcribeAudio]", err);
     return { ok: false, error: "No se pudo transcribir el audio." };
   }
+}
+
+// ── device pairing ────────────────────────────────────────────────────────────
+const RegistrarSchema = z.object({
+  code: z.string().min(1).max(20),
+  name: z.string().max(60).optional(),
+});
+
+export type RegistrarPosResult =
+  | { ok: true; station: string }
+  | { ok: false; error: string };
+
+/**
+ * Pair this device with an organization using a registration code generated
+ * in Configuración → Punto de venta. On success the device cookie is set and
+ * the client refreshes /pos, which now renders the terminal.
+ */
+export async function registrarPos(input: unknown): Promise<RegistrarPosResult> {
+  const parsed = RegistrarSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Código inválido." };
+
+  const res = await registerPosDevice(parsed.data.code, parsed.data.name);
+  if (!res.ok) return res;
+  revalidatePath("/configuracion/pos");
+  return { ok: true, station: res.device.name };
+}
+
+/** Unpair this device (revokes it server-side and clears the cookie). */
+export async function desvincularPos(): Promise<{ ok: true }> {
+  await unlinkCurrentPosDevice();
+  revalidatePath("/configuracion/pos");
+  return { ok: true };
 }

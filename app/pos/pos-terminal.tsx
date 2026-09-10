@@ -1,32 +1,31 @@
 "use client";
 
 /**
- * Punto de venta (POS) + asistente de IA — live.
+ * Punto de venta — Square-style register for a coffee shop.
  *
- * Two linked touchscreens share one module-level store so the client display
- * mirrors the cashier in real time: the cashier terminal (catalog · order
- * ticket · AI panel) and the client-facing screen.
+ * One full-screen view, tablet-first (landscape ≥ 1024, degrades to 768):
  *
- * Wiring (was a scripted demo, now live):
- *  · Catalog — productos / combos / modificadores fetched server-side and
- *    handed in as `catalog` (see lib/pos/catalog.ts), exposed via context.
- *  · Orders — "Cobrar y enviar" persists through the crearOrden server action
- *    and shows the real folio.
- *  · Assistant — the cashier's microphone (MediaRecorder → Groq Whisper via the
- *    transcribeAudio server action) feeds a transcript; debounced calls to the
- *    posSuggest server action ask Claude for suggestions whose actions reference
- *    live catalog ids. A typed fallback input is always available.
+ *   ┌ top bar: station · search · assistant toggle · account/unlink ─────────┐
+ *   │ catalog (tabs → tile grid, big touch targets)   │ ticket (lines, total,│
+ *   │                                                 │ "Cobrar $X")          │
+ *   └─────────────────────────────────────────────────┴───────────────────────┘
  *
- * Design tokens map straight onto the app's CSS variables (C.ink → var(--ink)).
+ *   · Tap a tile → added; tiles with modifiers open the *item sheet* (size,
+ *     milk, extras, qty) before landing on the ticket. Tap a ticket line to
+ *     edit it in the same sheet.
+ *   · "Cobrar" → *tender* screen: efectivo (quick amounts + keypad, change
+ *     computed live), tarjeta, transferencia → confirm → *receipt* → "Nuevo".
+ *   · The AI assistant lives in a slide-in drawer (mic, suggestions,
+ *     transcript). When closed, its top suggestion shows as a slim strip above
+ *     the grid so the cashier never has to leave the sale to use it.
+ *
+ * All state/logic lives in pos-store.ts; this file only renders.
  */
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  Stamp,
-  Folio,
-  PhotoPlaceholder,
-} from "@/components/comanda/primitives";
+import { useRouter } from "next/navigation";
+import { Stamp } from "@/components/comanda/primitives";
 import {
   posMoney,
   POS_KIND_LABEL,
@@ -36,12 +35,41 @@ import {
   type PosMenuItem,
   type PosCombo,
   type PosModGroup,
-  type PosSuggest,
   type PosSuggestKind,
-  type PosAct,
-  type PosCatalogFilter,
 } from "@/lib/pos/types";
-import { crearOrden, posSuggest, transcribeAudio } from "./actions";
+import { desvincularPos } from "./actions";
+import {
+  CatalogCtx,
+  StationCtx,
+  useCatalog,
+  usePos,
+  posStore,
+  useMicTranscribe,
+  scheduleSuggest,
+  orderTotal,
+  modLinePrice,
+  modSummary,
+  posDefaultMods,
+  tapItem,
+  addCombo,
+  addLineWithMods,
+  replaceLine,
+  removeLine,
+  changeQty,
+  clearTicket,
+  applyAct,
+  dismissSuggestion,
+  appendTranscript,
+  resetConversation,
+  startTender,
+  cancelTender,
+  completeSale,
+  PAY_METHODS,
+  type OrderLine,
+  type ModSelection,
+  type SuggestionCardState,
+  type PayMethod,
+} from "./pos-store";
 
 // ── design tokens → app CSS variables ───────────────────────────
 const C = {
@@ -63,13 +91,25 @@ const F = {
   script: "var(--font-script)",
 } as const;
 
-// ── one-time CSS (equalizer + listening pulse + button reset) ───
+/** Category accent colours for tiles (Square colours its tiles per item). */
+const TILE_ACCENTS = [C.red, C.green, C.amber, "#4a6fa5", "#7a4fa0", "#b5651d", "#2f8f8f"];
+
+const TICKET_W = 400;
+const DRAWER_W = 400;
+
+// ── one-time CSS ────────────────────────────────────────────────
 const POS_CSS = `
   @keyframes pos-eq { 0%,100%{transform:scaleY(.35)} 50%{transform:scaleY(1)} }
   @keyframes pos-rec { 0%,100%{opacity:1} 50%{opacity:.25} }
   @keyframes pos-in  { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  @keyframes pos-slide { from{transform:translateX(24px); opacity:0} to{transform:none; opacity:1} }
+  @keyframes pos-hl { 0%,100%{box-shadow:0 0 0 0 rgba(176,58,46,0)} 50%{box-shadow:0 0 0 5px rgba(176,58,46,.16)} }
+  .pos-root, .pos-root * { box-sizing: border-box; }
   .pos-root button:not(.cmd-btn){min-height:0}
   .pos-root a{min-height:0}
+  .pos-root button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .pos-tile:active:not(:disabled){transform:scale(.97)}
+  .pos-tile{transition:transform .06s, border-color .12s}
   .pos-eq i{display:inline-block;width:3px;height:14px;background:currentColor;transform-origin:bottom;
     animation:pos-eq .9s ease-in-out infinite}
   .pos-eq i:nth-child(2){animation-delay:.15s} .pos-eq i:nth-child(3){animation-delay:.3s}
@@ -77,663 +117,195 @@ const POS_CSS = `
   .pos-eq.paused i{animation-play-state:paused;transform:scaleY(.4);opacity:.45}
   .pos-rec{animation:pos-rec 1.3s ease-in-out infinite}
   .pos-card{animation:pos-in .35s ease both}
-  @keyframes pos-hl { 0%,100%{box-shadow:0 0 0 0 rgba(176,58,46,0)} 50%{box-shadow:0 0 0 5px rgba(176,58,46,.16)} }
+  .pos-drawer{animation:pos-slide .18s ease both}
   .pos-hl{animation:pos-hl 1.6s ease-in-out infinite}
-  .pos-scroll::-webkit-scrollbar{width:8px} .pos-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.16);border-radius:8px}
+  .pos-scroll{scrollbar-width:thin}
+  .pos-scroll::-webkit-scrollbar{width:8px;height:8px} .pos-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.16);border-radius:8px}
+  .pos-key:active{background:var(--paper-dk)}
+  .pos-line:active{background:var(--paper-dk)}
+  @media (max-width: 900px) { .pos-ticket { width: 340px !important; } }
 `;
 
-// ── catalog context (stable, SSR-correct — no flash) ────────────
-const EMPTY_CATALOG: PosCatalog = {
-  cats: [],
-  menu: [],
-  combos: [],
-  modGroups: {},
-  byId: {},
-  comboById: {},
-  catLabel: {},
-  orgName: "comanda",
-};
-const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
-const useCatalog = () => React.useContext(CatalogCtx);
-
-// ── store ───────────────────────────────────────────────────────
-type ModSelection = Record<string, string | string[] | null>;
-
-interface OrderLine {
-  id: string;
-  name: string;
-  qty: number;
-  kind: "item" | "combo";
-  basePrice?: number;
-  price?: number;
-  gluten?: boolean;
-  items?: string[];
-  mods?: ModSelection;
-  hasMods?: boolean;
-  expanded?: boolean;
-}
-// The suggestions array holds only the currently-open cards — each refresh
-// replaces it (no indefinite stacking). Dismissed/accepted titles live in
-// handledKeys so they don't pop back.
-type SuggestionCardState = PosSuggest & { uid: string };
-interface TranscriptLine {
-  who: string;
-  text: string;
-  time: string;
-}
-interface PosState {
-  order: OrderLine[];
-  orderType: "aqui" | "llevar" | "domicilio";
-  cat: string;
-  highlightId: string | null;
-  catSource: "manual" | "ia";
-  /** Catalog narrowed by the assistant to what the customer asked for. */
-  catalogFilter: PosCatalogFilter | null;
-  listening: boolean;
-  thinking: boolean;
-  micNote: string | null;
-  /** Live (not-yet-final) speech being recognized, shown under the transcript. */
-  interim: string;
-  transcript: TranscriptLine[];
-  suggestions: SuggestionCardState[];
-  /** Titles the cashier dismissed/accepted — suppressed on future refreshes. */
-  handledKeys: string[];
-  flags: string[];
-  noteSinGluten: boolean;
-  loyalty: boolean;
-  sending: boolean;
-  sendError: string | null;
-  sent: boolean;
-  orderNo: string;
-  /** Set once on mount so imperative actions can read the catalog. */
-  catalog: PosCatalog;
-}
-
-const POS_INITIAL: PosState = {
-  order: [],
-  orderType: "aqui",
-  cat: FAV_CAT,
-  highlightId: null,
-  catSource: "manual",
-  catalogFilter: null,
-  listening: false,
-  thinking: false,
-  micNote: null,
-  interim: "",
-  transcript: [],
-  suggestions: [],
-  handledKeys: [],
-  flags: [],
-  noteSinGluten: false,
-  loyalty: false,
-  sending: false,
-  sendError: null,
-  sent: false,
-  orderNo: "Nuevo",
-  catalog: EMPTY_CATALOG,
-};
-
-type StateUpdater = Partial<PosState> | ((s: PosState) => PosState);
-const posStore = (() => {
-  let state: PosState = { ...POS_INITIAL };
-  const subs = new Set<() => void>();
-  return {
-    get: () => state,
-    set: (u: StateUpdater) => {
-      state = typeof u === "function" ? u(state) : { ...state, ...u };
-      subs.forEach((f) => f());
-    },
-    sub: (f: () => void) => {
-      subs.add(f);
-      return () => {
-        subs.delete(f);
-      };
-    },
-  };
-})();
-
-function usePos(): PosState {
-  return React.useSyncExternalStore(posStore.sub, posStore.get, () => POS_INITIAL);
-}
-
-const fmtTime = (): string => {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
-
-// ── order helpers (pure; catalog passed in) ─────────────────────
-function posDefaultMods(p: PosMenuItem, catalog: PosCatalog): ModSelection {
-  const out: ModSelection = {};
-  p.mods.forEach((gid) => {
-    const g = catalog.modGroups[gid];
-    if (!g) return;
-    out[gid] = g.type === "single" ? (g.required ? g.options[0]?.name ?? null : null) : [];
-  });
-  return out;
-}
-function posMakeLine(p: PosMenuItem, catalog: PosCatalog): OrderLine {
-  return {
-    id: p.id,
-    name: p.name,
-    basePrice: p.price,
-    qty: 1,
-    gluten: p.gluten,
-    kind: "item",
-    mods: posDefaultMods(p, catalog),
-    hasMods: p.mods.length > 0,
-    expanded: false,
-  };
-}
-function modLinePrice(line: OrderLine, catalog: PosCatalog): number {
-  if (line.kind === "combo") return line.price ?? 0;
-  let extra = 0;
-  if (line.mods) {
-    for (const gid in line.mods) {
-      const g = catalog.modGroups[gid];
-      if (!g) continue;
-      const sel = line.mods[gid];
-      const names = Array.isArray(sel) ? sel : sel ? [sel] : [];
-      names.forEach((n) => {
-        const o = g.options.find((o) => o.name === n);
-        if (o) extra += o.delta;
-      });
-    }
-  }
-  return (line.basePrice != null ? line.basePrice : line.price ?? 0) + extra;
-}
-interface ModChip {
-  name: string;
-  delta: number;
-  group: string;
-}
-function modSummary(line: OrderLine, catalog: PosCatalog): ModChip[] {
-  const out: ModChip[] = [];
-  if (!line.mods) return out;
-  for (const gid in line.mods) {
-    const g = catalog.modGroups[gid];
-    if (!g) continue;
-    const sel = line.mods[gid];
-    const names = Array.isArray(sel) ? sel : sel ? [sel] : [];
-    names.forEach((n) => {
-      const o = g.options.find((o) => o.name === n);
-      if (!o) return;
-      out.push({ name: n, delta: o.delta, group: gid });
-    });
-  }
-  return out;
-}
-const orderTotal = (order: OrderLine[], catalog: PosCatalog): number =>
-  order.reduce((s, l) => s + modLinePrice(l, catalog) * l.qty, 0);
-
-// ── imperative cart actions (read catalog from the store) ───────
-function addItem(id: string) {
-  posStore.set((s) => {
-    const p = s.catalog.byId[id];
-    if (!p) return s;
-    const hasMods = p.mods.length > 0;
-    const i = hasMods ? -1 : s.order.findIndex((l) => l.id === id && l.kind === "item");
-    let order: OrderLine[];
-    if (i >= 0) order = s.order.map((l, k) => (k === i ? { ...l, qty: l.qty + 1 } : l));
-    else order = [...s.order, posMakeLine(p, s.catalog)];
-    return { ...s, order, sent: false, highlightId: s.highlightId === id ? null : s.highlightId };
-  });
-}
-function addCombo(comboId: string) {
-  posStore.set((s) => {
-    const c = s.catalog.comboById[comboId];
-    if (!c) return s;
-    return {
-      ...s,
-      order: [...s.order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items }],
-      sent: false,
-      highlightId: s.highlightId === comboId ? null : s.highlightId,
-    };
-  });
-}
-function swapCombo(removeId: string, comboId: string) {
-  posStore.set((s) => {
-    const c = s.catalog.comboById[comboId];
-    if (!c) return s;
-    let removed = false;
-    const order = s.order.filter((l) => {
-      if (!removed && l.kind === "item" && l.id === removeId) {
-        if (l.qty > 1) {
-          l.qty -= 1;
-          return true;
-        }
-        removed = true;
-        return false;
-      }
-      return true;
-    });
-    return {
-      ...s,
-      order: [...order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items }],
-      sent: false,
-      highlightId: s.highlightId === comboId ? null : s.highlightId,
-    };
-  });
-}
-function changeQty(idx: number, d: number) {
-  posStore.set((s) => {
-    const order = s.order
-      .map((l, k) => (k === idx ? { ...l, qty: l.qty + d } : l))
-      .filter((l) => l.qty > 0);
-    return { ...s, order, sent: false };
-  });
-}
-function toggleLineExpanded(idx: number) {
-  posStore.set((s) => ({
-    ...s,
-    order: s.order.map((l, k) => (k === idx ? { ...l, expanded: !l.expanded } : l)),
-  }));
-}
-function setLineSingle(idx: number, gid: string, name: string) {
-  posStore.set((s) => ({
-    ...s,
-    order: s.order.map((l, k) => (k === idx ? { ...l, mods: { ...l.mods, [gid]: name } } : l)),
-    sent: false,
-  }));
-}
-function toggleLineMulti(idx: number, gid: string, name: string) {
-  posStore.set((s) => ({
-    ...s,
-    order: s.order.map((l, k) => {
-      if (k !== idx) return l;
-      const cur = l.mods?.[gid];
-      const arr = Array.isArray(cur) ? cur : [];
-      const has = arr.includes(name);
-      return { ...l, mods: { ...l.mods, [gid]: has ? arr.filter((x) => x !== name) : [...arr, name] } };
-    }),
-    sent: false,
-  }));
-}
-function applyModsToLine(productId: string, set: Record<string, string | string[]>) {
-  posStore.set((s) => {
-    let order = [...s.order];
-    let idx = order.findIndex((l) => l.kind === "item" && l.id === productId);
-    if (idx < 0) {
-      const p = s.catalog.byId[productId];
-      if (!p) return s;
-      order = [...order, posMakeLine(p, s.catalog)];
-      idx = order.length - 1;
-    }
-    const line: OrderLine = { ...order[idx], mods: { ...order[idx].mods }, expanded: true };
-    for (const gid in set) line.mods![gid] = set[gid];
-    order[idx] = line;
-    return { ...s, order, sent: false, highlightId: s.highlightId === productId ? null : s.highlightId };
-  });
-}
-
-// ── AI suggestion actions ───────────────────────────────────────
-function applyAct(act?: PosAct) {
-  if (!act) return;
-  if (act.type === "add") addItem(act.id);
-  else if (act.type === "combo") addCombo(act.id);
-  else if (act.type === "swapCombo") swapCombo(act.removeId, act.comboId);
-  else if (act.type === "mods") applyModsToLine(act.id, act.set);
-  else if (act.type === "flag") posStore.set((s) => ({ ...s, noteSinGluten: true }));
-  else if (act.type === "loyalty") posStore.set((s) => ({ ...s, loyalty: true }));
-}
-function dismissSuggestion(uid: string, _accepted: boolean) {
-  void _accepted;
-  posStore.set((s) => {
-    const card = s.suggestions.find((g) => g.uid === uid);
-    return {
-      ...s,
-      suggestions: s.suggestions.filter((g) => g.uid !== uid),
-      handledKeys: card && !s.handledKeys.includes(card.title)
-        ? [...s.handledKeys, card.title]
-        : s.handledKeys,
-    };
-  });
-}
-
-// ── live assistant: transcript + debounced suggestions ──────────
-let suggestTimer: ReturnType<typeof setTimeout> | null = null;
-let suggestSeq = 0;
-
-function appendTranscript(who: string, text: string) {
-  posStore.set((s) => ({ ...s, transcript: [...s.transcript, { who, text, time: fmtTime() }] }));
-  scheduleSuggest();
-}
-function scheduleSuggest(delay = 350) {
-  // Short debounce: VAD already cuts on a pause, so each transcript line is a
-  // finished phrase — fire fast, just coalescing back-to-back segments.
-  if (suggestTimer) clearTimeout(suggestTimer);
-  suggestTimer = setTimeout(runSuggest, delay);
-}
-async function runSuggest() {
-  const s = posStore.get();
-  if (!s.transcript.length || s.sent) return;
-  const seq = ++suggestSeq;
-  posStore.set({ thinking: true });
-  const cart = s.order.map((l) => ({
-    name: l.name,
-    qty: l.qty,
-    mods: modSummary(l, s.catalog).map((m) => m.name),
-  }));
-  const res = await posSuggest({
-    transcript: s.transcript.map((t) => ({ who: t.who, text: t.text })),
-    cart,
-    orderType: s.orderType,
-    sinGluten: s.noteSinGluten,
-  });
-  if (seq !== suggestSeq) return; // a newer request superseded this one
-  posStore.set((st) => {
-    if (!res.ok) {
-      return { ...st, thinking: false, micNote: res.missingKey ? res.error : st.micNote };
-    }
-    const handled = new Set(st.handledKeys);
-    const fresh = res.suggestions
-      .filter((g) => !handled.has(g.title))
-      .map((g, i) => ({ ...g, uid: `sg${seq}_${i}` }));
-    // Replace the open set with this turn's suggestions (no stacking). If the
-    // model returned nothing this turn, keep what's already shown.
-    const suggestions = res.suggestions.length ? fresh : st.suggestions;
-    let cat = st.cat,
-      highlightId = st.highlightId,
-      catSource = st.catSource;
-    const f = fresh.find((g) => g.focus);
-    if (f?.focus) {
-      if (f.focus.catId) {
-        cat = f.focus.catId;
-        catSource = "ia";
-      }
-      if ("highlightId" in f.focus) highlightId = f.focus.highlightId ?? null;
-    }
-    // Apply the assistant's catalog filter (replace on a new one; keep the
-    // current one if this turn had none, so it doesn't flicker off).
-    const catalogFilter = res.filter ?? st.catalogFilter;
-    return {
-      ...st,
-      thinking: false,
-      suggestions,
-      cat,
-      highlightId,
-      catSource,
-      catalogFilter,
-    };
-  });
-}
-function resetConversation() {
-  posStore.set((s) => ({ ...POS_INITIAL, catalog: s.catalog, listening: s.listening }));
-}
-
-async function sendOrder() {
-  const s = posStore.get();
-  if (!s.order.length || s.sending) return;
-  posStore.set({ sending: true, sendError: null });
-  const lines = s.order.map((l) => ({ kind: l.kind, id: l.id, qty: l.qty, mods: l.mods ?? {} }));
-  const res = await crearOrden({ orderType: s.orderType, sinGluten: s.noteSinGluten, lines });
-  if (res.ok) posStore.set({ sent: true, sending: false, orderNo: res.folio });
-  else posStore.set({ sending: false, sendError: res.error });
-}
-
-// ── cloud speech-to-text (MediaRecorder + VAD → Groq Whisper) ───
-// We record the mic continuously but cut a segment the moment the speaker
-// pauses (voice-activity detection via Web Audio), so each utterance is sent
-// to the transcribeAudio server action right after it ends — snappy, and we
-// never send silent clips (which Whisper would hallucinate text for). The
-// browser's own Web Speech API is avoided: it relies on Google's backend,
-// which is blocked on some networks.
-const MIN_SEGMENT_BYTES = 1600; // skip near-empty blobs
-const VAD_RMS_THRESHOLD = 0.018; // loudness above this counts as speech
-const VAD_SILENCE_MS = 600; // a pause this long ends an utterance
-const VAD_MIN_UTTERANCE_MS = 350; // ignore blips shorter than this
-const VAD_MAX_SEGMENT_MS = 9000; // flush long continuous speech anyway
-
-function pickAudioMime(): string {
-  const MR = typeof window !== "undefined" ? window.MediaRecorder : undefined;
-  if (!MR) return "";
-  for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]) {
-    if (MR.isTypeSupported(m)) return m;
-  }
-  return "";
-}
-
-// When Groq's free-tier rate limit (429) hits, pause uploads until this time
-// instead of hammering the quota every utterance.
-let sttCooldownUntil = 0;
-
-async function sendSegment(blob: Blob) {
-  if (blob.size < MIN_SEGMENT_BYTES) return;
-  if (Date.now() < sttCooldownUntil) return; // backing off after a 429
-  posStore.set({ interim: "Transcribiendo…" });
-  try {
-    const fd = new FormData();
-    fd.append("audio", blob, "segment.webm");
-    const res = await transcribeAudio(fd);
-    if (res.ok) {
-      const t = res.text.trim();
-      if (t) appendTranscript("cliente", t);
-      // A success clears any lingering rate-limit / error note.
-      if (posStore.get().micNote) posStore.set({ micNote: null });
-    } else if (res.fatal) {
-      posStore.set({ listening: false, micNote: res.error });
-    } else if (res.rateLimited) {
-      sttCooldownUntil = Date.now() + (res.retryAfterMs ?? 6000);
-      posStore.set({ micNote: res.error });
-    } else if (res.error) {
-      posStore.set({ micNote: res.error });
-    }
-  } catch (err) {
-    console.warn("[pos stt] segment failed:", err);
-  } finally {
-    if (posStore.get().interim === "Transcribiendo…") posStore.set({ interim: "" });
-  }
-}
-
-function micErrorNote(err: unknown): string {
-  const name = (err as { name?: string })?.name;
-  if (name === "NotAllowedError" || name === "SecurityError")
-    return "Micrófono bloqueado. Toca el candado 🔒 junto a la URL → Micrófono → Permitir, y reactiva el micrófono.";
-  if (name === "NotFoundError" || name === "OverconstrainedError")
-    return "No se detectó ningún micrófono. Conecta uno y reactiva el micrófono.";
-  if (typeof window !== "undefined" && !window.isSecureContext)
-    return "El micrófono solo funciona en HTTPS (o localhost). Ábrelo en el sitio seguro, o escribe abajo.";
-  return "No se pudo acceder al micrófono. Revisa los permisos, o escribe la conversación abajo.";
-}
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function useMicTranscribe(listening: boolean) {
-  React.useEffect(() => {
-    if (!listening) return;
-    const AudioCtx =
-      typeof window !== "undefined"
-        ? window.AudioContext || (window as any).webkitAudioContext
-        : undefined;
-    if (typeof window === "undefined" || !navigator.mediaDevices || !window.MediaRecorder || !AudioCtx) {
-      posStore.set({
-        listening: false,
-        micNote: "Este navegador no permite grabar audio. Usa un navegador moderno, o escribe abajo.",
-      });
-      return;
-    }
-
-    let cancelled = false;
-    let stream: MediaStream | null = null;
-    let recorder: MediaRecorder | null = null;
-    let audioCtx: AudioContext | null = null;
-    let raf = 0;
-    const mime = pickAudioMime();
-
-    // VAD state for the current segment.
-    let chunks: BlobPart[] = [];
-    let segStart = 0;
-    let hadSpeech = false;
-    let silenceSince = 0;
-
-    const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
-
-    const startSegment = () => {
-      if (cancelled || !stream) return;
-      chunks = [];
-      hadSpeech = false;
-      silenceSince = 0;
-      segStart = now();
-      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size) chunks.push(e.data);
-      };
-      recorder.onstop = () => {
-        const sawSpeech = hadSpeech;
-        const blob = new Blob(chunks, { type: recorder?.mimeType || mime || "audio/webm" });
-        // Open the next segment immediately so we never miss the next utterance.
-        if (!cancelled && posStore.get().listening) startSegment();
-        // Only transcribe segments that actually contained speech — sending
-        // silence makes Whisper hallucinate phantom phrases.
-        if (sawSpeech) void sendSegment(blob);
-      };
-      recorder.start();
-    };
-
-    const cutSegment = () => {
-      if (recorder && recorder.state === "recording") recorder.stop();
-    };
-
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        posStore.set({ micNote: null });
-
-        audioCtx = new AudioCtx();
-        if (audioCtx.state === "suspended") await audioCtx.resume().catch(() => {});
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
-        source.connect(analyser);
-        const buf = new Uint8Array(analyser.fftSize);
-
-        startSegment();
-
-        const tick = () => {
-          if (cancelled) return;
-          analyser.getByteTimeDomainData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) {
-            const x = (buf[i] - 128) / 128;
-            sum += x * x;
-          }
-          const rms = Math.sqrt(sum / buf.length);
-          const t = now();
-
-          if (rms > VAD_RMS_THRESHOLD) {
-            hadSpeech = true;
-            silenceSince = 0;
-            if (posStore.get().interim !== "Escuchando…") posStore.set({ interim: "Escuchando…" });
-          } else if (hadSpeech && !silenceSince) {
-            silenceSince = t;
-          }
-
-          const endedByPause =
-            hadSpeech && silenceSince && t - silenceSince > VAD_SILENCE_MS && t - segStart > VAD_MIN_UTTERANCE_MS;
-          const tooLong = t - segStart > VAD_MAX_SEGMENT_MS;
-          if (endedByPause || tooLong) cutSegment();
-
-          raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
-      } catch (err) {
-        console.warn("[pos stt] getUserMedia failed:", err);
-        posStore.set({ listening: false, micNote: micErrorNote(err) });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (raf) cancelAnimationFrame(raf);
-      try {
-        if (recorder && recorder.state !== "inactive") {
-          recorder.onstop = null;
-          recorder.stop();
-        }
-      } catch {}
-      if (audioCtx) audioCtx.close().catch(() => {});
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-      posStore.set({ interim: "" });
-    };
-  }, [listening]);
-}
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
 // ════════════════════════════════════════════════════════════════
-// Tablet bezel
+// Root
 // ════════════════════════════════════════════════════════════════
-function Tablet({
-  width,
-  height,
-  children,
-  label,
-  facing,
+export function PosTerminal({
+  catalog,
+  station = "Caja 01",
+  mode = "user",
 }: {
-  width: number;
-  height: number;
-  children: React.ReactNode;
-  label?: string;
-  facing?: "cajero" | "cliente";
+  catalog: PosCatalog;
+  /** Header label for this register ("Caja 2"). */
+  station?: string;
+  /** `device` = paired tablet (no account); `user` = signed-in org member. */
+  mode?: "device" | "user";
 }) {
+  // Seed the store's catalog once so imperative actions can read it. When the
+  // catalog has no favorites (a paired device has no user to own them), start
+  // on the first real category instead of an empty Favoritos tab.
+  React.useEffect(() => {
+    const hasFavs = catalog.menu.some((p) => p.fav);
+    const firstReal = catalog.cats.find((c) => c.id !== FAV_CAT)?.id;
+    const cur = posStore.get().cat;
+    posStore.set({
+      catalog,
+      ...(!hasFavs && firstReal && (cur === FAV_CAT || !cur) ? { cat: firstReal } : {}),
+    });
+  }, [catalog]);
+
   return (
-    <div>
-      {label && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontFamily: F.mono, fontSize: 11, color: C.muted, letterSpacing: ".14em", textTransform: "uppercase" }}>
-          <span style={{ width: 7, height: 7, borderRadius: 7, background: facing === "cliente" ? C.green : C.red }} />
-          {label}
-        </div>
-      )}
-      <div style={{ width, height, background: "#171310", borderRadius: 26, padding: 14, boxShadow: "0 24px 60px -28px rgba(20,14,8,.6)" }}>
-        <div className="cmd-paper" style={{ width: "100%", height: "100%", borderRadius: 13, overflow: "hidden", background: C.paper, position: "relative", display: "flex" }}>
-          {children}
-        </div>
-      </div>
-    </div>
+    <CatalogCtx.Provider value={catalog}>
+      <StationCtx.Provider value={station}>
+        <Register mode={mode} />
+      </StationCtx.Provider>
+    </CatalogCtx.Provider>
   );
 }
 
-const POS_TABLET_W = 1320,
-  POS_TABLET_H = 864,
-  POS_CLIENT_W = 900;
-
-// ════════════════════════════════════════════════════════════════
-// Cashier terminal
-// ════════════════════════════════════════════════════════════════
-function PosCashier() {
+function Register({ mode }: { mode: "device" | "user" }) {
   const s = usePos();
   useMicTranscribe(s.listening);
 
   // Refresh suggestions when the order changes, so they track the current
   // products (debounced; only once a conversation has started and not sent).
-  const orderSig = s.order
-    .map((l) => `${l.id}:${l.qty}:${JSON.stringify(l.mods ?? {})}`)
-    .join("|");
+  const orderSig = s.order.map((l) => `${l.id}:${l.qty}:${JSON.stringify(l.mods ?? {})}`).join("|");
   React.useEffect(() => {
     const st = posStore.get();
     if (st.transcript.length && !st.sent) scheduleSuggest(800);
   }, [orderSig]);
 
+  // Escape closes whatever is on top.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const st = posStore.get();
+      if (st.sheet) posStore.set({ sheet: null });
+      else if (st.view === "tender") cancelTender();
+      else if (st.aiOpen) posStore.set({ aiOpen: false });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
-    <div style={{ display: "flex", width: "100%", height: "100%", fontFamily: F.mono }}>
-      <CatalogColumn />
-      <OrderColumn />
-      <AiPanel />
+    <div className="pos-root cmd-paper" style={{ height: "100dvh", display: "flex", flexDirection: "column", background: C.paper, fontFamily: F.mono, color: C.ink, overflow: "hidden" }}>
+      <style>{POS_CSS}</style>
+      <TopBar mode={mode} />
+      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+        <Catalog />
+        <Ticket />
+        {s.aiOpen && <AiDrawer />}
+      </div>
+      {s.sheet && <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />}
+      {s.view === "tender" && <TenderScreen />}
+      {s.view === "done" && <ReceiptScreen />}
     </div>
   );
 }
 
-function SubLabel({ children }: { children: React.ReactNode }) {
+// ════════════════════════════════════════════════════════════════
+// Top bar
+// ════════════════════════════════════════════════════════════════
+function TopBar({ mode }: { mode: "device" | "user" }) {
+  const s = usePos();
+  const catalog = useCatalog();
+  const station = React.useContext(StationCtx);
+  const openCount = s.suggestions.length;
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 2px 8px", fontFamily: F.mono, fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted }}>
-      <span>{children}</span>
-      <span style={{ flex: 1, borderTop: `1px dashed ${C.rule}` }} />
+    <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 9, minWidth: 0 }}>
+        <span style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1, whiteSpace: "nowrap" }}>
+          comanda<span style={{ color: C.red }}>.</span>
+        </span>
+        <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+          {station} · {catalog.orgName}
+        </span>
+      </div>
+
+      <SearchBox />
+
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <button
+          onClick={() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen }))}
+          title="Asistente de IA"
+          aria-pressed={s.aiOpen}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer",
+            border: `1.5px solid ${s.aiOpen ? C.ink : C.rule}`, background: s.aiOpen ? C.ink : "transparent", color: s.aiOpen ? C.paperLt : C.ink,
+            fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", position: "relative",
+          }}
+        >
+          <span className={s.listening ? "pos-rec" : ""} style={{ width: 8, height: 8, borderRadius: 8, background: s.listening ? C.red : s.aiOpen ? C.paperLt : C.muted, opacity: s.listening ? 1 : 0.6 }} />
+          Asistente
+          {openCount > 0 && (
+            <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.red, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              {openCount}
+            </span>
+          )}
+        </button>
+        {mode === "device" ? <UnlinkButton station={station} /> : (
+          <Link href="/" style={{ display: "inline-flex", alignItems: "center", height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.ink2, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none" }}>
+            ← Panel
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
 
-function CatalogColumn() {
+function SearchBox() {
+  const s = usePos();
+  const ref = React.useRef<HTMLInputElement>(null);
+  return (
+    <div style={{ flex: 1, maxWidth: 520, position: "relative" }}>
+      <span aria-hidden style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.muted, fontSize: 14 }}>⌕</span>
+      <input
+        ref={ref}
+        value={s.search}
+        onChange={(e) => posStore.set({ search: e.target.value })}
+        placeholder="Buscar producto…"
+        aria-label="Buscar producto"
+        style={{ width: "100%", height: 40, padding: "0 36px 0 32px", border: `1.5px solid ${s.search ? C.ink : C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 14, borderRadius: 3, outline: "none" }}
+      />
+      {s.search && (
+        <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
+      )}
+    </div>
+  );
+}
+
+/** Paired-device chip: shows the station name and lets the admin unpair it. */
+function UnlinkButton({ station }: { station: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  function onClick() {
+    if (pending) return;
+    if (!window.confirm(`¿Desvincular "${station}" de esta cuenta? Necesitarás un nuevo código para volver a usarla.`)) return;
+    startTransition(async () => {
+      await desvincularPos();
+      router.refresh();
+    });
+  }
+  return (
+    <button onClick={onClick} disabled={pending} title="Desvincular este dispositivo" style={{
+      height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.muted,
+      fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase",
+    }}>
+      {pending ? "…" : "desvincular"}
+    </button>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Catalog — tabs + tile grid
+// ════════════════════════════════════════════════════════════════
+function accentFor(catalog: PosCatalog, catId: string): string {
+  const i = catalog.cats.findIndex((c) => c.id === catId);
+  return TILE_ACCENTS[(i < 0 ? 0 : i) % TILE_ACCENTS.length];
+}
+
+function Catalog() {
   const s = usePos();
   const catalog = useCatalog();
   const cat = s.cat || FAV_CAT;
@@ -741,13 +313,17 @@ function CatalogColumn() {
   const hlRef = React.useRef<HTMLButtonElement>(null);
 
   const filter = s.catalogFilter;
-  // Manually choosing a category clears an AI filter.
-  const setCat = (id: string) =>
-    posStore.set({ cat: id, catSource: "manual", highlightId: null, catalogFilter: null });
-  const clearFilter = () => posStore.set({ catalogFilter: null });
+  const q = s.search.trim().toLowerCase();
+  const setCat = (id: string) => posStore.set({ cat: id, catSource: "manual", highlightId: null, catalogFilter: null, search: "" });
 
-  let sections: { label: string | null; items?: PosMenuItem[]; combos?: PosCombo[] }[];
-  if (filter) {
+  type Section = { label: string | null; items?: PosMenuItem[]; combos?: PosCombo[] };
+  let sections: Section[];
+  if (q) {
+    const hit = (p: PosMenuItem) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q);
+    const items = catalog.menu.filter(hit);
+    const combos = catalog.combos.filter((c) => c.name.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q));
+    sections = [{ label: null, items }, ...(combos.length ? [{ label: "Combos", combos }] : [])];
+  } else if (filter) {
     const set = new Set(filter.ids);
     sections = [{ label: null, items: catalog.menu.filter((p) => set.has(p.id)) }];
   } else if (cat === COMBO_CAT) sections = [{ label: null, combos: catalog.combos }];
@@ -755,73 +331,64 @@ function CatalogColumn() {
   else {
     const items = catalog.menu.filter((p) => p.catId === cat);
     const subs = [...new Set(items.map((p) => p.sub))];
-    sections = subs.map((sub) => ({
-      label: subs.length > 1 && sub ? sub : null,
-      items: items.filter((p) => p.sub === sub),
-    }));
+    sections = subs.map((sub) => ({ label: subs.length > 1 && sub ? sub : null, items: items.filter((p) => p.sub === sub) }));
   }
+  const empty = sections.every((sec) => !(sec.items?.length || sec.combos?.length));
 
   React.useEffect(() => {
     if (s.highlightId && hlRef.current && gridRef.current) {
-      const g = gridRef.current,
-        el = hlRef.current;
+      const g = gridRef.current, el = hlRef.current;
       g.scrollTop = Math.max(0, el.offsetTop - g.offsetTop - 16);
     }
   }, [s.highlightId, cat, filter]);
 
+  const topSuggestion = !s.aiOpen ? s.suggestions[0] : undefined;
+
   return (
-    <div style={{ width: 556, height: "100%", display: "flex", flexDirection: "column", borderRight: `1.5px solid ${C.ink}`, background: C.paperLt }}>
-      <div style={{ padding: "14px 18px 12px", borderBottom: `1.5px solid ${C.ink}`, display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <div style={{ fontFamily: F.slab, fontSize: 25, color: C.ink, lineHeight: 1 }}>
-          comanda<span style={{ color: C.red }}>.</span>
-          <span style={{ fontFamily: F.mono, fontSize: 12, color: C.muted, marginLeft: 8, letterSpacing: ".12em" }}>CAJA 01</span>
-        </div>
-        <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>{catalog.orgName}</div>
-      </div>
-      <div style={{ display: "flex", gap: 6, padding: "11px 14px", flexWrap: "wrap" }}>
+    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: C.paper }}>
+      {/* tabs */}
+      <div className="pos-scroll" style={{ display: "flex", gap: 8, padding: "12px 16px 10px", overflowX: "auto", flexShrink: 0, borderBottom: `1px solid ${C.rule}` }}>
         {catalog.cats.map((c) => {
-          const on = !filter && cat === c.id;
+          const on = !filter && !q && cat === c.id;
           const iaOn = on && s.catSource === "ia";
           return (
             <button key={c.id} onClick={() => setCat(c.id)} style={{
-              fontFamily: F.mono, fontSize: 11, letterSpacing: ".04em", textTransform: "uppercase", padding: "7px 11px", borderRadius: 2, cursor: "pointer",
-              border: `1px solid ${on ? (iaOn ? C.red : C.ink) : C.rule}`, background: on ? (iaOn ? C.red : C.ink) : "transparent", color: on ? C.paperLt : C.ink2,
+              flexShrink: 0, height: 44, padding: "0 18px", borderRadius: 22, cursor: "pointer", fontFamily: F.mono, fontSize: 13, fontWeight: 600, letterSpacing: ".02em",
+              border: `1.5px solid ${on ? (iaOn ? C.red : C.ink) : C.rule}`, background: on ? (iaOn ? C.red : C.ink) : C.paperLt, color: on ? C.paperLt : C.ink,
             }}>{c.label}</button>
           );
         })}
       </div>
-      {filter && (
-        <div className="pos-card" style={{ margin: "0 14px 4px", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.red}`, background: C.paper, borderRadius: 3 }}>
-          <span style={{ width: 18, height: 18, borderRadius: 18, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
-          <span style={{ flex: 1, fontFamily: F.mono, fontSize: 11, color: C.ink2, lineHeight: 1.4 }}>
-            Filtrado por lo que pidió el cliente: <strong>{filter.label}</strong> · {filter.ids.length} opcion{filter.ids.length === 1 ? "" : "es"}
-          </span>
-          <button onClick={clearFilter} style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: C.red, border: `1px solid ${C.red}`, background: "transparent", padding: "4px 8px", borderRadius: 2, cursor: "pointer", flexShrink: 0 }}>
-            Ver todo ✕
-          </button>
-        </div>
+
+      {/* assistant strip (drawer closed) */}
+      {topSuggestion && <SuggestionStrip g={topSuggestion} more={s.suggestions.length - 1} />}
+
+      {/* AI context banners */}
+      {filter && !q && (
+        <Banner onClose={() => posStore.set({ catalogFilter: null })} closeLabel="Ver todo">
+          Filtrado por lo que pidió el cliente: <strong>{filter.label}</strong> · {filter.ids.length} opcion{filter.ids.length === 1 ? "" : "es"}
+        </Banner>
       )}
-      {!filter && s.catSource === "ia" && (
-        <div className="pos-card" style={{ margin: "0 14px 4px", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.red}`, background: C.paper, borderRadius: 3 }}>
-          <span style={{ width: 18, height: 18, borderRadius: 18, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
-          <span style={{ fontFamily: F.mono, fontSize: 11, color: C.ink2, lineHeight: 1.4 }}>
-            El asistente abrió <strong>{catalog.catLabel[cat] ?? cat}</strong> porque lo pidió el cliente{s.highlightId ? " y dejó una opción lista 👇" : "."}
-          </span>
-        </div>
+      {!filter && !q && s.catSource === "ia" && (
+        <Banner>
+          El asistente abrió <strong>{catalog.catLabel[cat] ?? cat}</strong> porque lo pidió el cliente{s.highlightId ? " y dejó una opción lista 👇" : "."}
+        </Banner>
       )}
-      <div ref={gridRef} className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 14px 16px" }}>
-        {catalog.menu.length === 0 && cat !== COMBO_CAT && (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: C.muted, fontFamily: F.mono, fontSize: 12, lineHeight: 1.7 }}>
-            No hay productos en el catálogo todavía.<br />Créalos en Catálogo para venderlos aquí.
-          </div>
-        )}
+
+      {/* grid */}
+      <div ref={gridRef} className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 16px 24px" }}>
+        {catalog.menu.length === 0 && catalog.combos.length === 0 ? (
+          <Empty>No hay productos en el catálogo todavía.<br />Créalos en Catálogo para venderlos aquí.</Empty>
+        ) : empty ? (
+          <Empty>{q ? <>Nada coincide con «{s.search.trim()}».</> : cat === FAV_CAT ? <>Aún no hay favoritos.<br />Márcalos con ★ en Catálogo.</> : <>Sin productos en esta categoría.</>}</Empty>
+        ) : null}
         {sections.map((sec, si) => (
-          <div key={si} style={{ marginTop: si === 0 ? 4 : 14 }}>
+          <div key={si} style={{ marginTop: si === 0 ? 0 : 18 }}>
             {sec.label && <SubLabel>{sec.label}</SubLabel>}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11, alignContent: "start" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, alignContent: "start" }}>
               {sec.combos
-                ? sec.combos.map((c) => <PosComboCard key={c.id} c={c} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
-                : sec.items!.map((p) => <PosProductCard key={p.id} p={p} hl={s.highlightId === p.id} hlRef={s.highlightId === p.id ? hlRef : undefined} />)}
+                ? sec.combos.map((c) => <ComboTile key={c.id} c={c} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
+                : sec.items!.map((p) => <ProductTile key={p.id} p={p} accent={accentFor(catalog, p.catId)} hl={s.highlightId === p.id} hlRef={s.highlightId === p.id ? hlRef : undefined} />)}
             </div>
           </div>
         ))}
@@ -830,240 +397,562 @@ function CatalogColumn() {
   );
 }
 
-function PosProductCard({ p, hl, hlRef }: { p: PosMenuItem; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div style={{ padding: "48px 20px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>{children}</div>;
+}
+
+function SubLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted }}>
+      <span>{children}</span>
+      <span style={{ flex: 1, borderTop: `1px dashed ${C.rule}` }} />
+    </div>
+  );
+}
+
+function Banner({ children, onClose, closeLabel }: { children: React.ReactNode; onClose?: () => void; closeLabel?: string }) {
+  return (
+    <div className="pos-card" style={{ margin: "10px 16px 0", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.red}`, background: C.paperLt, borderRadius: 3 }}>
+      <span style={{ width: 18, height: 18, borderRadius: 18, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
+      <span style={{ flex: 1, fontSize: 11.5, color: C.ink2, lineHeight: 1.4 }}>{children}</span>
+      {onClose && (
+        <button onClick={onClose} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: C.red, border: `1px solid ${C.red}`, background: "transparent", padding: "5px 9px", borderRadius: 2, cursor: "pointer", flexShrink: 0 }}>
+          {closeLabel} ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ProductTile({ p, accent, hl, hlRef }: { p: PosMenuItem; accent: string; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
   const out = p.stock === "sin";
   return (
-    <button ref={hlRef} disabled={out} onClick={() => addItem(p.id)} className={hl ? "pos-hl" : ""} style={{
-      textAlign: "left", padding: "11px 12px 10px", borderRadius: 3, cursor: out ? "not-allowed" : "pointer",
-      border: `1.5px solid ${hl ? C.red : C.rule}`, background: hl ? C.paper : out ? C.paperDk : C.paperLt,
-      opacity: out ? 0.55 : 1, position: "relative", display: "flex", flexDirection: "column", minHeight: 96,
+    <button ref={hlRef} disabled={out} onClick={() => tapItem(p.id)} className={"pos-tile" + (hl ? " pos-hl" : "")} title={p.desc || p.name} style={{
+      textAlign: "left", padding: "12px 12px 10px", borderRadius: 6, cursor: out ? "not-allowed" : "pointer", minHeight: 112, position: "relative", overflow: "hidden",
+      border: `1.5px solid ${hl ? C.red : C.rule}`, background: hl ? C.paperLt : out ? C.paperDk : C.paperLt, opacity: out ? 0.55 : 1, display: "flex", flexDirection: "column",
     }}>
-      {hl && <div style={{ display: "inline-flex", alignSelf: "flex-start", alignItems: "center", gap: 5, marginBottom: 7, fontFamily: F.mono, fontSize: 8, fontWeight: 700, letterSpacing: ".12em", color: C.paperLt, background: C.red, padding: "2px 6px", borderRadius: 2 }}>★ SUGERIDO</div>}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontFamily: F.mono, fontSize: 14, fontWeight: 600, color: C.ink, lineHeight: 1.2 }}>{p.name}</div>
-        {!p.gluten && <span style={{ fontFamily: F.mono, fontSize: 8, letterSpacing: ".06em", color: C.green, border: `1px solid ${C.green}`, padding: "1px 4px", flexShrink: 0, whiteSpace: "nowrap" }}>SIN GLUTEN</span>}
+      <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: hl ? C.red : accent, opacity: 0.85 }} />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, paddingLeft: 4 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25, color: C.ink, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</span>
+        {p.mods.length > 0 && !out && <span title="Con opciones" style={{ fontSize: 10, color: C.muted, flexShrink: 0, marginTop: 2 }}>▾</span>}
       </div>
-      {p.desc && <div style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 4 }}>{p.desc}</div>}
-      <div style={{ marginTop: "auto", paddingTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 15, fontWeight: 700, color: C.ink }}>{posMoney(p.price)}</span>
-        {out ? (
-          <Stamp size={9} rotate={-6}>Agotado</Stamp>
-        ) : hl ? (
-          <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", color: C.paperLt, background: C.red, padding: "5px 10px", borderRadius: 2 }}>AGREGAR +</span>
-        ) : (
-          <span style={{ width: 26, height: 26, borderRadius: 2, border: `1px solid ${C.ink}`, color: C.ink, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, lineHeight: 1 }}>+</span>
-        )}
+      <div style={{ marginTop: "auto", paddingTop: 10, paddingLeft: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <span className="cmd-num" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{posMoney(p.price)}</span>
+        {out ? <Stamp size={9} rotate={-6}>Agotado</Stamp>
+          : hl ? <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: C.paperLt, background: C.red, padding: "3px 7px", borderRadius: 2 }}>★ SUGERIDO</span>
+          : p.stock === "bajo" ? <span style={{ fontSize: 9, letterSpacing: ".08em", color: C.amber }}>● bajo</span>
+          : null}
       </div>
-      {p.stock === "bajo" && !out && <span style={{ position: "absolute", top: 10, right: 10, fontFamily: F.mono, fontSize: 8, letterSpacing: ".08em", color: C.amber }}>● bajo</span>}
     </button>
   );
 }
 
-function PosComboCard({ c, hl, hlRef }: { c: PosCombo; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
+function ComboTile({ c, hl, hlRef }: { c: PosCombo; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
   return (
-    <button ref={hlRef} onClick={() => addCombo(c.id)} className={hl ? "pos-hl" : ""} style={{
-      textAlign: "left", padding: "11px 13px", borderRadius: 3, cursor: "pointer", gridColumn: "span 2",
-      border: `1.5px solid ${hl ? C.red : C.green}`, background: hl ? C.paper : C.paperLt, display: "flex", alignItems: "center", gap: 13, position: "relative",
+    <button ref={hlRef} onClick={() => addCombo(c.id)} className={"pos-tile" + (hl ? " pos-hl" : "")} style={{
+      textAlign: "left", padding: "12px 14px 10px", borderRadius: 6, cursor: "pointer", gridColumn: "span 2", minHeight: 112, position: "relative", overflow: "hidden",
+      border: `1.5px solid ${hl ? C.red : C.green}`, background: C.paperLt, display: "flex", flexDirection: "column",
     }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          {hl && <span style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, letterSpacing: ".1em", color: C.paperLt, background: C.red, padding: "2px 6px", borderRadius: 2 }}>★ SUGERIDO</span>}
-          <div style={{ fontFamily: F.mono, fontSize: 15, fontWeight: 700, color: C.ink }}>{c.name}</div>
+      <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: hl ? C.red : C.green }} />
+      <div style={{ paddingLeft: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", color: C.green, border: `1px solid ${C.green}`, padding: "1px 5px", borderRadius: 2 }}>COMBO</span>
+          <span style={{ fontSize: 14.5, fontWeight: 700, color: C.ink }}>{c.name}</span>
         </div>
-        <div style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted, marginTop: 3 }}>{c.desc}</div>
-        {c.saving > 0 && <div style={{ fontFamily: F.mono, fontSize: 10, color: C.green, marginTop: 5, letterSpacing: ".04em" }}>AHORRA {posMoney(c.saving)}</div>}
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 4, lineHeight: 1.35 }}>{c.desc}</div>
       </div>
-      <div style={{ textAlign: "right" }}>
-        <div className="cmd-num" style={{ fontFamily: F.mono, fontSize: 17, fontWeight: 700, color: C.ink }}>{posMoney(c.price)}</div>
-        <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", color: hl ? C.red : C.green, marginTop: 6 }}>{hl ? "AGREGAR +" : "+ combo"}</div>
+      <div style={{ marginTop: "auto", paddingTop: 10, paddingLeft: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{posMoney(c.price)}</span>
+        {c.saving > 0 && <span style={{ fontSize: 10, color: C.green, letterSpacing: ".04em" }}>AHORRA {posMoney(c.saving)}</span>}
       </div>
     </button>
   );
 }
 
-// ── column 2 : order ticket ─────────────────────────────────────
+/** Slim strip showing the assistant's top suggestion while the drawer is closed. */
+function SuggestionStrip({ g, more }: { g: SuggestionCardState; more: number }) {
+  const col = KIND_COLOR[g.kind] || KIND_COLOR.pedido;
+  const accent = col.line === C.paperLt ? C.ink : col.line;
+  return (
+    <div className="pos-card" style={{ margin: "10px 16px 0", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 12px", border: `1px solid ${C.rule}`, borderLeft: `4px solid ${accent}`, background: C.paperLt, borderRadius: 3 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 2, flexShrink: 0 }}>{POS_KIND_LABEL[g.kind] || "Idea"}</span>
+      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: C.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title}</span>
+      {g.actionLabel && g.act && (
+        <button onClick={() => { applyAct(g.act); dismissSuggestion(g.uid, true); }} style={{ height: 32, padding: "0 12px", borderRadius: 3, border: "none", background: C.ink, color: C.paperLt, fontFamily: F.mono, fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.actionLabel}</button>
+      )}
+      <button onClick={() => posStore.set({ aiOpen: true })} style={{ height: 32, padding: "0 10px", borderRadius: 3, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontFamily: F.mono, fontSize: 10.5, cursor: "pointer", flexShrink: 0 }}>
+        {more > 0 ? `+${more} más` : "Ver"}
+      </button>
+      <button onClick={() => dismissSuggestion(g.uid, false)} aria-label="Descartar" style={{ width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer", flexShrink: 0 }}>×</button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Ticket
+// ════════════════════════════════════════════════════════════════
 const ORDER_TYPES = [
-  { id: "aqui", label: "Comer aquí" },
-  { id: "llevar", label: "Para llevar" },
+  { id: "aqui", label: "Aquí" },
+  { id: "llevar", label: "Llevar" },
   { id: "domicilio", label: "Domicilio" },
 ] as const;
 
-const qtyBtn: React.CSSProperties = { width: 24, height: 24, border: `1px solid ${C.ink}`, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 14, lineHeight: 1, cursor: "pointer", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center" };
+const qtyBtn: React.CSSProperties = { width: 34, height: 34, border: `1.5px solid ${C.ink}`, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 18, lineHeight: 1, cursor: "pointer", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 
-function OrderColumn() {
+function Ticket() {
   const s = usePos();
   const catalog = useCatalog();
   const total = orderTotal(s.order, catalog);
-  const comboSaved = s.order
-    .filter((l) => l.kind === "combo")
-    .reduce((acc, l) => acc + (catalog.comboById[l.id]?.saving ?? 0) * l.qty, 0);
+  const count = s.order.reduce((n, l) => n + l.qty, 0);
+  const comboSaved = s.order.filter((l) => l.kind === "combo").reduce((acc, l) => acc + (catalog.comboById[l.id]?.saving ?? 0) * l.qty, 0);
+  const [noteOpen, setNoteOpen] = React.useState(false);
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const prevCount = React.useRef(s.order.length);
+  React.useEffect(() => {
+    if (s.order.length > prevCount.current && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+    prevCount.current = s.order.length;
+  }, [s.order.length]);
 
   return (
-    <div style={{ width: 372, height: "100%", display: "flex", flexDirection: "column", borderRight: `1.5px solid ${C.ink}`, background: C.paper }}>
-      <div style={{ padding: "13px 16px 11px", borderBottom: `1.5px solid ${C.ink}` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
-          <span style={{ fontFamily: F.mono, fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: C.ink }}>COMANDA</span>
-          <Folio n={s.orderNo} label="PEDIDO" />
+    <div className="pos-ticket" style={{ width: TICKET_W, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1.5px solid ${C.ink}`, background: C.paperLt }}>
+      {/* header */}
+      <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.rule}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em" }}>PEDIDO {count > 0 && <span className="cmd-num" style={{ color: C.muted, fontWeight: 400 }}>· {count} ítem{count === 1 ? "" : "s"}</span>}</span>
+          {s.order.length > 0 && (
+            <button onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", padding: "4px 0" }}>Vaciar</button>
+          )}
         </div>
-        <div style={{ display: "flex", gap: 5 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           {ORDER_TYPES.map((t) => {
             const on = s.orderType === t.id;
             return (
               <button key={t.id} onClick={() => posStore.set({ orderType: t.id })} style={{
-                flex: 1, fontFamily: F.mono, fontSize: 10, letterSpacing: ".04em", textTransform: "uppercase", padding: "7px 4px", cursor: "pointer",
-                border: `1px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, borderRadius: 2,
+                flex: 1, height: 38, fontFamily: F.mono, fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: 4,
+                border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2,
               }}>{t.label}</button>
             );
           })}
         </div>
+        <input
+          value={s.customerName}
+          onChange={(e) => posStore.set({ customerName: e.target.value })}
+          placeholder="Nombre del cliente (opcional)"
+          aria-label="Nombre del cliente"
+          maxLength={80}
+          style={{ marginTop: 8, width: "100%", height: 36, padding: "0 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 13, borderRadius: 4, outline: "none" }}
+        />
       </div>
 
-      <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
+      {/* lines */}
+      <div ref={listRef} className="pos-scroll" style={{ flex: 1, overflowY: "auto" }}>
         {s.order.length === 0 && (
-          <div style={{ padding: "40px 24px", textAlign: "center", color: C.muted, fontFamily: F.mono, fontSize: 12, lineHeight: 1.7 }}>
+          <div style={{ padding: "56px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
             Toca un producto<br />para empezar el pedido.
           </div>
         )}
-        {s.order.map((l, i) => {
-          const linePrice = modLinePrice(l, catalog);
-          const mods = modSummary(l, catalog);
-          const prod = catalog.byId[l.id];
-          return (
-            <div key={i} style={{ borderBottom: `1px dashed ${C.ruleSoft}` }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 16px 8px" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {l.kind === "combo" && <span style={{ fontFamily: F.mono, fontSize: 8, color: C.green, border: `1px solid ${C.green}`, padding: "1px 3px", letterSpacing: ".06em" }}>COMBO</span>}
-                    <span style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 600, color: C.ink }}>{l.name}</span>
-                  </div>
-                  {l.kind === "combo" && <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>{catalog.comboById[l.id]?.desc}</div>}
-                  {mods.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 5 }}>
-                      {mods.map((m, k) => (
-                        <span key={k} style={{ fontFamily: F.mono, fontSize: 9, color: m.delta > 0 ? C.green : C.ink2, border: `1px solid ${m.delta > 0 ? C.green : C.rule}`, background: C.paper, padding: "1px 5px", borderRadius: 2 }}>
-                          {m.name}{m.delta > 0 ? ` +${m.delta / 1000}k` : ""}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                    <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{posMoney(linePrice)} c/u</span>
-                    {l.hasMods && (
-                      <button onClick={() => toggleLineExpanded(i)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: F.mono, fontSize: 9.5, letterSpacing: ".04em", color: C.red, textTransform: "uppercase", padding: 0 }}>
-                        {l.expanded ? "▴ cerrar" : "▾ personalizar"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  <button onClick={() => changeQty(i, -1)} style={qtyBtn}>&minus;</button>
-                  <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{l.qty}</span>
-                  <button onClick={() => changeQty(i, +1)} style={qtyBtn}>+</button>
-                </div>
-                <div className="cmd-num" style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 700, color: C.ink, minWidth: 64, textAlign: "right" }}>{posMoney(linePrice * l.qty)}</div>
-              </div>
-              {l.hasMods && l.expanded && prod && (
-                <div style={{ padding: "4px 16px 12px", background: `${C.paperDk}55` }}>
-                  {prod.mods.map((gid) => <LineModGroup key={gid} idx={i} gid={gid} line={l} />)}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} />)}
       </div>
 
-      <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 16px 14px", background: C.paperLt }}>
+      {/* footer */}
+      <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "10px 14px 14px", background: C.paperLt }}>
         {s.noteSinGluten && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 9, fontFamily: F.mono, fontSize: 10, color: C.green, border: `1px solid ${C.green}`, padding: "5px 8px", letterSpacing: ".04em" }}>
-            <span>✓</span> PEDIDO MARCADO «SIN GLUTEN»
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, fontSize: 10.5, color: C.green, border: `1px solid ${C.green}`, padding: "5px 8px", letterSpacing: ".04em", borderRadius: 3 }}>
+            <span>✓ PEDIDO «SIN GLUTEN»</span>
+            <button onClick={() => posStore.set({ noteSinGluten: false })} style={{ background: "none", border: "none", color: C.green, cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
           </div>
         )}
-        {comboSaved > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: F.mono, fontSize: 11, color: C.green, marginBottom: 5 }}>
-            <span>Ahorro en combos</span><span className="cmd-num">&minus;{posMoney(comboSaved)}</span>
-          </div>
-        )}
-        {s.sendError && (
-          <div style={{ marginBottom: 9, fontFamily: F.mono, fontSize: 10.5, color: C.red, border: `1px solid ${C.red}`, padding: "6px 8px", lineHeight: 1.4 }}>{s.sendError}</div>
-        )}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 11 }}>
-          <span style={{ fontFamily: F.mono, fontSize: 12, letterSpacing: ".1em", color: C.ink2 }}>TOTAL</span>
-          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 28, color: C.ink }}>{posMoney(total)}</span>
-        </div>
-        {s.sent ? (
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1.5px solid ${C.green}`, color: C.green, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", padding: "11px" }}>
-              <Stamp color={C.green} rotate={-4} size={10}>Enviado</Stamp> A COCINA
-            </div>
-            <button className="cmd-btn ghost" onClick={resetConversation}>Nuevo</button>
-          </div>
-        ) : (
-          <button className="cmd-btn red" disabled={!s.order.length || s.sending} onClick={sendOrder} style={{ width: "100%", fontSize: 13, padding: "13px", opacity: s.order.length && !s.sending ? 1 : 0.45, cursor: s.order.length && !s.sending ? "pointer" : "not-allowed" }}>
-            {s.sending ? "Enviando…" : `Cobrar y enviar a cocina · ${posMoney(total)}`}
+        {noteOpen || s.note ? (
+          <textarea
+            value={s.note}
+            onChange={(e) => posStore.set({ note: e.target.value })}
+            placeholder="Nota para cocina / barra…"
+            aria-label="Nota del pedido"
+            rows={2}
+            maxLength={500}
+            style={{ width: "100%", marginBottom: 8, padding: "8px 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 12.5, borderRadius: 4, outline: "none", resize: "none" }}
+          />
+        ) : null}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.muted, marginBottom: 4 }}>
+          <button onClick={() => setNoteOpen((v) => !v)} style={{ background: "none", border: "none", color: C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer", padding: 0 }}>
+            {noteOpen || s.note ? "− Nota" : "+ Nota"}
           </button>
-        )}
+          {comboSaved > 0 && <span style={{ color: C.green }}>Ahorro en combos <span className="cmd-num">−{posMoney(comboSaved)}</span></span>}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "6px 0 10px" }}>
+          <span style={{ fontSize: 12, letterSpacing: ".12em", color: C.ink2 }}>TOTAL</span>
+          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 32, color: C.ink, lineHeight: 1 }}>{posMoney(total)}</span>
+        </div>
+        <button
+          className="cmd-btn red"
+          disabled={!s.order.length}
+          onClick={startTender}
+          style={{ width: "100%", height: 60, fontSize: 15, fontWeight: 600, letterSpacing: ".06em", opacity: s.order.length ? 1 : 0.4, cursor: s.order.length ? "pointer" : "not-allowed" }}
+        >
+          Cobrar {s.order.length ? posMoney(total) : ""}
+        </button>
       </div>
     </div>
   );
 }
 
-function LineModGroup({ idx, gid, line }: { idx: number; gid: string; line: OrderLine }) {
+function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
   const catalog = useCatalog();
-  const g: PosModGroup | undefined = catalog.modGroups[gid];
-  if (!g) return null;
-  const sel = line.mods?.[gid];
-  const isSel = (name: string) => (g.type === "single" ? sel === name : Array.isArray(sel) && sel.includes(name));
-  const pick = (name: string) => (g.type === "single" ? setLineSingle(idx, gid, name) : toggleLineMulti(idx, gid, name));
+  const unit = modLinePrice(line, catalog);
+  const mods = modSummary(line, catalog);
+  const editable = line.kind === "item" && !!line.hasMods;
+  const open = () => { if (editable) posStore.set({ sheet: { mode: "edit", idx } }); };
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-        <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 600, letterSpacing: ".12em", textTransform: "uppercase", color: C.ink2 }}>{g.name}</span>
-        {g.required && <Stamp size={7} rotate={-2} color={C.red} style={{ padding: "1px 4px" }}>req</Stamp>}
-        <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, letterSpacing: ".04em" }}>{g.type === "single" ? "una opción" : "varias"}</span>
+    <div className={editable ? "pos-line" : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px 10px 14px", borderBottom: `1px solid ${C.ruleSoft}` }}>
+      <div role={editable ? "button" : undefined} tabIndex={editable ? 0 : undefined} onClick={open} onKeyDown={(e) => { if (editable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }} style={{ flex: 1, minWidth: 0, cursor: editable ? "pointer" : "default" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {line.kind === "combo" && <span style={{ fontSize: 8, color: C.green, border: `1px solid ${C.green}`, padding: "1px 3px", letterSpacing: ".06em", borderRadius: 2 }}>COMBO</span>}
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{line.name}</span>
+        </div>
+        {line.kind === "combo" && <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{catalog.comboById[line.id]?.desc}</div>}
+        {mods.length > 0 && (
+          <div style={{ fontSize: 11, color: C.ink2, marginTop: 3, lineHeight: 1.4 }}>
+            {mods.map((m) => m.name + (m.delta > 0 ? ` (+${posMoney(m.delta)})` : "")).join(" · ")}
+          </div>
+        )}
+        <div style={{ fontSize: 10.5, color: C.muted, marginTop: 3 }}>
+          <span className="cmd-num">{posMoney(unit)}</span> c/u{editable && <span style={{ color: C.red, marginLeft: 8 }}>editar ▸</span>}
+        </div>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-        {g.options.map((o) => {
-          const on = isSel(o.name);
-          return (
-            <button key={o.name} onClick={() => pick(o.name)} style={{
-              fontFamily: F.mono, fontSize: 10, padding: "5px 8px", borderRadius: 2, cursor: "pointer",
-              border: `1px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : C.paperLt, color: on ? C.paperLt : C.ink2,
-              display: "inline-flex", alignItems: "center", gap: 5,
-            }}>
-              <span>{o.name}</span>
-              {o.delta > 0 && <span className="cmd-num" style={{ color: on ? C.paperLt : C.green, opacity: on ? 0.85 : 1 }}>+{posMoney(o.delta)}</span>}
-            </button>
-          );
-        })}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button onClick={() => changeQty(idx, -1)} aria-label={line.qty === 1 ? "Quitar" : "Quitar uno"} style={qtyBtn}>{line.qty === 1 ? "×" : "−"}</button>
+        <span className="cmd-num" style={{ fontSize: 15, fontWeight: 700, minWidth: 22, textAlign: "center" }}>{line.qty}</span>
+        <button onClick={() => changeQty(idx, +1)} aria-label="Agregar uno" style={qtyBtn}>+</button>
       </div>
+      <div className="cmd-num" style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 70, textAlign: "right" }}>{posMoney(unit * line.qty)}</div>
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════════════
-// AI panel
+// Item sheet — modifiers + qty (add or edit)
 // ════════════════════════════════════════════════════════════════
-function AiPanel() {
+function ItemSheet() {
+  const s = usePos();
+  const catalog = useCatalog();
+  const sheet = s.sheet!;
+  const line = sheet.mode === "edit" ? s.order[sheet.idx] : undefined;
+  const productId = sheet.mode === "add" ? sheet.productId : line?.id;
+  const p = productId ? catalog.byId[productId] : undefined;
+
+  const [mods, setMods] = React.useState<ModSelection>(() => (line?.mods ? { ...line.mods } : p ? posDefaultMods(p, catalog) : {}));
+  const [qty, setQty] = React.useState(line?.qty ?? 1);
+  const close = () => posStore.set({ sheet: null });
+
+  React.useEffect(() => {
+    if (!p) close();
+  }, [p]);
+  if (!p) return null;
+
+  const groups = p.mods.map((gid) => catalog.modGroups[gid]).filter((g): g is PosModGroup => !!g);
+  const missing = groups.filter((g) => g.required && g.type === "single" && !mods[g.id]);
+  const unit = modLinePrice({ id: p.id, name: p.name, qty: 1, kind: "item", basePrice: p.price, mods }, catalog);
+  const commit = () => {
+    if (missing.length) return;
+    if (sheet.mode === "add") addLineWithMods(p.id, mods, qty);
+    else replaceLine(sheet.idx, mods, qty);
+  };
+
+  return (
+    <Overlay onClose={close} align="center">
+      <div role="dialog" aria-modal aria-label={p.name} style={{ width: "min(600px, 94vw)", maxHeight: "88dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1.1, color: C.ink }}>{p.name}</div>
+            {p.desc && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4, lineHeight: 1.4 }}>{p.desc}</div>}
+          </div>
+          <button onClick={close} aria-label="Cerrar" style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+        </div>
+
+        <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px 12px" }}>
+          {groups.length === 0 && <div style={{ padding: "16px 0", color: C.muted, fontSize: 12 }}>Este producto no tiene opciones.</div>}
+          {groups.map((g) => {
+            const sel = mods[g.id];
+            const isSel = (name: string) => (g.type === "single" ? sel === name : Array.isArray(sel) && sel.includes(name));
+            const pick = (name: string) => setMods((m) => {
+              if (g.type === "single") return { ...m, [g.id]: m[g.id] === name && !g.required ? null : name };
+              const cur = Array.isArray(m[g.id]) ? (m[g.id] as string[]) : [];
+              return { ...m, [g.id]: cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name] };
+            });
+            return (
+              <div key={g.id} style={{ marginTop: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: C.ink }}>{g.name}</span>
+                  <span style={{ fontSize: 9.5, color: g.required && !sel ? C.red : C.muted, letterSpacing: ".04em" }}>
+                    {g.required ? "obligatorio" : "opcional"} · {g.type === "single" ? "elige una" : "elige varias"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+                  {g.options.map((o) => {
+                    const on = isSel(o.name);
+                    return (
+                      <button key={o.name} onClick={() => pick(o.name)} aria-pressed={on} style={{
+                        minHeight: 46, padding: "8px 12px", borderRadius: 5, cursor: "pointer", textAlign: "left",
+                        border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : C.paper, color: on ? C.paperLt : C.ink,
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontFamily: F.mono, fontSize: 13,
+                      }}>
+                        <span>{o.name}</span>
+                        {o.delta > 0 && <span className="cmd-num" style={{ fontSize: 11, color: on ? C.paperLt : C.green, opacity: on ? 0.85 : 1 }}>+{posMoney(o.delta)}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setQty((q) => Math.max(sheet.mode === "edit" ? 0 : 1, q - 1))} aria-label="Menos" style={{ ...qtyBtn, width: 44, height: 44 }}>−</button>
+            <span className="cmd-num" style={{ fontSize: 20, fontWeight: 700, minWidth: 34, textAlign: "center" }}>{qty}</span>
+            <button onClick={() => setQty((q) => Math.min(99, q + 1))} aria-label="Más" style={{ ...qtyBtn, width: 44, height: 44 }}>+</button>
+          </div>
+          {sheet.mode === "edit" && (
+            <button onClick={() => removeLine(sheet.idx)} style={{ height: 44, padding: "0 14px", borderRadius: 4, border: `1.5px solid ${C.red}`, background: "transparent", color: C.red, fontFamily: F.mono, fontSize: 12, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}>Quitar</button>
+          )}
+          <button
+            className="cmd-btn"
+            onClick={commit}
+            disabled={missing.length > 0}
+            style={{ flex: 1, height: 52, fontSize: 14, marginLeft: "auto", minWidth: 220, opacity: missing.length ? 0.45 : 1 }}
+          >
+            {missing.length ? `Elige ${missing[0].name.toLowerCase()}` : sheet.mode === "add" ? `Agregar · ${posMoney(unit * qty)}` : qty === 0 ? "Quitar del pedido" : `Guardar · ${posMoney(unit * qty)}`}
+          </button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function Overlay({ children, onClose, align }: { children: React.ReactNode; onClose?: () => void; align: "center" | "fill" }) {
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} style={{ position: "absolute", inset: 0, zIndex: 40, background: align === "fill" ? C.paper : "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: align === "fill" ? 0 : 16 }}>
+      {children}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Tender — choose payment, cash keypad, confirm
+// ════════════════════════════════════════════════════════════════
+/** Handy cash amounts above the total: exact + round bills (COP). */
+function quickAmounts(total: number): number[] {
+  const steps = [5000, 10000, 20000, 50000, 100000]; // Colombian bills
+  const out = new Set<number>([total]);
+  for (const st of steps) {
+    const up = Math.ceil(total / st) * st;
+    if (up > total) out.add(up);
+  }
+  return [...out].sort((a, b) => a - b).slice(0, 6);
+}
+
+function TenderScreen() {
+  const s = usePos();
+  const catalog = useCatalog();
+  const total = orderTotal(s.order, catalog);
+  const isCash = s.payMethod === "efectivo";
+  const tendered = s.tendered;
+  const change = tendered !== null ? tendered - total : 0;
+  const short = isCash && tendered !== null && tendered < total;
+  const canConfirm = !s.sending && s.order.length > 0 && (!isCash || (tendered !== null && tendered >= total));
+
+  const setMethod = (m: PayMethod) => posStore.set({ payMethod: m, sendError: null });
+  const setTendered = (n: number | null) => posStore.set({ tendered: n, sendError: null });
+  const key = (k: string) => {
+    const cur = tendered ?? 0;
+    if (k === "⌫") return setTendered(cur >= 10 ? Math.floor(cur / 10) : null);
+    if (k === "C") return setTendered(null);
+    const next = Number(String(cur) + k);
+    if (next <= 99_999_999) setTendered(next);
+  };
+
+  // Enter confirms, digits type into the keypad.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && canConfirm) void completeSale();
+      else if (isCash && /^[0-9]$/.test(e.key)) key(e.key);
+      else if (isCash && e.key === "Backspace") key("⌫");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  return (
+    <Overlay align="fill">
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+        <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
+          <button onClick={cancelTender} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>← Volver</button>
+          <span style={{ fontFamily: F.slab, fontSize: 22 }}>Cobrar<span style={{ color: C.red }}>.</span></span>
+          <span style={{ marginLeft: "auto", fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+            {ORDER_TYPES.find((t) => t.id === s.orderType)?.label}{s.customerName ? ` · ${s.customerName}` : ""}
+          </span>
+        </div>
+
+        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+          {/* summary */}
+          <div style={{ width: 360, flexShrink: 0, borderRight: `1.5px solid ${C.ink}`, background: C.paperLt, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.rule}` }}>
+              <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase" }}>Total a cobrar</div>
+              <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(total)}</div>
+            </div>
+            <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px" }}>
+              {s.order.map((l, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${C.ruleSoft}`, fontSize: 12.5 }}>
+                  <span style={{ color: C.ink2, minWidth: 0 }}><span className="cmd-num" style={{ color: C.muted }}>{l.qty}×</span> {l.name}</span>
+                  <span className="cmd-num" style={{ color: C.ink, flexShrink: 0 }}>{posMoney(modLinePrice(l, catalog) * l.qty)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* tender */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 28px", overflowY: "auto" }} className="pos-scroll">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+              {PAY_METHODS.map((m) => {
+                const on = s.payMethod === m.id;
+                return (
+                  <button key={m.id} onClick={() => setMethod(m.id)} aria-pressed={on} style={{
+                    height: 72, borderRadius: 6, cursor: "pointer", textAlign: "left", padding: "0 16px",
+                    border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : C.paperLt, color: on ? C.paperLt : C.ink,
+                    display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, fontFamily: F.mono,
+                  }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{m.label}</span>
+                    <span style={{ fontSize: 10.5, opacity: 0.7 }}>{m.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {isCash ? (
+              <div style={{ marginTop: 18, display: "flex", gap: 20, flex: 1, minHeight: 0 }}>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                  <div style={{ fontSize: 10.5, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>Recibido</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                    {quickAmounts(total).map((a, i) => {
+                      const on = tendered === a;
+                      return (
+                        <button key={a} onClick={() => setTendered(a)} style={{
+                          height: 44, padding: "0 14px", borderRadius: 22, cursor: "pointer", fontFamily: F.mono, fontSize: 13, fontWeight: 600,
+                          border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : C.paperLt, color: on ? C.paperLt : C.ink,
+                        }}>{i === 0 ? `Exacto · ${posMoney(a)}` : posMoney(a)}</button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ border: `1.5px solid ${short ? C.red : C.ink}`, borderRadius: 6, padding: "12px 16px", background: C.paperLt, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ fontSize: 11, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Efectivo</span>
+                    <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, color: tendered === null ? C.muted : C.ink }}>{tendered === null ? "—" : posMoney(tendered)}</span>
+                  </div>
+                  <div style={{ marginTop: 10, borderRadius: 6, padding: "12px 16px", background: tendered === null ? "transparent" : short ? C.red : C.green, color: tendered === null ? C.muted : C.paperLt, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, border: tendered === null ? `1px dashed ${C.rule}` : "none" }}>
+                    <span style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase" }}>{short ? "Faltan" : "Cambio"}</span>
+                    <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34 }}>{tendered === null ? "—" : posMoney(Math.abs(change))}</span>
+                  </div>
+                </div>
+                <Keypad onKey={key} />
+              </div>
+            ) : (
+              <div style={{ marginTop: 22, padding: "22px 20px", border: `1px dashed ${C.rule}`, borderRadius: 6, color: C.ink2, fontSize: 13, lineHeight: 1.6 }}>
+                {s.payMethod === "tarjeta"
+                  ? <>Pasa <b>{posMoney(total)}</b> por el datáfono y confirma cuando apruebe.</>
+                  : <>Verifica la transferencia por <b>{posMoney(total)}</b> (Nequi, Daviplata o QR) y confirma.</>}
+              </div>
+            )}
+
+            {s.sendError && <div role="alert" style={{ marginTop: 12, fontSize: 12, color: C.red, border: `1px solid ${C.red}`, padding: "8px 10px", borderRadius: 4 }}>{s.sendError}</div>}
+
+            <button
+              className="cmd-btn red"
+              onClick={() => void completeSale()}
+              disabled={!canConfirm}
+              style={{ marginTop: 16, height: 64, fontSize: 16, fontWeight: 600, letterSpacing: ".06em", opacity: canConfirm ? 1 : 0.4, cursor: canConfirm ? "pointer" : "not-allowed", flexShrink: 0 }}
+            >
+              {s.sending ? "Registrando…" : isCash && tendered !== null && !short ? `Confirmar · cambio ${posMoney(change)}` : `Confirmar cobro · ${posMoney(total)}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function Keypad({ onKey }: { onKey: (k: string) => void }) {
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"];
+  return (
+    <div style={{ width: 240, flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, alignContent: "start" }}>
+      {keys.map((k) => (
+        <button key={k} className="pos-key" onClick={() => onKey(k)} aria-label={k === "⌫" ? "Borrar" : k === "C" ? "Limpiar" : k} style={{
+          height: 60, borderRadius: 6, cursor: "pointer", fontFamily: F.mono, fontSize: k === "⌫" ? 20 : 22, fontWeight: 600,
+          border: `1.5px solid ${C.rule}`, background: C.paperLt, color: k === "C" ? C.red : C.ink,
+        }}>{k}</button>
+      ))}
+      <button className="pos-key" onClick={() => onKey("000")} style={{ gridColumn: "span 3", height: 48, borderRadius: 6, cursor: "pointer", fontFamily: F.mono, fontSize: 16, fontWeight: 600, border: `1.5px solid ${C.rule}`, background: C.paperLt, color: C.ink }}>000</button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Receipt
+// ════════════════════════════════════════════════════════════════
+function ReceiptScreen() {
+  const s = usePos();
+  const method = PAY_METHODS.find((m) => m.id === s.payMethod)?.label ?? s.payMethod;
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => { btnRef.current?.focus(); }, []);
+  return (
+    <Overlay align="fill">
+      <div className="pos-card" style={{ width: "min(560px, 92vw)", textAlign: "center", padding: "40px 32px 32px", border: `1.5px solid ${C.ink}`, borderRadius: 10, background: C.paperLt }}>
+        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>✓</div>
+        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>Venta registrada</div>
+        <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase", marginTop: 6 }}>
+          Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.orderNo}</span> · {method}{s.customerName ? ` · ${s.customerName}` : ""}
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 28, marginTop: 26 }}>
+          <div>
+            <div style={{ fontSize: 10.5, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Total</div>
+            <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, marginTop: 2 }}>{posMoney(s.lastTotal)}</div>
+          </div>
+          {s.payMethod === "efectivo" && (
+            <div>
+              <div style={{ fontSize: 10.5, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Cambio</div>
+              <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, marginTop: 2, color: C.green }}>{posMoney(s.lastChange)}</div>
+            </div>
+          )}
+        </div>
+        <button ref={btnRef} className="cmd-btn" onClick={resetConversation} style={{ marginTop: 30, width: "100%", height: 60, fontSize: 15 }}>
+          Nuevo pedido
+        </button>
+        <div style={{ fontSize: 10.5, color: C.muted, marginTop: 12 }}>Enter · nuevo pedido</div>
+      </div>
+    </Overlay>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// AI drawer (mic · suggestions · transcript)
+// ════════════════════════════════════════════════════════════════
+function AiDrawer() {
   const s = usePos();
   const open = s.suggestions;
   const idle = s.transcript.length === 0;
-
   return (
-    <div style={{ flex: 1, minWidth: 360, height: "100%", display: "flex", flexDirection: "column", background: C.ink }}>
+    <div className="pos-drawer" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: DRAWER_W, maxWidth: "100%", zIndex: 30, display: "flex", flexDirection: "column", background: C.ink, boxShadow: "-18px 0 40px -24px rgba(0,0,0,.6)" }}>
       <AiHeader />
       <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 14px 8px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: ".18em", color: "rgba(244,236,220,.5)", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
-          <span>Sugerencias para ti</span>
+        <div style={{ fontSize: 10, letterSpacing: ".18em", color: "rgba(244,236,220,.5)", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>Sugerencias</span>
           {s.thinking && <span style={{ color: C.amber, letterSpacing: ".08em" }}>· pensando…</span>}
           <span style={{ flex: 1, borderTop: "1px dashed rgba(244,236,220,.2)" }} />
         </div>
-        {s.micNote && (
-          <div style={{ fontFamily: F.mono, fontSize: 11, color: C.amber, border: `1px solid ${C.amber}`, borderRadius: 3, padding: "9px 11px", lineHeight: 1.5 }}>{s.micNote}</div>
-        )}
+        {s.micNote && <div style={{ fontSize: 11, color: C.amber, border: `1px solid ${C.amber}`, borderRadius: 3, padding: "9px 11px", lineHeight: 1.5 }}>{s.micNote}</div>}
         {open.length === 0 && (
-          <div style={{ color: "rgba(244,236,220,.55)", fontFamily: F.mono, fontSize: 12, lineHeight: 1.7, padding: "18px 4px" }}>
+          <div style={{ color: "rgba(244,236,220,.55)", fontSize: 12, lineHeight: 1.7, padding: "14px 4px" }}>
             {idle
-              ? "Activa el micrófono (o escribe abajo) y el asistente escuchará la conversación para darte ideas claras: agregar productos, combos, personalizar y atender alergias."
+              ? "Activa el micrófono (o escribe abajo) y el asistente escuchará la conversación para darte ideas: agregar productos, combos, personalizar y atender alergias."
               : "Todo en orden. Sigo escuchando y te aviso si surge una oportunidad."}
           </div>
         )}
@@ -1079,26 +968,27 @@ function AiHeader() {
   const s = usePos();
   const live = s.listening;
   return (
-    <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid rgba(244,236,220,.16)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <span style={{ width: 30, height: 30, borderRadius: 30, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: F.mono, fontSize: 11, fontWeight: 700 }}>IA</span>
-          <div>
-            <div style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 600, color: C.paperLt, letterSpacing: ".02em" }}>Asistente Comanda</div>
-            <div style={{ fontFamily: F.mono, fontSize: 9.5, color: "rgba(244,236,220,.55)", letterSpacing: ".04em" }}>Te ayuda en cada pedido</div>
+    <div style={{ padding: "12px 14px 12px", borderBottom: "1px solid rgba(244,236,220,.16)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+          <span style={{ width: 30, height: 30, borderRadius: 30, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>IA</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.paperLt, letterSpacing: ".02em" }}>Asistente</div>
+            <div style={{ fontSize: 9.5, color: "rgba(244,236,220,.55)", letterSpacing: ".04em" }}>Escucha la conversación y sugiere</div>
           </div>
         </div>
         <button onClick={() => posStore.set((st) => ({ ...st, listening: !st.listening }))} title="Activar/pausar micrófono" style={{
-          display: "flex", alignItems: "center", gap: 7, background: "transparent", border: `1px solid ${s.listening ? C.red : "rgba(244,236,220,.3)"}`,
-          color: s.listening ? C.red : "rgba(244,236,220,.6)", fontFamily: F.mono, fontSize: 9.5, letterSpacing: ".1em", padding: "5px 8px", cursor: "pointer", borderRadius: 2,
+          display: "flex", alignItems: "center", gap: 7, background: "transparent", border: `1px solid ${live ? C.red : "rgba(244,236,220,.3)"}`,
+          color: live ? C.red : "rgba(244,236,220,.7)", fontFamily: F.mono, fontSize: 10, letterSpacing: ".1em", height: 36, padding: "0 10px", cursor: "pointer", borderRadius: 3, flexShrink: 0,
         }}>
           <span className={"pos-eq" + (live ? "" : " paused")} style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14 }}><i /><i /><i /><i /><i /></span>
-          {s.listening ? "ESCUCHANDO" : "EN PAUSA"}
+          {live ? "ESCUCHANDO" : "MICRÓFONO"}
         </button>
+        <button onClick={() => posStore.set({ aiOpen: false })} aria-label="Cerrar asistente" style={{ width: 36, height: 36, borderRadius: 3, border: "1px solid rgba(244,236,220,.3)", background: "transparent", color: C.paperLt, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
       </div>
-      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 7, fontFamily: F.mono, fontSize: 9.5, color: "rgba(244,236,220,.62)", lineHeight: 1.4 }}>
-        <span className={s.listening ? "pos-rec" : ""} style={{ width: 7, height: 7, borderRadius: 7, background: s.listening ? C.red : "rgba(244,236,220,.4)", flexShrink: 0 }} />
-        <span>Cliente informado · el audio se transcribe en la nube para asistirte; no se almacena. El cajero puede pausar cuando quiera.</span>
+      <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 7, fontSize: 9.5, color: "rgba(244,236,220,.62)", lineHeight: 1.4 }}>
+        <span className={live ? "pos-rec" : ""} style={{ width: 7, height: 7, borderRadius: 7, background: live ? C.red : "rgba(244,236,220,.4)", flexShrink: 0 }} />
+        <span>Cliente informado · el audio se transcribe en la nube; no se almacena.</span>
       </div>
     </div>
   );
@@ -1121,22 +1011,22 @@ function SuggestionCard({ g }: { g: SuggestionCardState }) {
     <div className="pos-card" style={{ background: C.paperLt, borderRadius: 4, borderLeft: `4px solid ${col.line}`, boxShadow: "0 6px 18px -10px rgba(0,0,0,.5)", overflow: "hidden" }}>
       <div style={{ padding: "11px 13px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 2 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 2 }}>
             {POS_KIND_LABEL[g.kind] || "Idea"}
           </span>
-          <button onClick={() => dismissSuggestion(g.uid, false)} title="Descartar" style={{ background: "transparent", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 14, cursor: "pointer", lineHeight: 1, padding: 2 }}>×</button>
+          <button onClick={() => dismissSuggestion(g.uid, false)} title="Descartar" style={{ background: "transparent", border: "none", color: C.muted, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 2 }}>×</button>
         </div>
-        <div style={{ fontFamily: F.mono, fontSize: 14.5, fontWeight: 700, color: C.ink, lineHeight: 1.3 }}>{g.title}</div>
-        {g.detail && <div style={{ fontFamily: F.mono, fontSize: 11.5, color: C.ink2, lineHeight: 1.5, marginTop: 5 }}>{g.detail}</div>}
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, lineHeight: 1.3 }}>{g.title}</div>
+        {g.detail && <div style={{ fontSize: 11.5, color: C.ink2, lineHeight: 1.5, marginTop: 5 }}>{g.detail}</div>}
         {g.say && (
           <div style={{ marginTop: 10, background: C.paper, border: `1px solid ${C.rule}`, borderRadius: 4, padding: "9px 11px" }}>
-            <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: ".16em", color: C.muted, textTransform: "uppercase", marginBottom: 4 }}>Para decir en voz alta</div>
+            <div style={{ fontSize: 8.5, letterSpacing: ".16em", color: C.muted, textTransform: "uppercase", marginBottom: 4 }}>Para decir en voz alta</div>
             <div style={{ fontFamily: F.script, fontSize: 18, color: C.ink, lineHeight: 1.25 }}>“{g.say}”</div>
           </div>
         )}
         {g.actionLabel && g.act && (
           <button onClick={() => { applyAct(g.act); dismissSuggestion(g.uid, true); }} style={{
-            marginTop: 11, width: "100%", fontFamily: F.mono, fontSize: 11.5, fontWeight: 600, letterSpacing: ".02em",
+            marginTop: 11, width: "100%", fontFamily: F.mono, fontSize: 12, fontWeight: 600, letterSpacing: ".02em", minHeight: 42,
             background: col.line === C.paperLt ? C.ink : col.line, color: C.paperLt, border: "none", borderRadius: 3, padding: "10px", cursor: "pointer",
           }}>{g.actionLabel}</button>
         )}
@@ -1152,32 +1042,32 @@ function TranscriptDock() {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, [s.transcript.length, s.interim]);
   return (
-    <div style={{ height: 176, borderTop: "1px solid rgba(244,236,220,.16)", background: "rgba(0,0,0,.18)", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "9px 14px 4px", display: "flex", alignItems: "center", gap: 8, fontFamily: F.mono, fontSize: 9.5, letterSpacing: ".16em", color: "rgba(244,236,220,.5)", textTransform: "uppercase" }}>
-        <span>Conversación en vivo</span><span style={{ flex: 1, borderTop: "1px dashed rgba(244,236,220,.18)" }} />
+    <div style={{ height: 168, borderTop: "1px solid rgba(244,236,220,.16)", background: "rgba(0,0,0,.18)", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "9px 14px 4px", display: "flex", alignItems: "center", gap: 8, fontSize: 9.5, letterSpacing: ".16em", color: "rgba(244,236,220,.5)", textTransform: "uppercase" }}>
+        <span>Conversación</span><span style={{ flex: 1, borderTop: "1px dashed rgba(244,236,220,.18)" }} />
         <span className="cmd-num">{s.transcript.length}</span>
       </div>
       <div ref={ref} className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 14px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
         {s.transcript.length === 0 && !s.interim && (
-          <div style={{ fontFamily: F.mono, fontSize: 11, color: "rgba(244,236,220,.4)", paddingTop: 8 }}>
+          <div style={{ fontSize: 11, color: "rgba(244,236,220,.4)", paddingTop: 8 }}>
             {s.listening ? "Escuchando… habla y aparecerá aquí." : "Esperando la conversación…"}
           </div>
         )}
         {s.transcript.map((t, i) =>
           t.who === "sistema" ? (
-            <div key={i} style={{ textAlign: "center", fontFamily: F.mono, fontSize: 9.5, color: "rgba(244,236,220,.4)", letterSpacing: ".06em", fontStyle: "italic" }}>· {t.text} ·</div>
+            <div key={i} style={{ textAlign: "center", fontSize: 9.5, color: "rgba(244,236,220,.4)", letterSpacing: ".06em", fontStyle: "italic" }}>· {t.text} ·</div>
           ) : (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-              <span style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: t.who === "cliente" ? C.amber : C.green, minWidth: 50, textTransform: "uppercase" }}>{t.who}</span>
-              <span style={{ fontFamily: F.mono, fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1 }}>{t.text}</span>
-              <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 8.5, color: "rgba(244,236,220,.35)" }}>{t.time}</span>
+              <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: t.who === "cliente" ? C.amber : C.green, minWidth: 50, textTransform: "uppercase" }}>{t.who}</span>
+              <span style={{ fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1 }}>{t.text}</span>
+              <span className="cmd-num" style={{ fontSize: 8.5, color: "rgba(244,236,220,.35)" }}>{t.time}</span>
             </div>
           ),
         )}
         {s.interim && (
           <div style={{ display: "flex", gap: 8, alignItems: "baseline", opacity: 0.7 }}>
-            <span style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: C.amber, minWidth: 50, textTransform: "uppercase" }}>···</span>
-            <span style={{ fontFamily: F.mono, fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1, fontStyle: "italic" }}>{s.interim}</span>
+            <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: C.amber, minWidth: 50, textTransform: "uppercase" }}>···</span>
+            <span style={{ fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1, fontStyle: "italic" }}>{s.interim}</span>
           </div>
         )}
       </div>
@@ -1185,7 +1075,7 @@ function TranscriptDock() {
   );
 }
 
-const ctrlBtn = (flex: boolean): React.CSSProperties => ({ flex: flex ? 1 : "0 0 auto", fontFamily: F.mono, fontSize: 11, letterSpacing: ".04em", background: "transparent", border: "1px solid rgba(244,236,220,.32)", color: C.paperLt, padding: "9px 12px", cursor: "pointer", borderRadius: 2 });
+const ctrlBtn: React.CSSProperties = { flex: "0 0 auto", fontFamily: F.mono, fontSize: 12, background: "transparent", border: "1px solid rgba(244,236,220,.32)", color: C.paperLt, height: 40, minWidth: 40, padding: "0 12px", cursor: "pointer", borderRadius: 3 };
 
 function AiControls() {
   const [text, setText] = React.useState("");
@@ -1203,144 +1093,11 @@ function AiControls() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Escribe lo que dijo el cliente…"
-          style={{ flex: 1, fontFamily: F.mono, fontSize: 11, background: "rgba(244,236,220,.06)", border: "1px solid rgba(244,236,220,.28)", color: C.paperLt, padding: "9px 11px", borderRadius: 2, outline: "none" }}
+          style={{ flex: 1, fontFamily: F.mono, fontSize: 12, background: "rgba(244,236,220,.06)", border: "1px solid rgba(244,236,220,.28)", color: C.paperLt, height: 40, padding: "0 11px", borderRadius: 3, outline: "none", minWidth: 0 }}
         />
-        <button type="submit" style={ctrlBtn(false)} title="Enviar al asistente">▶</button>
+        <button type="submit" style={ctrlBtn} title="Enviar al asistente">▶</button>
       </form>
-      <button onClick={resetConversation} style={ctrlBtn(false)} title="Reiniciar pedido y conversación">↺</button>
+      <button onClick={resetConversation} style={ctrlBtn} title="Reiniciar pedido y conversación">↺</button>
     </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// Client-facing display
-// ════════════════════════════════════════════════════════════════
-function PosClient() {
-  const s = usePos();
-  const catalog = useCatalog();
-  const total = orderTotal(s.order, catalog);
-  const comboOffer = s.suggestions.find((g) => g.kind === "combo");
-  const typeLabel = (ORDER_TYPES.find((t) => t.id === s.orderType) || ({} as { label?: string })).label;
-
-  if (s.sent) return <ClientThanks />;
-
-  return (
-    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", fontFamily: F.mono, background: C.paper }}>
-      <div style={{ padding: "22px 30px 18px", borderBottom: `1.5px solid ${C.ink}`, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
-        <div style={{ fontFamily: F.slab, fontSize: 38, color: C.ink, lineHeight: 1 }}>Tu pedido<span style={{ color: C.red }}>.</span></div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: F.mono, fontSize: 13, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>{catalog.orgName}</div>
-          <div style={{ fontFamily: F.mono, fontSize: 13, color: C.ink2, marginTop: 4, letterSpacing: ".06em" }}>{typeLabel} · {s.orderNo}</div>
-        </div>
-      </div>
-
-      <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 30px" }}>
-        {s.order.length === 0 ? (
-          <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: C.muted }}>
-            <div style={{ fontFamily: F.slab, fontSize: 30, color: C.ink2, marginBottom: 10 }}>¡Bienvenido!</div>
-            <div style={{ fontFamily: F.mono, fontSize: 16, lineHeight: 1.6, maxWidth: 360 }}>Aquí verás tu pedido a medida que lo armamos. Pide con confianza.</div>
-          </div>
-        ) : (
-          s.order.map((l, i) => {
-            const mods = modSummary(l, catalog);
-            return (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: "14px 0", borderBottom: `1px dashed ${C.rule}` }}>
-                <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 22, fontWeight: 700, color: C.red, minWidth: 38 }}>{l.qty}&times;</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 20, fontWeight: 600, color: C.ink }}>{l.name}</div>
-                  {l.kind === "combo" && <div style={{ fontFamily: F.mono, fontSize: 13, color: C.green, marginTop: 3 }}>Combo · {catalog.comboById[l.id]?.desc}</div>}
-                  {mods.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                      {mods.map((m, k) => (
-                        <span key={k} style={{ fontFamily: F.mono, fontSize: 12, color: m.delta > 0 ? C.green : C.ink2, border: `1px solid ${m.delta > 0 ? C.green : C.rule}`, padding: "2px 7px", borderRadius: 2 }}>{m.name}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <span className="cmd-num" style={{ fontFamily: F.mono, fontSize: 20, fontWeight: 700, color: C.ink }}>{posMoney(modLinePrice(l, catalog) * l.qty)}</span>
-              </div>
-            );
-          })
-        )}
-
-        {s.noteSinGluten && (
-          <div style={{ marginTop: 16, display: "inline-flex", alignItems: "center", gap: 9, border: `1.5px solid ${C.green}`, color: C.green, fontFamily: F.mono, fontSize: 14, padding: "9px 14px", borderRadius: 3 }}>
-            <span style={{ fontSize: 16 }}>✓</span> Anotamos tu pedido sin gluten
-          </div>
-        )}
-      </div>
-
-      {comboOffer && (
-        <div style={{ margin: "0 30px 14px", background: C.paperLt, border: `1.5px solid ${C.green}`, borderRadius: 5, padding: "16px 20px", display: "flex", alignItems: "center", gap: 18 }}>
-          <PhotoPlaceholder w={66} h={66} label="combo" style={{ flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: F.slab, fontSize: 23, color: C.ink, lineHeight: 1.1 }}>¿Lo hacemos combo?</div>
-            <div style={{ fontFamily: F.mono, fontSize: 14, color: C.ink2, marginTop: 5, lineHeight: 1.5 }}>{comboOffer.detail}</div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ borderTop: `1.5px solid ${C.ink}`, background: C.paperLt }}>
-        <div style={{ padding: "16px 30px", display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <span style={{ fontFamily: F.mono, fontSize: 16, letterSpacing: ".12em", color: C.ink2 }}>TOTAL</span>
-          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, color: C.ink, lineHeight: 1 }}>{posMoney(total)}</span>
-        </div>
-        <div style={{ padding: "11px 30px", borderTop: `1px dashed ${C.rule}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <span className={s.listening ? "pos-rec" : ""} style={{ width: 9, height: 9, borderRadius: 9, background: s.listening ? C.red : C.muted, flexShrink: 0 }} />
-          <span style={{ fontFamily: F.mono, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>
-            {s.listening
-              ? "Un asistente de IA transcribe esta conversación para ayudar a nuestro equipo a atenderte mejor. El audio no se almacena; pídenos pausarlo cuando quieras."
-              : "Asistente de IA en pausa. No estamos analizando la conversación."}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ClientThanks() {
-  const s = usePos();
-  const catalog = useCatalog();
-  return (
-    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: F.mono, background: C.paper, padding: 30 }}>
-      <Stamp color={C.green} rotate={-7} size={14} style={{ marginBottom: 22 }}>Pedido enviado</Stamp>
-      <div style={{ fontFamily: F.slab, fontSize: 52, color: C.ink, lineHeight: 1 }}>¡Gracias!</div>
-      <div style={{ fontFamily: F.mono, fontSize: 17, color: C.ink2, marginTop: 16, lineHeight: 1.6, maxWidth: 420 }}>
-        Tu pedido <strong style={{ color: C.red }}>{s.orderNo}</strong> ya está en cocina.<br />Te avisaremos cuando esté listo.
-      </div>
-      <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 30, color: C.ink, marginTop: 26 }}>{posMoney(orderTotal(s.order, catalog))}</div>
-      <div style={{ fontFamily: F.mono, fontSize: 13, color: C.muted, marginTop: 8, letterSpacing: ".08em" }}>{(ORDER_TYPES.find((t) => t.id === s.orderType) || ({} as { label?: string })).label}</div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// Page wrapper — both linked tablets on a dark canvas
-// ════════════════════════════════════════════════════════════════
-export function PosTerminal({ catalog }: { catalog: PosCatalog }) {
-  // Seed the store's catalog once so imperative actions can read it.
-  React.useEffect(() => {
-    posStore.set({ catalog });
-  }, [catalog]);
-
-  return (
-    <CatalogCtx.Provider value={catalog}>
-      <div className="pos-root" style={{ minHeight: "100vh", background: "#171310", padding: "22px 28px 40px" }}>
-        <style>{POS_CSS}</style>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-            <Link href="/" style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(244,236,220,.65)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>← comanda</Link>
-            <span style={{ fontFamily: F.slab, fontSize: 22, color: "#f4ecdc" }}>Punto de venta<span style={{ color: C.red }}>.</span></span>
-          </div>
-          <span style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(244,236,220,.5)", border: "1px solid rgba(244,236,220,.25)", padding: "4px 9px", borderRadius: 2 }}>
-            Asistente de IA · en vivo
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: 28, alignItems: "flex-start", flexWrap: "wrap", justifyContent: "center" }}>
-          <Tablet width={POS_TABLET_W} height={POS_TABLET_H} label="Caja · cajero" facing="cajero"><PosCashier /></Tablet>
-          <Tablet width={POS_CLIENT_W} height={POS_TABLET_H} label="Pantalla cliente" facing="cliente"><PosClient /></Tablet>
-        </div>
-      </div>
-    </CatalogCtx.Provider>
   );
 }

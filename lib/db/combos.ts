@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { comboRegularTotal, comboSaving } from "@/lib/combos";
 
@@ -28,8 +29,11 @@ export interface CombosView {
 
 export async function getCombosView(
   organizationId: string,
+  client?: SupabaseClient,
 ): Promise<CombosView> {
-  const supabase = await createSupabaseServerClient();
+  // `client` lets the POS device path pass a service-role client (no user
+  // session); everyone else keeps the RLS-scoped server client.
+  const supabase = client ?? (await createSupabaseServerClient());
   const [{ data: combos }, { data: items }, { data: productos }] =
     await Promise.all([
       supabase

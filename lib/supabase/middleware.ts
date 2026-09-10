@@ -39,7 +39,12 @@ export async function updateSession(request: NextRequest) {
   // Auth gate: anyone hitting an app route without a session bounces to /login.
   // Public paths: /login, /auth/* (OAuth callback), /api/cron/*, static assets.
   const path = request.nextUrl.pathname;
+  // /pos is reachable without a session: a paired POS device authenticates
+  // with its device cookie (see lib/pos/devices.ts), and the page itself
+  // shows the pairing screen when there's neither a device nor a user.
   const isPublic =
+    path === "/pos" ||
+    path.startsWith("/pos/") ||
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
     path.startsWith("/api/cron") ||
