@@ -1,11 +1,14 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ModGroup, ModGroupType, ModOption } from "@/lib/modificadores";
 
 /** All modifier groups (with their options) for an organization. */
 export async function getModificadores(
   organizationId: string,
+  client?: SupabaseClient,
 ): Promise<ModGroup[]> {
-  const supabase = await createSupabaseServerClient();
+  // `client` lets the POS device path pass a service-role client.
+  const supabase = client ?? (await createSupabaseServerClient());
   const [{ data: groups }, { data: options }] = await Promise.all([
     supabase
       .from("modifier_groups")

@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCombosView } from "@/lib/db/combos";
 import { getModificadores } from "@/lib/db/modificadores";
@@ -25,12 +26,16 @@ export async function getPosCatalog({
   organizationId,
   userId,
   orgName,
+  client,
 }: {
   organizationId: string;
-  userId: string;
+  /** `null` for a paired POS device (no user → no personal favorites). */
+  userId: string | null;
   orgName: string;
+  /** Service-role client for the device path; defaults to the RLS client. */
+  client?: SupabaseClient;
 }): Promise<PosCatalog> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = client ?? (await createSupabaseServerClient());
 
   const [
     { data: productos },
@@ -52,16 +57,18 @@ export async function getPosCatalog({
       .select("id, organization_id, parent_id, label, position, created_at")
       .eq("organization_id", organizationId)
       .order("position"),
-    supabase
-      .from("producto_favorites")
-      .select("producto_id")
-      .eq("user_id", userId),
+    userId
+      ? supabase
+          .from("producto_favorites")
+          .select("producto_id")
+          .eq("user_id", userId)
+      : Promise.resolve({ data: [] as { producto_id: string }[] }),
     supabase
       .from("producto_modifier_groups")
       .select("producto_id, group_id")
       .eq("organization_id", organizationId),
-    getCombosView(organizationId),
-    getModificadores(organizationId),
+    getCombosView(organizationId, client),
+    getModificadores(organizationId, client),
   ]);
 
   // ── categories: resolve each product's top-level tab + sub label ──────────

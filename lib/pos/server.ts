@@ -1,18 +1,77 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosCatalog } from "./catalog";
+import { getPosDeviceFromCookie, type PosDevice } from "./devices";
 import type { PosCatalog } from "./types";
 
 /**
- * Load the live POS catalog for the calling user (gated by requireUser), along
- * with the org name for the terminal header. Shared by the /pos page and the
- * POS server actions so both ground on the exact same data.
+ * Who is driving the terminal. Two paths:
+ *   · `device` — a tablet paired with a registration code (no user session);
+ *     runs with the service-role client scoped by hand to the device's org.
+ *   · `user`   — a signed-in org member opening /pos from their account;
+ *     runs with the RLS-scoped client exactly as before.
  */
-export async function loadPosCatalog(): Promise<{
+export type PosActor =
+  | { kind: "device"; device: PosDevice }
+  | { kind: "user"; profileId: string; restaurantId: string | null };
+
+export type PosContext = {
   catalog: PosCatalog;
-  profile: Awaited<ReturnType<typeof requireUser>>["profile"];
-  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"];
-}> {
+  supabase: SupabaseClient;
+  organizationId: string;
+  actor: PosActor;
+  /** Label for the terminal header ("Caja 2" · "Cajero"). */
+  station: string;
+};
+
+/**
+ * Resolve the POS context, preferring a paired device over a user session.
+ * Returns null when neither exists — the page then shows the pairing screen.
+ * Server actions should call `requirePosContext()` instead.
+ */
+export async function loadPosContext(): Promise<PosContext | null> {
+  const device = await getPosDeviceFromCookie();
+  if (device) {
+    const admin = createSupabaseAdminClient();
+    const catalog = await getPosCatalog({
+      organizationId: device.organizationId,
+      userId: null,
+      orgName: device.orgName,
+      client: admin,
+    });
+    return {
+      catalog,
+      supabase: admin,
+      organizationId: device.organizationId,
+      actor: { kind: "device", device },
+      station: device.name,
+    };
+  }
+
+  // No device → fall back to a signed-in user, without redirecting (the page
+  // decides what to render when there's nobody).
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  return loadUserPosContext();
+}
+
+/** Same as loadPosContext but for server actions: no context → throws. */
+export async function requirePosContext(): Promise<PosContext> {
+  const device = await getPosDeviceFromCookie();
+  if (device) {
+    const ctx = await loadPosContext();
+    if (ctx) return ctx;
+  }
+  return loadUserPosContext();
+}
+
+async function loadUserPosContext(): Promise<PosContext> {
   const { profile, supabase } = await requireUser();
 
   const { data: org } = await supabase
@@ -27,16 +86,36 @@ export async function loadPosCatalog(): Promise<{
     orgName: (org?.name as string | undefined) ?? "comanda",
   });
 
-  return { catalog, profile, supabase };
+  const restaurantId = await resolvePosSede(
+    supabase,
+    profile.organization_id,
+    profile.id,
+  );
+
+  return {
+    catalog,
+    supabase,
+    organizationId: profile.organization_id,
+    actor: { kind: "user", profileId: profile.id, restaurantId },
+    station: "Caja 01",
+  };
+}
+
+/** True when there is a signed-in user (any org state). Used by the page only. */
+export async function hasUserSession(): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return !!user;
 }
 
 /**
- * Best-effort sede for a POS order: the user's first restaurant membership,
- * else the org's first restaurant, else null (ordenes.restaurant_id is
- * nullable).
+ * Best-effort sede for a user-driven POS order: the user's first restaurant
+ * membership, else the org's first restaurant, else null.
  */
 export async function resolvePosSede(
-  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  supabase: SupabaseClient,
   organizationId: string,
   userId: string,
 ): Promise<string | null> {

@@ -1,0 +1,729 @@
+"use client";
+
+/**
+ * POS state + logic (framework-agnostic store, cart math, live assistant,
+ * cloud speech-to-text). The terminal UI in pos-terminal.tsx only renders
+ * this; keeping the two apart makes the Square-style screen a pure view.
+ *
+ * Wiring:
+ *  · Catalog — productos / combos / modificadores fetched server-side and
+ *    handed in as `catalog` (see lib/pos/catalog.ts).
+ *  · Orders — "Cobrar" persists through the crearOrden server action with the
+ *    tender (efectivo / tarjeta / transferencia) and shows the real folio.
+ *  · Assistant — the cashier's microphone (MediaRecorder → Groq Whisper via the
+ *    transcribeAudio server action) feeds a transcript; debounced calls to the
+ *    posSuggest server action ask Claude for suggestions whose actions reference
+ *    live catalog ids. A typed fallback input is always available.
+ */
+
+import * as React from "react";
+import {
+  FAV_CAT,
+  type PosCatalog,
+  type PosMenuItem,
+  type PosSuggest,
+  type PosAct,
+  type PosCatalogFilter,
+} from "@/lib/pos/types";
+import { crearOrden, posSuggest, transcribeAudio } from "./actions";
+
+// ── catalog context (stable, SSR-correct — no flash) ────────────
+export const EMPTY_CATALOG: PosCatalog = {
+  cats: [],
+  menu: [],
+  combos: [],
+  modGroups: {},
+  byId: {},
+  comboById: {},
+  catLabel: {},
+  orgName: "comanda",
+};
+export const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
+export const StationCtx = React.createContext<string>("Caja 01");
+export const useCatalog = () => React.useContext(CatalogCtx);
+
+// ── store ───────────────────────────────────────────────────────
+export type ModSelection = Record<string, string | string[] | null>;
+
+export interface OrderLine {
+  id: string;
+  name: string;
+  qty: number;
+  kind: "item" | "combo";
+  basePrice?: number;
+  price?: number;
+  gluten?: boolean;
+  items?: string[];
+  mods?: ModSelection;
+  hasMods?: boolean;
+  expanded?: boolean;
+}
+// The suggestions array holds only the currently-open cards — each refresh
+// replaces it (no indefinite stacking). Dismissed/accepted titles live in
+// handledKeys so they don't pop back.
+export type SuggestionCardState = PosSuggest & { uid: string };
+export interface TranscriptLine {
+  who: string;
+  text: string;
+  time: string;
+}
+export interface PosState {
+  order: OrderLine[];
+  orderType: "aqui" | "llevar" | "domicilio";
+  cat: string;
+  highlightId: string | null;
+  catSource: "manual" | "ia";
+  /** Catalog narrowed by the assistant to what the customer asked for. */
+  catalogFilter: PosCatalogFilter | null;
+  listening: boolean;
+  thinking: boolean;
+  micNote: string | null;
+  /** Live (not-yet-final) speech being recognized, shown under the transcript. */
+  interim: string;
+  transcript: TranscriptLine[];
+  suggestions: SuggestionCardState[];
+  /** Titles the cashier dismissed/accepted — suppressed on future refreshes. */
+  handledKeys: string[];
+  flags: string[];
+  noteSinGluten: boolean;
+  loyalty: boolean;
+  sending: boolean;
+  sendError: string | null;
+  sent: boolean;
+  orderNo: string;
+  /** Set once on mount so imperative actions can read the catalog. */
+  catalog: PosCatalog;
+
+  // ── Square-style screen state ──
+  /** sale = catalog + ticket · tender = choose payment · done = receipt. */
+  view: "sale" | "tender" | "done";
+  /** Item sheet (modifiers / qty) — add a new product or edit a ticket line. */
+  sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | null;
+  /** Free-text search over the catalog (name / sku / description). */
+  search: string;
+  /** Assistant drawer open? */
+  aiOpen: boolean;
+  customerName: string;
+  note: string;
+  payMethod: PayMethod;
+  /** Cash received (efectivo only). null = not entered yet. */
+  tendered: number | null;
+  /** Change handed back on the last completed sale (receipt screen). */
+  lastChange: number;
+  lastTotal: number;
+}
+
+export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
+export const PAY_METHODS: { id: PayMethod; label: string; hint: string }[] = [
+  { id: "efectivo", label: "Efectivo", hint: "Calcula el cambio" },
+  { id: "tarjeta", label: "Tarjeta", hint: "Datáfono" },
+  { id: "transferencia", label: "Transferencia", hint: "Nequi · Daviplata · QR" },
+];
+
+export const POS_INITIAL: PosState = {
+  order: [],
+  orderType: "aqui",
+  cat: FAV_CAT,
+  highlightId: null,
+  catSource: "manual",
+  catalogFilter: null,
+  listening: false,
+  thinking: false,
+  micNote: null,
+  interim: "",
+  transcript: [],
+  suggestions: [],
+  handledKeys: [],
+  flags: [],
+  noteSinGluten: false,
+  loyalty: false,
+  sending: false,
+  sendError: null,
+  sent: false,
+  orderNo: "Nuevo",
+  catalog: EMPTY_CATALOG,
+  view: "sale",
+  sheet: null,
+  search: "",
+  aiOpen: false,
+  customerName: "",
+  note: "",
+  payMethod: "efectivo",
+  tendered: null,
+  lastChange: 0,
+  lastTotal: 0,
+};
+
+type StateUpdater = Partial<PosState> | ((s: PosState) => PosState);
+export const posStore = (() => {
+  let state: PosState = { ...POS_INITIAL };
+  const subs = new Set<() => void>();
+  return {
+    get: () => state,
+    set: (u: StateUpdater) => {
+      state = typeof u === "function" ? u(state) : { ...state, ...u };
+      subs.forEach((f) => f());
+    },
+    sub: (f: () => void) => {
+      subs.add(f);
+      return () => {
+        subs.delete(f);
+      };
+    },
+  };
+})();
+
+export function usePos(): PosState {
+  return React.useSyncExternalStore(posStore.sub, posStore.get, () => POS_INITIAL);
+}
+
+const fmtTime = (): string => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+// ── order helpers (pure; catalog passed in) ─────────────────────
+export function posDefaultMods(p: PosMenuItem, catalog: PosCatalog): ModSelection {
+  const out: ModSelection = {};
+  p.mods.forEach((gid) => {
+    const g = catalog.modGroups[gid];
+    if (!g) return;
+    out[gid] = g.type === "single" ? (g.required ? g.options[0]?.name ?? null : null) : [];
+  });
+  return out;
+}
+export function posMakeLine(p: PosMenuItem, catalog: PosCatalog): OrderLine {
+  return {
+    id: p.id,
+    name: p.name,
+    basePrice: p.price,
+    qty: 1,
+    gluten: p.gluten,
+    kind: "item",
+    mods: posDefaultMods(p, catalog),
+    hasMods: p.mods.length > 0,
+    expanded: false,
+  };
+}
+export function modLinePrice(line: OrderLine, catalog: PosCatalog): number {
+  if (line.kind === "combo") return line.price ?? 0;
+  let extra = 0;
+  if (line.mods) {
+    for (const gid in line.mods) {
+      const g = catalog.modGroups[gid];
+      if (!g) continue;
+      const sel = line.mods[gid];
+      const names = Array.isArray(sel) ? sel : sel ? [sel] : [];
+      names.forEach((n) => {
+        const o = g.options.find((o) => o.name === n);
+        if (o) extra += o.delta;
+      });
+    }
+  }
+  return (line.basePrice != null ? line.basePrice : line.price ?? 0) + extra;
+}
+export interface ModChip {
+  name: string;
+  delta: number;
+  group: string;
+}
+export function modSummary(line: OrderLine, catalog: PosCatalog): ModChip[] {
+  const out: ModChip[] = [];
+  if (!line.mods) return out;
+  for (const gid in line.mods) {
+    const g = catalog.modGroups[gid];
+    if (!g) continue;
+    const sel = line.mods[gid];
+    const names = Array.isArray(sel) ? sel : sel ? [sel] : [];
+    names.forEach((n) => {
+      const o = g.options.find((o) => o.name === n);
+      if (!o) return;
+      out.push({ name: n, delta: o.delta, group: gid });
+    });
+  }
+  return out;
+}
+export const orderTotal = (order: OrderLine[], catalog: PosCatalog): number =>
+  order.reduce((s, l) => s + modLinePrice(l, catalog) * l.qty, 0);
+
+// ── imperative cart actions (read catalog from the store) ───────
+/**
+ * Tap on a product tile. Items with modifier groups open the item sheet so the
+ * cashier picks size/milk/etc. first (Square behaviour); plain items go
+ * straight into the ticket, merging with an identical line.
+ */
+export function tapItem(id: string) {
+  const p = posStore.get().catalog.byId[id];
+  if (!p) return;
+  if (p.mods.length > 0) posStore.set({ sheet: { mode: "add", productId: id } });
+  else addItem(id);
+}
+
+/** Add a product with its default modifiers (used by the assistant + tapItem). */
+export function addItem(id: string) {
+  posStore.set((s) => {
+    const p = s.catalog.byId[id];
+    if (!p) return s;
+    const hasMods = p.mods.length > 0;
+    const i = hasMods ? -1 : s.order.findIndex((l) => l.id === id && l.kind === "item");
+    let order: OrderLine[];
+    if (i >= 0) order = s.order.map((l, k) => (k === i ? { ...l, qty: l.qty + 1 } : l));
+    else order = [...s.order, posMakeLine(p, s.catalog)];
+    return { ...s, order, sent: false, highlightId: s.highlightId === id ? null : s.highlightId };
+  });
+}
+export function addCombo(comboId: string) {
+  posStore.set((s) => {
+    const c = s.catalog.comboById[comboId];
+    if (!c) return s;
+    return {
+      ...s,
+      order: [...s.order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items }],
+      sent: false,
+      highlightId: s.highlightId === comboId ? null : s.highlightId,
+    };
+  });
+}
+export function swapCombo(removeId: string, comboId: string) {
+  posStore.set((s) => {
+    const c = s.catalog.comboById[comboId];
+    if (!c) return s;
+    let removed = false;
+    const order = s.order.filter((l) => {
+      if (!removed && l.kind === "item" && l.id === removeId) {
+        if (l.qty > 1) {
+          l.qty -= 1;
+          return true;
+        }
+        removed = true;
+        return false;
+      }
+      return true;
+    });
+    return {
+      ...s,
+      order: [...order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items }],
+      sent: false,
+      highlightId: s.highlightId === comboId ? null : s.highlightId,
+    };
+  });
+}
+/** Commit the item sheet: a fully-specified line (mods + qty). */
+export function addLineWithMods(productId: string, mods: ModSelection, qty: number) {
+  posStore.set((s) => {
+    const p = s.catalog.byId[productId];
+    if (!p) return s;
+    const line: OrderLine = { ...posMakeLine(p, s.catalog), mods, qty: Math.max(1, qty) };
+    // Merge with an identical existing line (same product + same mods).
+    const key = JSON.stringify(mods);
+    const i = s.order.findIndex((l) => l.kind === "item" && l.id === productId && JSON.stringify(l.mods ?? {}) === key);
+    const order = i >= 0 ? s.order.map((l, k) => (k === i ? { ...l, qty: l.qty + line.qty } : l)) : [...s.order, line];
+    return { ...s, order, sent: false, sheet: null, highlightId: s.highlightId === productId ? null : s.highlightId };
+  });
+}
+export function replaceLine(idx: number, mods: ModSelection, qty: number) {
+  posStore.set((s) => ({
+    ...s,
+    order: qty <= 0
+      ? s.order.filter((_, k) => k !== idx)
+      : s.order.map((l, k) => (k === idx ? { ...l, mods, qty } : l)),
+    sent: false,
+    sheet: null,
+  }));
+}
+export function removeLine(idx: number) {
+  posStore.set((s) => ({ ...s, order: s.order.filter((_, k) => k !== idx), sent: false, sheet: null }));
+}
+export function clearTicket() {
+  posStore.set((s) => ({ ...s, order: [], customerName: "", note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null }));
+}
+
+export function changeQty(idx: number, d: number) {
+  posStore.set((s) => {
+    const order = s.order
+      .map((l, k) => (k === idx ? { ...l, qty: l.qty + d } : l))
+      .filter((l) => l.qty > 0);
+    return { ...s, order, sent: false };
+  });
+}
+export function toggleLineExpanded(idx: number) {
+  posStore.set((s) => ({
+    ...s,
+    order: s.order.map((l, k) => (k === idx ? { ...l, expanded: !l.expanded } : l)),
+  }));
+}
+export function setLineSingle(idx: number, gid: string, name: string) {
+  posStore.set((s) => ({
+    ...s,
+    order: s.order.map((l, k) => (k === idx ? { ...l, mods: { ...l.mods, [gid]: name } } : l)),
+    sent: false,
+  }));
+}
+export function toggleLineMulti(idx: number, gid: string, name: string) {
+  posStore.set((s) => ({
+    ...s,
+    order: s.order.map((l, k) => {
+      if (k !== idx) return l;
+      const cur = l.mods?.[gid];
+      const arr = Array.isArray(cur) ? cur : [];
+      const has = arr.includes(name);
+      return { ...l, mods: { ...l.mods, [gid]: has ? arr.filter((x) => x !== name) : [...arr, name] } };
+    }),
+    sent: false,
+  }));
+}
+export function applyModsToLine(productId: string, set: Record<string, string | string[]>) {
+  posStore.set((s) => {
+    let order = [...s.order];
+    let idx = order.findIndex((l) => l.kind === "item" && l.id === productId);
+    if (idx < 0) {
+      const p = s.catalog.byId[productId];
+      if (!p) return s;
+      order = [...order, posMakeLine(p, s.catalog)];
+      idx = order.length - 1;
+    }
+    const line: OrderLine = { ...order[idx], mods: { ...order[idx].mods }, expanded: true };
+    for (const gid in set) line.mods![gid] = set[gid];
+    order[idx] = line;
+    return { ...s, order, sent: false, highlightId: s.highlightId === productId ? null : s.highlightId };
+  });
+}
+
+// ── AI suggestion actions ───────────────────────────────────────
+export function applyAct(act?: PosAct) {
+  if (!act) return;
+  if (act.type === "add") addItem(act.id);
+  else if (act.type === "combo") addCombo(act.id);
+  else if (act.type === "swapCombo") swapCombo(act.removeId, act.comboId);
+  else if (act.type === "mods") applyModsToLine(act.id, act.set);
+  else if (act.type === "flag") posStore.set((s) => ({ ...s, noteSinGluten: true }));
+  else if (act.type === "loyalty") posStore.set((s) => ({ ...s, loyalty: true }));
+}
+export function dismissSuggestion(uid: string, _accepted: boolean) {
+  void _accepted;
+  posStore.set((s) => {
+    const card = s.suggestions.find((g) => g.uid === uid);
+    return {
+      ...s,
+      suggestions: s.suggestions.filter((g) => g.uid !== uid),
+      handledKeys: card && !s.handledKeys.includes(card.title)
+        ? [...s.handledKeys, card.title]
+        : s.handledKeys,
+    };
+  });
+}
+
+// ── live assistant: transcript + debounced suggestions ──────────
+let suggestTimer: ReturnType<typeof setTimeout> | null = null;
+let suggestSeq = 0;
+
+export function appendTranscript(who: string, text: string) {
+  posStore.set((s) => ({ ...s, transcript: [...s.transcript, { who, text, time: fmtTime() }] }));
+  scheduleSuggest();
+}
+export function scheduleSuggest(delay = 350) {
+  // Short debounce: VAD already cuts on a pause, so each transcript line is a
+  // finished phrase — fire fast, just coalescing back-to-back segments.
+  if (suggestTimer) clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(runSuggest, delay);
+}
+async function runSuggest() {
+  const s = posStore.get();
+  if (!s.transcript.length || s.sent) return;
+  const seq = ++suggestSeq;
+  posStore.set({ thinking: true });
+  const cart = s.order.map((l) => ({
+    name: l.name,
+    qty: l.qty,
+    mods: modSummary(l, s.catalog).map((m) => m.name),
+  }));
+  const res = await posSuggest({
+    transcript: s.transcript.map((t) => ({ who: t.who, text: t.text })),
+    cart,
+    orderType: s.orderType,
+    sinGluten: s.noteSinGluten,
+  });
+  if (seq !== suggestSeq) return; // a newer request superseded this one
+  posStore.set((st) => {
+    if (!res.ok) {
+      return { ...st, thinking: false, micNote: res.missingKey ? res.error : st.micNote };
+    }
+    const handled = new Set(st.handledKeys);
+    const fresh = res.suggestions
+      .filter((g) => !handled.has(g.title))
+      .map((g, i) => ({ ...g, uid: `sg${seq}_${i}` }));
+    // Replace the open set with this turn's suggestions (no stacking). If the
+    // model returned nothing this turn, keep what's already shown.
+    const suggestions = res.suggestions.length ? fresh : st.suggestions;
+    let cat = st.cat,
+      highlightId = st.highlightId,
+      catSource = st.catSource;
+    const f = fresh.find((g) => g.focus);
+    if (f?.focus) {
+      if (f.focus.catId) {
+        cat = f.focus.catId;
+        catSource = "ia";
+      }
+      if ("highlightId" in f.focus) highlightId = f.focus.highlightId ?? null;
+    }
+    // Apply the assistant's catalog filter (replace on a new one; keep the
+    // current one if this turn had none, so it doesn't flicker off).
+    const catalogFilter = res.filter ?? st.catalogFilter;
+    return {
+      ...st,
+      thinking: false,
+      suggestions,
+      cat,
+      highlightId,
+      catSource,
+      catalogFilter,
+    };
+  });
+}
+/** Start a fresh sale: clears ticket + conversation, keeps mic/drawer/catalog. */
+export function resetConversation() {
+  posStore.set((s) => ({
+    ...POS_INITIAL,
+    catalog: s.catalog,
+    listening: s.listening,
+    aiOpen: s.aiOpen,
+    cat: s.cat,
+  }));
+}
+
+/** Go to the tender screen (Square "Charge"). */
+export function startTender() {
+  const s = posStore.get();
+  if (!s.order.length) return;
+  posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null });
+}
+export function cancelTender() {
+  posStore.set({ view: "sale", tendered: null, sendError: null });
+}
+
+/**
+ * Persist the sale with its tender. Cash requires `tendered >= total`; the
+ * server recomputes prices and the change, we only echo it on the receipt.
+ */
+export async function completeSale() {
+  const s = posStore.get();
+  if (!s.order.length || s.sending) return;
+  const total = orderTotal(s.order, s.catalog);
+  const tendered = s.payMethod === "efectivo" ? s.tendered ?? total : null;
+  if (s.payMethod === "efectivo" && tendered !== null && tendered < total) {
+    posStore.set({ sendError: "El efectivo recibido es menor que el total." });
+    return;
+  }
+  posStore.set({ sending: true, sendError: null });
+  const lines = s.order.map((l) => ({ kind: l.kind, id: l.id, qty: l.qty, mods: l.mods ?? {} }));
+  const res = await crearOrden({
+    orderType: s.orderType,
+    sinGluten: s.noteSinGluten,
+    lines,
+    payment: { method: s.payMethod, tendered },
+    customerName: s.customerName.trim() || undefined,
+    note: s.note.trim() || undefined,
+  });
+  if (res.ok) {
+    posStore.set({
+      sent: true,
+      sending: false,
+      orderNo: res.folio,
+      view: "done",
+      lastChange: res.change,
+      lastTotal: res.total,
+    });
+  } else posStore.set({ sending: false, sendError: res.error });
+}
+
+
+// ── cloud speech-to-text (MediaRecorder + VAD → Groq Whisper) ───
+// We record the mic continuously but cut a segment the moment the speaker
+// pauses (voice-activity detection via Web Audio), so each utterance is sent
+// to the transcribeAudio server action right after it ends — snappy, and we
+// never send silent clips (which Whisper would hallucinate text for). The
+// browser's own Web Speech API is avoided: it relies on Google's backend,
+// which is blocked on some networks.
+const MIN_SEGMENT_BYTES = 1600; // skip near-empty blobs
+const VAD_RMS_THRESHOLD = 0.018; // loudness above this counts as speech
+const VAD_SILENCE_MS = 600; // a pause this long ends an utterance
+const VAD_MIN_UTTERANCE_MS = 350; // ignore blips shorter than this
+const VAD_MAX_SEGMENT_MS = 9000; // flush long continuous speech anyway
+
+function pickAudioMime(): string {
+  const MR = typeof window !== "undefined" ? window.MediaRecorder : undefined;
+  if (!MR) return "";
+  for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]) {
+    if (MR.isTypeSupported(m)) return m;
+  }
+  return "";
+}
+
+// When Groq's free-tier rate limit (429) hits, pause uploads until this time
+// instead of hammering the quota every utterance.
+let sttCooldownUntil = 0;
+
+async function sendSegment(blob: Blob) {
+  if (blob.size < MIN_SEGMENT_BYTES) return;
+  if (Date.now() < sttCooldownUntil) return; // backing off after a 429
+  posStore.set({ interim: "Transcribiendo…" });
+  try {
+    const fd = new FormData();
+    fd.append("audio", blob, "segment.webm");
+    const res = await transcribeAudio(fd);
+    if (res.ok) {
+      const t = res.text.trim();
+      if (t) appendTranscript("cliente", t);
+      // A success clears any lingering rate-limit / error note.
+      if (posStore.get().micNote) posStore.set({ micNote: null });
+    } else if (res.fatal) {
+      posStore.set({ listening: false, micNote: res.error });
+    } else if (res.rateLimited) {
+      sttCooldownUntil = Date.now() + (res.retryAfterMs ?? 6000);
+      posStore.set({ micNote: res.error });
+    } else if (res.error) {
+      posStore.set({ micNote: res.error });
+    }
+  } catch (err) {
+    console.warn("[pos stt] segment failed:", err);
+  } finally {
+    if (posStore.get().interim === "Transcribiendo…") posStore.set({ interim: "" });
+  }
+}
+
+function micErrorNote(err: unknown): string {
+  const name = (err as { name?: string })?.name;
+  if (name === "NotAllowedError" || name === "SecurityError")
+    return "Micrófono bloqueado. Toca el candado 🔒 junto a la URL → Micrófono → Permitir, y reactiva el micrófono.";
+  if (name === "NotFoundError" || name === "OverconstrainedError")
+    return "No se detectó ningún micrófono. Conecta uno y reactiva el micrófono.";
+  if (typeof window !== "undefined" && !window.isSecureContext)
+    return "El micrófono solo funciona en HTTPS (o localhost). Ábrelo en el sitio seguro, o escribe abajo.";
+  return "No se pudo acceder al micrófono. Revisa los permisos, o escribe la conversación abajo.";
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function useMicTranscribe(listening: boolean) {
+  React.useEffect(() => {
+    if (!listening) return;
+    const AudioCtx =
+      typeof window !== "undefined"
+        ? window.AudioContext || (window as any).webkitAudioContext
+        : undefined;
+    if (typeof window === "undefined" || !navigator.mediaDevices || !window.MediaRecorder || !AudioCtx) {
+      posStore.set({
+        listening: false,
+        micNote: "Este navegador no permite grabar audio. Usa un navegador moderno, o escribe abajo.",
+      });
+      return;
+    }
+
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    let recorder: MediaRecorder | null = null;
+    let audioCtx: AudioContext | null = null;
+    let raf = 0;
+    const mime = pickAudioMime();
+
+    // VAD state for the current segment.
+    let chunks: BlobPart[] = [];
+    let segStart = 0;
+    let hadSpeech = false;
+    let silenceSince = 0;
+
+    const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+    const startSegment = () => {
+      if (cancelled || !stream) return;
+      chunks = [];
+      hadSpeech = false;
+      silenceSince = 0;
+      segStart = now();
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+      recorder.onstop = () => {
+        const sawSpeech = hadSpeech;
+        const blob = new Blob(chunks, { type: recorder?.mimeType || mime || "audio/webm" });
+        // Open the next segment immediately so we never miss the next utterance.
+        if (!cancelled && posStore.get().listening) startSegment();
+        // Only transcribe segments that actually contained speech — sending
+        // silence makes Whisper hallucinate phantom phrases.
+        if (sawSpeech) void sendSegment(blob);
+      };
+      recorder.start();
+    };
+
+    const cutSegment = () => {
+      if (recorder && recorder.state === "recording") recorder.stop();
+    };
+
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        posStore.set({ micNote: null });
+
+        audioCtx = new AudioCtx();
+        if (audioCtx.state === "suspended") await audioCtx.resume().catch(() => {});
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        const buf = new Uint8Array(analyser.fftSize);
+
+        startSegment();
+
+        const tick = () => {
+          if (cancelled) return;
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const x = (buf[i] - 128) / 128;
+            sum += x * x;
+          }
+          const rms = Math.sqrt(sum / buf.length);
+          const t = now();
+
+          if (rms > VAD_RMS_THRESHOLD) {
+            hadSpeech = true;
+            silenceSince = 0;
+            if (posStore.get().interim !== "Escuchando…") posStore.set({ interim: "Escuchando…" });
+          } else if (hadSpeech && !silenceSince) {
+            silenceSince = t;
+          }
+
+          const endedByPause =
+            hadSpeech && silenceSince && t - silenceSince > VAD_SILENCE_MS && t - segStart > VAD_MIN_UTTERANCE_MS;
+          const tooLong = t - segStart > VAD_MAX_SEGMENT_MS;
+          if (endedByPause || tooLong) cutSegment();
+
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      } catch (err) {
+        console.warn("[pos stt] getUserMedia failed:", err);
+        posStore.set({ listening: false, micNote: micErrorNote(err) });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      try {
+        if (recorder && recorder.state !== "inactive") {
+          recorder.onstop = null;
+          recorder.stop();
+        }
+      } catch {}
+      if (audioCtx) audioCtx.close().catch(() => {});
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      posStore.set({ interim: "" });
+    };
+  }, [listening]);
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
