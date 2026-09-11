@@ -80,6 +80,7 @@ import {
   setLabelDefaults,
   type PrinterStatus,
 } from "@/lib/printer/serial";
+import { useDesktopApp, useDesktopAppEvents, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
 
 // ── design tokens → app CSS variables ───────────────────────────
 const C = {
@@ -182,6 +183,8 @@ function Register({ mode }: { mode: "device" | "user" }) {
   // Reopen the label printer if this browser was already paired with it, and
   // follow the USB cable (connect / disconnect events).
   usePrinterAutoConnect();
+  // Install prompt / display mode / full screen for the desktop-app chips.
+  useDesktopAppEvents();
 
   // Refresh suggestions when the order changes, so they track the current
   // products (debounced; only once a conversation has started and not sent).
@@ -243,6 +246,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <SearchBox />
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <DesktopChips />
         <PrinterChip />
         <button
           onClick={() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen }))}
@@ -290,6 +294,39 @@ function SearchBox() {
         <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
       )}
     </div>
+  );
+}
+
+const chipStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer",
+  border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink,
+  fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap",
+};
+
+/**
+ * Desktop-app chips: "instalar" while Chrome/Edge offers the install prompt
+ * (hidden once installed / already in an app window), and a full-screen
+ * toggle. Both need a click — the browser won't install or go full screen
+ * without a user gesture; F11 and Esc keep working as usual.
+ */
+function DesktopChips() {
+  const d = useDesktopApp();
+  return (
+    <>
+      {d.canInstall && !d.standalone && (
+        <button onClick={() => void installApp()} title="Instalar el POS como app en este PC" style={chipStyle}>
+          <span aria-hidden>⤓</span> instalar
+        </button>
+      )}
+      <button
+        onClick={() => void toggleFullscreen()}
+        aria-pressed={d.fullscreen}
+        title={d.fullscreen ? "Salir de pantalla completa (Esc)" : "Pantalla completa (F11)"}
+        style={{ ...chipStyle, border: `1.5px solid ${d.fullscreen ? C.ink : C.rule}` }}
+      >
+        <span aria-hidden>{d.fullscreen ? "⤡" : "⤢"}</span> {d.fullscreen ? "ventana" : "pantalla completa"}
+      </button>
+    </>
   );
 }
 

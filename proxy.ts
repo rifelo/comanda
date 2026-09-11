@@ -8,8 +8,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Skip proxy for static files and Next internals.
+  // Skip proxy for static files and Next internals. `.webmanifest` covers the
+  // POS app manifest (app/pos/manifest.ts) — a manifest fetch must never hit
+  // the auth round-trip or a login redirect.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.svg$|.*\\.png$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.svg$|.*\\.png$|.*\\.webmanifest$).*)",
   ],
 };
