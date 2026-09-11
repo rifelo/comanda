@@ -69,6 +69,14 @@ export class PrinterTimeoutError extends Error {
 
 const hex = (u: Uint8Array) => Array.from(u, (b) => b.toString(16).padStart(2, "0")).join(" ");
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/**
+ * Wire trace, dev only. Deliberately console.warn: it's the level `next dev`
+ * forwards from the browser to the terminal, which is where we read it.
+ */
+const trace =
+  process.env.NODE_ENV === "production"
+    ? () => {}
+    : (...args: unknown[]) => console.warn("[printer]", ...args);
 
 // ── transport ───────────────────────────────────────────────────
 export class SerialTransport {
@@ -97,7 +105,22 @@ export class SerialTransport {
   private async pump() {
     try {
       for (;;) {
-        const { value, done } = await this.reader!.read();
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+          chunk = await this.reader!.read();
+        } catch (err) {
+          // Non-fatal serial errors (framing / parity / overrun / break) error
+          // the stream but leave the port open with a fresh `readable`. A
+          // pulled cable leaves `readable` null — that one really is the end.
+          if (this.closed || !this.port.readable) throw err;
+          console.warn("[printer] read error, reacquiring stream:", err);
+          try {
+            this.reader?.releaseLock();
+          } catch {}
+          this.reader = this.port.readable.getReader();
+          continue;
+        }
+        const { value, done } = chunk;
         if (done) break;
         if (!value?.length) continue;
         const merged = new Uint8Array(this.buf.length + value.length);
@@ -105,8 +128,9 @@ export class SerialTransport {
         merged.set(value, this.buf.length);
         const { packets, rest } = decodePackets(merged);
         this.buf = rest;
+        trace("raw", hex(value));
         if (packets.length) {
-          for (const p of packets) console.debug("[printer] rx", p.type.toString(16), hex(p.data));
+          for (const p of packets) trace("rx", p.type.toString(16), hex(p.data));
           this.inbox.push(...packets);
         }
         this.wake();
@@ -148,7 +172,7 @@ export class SerialTransport {
    */
   async transceive(packet: Uint8Array, respType: number, timeoutMs = 1500): Promise<Packet> {
     const reqType = packet[2];
-    console.debug("[printer] tx", reqType.toString(16), hex(packet.slice(4, packet.length - 3)));
+    trace("tx", reqType.toString(16), hex(packet.slice(4, packet.length - 3)), "→ esperando", respType.toString(16));
     await this.write(packet);
     const deadline = Date.now() + timeoutMs;
     for (;;) {

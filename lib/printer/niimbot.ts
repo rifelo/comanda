@@ -116,7 +116,15 @@ export function decodePackets(buf: Uint8Array): { packets: Packet[]; rest: Uint8
   const packets: Packet[] = [];
   let i = 0;
   while (i < buf.length) {
-    if (buf[i] !== 0x55 || buf[i + 1] !== 0x55) {
+    if (buf[i] !== 0x55) {
+      i++;
+      continue;
+    }
+    // A lone 0x55 at the very end may be the first byte of a frame whose rest
+    // is still in flight (the USB-CDC link routinely splits after byte 1).
+    // Keep it; only skip once we can see the next byte isn't 0x55.
+    if (i + 1 >= buf.length) break;
+    if (buf[i + 1] !== 0x55) {
       i++;
       continue;
     }

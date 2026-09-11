@@ -18,7 +18,7 @@ import {
   type SerialPortLike,
 } from "@/lib/printer/transport";
 
-vi.spyOn(console, "debug").mockImplementation(() => {});
+vi.spyOn(console, "warn").mockImplementation(() => {}); // silence the wire trace
 
 /**
  * A SerialPort stand-in wired to a tiny B21S model: every request gets the

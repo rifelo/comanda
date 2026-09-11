@@ -45,6 +45,27 @@ describe("decodePackets", () => {
     expect(packets.map((p) => p.type)).toEqual([0x02]);
     expect(hex(rest)).toBe(hex(b.slice(0, 5)));
   });
+  it("keeps a lone trailing 0x55 as the start of an in-flight frame", () => {
+    // Seen on the wire: the B21S reply arrives as `55` then `55 33 01 01 33 aa aa`.
+    const first = decodePackets(Uint8Array.from([0x55]));
+    expect(first.packets).toHaveLength(0);
+    expect(Array.from(first.rest)).toEqual([0x55]);
+    const merged = new Uint8Array([...first.rest, 0x55, 0x33, 0x01, 0x01, 0x33, 0xaa, 0xaa]);
+    const { packets, rest } = decodePackets(merged);
+    expect(packets.map((p) => p.type)).toEqual([0x33]);
+    expect(rest.length).toBe(0);
+  });
+  it("re-frames correctly no matter where a frame is split", () => {
+    const frame = encodePacket(0xb3, [0, 0, 100, 100, 3, 0x1f, 0, 0]);
+    for (let cut = 1; cut < frame.length; cut++) {
+      const a = decodePackets(frame.slice(0, cut));
+      expect(a.packets, `cut=${cut}`).toHaveLength(0);
+      const merged = new Uint8Array([...a.rest, ...frame.slice(cut)]);
+      const b = decodePackets(merged);
+      expect(b.packets.map((p) => p.type), `cut=${cut}`).toEqual([0xb3]);
+      expect(b.rest.length, `cut=${cut}`).toBe(0);
+    }
+  });
   it("skips garbage and a frame with a bad checksum", () => {
     const good = encodePacket(0x02, [1]);
     const bad = encodePacket(0x02, [1]);

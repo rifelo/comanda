@@ -132,7 +132,9 @@ async function attach(port: SerialPortLike) {
 
 function openErrorNote(err: unknown): string {
   const name = (err as { name?: string })?.name;
-  if (name === "InvalidStateError" || name === "NetworkError") {
+  // "already open": this tab still holds the port from before a code reload.
+  if (name === "InvalidStateError") return "Recarga la página (Ctrl+R) para reconectar la impresora.";
+  if (name === "NetworkError") {
     return "No se pudo abrir la impresora. Cierra la app NIIMBOT si está abierta: retiene el puerto.";
   }
   return "No se pudo abrir la impresora. Revisa el cable USB y que esté encendida.";
