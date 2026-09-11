@@ -4,7 +4,7 @@ import { PosTerminal } from "./pos-terminal";
 import { PosRegister } from "./pos-register";
 
 // The register installs as its own desktop app: this segment swaps the root
-// (staff, phone-first) manifest for app/pos/manifest.ts.
+// (staff, phone-first) manifest for app/pos/manifest.webmanifest/route.ts.
 export const metadata: Metadata = {
   title: "Punto de venta · comanda",
   applicationName: "comanda POS",
