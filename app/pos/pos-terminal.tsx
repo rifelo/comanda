@@ -64,12 +64,21 @@ import {
   startTender,
   cancelTender,
   completeSale,
+  reprintLabel,
   PAY_METHODS,
   type OrderLine,
   type ModSelection,
   type SuggestionCardState,
   type PayMethod,
 } from "./pos-store";
+import {
+  usePrinter,
+  usePrinterAutoConnect,
+  connectPrinter,
+  printTestLabel,
+  setLabelDefaults,
+  type PrinterStatus,
+} from "@/lib/printer/serial";
 
 // ── design tokens → app CSS variables ───────────────────────────
 const C = {
@@ -152,6 +161,10 @@ export function PosTerminal({
       ...(!hasFavs && firstReal && (cur === FAV_CAT || !cur) ? { cat: firstReal } : {}),
     });
   }, [catalog]);
+  // What every printed label shows in its kicker line.
+  React.useEffect(() => {
+    setLabelDefaults({ station, orgName: catalog.orgName });
+  }, [station, catalog.orgName]);
 
   return (
     <CatalogCtx.Provider value={catalog}>
@@ -165,6 +178,9 @@ export function PosTerminal({
 function Register({ mode }: { mode: "device" | "user" }) {
   const s = usePos();
   useMicTranscribe(s.listening);
+  // Reopen the label printer if this browser was already paired with it, and
+  // follow the USB cable (connect / disconnect events).
+  usePrinterAutoConnect();
 
   // Refresh suggestions when the order changes, so they track the current
   // products (debounced; only once a conversation has started and not sent).
@@ -226,6 +242,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <SearchBox />
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <PrinterChip />
         <button
           onClick={() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen }))}
           title="Asistente de IA"
@@ -272,6 +289,51 @@ function SearchBox() {
         <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
       )}
     </div>
+  );
+}
+
+const PRINTER_UI: Record<PrinterStatus, { label: string; dot: string; blink?: boolean }> = {
+  unsupported: { label: "sin impresora", dot: C.muted },
+  disconnected: { label: "conectar impresora", dot: C.muted },
+  connecting: { label: "conectando…", dot: C.amber, blink: true },
+  ready: { label: "impresora", dot: C.green },
+  printing: { label: "imprimiendo…", dot: C.amber, blink: true },
+  error: { label: "impresora", dot: C.red },
+};
+
+/**
+ * Label-printer chip. Disconnected → click pairs (needs the click: the port
+ * picker only opens inside a user gesture). Connected → click prints a test
+ * label. Errors show as a red dot with the reason in the tooltip and a line
+ * under the bar.
+ */
+function PrinterChip() {
+  const p = usePrinter();
+  const ui = PRINTER_UI[p.status];
+  const canPair = p.status === "disconnected" || p.status === "error";
+  const disabled = p.status === "unsupported" || p.status === "connecting" || p.status === "printing";
+  const title = p.note ?? (p.status === "ready" ? "Imprimir etiqueta de prueba" : canPair ? "Conectar la impresora de etiquetas" : ui.label);
+  return (
+    <button
+      onClick={() => (canPair ? void connectPrinter() : p.status === "ready" ? printTestLabel() : undefined)}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 3,
+        cursor: disabled ? "default" : "pointer", border: `1.5px solid ${p.status === "error" ? C.red : C.rule}`,
+        background: "transparent", color: p.status === "unsupported" ? C.muted : C.ink,
+        fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap",
+      }}
+    >
+      <span className={ui.blink ? "pos-rec" : ""} style={{ width: 8, height: 8, borderRadius: 8, background: ui.dot }} />
+      {ui.label}
+      {p.queued > 0 && (
+        <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.ink, color: C.paperLt, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          +{p.queued}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -926,9 +988,46 @@ function ReceiptScreen() {
         <button ref={btnRef} className="cmd-btn" onClick={resetConversation} style={{ marginTop: 30, width: "100%", height: 60, fontSize: 15 }}>
           Nuevo pedido
         </button>
+        <ReceiptPrinterLine />
         <div style={{ fontSize: 10.5, color: C.muted, marginTop: 12 }}>Enter · nuevo pedido</div>
       </div>
     </Overlay>
+  );
+}
+
+/**
+ * Under "Nuevo pedido": what happened with the label, plus a reprint button.
+ * The label is queued the moment the sale is saved, so by the time the
+ * receipt shows it's usually already printing.
+ */
+function ReceiptPrinterLine() {
+  const p = usePrinter();
+  const s = usePos();
+  if (p.status === "unsupported") return null;
+  const printed = p.lastPrinted?.folio === s.orderNo;
+  const busy = p.status === "printing" || p.status === "connecting";
+  const text = busy
+    ? "Imprimiendo etiqueta…"
+    : p.note && (p.status === "error" || p.status === "disconnected")
+      ? p.note
+      : printed
+        ? "Etiqueta impresa"
+        : null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 14, minHeight: 20 }}>
+      {text && (
+        <span style={{ fontSize: 11, letterSpacing: ".08em", color: p.status === "error" ? C.red : C.muted, textTransform: "uppercase" }}>
+          {text}
+        </span>
+      )}
+      <button
+        onClick={() => (p.status === "ready" ? reprintLabel() : void connectPrinter())}
+        disabled={busy}
+        style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+      >
+        {p.status === "ready" ? "Reimprimir etiqueta" : "Conectar impresora"}
+      </button>
+    </div>
   );
 }
 

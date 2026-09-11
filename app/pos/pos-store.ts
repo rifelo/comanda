@@ -26,6 +26,7 @@ import {
   type PosCatalogFilter,
 } from "@/lib/pos/types";
 import { crearOrden, posSuggest, transcribeAudio } from "./actions";
+import { printOrderLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
 export const EMPTY_CATALOG: PosCatalog = {
@@ -533,7 +534,17 @@ export async function completeSale() {
       lastChange: res.change,
       lastTotal: res.total,
     });
+    // Label for the order (customer name + folio). Queued and non-blocking:
+    // a printer problem shows on the chip, never on the receipt.
+    printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
   } else posStore.set({ sending: false, sendError: res.error });
+}
+
+/** Reprint the label of the sale on the receipt screen. */
+export function reprintLabel() {
+  const s = posStore.get();
+  if (!s.sent) return;
+  printOrderLabel({ name: s.customerName, folio: s.orderNo, orgName: s.catalog.orgName });
 }
 
 
