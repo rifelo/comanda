@@ -7,6 +7,14 @@ import {
   desvincularDispositivo,
   renombrarDispositivo,
 } from "../_actions";
+import {
+  BROWSER_LABEL,
+  STARTUP_FILE,
+  STARTUP_FOLDER,
+  launchCommand,
+  startupBatch,
+  type DesktopBrowser,
+} from "@/lib/pwa/launch";
 
 export type PosDeviceRow = {
   id: string;
@@ -298,11 +306,105 @@ export function PosConfigClient({
         ) : null}
       </section>
 
+      {/* ── 3 · desktop app on the register PC ────────────────────────── */}
+      <InstallSection />
+
       {error ? (
         <p role="alert" style={{ color: "var(--red)", fontSize: 12, margin: 0 }}>
           {error}
         </p>
       ) : null}
     </div>
+  );
+}
+
+const code: React.CSSProperties = {
+  display: "block",
+  fontSize: 11.5,
+  lineHeight: 1.6,
+  padding: "10px 12px",
+  border: "1px solid var(--rule)",
+  background: "var(--paper)",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-all",
+  margin: "8px 0 0",
+};
+
+/**
+ * How to run the POS as a desktop app on the register PC. The install button
+ * itself lives in /pos (the browser installs the manifest of the page that
+ * fires `beforeinstallprompt`, and this page links the staff app's). What we
+ * can do here is hand over the exact Startup command for this origin.
+ */
+const noop = () => () => {};
+function InstallSection() {
+  // "" on the server, the real origin after hydration — no setState-in-effect.
+  const origin = React.useSyncExternalStore(noop, () => window.location.origin, () => "");
+  const [browser, setBrowser] = React.useState<DesktopBrowser>("edge");
+  const [copied, setCopied] = React.useState<"cmd" | "bat" | null>(null);
+
+  async function copyText(kind: "cmd" | "bat", text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      setTimeout(() => setCopied(null), 1800);
+    } catch {
+      /* clipboard blocked — the text is visible on screen */
+    }
+  }
+
+  const cmd = origin ? launchCommand(browser, origin) : "";
+  const bat = origin ? startupBatch(browser, origin) : "";
+
+  return (
+    <section>
+      <span className="text-muted" style={label}>
+        App de escritorio · PC de la caja
+      </span>
+      <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: "0 0 14px", maxWidth: 560 }}>
+        En el PC de la caja, abre <b style={{ color: "var(--ink)" }}>{origin ? `${origin}/pos` : "/pos"}</b> en{" "}
+        <b style={{ color: "var(--ink)" }}>Edge o Chrome</b> y toca <b style={{ color: "var(--ink)" }}>instalar</b> en la
+        barra superior. Queda como app propia (icono en el escritorio, sin barra de direcciones). El chip{" "}
+        <b style={{ color: "var(--ink)" }}>pantalla completa</b> la pone a pantalla completa; Esc o F11 salen.
+      </p>
+
+      <div style={{ border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: "18px 22px", maxWidth: 560 }}>
+        <span className="text-muted" style={{ ...label, marginBottom: 6 }}>
+          Iniciar con Windows, a pantalla completa
+        </span>
+        <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: "0 0 10px" }}>
+          Guarda este comando como <b style={{ color: "var(--ink)" }}>{STARTUP_FILE}</b> en la carpeta de inicio (Win+R →{" "}
+          <b style={{ color: "var(--ink)" }}>shell:startup</b>). Al encender el PC se abre el POS solo, ya a pantalla completa.
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {(["edge", "chrome"] as DesktopBrowser[]).map((b) => (
+            <button
+              key={b}
+              type="button"
+              className={`cmd-btn ghost sm${browser === b ? " active" : ""}`}
+              aria-pressed={browser === b}
+              onClick={() => setBrowser(b)}
+              style={browser === b ? { background: "var(--ink)", color: "var(--paper-lt)" } : undefined}
+            >
+              {BROWSER_LABEL[b]}
+            </button>
+          ))}
+        </div>
+        <code style={code}>{bat || "…"}</code>
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <button type="button" className="cmd-btn sm" onClick={() => copyText("bat", bat)} disabled={!bat}>
+            {copied === "bat" ? "Copiado ✓" : `Copiar ${STARTUP_FILE}`}
+          </button>
+          <button type="button" className="cmd-btn ghost sm" onClick={() => copyText("cmd", cmd)} disabled={!cmd}>
+            {copied === "cmd" ? "Copiado ✓" : "Copiar solo el comando"}
+          </button>
+        </div>
+        <p className="text-muted" style={{ fontSize: 11, lineHeight: 1.5, margin: "12px 0 0" }}>
+          Carpeta de inicio: <span style={{ color: "var(--ink)" }}>{STARTUP_FOLDER}</span>. Alternativa sin pantalla
+          completa: en <b style={{ color: "var(--ink)" }}>edge://apps</b> (o chrome://apps), menú de la app →{" "}
+          <b style={{ color: "var(--ink)" }}>Iniciar al abrir sesión</b>.
+        </p>
+      </div>
+    </section>
   );
 }
