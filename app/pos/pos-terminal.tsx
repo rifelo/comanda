@@ -75,6 +75,7 @@ import {
   usePrinter,
   usePrinterAutoConnect,
   connectPrinter,
+  checkPrinter,
   printTestLabel,
   setLabelDefaults,
   type PrinterStatus,
@@ -298,6 +299,7 @@ const PRINTER_UI: Record<PrinterStatus, { label: string; dot: string; blink?: bo
   connecting: { label: "conectando…", dot: C.amber, blink: true },
   ready: { label: "impresora", dot: C.green },
   printing: { label: "imprimiendo…", dot: C.amber, blink: true },
+  off: { label: "impresora apagada", dot: C.red },
   error: { label: "impresora", dot: C.red },
 };
 
@@ -313,9 +315,14 @@ function PrinterChip() {
   const canPair = p.status === "disconnected" || p.status === "error";
   const disabled = p.status === "unsupported" || p.status === "connecting" || p.status === "printing";
   const title = p.note ?? (p.status === "ready" ? "Imprimir etiqueta de prueba" : canPair ? "Conectar la impresora de etiquetas" : ui.label);
+  const onClick = () => {
+    if (canPair) void connectPrinter();
+    else if (p.status === "ready") printTestLabel();
+    else if (p.status === "off") void checkPrinter(); // "¿ya la encendí?" without waiting for the heartbeat
+  };
   return (
     <button
-      onClick={() => (canPair ? void connectPrinter() : p.status === "ready" ? printTestLabel() : undefined)}
+      onClick={onClick}
       disabled={disabled}
       title={title}
       aria-label={title}
@@ -1008,7 +1015,7 @@ function ReceiptPrinterLine() {
   const busy = p.status === "printing" || p.status === "connecting";
   const text = busy
     ? "Imprimiendo etiqueta…"
-    : p.note && (p.status === "error" || p.status === "disconnected")
+    : p.note && (p.status === "error" || p.status === "disconnected" || p.status === "off")
       ? p.note
       : printed
         ? "Etiqueta impresa"
@@ -1021,11 +1028,11 @@ function ReceiptPrinterLine() {
         </span>
       )}
       <button
-        onClick={() => (p.status === "ready" ? reprintLabel() : void connectPrinter())}
+        onClick={() => (p.status === "ready" ? reprintLabel() : p.status === "off" ? void checkPrinter() : void connectPrinter())}
         disabled={busy}
         style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
       >
-        {p.status === "ready" ? "Reimprimir etiqueta" : "Conectar impresora"}
+        {p.status === "ready" ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
       </button>
     </div>
   );
