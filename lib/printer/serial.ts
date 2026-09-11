@@ -42,6 +42,9 @@ export type PrinterStatus =
   | "connecting"
   | "ready"
   | "printing"
+  /** Port open but the printer is powered down — USB stays enumerated when
+   *  it's switched off with the button, so the OS never signals a disconnect. */
+  | "off"
   | "error";
 
 export interface PrinterState {
@@ -118,6 +121,7 @@ async function attach(port: SerialPortLike) {
     if (transport === t) {
       transport = null;
       client = null;
+      stopMonitor();
       printerStore.set((s) => ({
         ...s,
         status: "disconnected",
@@ -127,7 +131,53 @@ async function attach(port: SerialPortLike) {
   };
   transport = t;
   client = new NiimbotClient(t);
-  printerStore.set({ status: "ready", note: null });
+  // An open port only proves the USB interface is there. Ask the printer
+  // something before calling it ready — switched off, it never answers.
+  applyProbe(await probe());
+  startMonitor();
+}
+
+const OFF_NOTE = "La impresora está apagada. Enciéndela con el botón; se reconecta sola.";
+const PROBE_MS = 5000;
+let monitor: ReturnType<typeof setInterval> | null = null;
+
+/** True if the printer answers a status request (≤ 800 ms). */
+async function probe(): Promise<boolean> {
+  return !!client && (await client.freeRows()) !== null;
+}
+
+function applyProbe(alive: boolean) {
+  printerStore.set((s) => {
+    if (alive) return s.status === "ready" ? s : { ...s, status: "ready", note: null };
+    return s.status === "off" ? s : { ...s, status: "off", note: OFF_NOTE };
+  });
+}
+
+/**
+ * Heartbeat while connected: flips ready ⇄ off as the printer is switched
+ * off/on with the port still open. Skipped mid-job so it never interleaves
+ * with a page being sent.
+ */
+function startMonitor() {
+  stopMonitor();
+  monitor = setInterval(() => {
+    if (!client) return stopMonitor();
+    const st = printerStore.get().status;
+    if (st === "printing" || st === "connecting") return;
+    void probe().then(applyProbe);
+  }, PROBE_MS);
+}
+function stopMonitor() {
+  if (monitor) clearInterval(monitor);
+  monitor = null;
+}
+
+/** Manual "is it back?" check from the chip, without waiting for the next tick. */
+export async function checkPrinter(): Promise<boolean> {
+  if (!client) return false;
+  const alive = await probe();
+  applyProbe(alive);
+  return alive;
 }
 
 function openErrorNote(err: unknown): string {
@@ -177,6 +227,7 @@ export async function disconnectPrinter(): Promise<void> {
   const t = transport;
   transport = null;
   client = null;
+  stopMonitor();
   if (t) await t.close();
   printerStore.set({ status: "disconnected", note: null });
 }
@@ -236,6 +287,13 @@ async function drain() {
           queued: 0,
           note: s.status === "unsupported" ? s.note : "Impresora no conectada. La etiqueta no se imprimió.",
         }));
+        break;
+      }
+      // Switched off with the port still open: don't burn 30 s of timeouts
+      // per label, check once and drop the queue with a clear message.
+      if (printerStore.get().status === "off" && !(await probe())) {
+        queue.length = 0;
+        printerStore.set({ status: "off", queued: 0, note: "La impresora está apagada. Enciéndela y reimprime la etiqueta." });
         break;
       }
       printerStore.set({ status: "printing", note: null });
