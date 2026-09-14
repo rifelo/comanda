@@ -44,9 +44,19 @@ const FONT_STACK = '"Arial", "Helvetica", "Segoe UI", sans-serif';
 const MONO_STACK = '"Consolas", "Courier New", monospace';
 
 /**
+ * Bare order number from a folio: "A-247" → "247". Folios without a series
+ * prefix ("PRUEBA") come back unchanged.
+ */
+export function orderNumber(folio: string): string {
+  const m = /^[A-Za-z]+-(\d+)$/.exec(folio.trim());
+  return m ? m[1] : folio.trim();
+}
+
+/**
  * Render the label the cashier expects after "Cobrar": the customer's name as
  * the hero, the folio underneath so the kitchen can match it to the ticket.
- * Falls back to the folio as hero when no name was captured.
+ * When no name was captured the bare order number ("247", not "A-247") is
+ * the hero instead — that's what the barista calls out.
  */
 export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -65,7 +75,7 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const inkW = INK_RIGHT - INK_LEFT;
   const cx = INK_LEFT + inkW / 2;
   const name = input.name.trim();
-  const hero = name || input.folio;
+  const hero = name || orderNumber(input.folio);
 
   // Kicker: business · station, small caps, top-left.
   const kicker = [input.orgName, input.station].filter(Boolean).join(" · ").toUpperCase();
