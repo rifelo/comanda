@@ -65,12 +65,23 @@ import {
   cancelTender,
   completeSale,
   reprintLabel,
+  savePending,
+  openPendientes,
+  closePendientes,
+  refreshPendientes,
+  editPending,
+  chargePending,
+  cancelPending,
+  discardPendingEdit,
+  ticketTotal,
   PAY_METHODS,
   type OrderLine,
   type ModSelection,
   type SuggestionCardState,
   type PayMethod,
 } from "./pos-store";
+import { timeAgo } from "@/lib/pos/pending";
+import type { PendingOrder } from "@/lib/pos/types";
 import {
   usePrinter,
   usePrinterAutoConnect,
@@ -194,6 +205,16 @@ function Register({ mode }: { mode: "device" | "user" }) {
     if (st.transcript.length && !st.sent) scheduleSuggest(800);
   }, [orderSig]);
 
+  // Open (unpaid) orders: load on mount and keep the badge fresh while the
+  // tab is visible — another register may send or settle orders too.
+  React.useEffect(() => {
+    void refreshPendientes();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshPendientes();
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Escape closes whatever is on top.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -201,6 +222,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
       const st = posStore.get();
       if (st.sheet) posStore.set({ sheet: null });
       else if (st.view === "tender") cancelTender();
+      else if (st.pendientesOpen) closePendientes();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
     };
     window.addEventListener("keydown", onKey);
@@ -217,6 +239,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
         {s.aiOpen && <AiDrawer />}
       </div>
       {s.sheet && <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />}
+      {s.pendientesOpen && s.view === "sale" && <PendientesPanel />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
     </div>
@@ -248,6 +271,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         <DesktopChips />
         <PrinterChip />
+        <PendientesChip />
         <button
           onClick={() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen }))}
           title="Asistente de IA"
@@ -294,6 +318,27 @@ function SearchBox() {
         <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
       )}
     </div>
+  );
+}
+
+/** "Pendientes" — open orders waiting to be paid, with a count badge. */
+function PendientesChip() {
+  const s = usePos();
+  const n = s.pendientes.length;
+  return (
+    <button
+      onClick={() => (s.pendientesOpen ? closePendientes() : openPendientes())}
+      title="Pedidos pendientes de pago"
+      aria-pressed={s.pendientesOpen}
+      style={{ ...chipStyle, border: `1.5px solid ${n ? C.amber : C.rule}`, position: "relative" }}
+    >
+      Pendientes
+      {n > 0 && (
+        <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.amber, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {n}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -609,6 +654,9 @@ function Ticket() {
   const s = usePos();
   const catalog = useCatalog();
   const total = orderTotal(s.order, catalog);
+  const editing = s.pending?.mode === "edit" ? s.pending : null;
+  const hasMissing = s.order.some((l) => l.missing);
+  const canSend = s.order.length > 0 && !s.sending && !hasMissing;
   const count = s.order.reduce((n, l) => n + l.qty, 0);
   const comboSaved = s.order.filter((l) => l.kind === "combo").reduce((acc, l) => acc + (catalog.comboById[l.id]?.saving ?? 0) * l.qty, 0);
   const [noteOpen, setNoteOpen] = React.useState(false);
@@ -624,8 +672,13 @@ function Ticket() {
       {/* header */}
       <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.rule}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em" }}>PEDIDO {count > 0 && <span className="cmd-num" style={{ color: C.muted, fontWeight: 400 }}>· {count} ítem{count === 1 ? "" : "s"}</span>}</span>
-          {s.order.length > 0 && (
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: editing ? C.red : C.ink }}>
+            {editing ? <>EDITANDO <span className="cmd-num">{editing.folio}</span></> : "PEDIDO"}
+            {count > 0 && <span className="cmd-num" style={{ color: C.muted, fontWeight: 400 }}> · {count} ítem{count === 1 ? "" : "s"}</span>}
+          </span>
+          {editing ? (
+            <button onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido ${editing.folio}?`)) discardPendingEdit(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", padding: "4px 0" }}>Descartar</button>
+          ) : s.order.length > 0 && (
             <button onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", padding: "4px 0" }}>Vaciar</button>
           )}
         </div>
@@ -689,14 +742,89 @@ function Ticket() {
           <span style={{ fontSize: 12, letterSpacing: ".12em", color: C.ink2 }}>TOTAL</span>
           <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 32, color: C.ink, lineHeight: 1 }}>{posMoney(total)}</span>
         </div>
+        {hasMissing && (
+          <div style={{ fontSize: 10.5, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>Quita el producto no disponible para continuar.</div>
+        )}
+        {s.sendError && s.view === "sale" && (
+          <div role="alert" style={{ fontSize: 11, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>{s.sendError}</div>
+        )}
         <button
           className="cmd-btn red"
-          disabled={!s.order.length}
+          disabled={!canSend}
           onClick={startTender}
-          style={{ width: "100%", height: 60, fontSize: 15, fontWeight: 600, letterSpacing: ".06em", opacity: s.order.length ? 1 : 0.4, cursor: s.order.length ? "pointer" : "not-allowed" }}
+          style={{ width: "100%", height: 60, fontSize: 15, fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
         >
           Cobrar {s.order.length ? posMoney(total) : ""}
         </button>
+        <button
+          className="cmd-btn"
+          disabled={!canSend}
+          onClick={() => void savePending()}
+          style={{ width: "100%", height: 48, marginTop: 8, fontSize: 13, fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
+        >
+          {s.sending ? "Guardando…" : editing ? "Guardar cambios" : "Enviar · pagar después"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Pending orders — sent to the kitchen, waiting to be paid
+// ════════════════════════════════════════════════════════════════
+function PendientesPanel() {
+  const s = usePos();
+  const [, tick] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  // Loading something into the ticket discards what's there — ask first.
+  const guard = () => !s.order.length || !!s.pending || window.confirm("Se perderá el pedido actual. ¿Continuar?");
+  return (
+    <Overlay align="center" onClose={closePendientes}>
+      <div role="dialog" aria-label="Pedidos pendientes" className="pos-card" style={{ width: "min(780px, 94vw)", maxHeight: "82vh", display: "flex", flexDirection: "column", border: `1.5px solid ${C.ink}`, borderRadius: 10, background: C.paperLt, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: `1.5px solid ${C.ink}` }}>
+          <span style={{ fontFamily: F.slab, fontSize: 24 }}>Pendientes<span style={{ color: C.amber }}>.</span></span>
+          <span className="cmd-num" style={{ fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+            {s.pendientes.length} pedido{s.pendientes.length === 1 ? "" : "s"} sin pagar
+          </span>
+          <button onClick={closePendientes} aria-label="Cerrar" style={{ marginLeft: "auto", width: 36, height: 36, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontSize: 18, cursor: "pointer" }}>×</button>
+        </div>
+        <div className="pos-scroll" style={{ overflowY: "auto", flex: 1 }}>
+          {s.pendientesError && <div role="alert" style={{ padding: "12px 20px", color: C.red, fontSize: 12 }}>{s.pendientesError}</div>}
+          {!s.pendientes.length && !s.pendientesError && (
+            <div style={{ padding: "48px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
+              {s.pendientesLoading ? "Cargando…" : <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</>}
+            </div>
+          )}
+          {s.pendientes.map((o) => <PendienteRow key={o.id} o={o} guard={guard} />)}
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function PendienteRow({ o, guard }: { o: PendingOrder; guard: () => boolean }) {
+  const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
+  const count = o.items.reduce((n, it) => n + it.qty, 0);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${C.ruleSoft}` }}>
+      <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 26, minWidth: 64, color: C.ink }}>{o.folio}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.customerName || "—"}</div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>
+          {type} · <span className="cmd-num">{count}</span> ítem{count === 1 ? "" : "s"} · {timeAgo(o.createdAt)}
+        </div>
+        <div style={{ fontSize: 11, color: C.ink2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {o.items.map((it) => `${it.qty}× ${it.name}`).join(" · ")}
+        </div>
+      </div>
+      <div className="cmd-num" style={{ fontSize: 18, fontWeight: 700, color: C.ink, minWidth: 90, textAlign: "right" }}>{posMoney(o.total)}</div>
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <button className="cmd-btn red" onClick={() => { if (guard()) chargePending(o); }} style={{ height: 44, padding: "0 16px", fontSize: 12 }}>Cobrar</button>
+        <button className="cmd-btn" onClick={() => { if (guard()) editPending(o); }} style={{ height: 44, padding: "0 14px", fontSize: 12 }}>Editar</button>
+        <button onClick={() => { if (window.confirm(`¿Cancelar el pedido ${o.folio}?`)) void cancelPending(o.id); }} aria-label={`Cancelar ${o.folio}`} style={{ height: 44, padding: "0 10px", border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
       </div>
     </div>
   );
@@ -709,10 +837,11 @@ function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
   const editable = line.kind === "item" && !!line.hasMods;
   const open = () => { if (editable) posStore.set({ sheet: { mode: "edit", idx } }); };
   return (
-    <div className={editable ? "pos-line" : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px 10px 14px", borderBottom: `1px solid ${C.ruleSoft}` }}>
+    <div className={editable ? "pos-line" : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px 10px 14px", borderBottom: `1px solid ${C.ruleSoft}`, opacity: line.missing ? 0.55 : 1 }}>
       <div role={editable ? "button" : undefined} tabIndex={editable ? 0 : undefined} onClick={open} onKeyDown={(e) => { if (editable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }} style={{ flex: 1, minWidth: 0, cursor: editable ? "pointer" : "default" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {line.kind === "combo" && <span style={{ fontSize: 8, color: C.green, border: `1px solid ${C.green}`, padding: "1px 3px", letterSpacing: ".06em", borderRadius: 2 }}>COMBO</span>}
+          {line.missing && <span style={{ fontSize: 8, color: C.red, border: `1px solid ${C.red}`, padding: "1px 3px", letterSpacing: ".06em", borderRadius: 2 }}>NO DISPONIBLE</span>}
           <span style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{line.name}</span>
         </div>
         {line.kind === "combo" && <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{catalog.comboById[line.id]?.desc}</div>}
@@ -861,7 +990,7 @@ function quickAmounts(total: number): number[] {
 function TenderScreen() {
   const s = usePos();
   const catalog = useCatalog();
-  const total = orderTotal(s.order, catalog);
+  const total = ticketTotal(s);
   const isCash = s.payMethod === "efectivo";
   const tendered = s.tendered;
   const change = tendered !== null ? tendered - total : 0;
@@ -896,6 +1025,7 @@ function TenderScreen() {
           <button onClick={cancelTender} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Cobrar<span style={{ color: C.red }}>.</span></span>
           <span style={{ marginLeft: "auto", fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+            {s.pending ? <>Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.pending.folio}</span> · </> : null}
             {ORDER_TYPES.find((t) => t.id === s.orderType)?.label}{s.customerName ? ` · ${s.customerName}` : ""}
           </span>
         </div>
@@ -1006,23 +1136,24 @@ function Keypad({ onKey }: { onKey: (k: string) => void }) {
 // ════════════════════════════════════════════════════════════════
 function ReceiptScreen() {
   const s = usePos();
+  const pendiente = s.receiptKind === "pendiente";
   const method = PAY_METHODS.find((m) => m.id === s.payMethod)?.label ?? s.payMethod;
   const btnRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { btnRef.current?.focus(); }, []);
   return (
     <Overlay align="fill">
       <div className="pos-card" style={{ width: "min(560px, 92vw)", textAlign: "center", padding: "40px 32px 32px", border: `1.5px solid ${C.ink}`, borderRadius: 10, background: C.paperLt }}>
-        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>✓</div>
-        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>Venta registrada</div>
+        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: pendiente ? C.amber : C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{pendiente ? "⏱" : "✓"}</div>
+        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>{pendiente ? "Pedido enviado" : "Venta registrada"}</div>
         <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase", marginTop: 6 }}>
-          Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.orderNo}</span> · {method}{s.customerName ? ` · ${s.customerName}` : ""}
+          {pendiente ? "Pendiente de pago · " : ""}Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.orderNo}</span>{pendiente ? "" : ` · ${method}`}{s.customerName ? ` · ${s.customerName}` : ""}
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: 28, marginTop: 26 }}>
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Total</div>
             <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, marginTop: 2 }}>{posMoney(s.lastTotal)}</div>
           </div>
-          {s.payMethod === "efectivo" && (
+          {!pendiente && s.payMethod === "efectivo" && (
             <div>
               <div style={{ fontSize: 10.5, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Cambio</div>
               <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, marginTop: 2, color: C.green }}>{posMoney(s.lastChange)}</div>
