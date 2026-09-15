@@ -13,6 +13,7 @@
  *    the 30 mm label instead of hugging the leading edge.
  */
 
+import { create as createQr } from "qrcode";
 import { HEAD_WIDTH_BYTES, HEAD_WIDTH_PX, PX_PER_MM } from "./niimbot";
 
 export interface LabelRaster {
@@ -109,6 +110,85 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
     ctx.font = `bold 30px ${MONO_STACK}`;
     ctx.textAlign = "center";
     ctx.fillText(input.folio, cx, ry + 8);
+  }
+
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+}
+
+export interface InstagramLabelInput {
+  /** Handle with or without "@" ("cafepayo"). */
+  handle: string;
+  orgName?: string;
+}
+
+/** Normalised handle + profile URL: "@CafePayo " → { handle: "cafepayo", url: "https://www.instagram.com/cafepayo" }. */
+export function instagramLink(handle: string): { handle: string; url: string } {
+  const h = handle.trim().replace(/^@/, "").replace(/\/+$/, "").toLowerCase();
+  return { handle: h, url: `https://www.instagram.com/${h}` };
+}
+
+/**
+ * "Síguenos" label: a QR to the café's Instagram profile on the left, the
+ * handle big on the right. Printed on demand from the receipt screen (a
+ * second label the customer takes with the order).
+ */
+export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
+  const W = HEAD_WIDTH_PX;
+  const H = LABEL_H_MM * PX_PER_MM;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000";
+  ctx.textBaseline = "top";
+
+  const { handle, url } = instagramLink(input.handle);
+
+  // QR: medium error correction survives thermal fuzz; modules scaled to fill
+  // the label height (a 29-module v3 code lands at 7 px/module ≈ 25 mm).
+  const qr = createQr(url, { errorCorrectionLevel: "M" });
+  const n = qr.modules.size;
+  const quiet = 2; // modules of white kept around the code inside the ink area
+  const scale = Math.max(2, Math.floor((H - 4) / (n + quiet * 2)));
+  const qrPx = n * scale;
+  const qx = INK_LEFT + quiet * scale;
+  const qy = Math.round((H - qrPx) / 2);
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (qr.modules.get(r, c)) ctx.fillRect(qx + c * scale, qy + r * scale, scale, scale);
+    }
+  }
+
+  // Right column: kicker · @handle (autofit) · hint · business.
+  const colL = qx + qrPx + quiet * scale + 6;
+  const colW = INK_RIGHT - colL;
+  const cx = colL + colW / 2;
+  ctx.textAlign = "center";
+  let y = qy + 2;
+  ctx.font = `bold 15px ${FONT_STACK}`;
+  ctx.fillText(fitOneLine(ctx, "SÍGUENOS EN", colW), cx, y);
+  y += 19;
+  ctx.fillText(fitOneLine(ctx, "INSTAGRAM", colW), cx, y);
+  y += 26;
+
+  const at = `@${handle}`;
+  let size = 40;
+  for (; size >= 16; size -= 2) {
+    ctx.font = `bold ${size}px ${FONT_STACK}`;
+    if (ctx.measureText(at).width <= colW) break;
+  }
+  ctx.font = `bold ${size}px ${FONT_STACK}`;
+  ctx.fillText(at, cx, y);
+  y += Math.round(size * 1.15) + 8;
+
+  ctx.font = `14px ${FONT_STACK}`;
+  ctx.fillText(fitOneLine(ctx, "Escanea el código", colW), cx, y);
+  if (input.orgName) {
+    ctx.font = `bold 12px ${FONT_STACK}`;
+    ctx.fillText(fitOneLine(ctx, input.orgName.toUpperCase(), colW), cx, qy + qrPx - 14);
   }
 
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);

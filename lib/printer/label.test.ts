@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orderNumber } from "./label";
+import { instagramLink, orderNumber } from "./label";
 
 describe("orderNumber", () => {
   it("strips the series prefix from a folio", () => {
@@ -10,5 +10,12 @@ describe("orderNumber", () => {
   it("leaves folios without a prefix alone", () => {
     expect(orderNumber("PRUEBA")).toBe("PRUEBA");
     expect(orderNumber("31")).toBe("31");
+  });
+});
+
+describe("instagramLink", () => {
+  it("normalises the handle and builds the profile URL", () => {
+    expect(instagramLink("cafepayo")).toEqual({ handle: "cafepayo", url: "https://www.instagram.com/cafepayo" });
+    expect(instagramLink(" @CafePayo/ ")).toEqual({ handle: "cafepayo", url: "https://www.instagram.com/cafepayo" });
   });
 });

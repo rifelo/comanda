@@ -44,6 +44,7 @@ export async function getPosCatalog({
     { data: modLinks },
     combosView,
     modGroupsList,
+    { data: orgRow },
   ] = await Promise.all([
     supabase
       .from("productos")
@@ -69,6 +70,11 @@ export async function getPosCatalog({
       .eq("organization_id", organizationId),
     getCombosView(organizationId, client),
     getModificadores(organizationId, client),
+    supabase
+      .from("organizations")
+      .select("instagram")
+      .eq("id", organizationId)
+      .maybeSingle(),
   ]);
 
   // ── categories: resolve each product's top-level tab + sub label ──────────
@@ -192,5 +198,6 @@ export async function getPosCatalog({
     comboById,
     catLabel,
     orgName,
+    instagram: ((orgRow as { instagram?: string | null } | null)?.instagram ?? "").replace(/^@/, "").trim() || null,
   };
 }
