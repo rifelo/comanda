@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requirePosContext } from "@/lib/pos/server";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
+import { generarFraseCafe } from "@/lib/ai/frase";
+import type { FraseCategoria } from "@/lib/pos/frase";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
   PosCatalog,
@@ -418,6 +420,24 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   }
   if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
   return { ok: true };
+}
+
+// ── "frase del día" label ─────────────────────────────────────────────────────
+export type GenerarFraseResult =
+  | { ok: true; texto: string; categoria: FraseCategoria }
+  | { ok: false; error: string };
+
+/** One short coffee phrase (random category) for the cup label. */
+export async function generarFrase(): Promise<GenerarFraseResult> {
+  const { catalog } = await requirePosContext();
+  try {
+    const r = await generarFraseCafe({ orgName: catalog.orgName });
+    return { ok: true, ...r };
+  } catch (err) {
+    if (err instanceof MissingApiKeyError) return { ok: false, error: err.message };
+    console.error("[generarFrase] failed:", err);
+    return { ok: false, error: err instanceof Error ? err.message : "No se pudo generar la frase." };
+  }
 }
 
 // ── live AI suggestions ──────────────────────────────────────────────────────
