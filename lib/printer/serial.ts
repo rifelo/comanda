@@ -33,7 +33,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "./transport";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -339,6 +339,16 @@ export function printOrderLabel(input: OrderLabelInput): void {
     name: full.name.trim(),
   });
 }
+
+/** "Síguenos en Instagram" QR label, printed on demand from the receipt. */
+export function printInstagramLabel(handle: string): void {
+  enqueue({
+    raster: () => renderInstagramLabel({ handle, orgName: labelDefaults.orgName }),
+    folio: INSTAGRAM_FOLIO,
+    name: `@${handle.replace(/^@/, "")}`,
+  });
+}
+export const INSTAGRAM_FOLIO = "INSTAGRAM";
 
 export function printTestLabel(): void {
   enqueue({ raster: () => renderTestLabel(labelDefaults.station), folio: "PRUEBA", name: "" });

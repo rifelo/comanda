@@ -88,6 +88,8 @@ import {
   connectPrinter,
   checkPrinter,
   printTestLabel,
+  printInstagramLabel,
+  INSTAGRAM_FOLIO,
   setLabelDefaults,
   type PrinterStatus,
 } from "@/lib/printer/serial";
@@ -1178,16 +1180,20 @@ function ReceiptScreen() {
 function ReceiptPrinterLine() {
   const p = usePrinter();
   const s = usePos();
+  const catalog = useCatalog();
   if (p.status === "unsupported") return null;
   const printed = p.lastPrinted?.folio === s.orderNo;
+  const igPrinted = p.lastPrinted?.folio === INSTAGRAM_FOLIO;
   const busy = p.status === "printing" || p.status === "connecting";
   const text = busy
     ? "Imprimiendo etiqueta…"
     : p.note && (p.status === "error" || p.status === "disconnected" || p.status === "off")
       ? p.note
-      : printed
-        ? "Etiqueta impresa"
-        : null;
+      : igPrinted
+        ? "Etiqueta de Instagram impresa"
+        : printed
+          ? "Etiqueta impresa"
+          : null;
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 14, minHeight: 20 }}>
       {text && (
@@ -1202,6 +1208,16 @@ function ReceiptPrinterLine() {
       >
         {p.status === "ready" ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
       </button>
+      {catalog.instagram && p.status === "ready" && (
+        <button
+          onClick={() => printInstagramLabel(catalog.instagram!)}
+          disabled={busy}
+          title={`Imprime un QR a instagram.com/${catalog.instagram}`}
+          style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+        >
+          QR Instagram
+        </button>
+      )}
     </div>
   );
 }

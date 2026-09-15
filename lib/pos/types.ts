@@ -68,6 +68,8 @@ export interface PosCatalog {
   comboById: Record<string, PosCombo>;
   catLabel: Record<string, string>;
   orgName: string;
+  /** Instagram handle without "@" (organizations.instagram), null = none. */
+  instagram: string | null;
 }
 
 /** Catalog narrowed by the assistant to what the customer asked for. */
