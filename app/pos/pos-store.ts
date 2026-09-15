@@ -24,7 +24,10 @@ import {
   type PosSuggest,
   type PosAct,
   type PosCatalogFilter,
+  type ModSelection,
+  type OrderLine,
 } from "@/lib/pos/types";
+import { defaultMods } from "@/lib/pos/pending";
 import { crearOrden, posSuggest, transcribeAudio } from "./actions";
 import { printOrderLabel } from "@/lib/printer/serial";
 
@@ -44,21 +47,7 @@ export const StationCtx = React.createContext<string>("Caja 01");
 export const useCatalog = () => React.useContext(CatalogCtx);
 
 // ── store ───────────────────────────────────────────────────────
-export type ModSelection = Record<string, string | string[] | null>;
-
-export interface OrderLine {
-  id: string;
-  name: string;
-  qty: number;
-  kind: "item" | "combo";
-  basePrice?: number;
-  price?: number;
-  gluten?: boolean;
-  items?: string[];
-  mods?: ModSelection;
-  hasMods?: boolean;
-  expanded?: boolean;
-}
+export type { ModSelection, OrderLine } from "@/lib/pos/types";
 // The suggestions array holds only the currently-open cards — each refresh
 // replaces it (no indefinite stacking). Dismissed/accepted titles live in
 // handledKeys so they don't pop back.
@@ -184,15 +173,7 @@ const fmtTime = (): string => {
 };
 
 // ── order helpers (pure; catalog passed in) ─────────────────────
-export function posDefaultMods(p: PosMenuItem, catalog: PosCatalog): ModSelection {
-  const out: ModSelection = {};
-  p.mods.forEach((gid) => {
-    const g = catalog.modGroups[gid];
-    if (!g) return;
-    out[gid] = g.type === "single" ? (g.required ? g.options[0]?.name ?? null : null) : [];
-  });
-  return out;
-}
+export const posDefaultMods = defaultMods;
 export function posMakeLine(p: PosMenuItem, catalog: PosCatalog): OrderLine {
   return {
     id: p.id,
