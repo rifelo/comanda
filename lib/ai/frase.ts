@@ -1,15 +1,15 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { MissingApiKeyError } from "./pos-assistant";
+import { groqChat } from "./groq";
 import { pickCategoria, sanitizeFrase, type FraseCategoria } from "@/lib/pos/frase";
 
 /**
  * "Frase del día" for the cup label: one short line in Colombian Spanish —
  * funny, motivational, or a wink at today's news in Colombia — always tied
- * to coffee, with one or two emoji. claude-opus-5 with low effort (a short
- * creative line, latency matters at the register); the news category adds
- * one web search so the nod is actually about today.
+ * to coffee, with one or two emoji. Runs on Groq's free tier
+ * (openai/gpt-oss-120b): JSON-schema output for the creative categories,
+ * the built-in browser search for the news one (plain text there — the
+ * search tool and strict JSON can't be combined — then sanitised).
  */
 
 export interface FraseResult {
@@ -19,17 +19,15 @@ export interface FraseResult {
 
 const ResultSchema = z.object({ texto: z.string().trim().min(4).max(220) });
 
-const OUTPUT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    texto: {
-      type: "string",
-      description: "La frase final, lista para imprimir: máximo 120 caracteres, con 1 o 2 emojis.",
-    },
+const JSON_SCHEMA = {
+  name: "frase",
+  schema: {
+    type: "object",
+    properties: { texto: { type: "string" } },
+    required: ["texto"],
+    additionalProperties: false,
   },
-  required: ["texto"],
-} as const;
+};
 
 const SYSTEM = `Escribes frases cortas para pegar en el vaso de café de una cafetería en Colombia. Cada frase se imprime en una etiqueta pequeña y el cliente la lee con su bebida.
 
@@ -57,17 +55,14 @@ const CATEGORY_PROMPT: Record<FraseCategoria, string> = {
   motivador:
     "Escribe una frase MOTIVADORA sobre café y el día que empieza: cálida, corta, sin cursilería.",
   noticia:
-    "Busca en la web UNA noticia positiva o curiosa de HOY en Colombia (deporte, cultura, clima, ciencia, algo alegre; evita política, crimen y tragedias). Escribe una frase que la mencione con humor o ánimo y la conecte con el café. Si no encuentras nada apto, escribe una frase graciosa sobre café.",
+    "Usa la búsqueda web para encontrar UNA noticia positiva o curiosa publicada hoy o ayer en Colombia (deporte, cultura, clima, ciencia, algo alegre; evita política, crimen y tragedias). Escribe una frase que la mencione con humor o ánimo y la conecte con tomarse un café. Si no encuentras nada apto, escribe una frase graciosa sobre café. Responde SOLO con la frase, sin citas ni fuentes.",
 };
 
 export async function generarFraseCafe(input: {
   orgName: string;
   categoria?: FraseCategoria;
 }): Promise<FraseResult> {
-  if (!process.env.ANTHROPIC_API_KEY) throw new MissingApiKeyError();
-  const client = new Anthropic();
   const categoria = input.categoria ?? pickCategoria();
-
   const hoy = new Date().toLocaleDateString("es-CO", {
     timeZone: "America/Bogota",
     weekday: "long",
@@ -75,40 +70,19 @@ export async function generarFraseCafe(input: {
     month: "long",
     year: "numeric",
   });
-  const userText = `${CATEGORY_PROMPT[categoria]}\nCafetería: ${input.orgName}. Hoy es ${hoy}. Semilla de variedad: ${Math.floor(Math.random() * 1_000_000)}.`;
+  const user = `${CATEGORY_PROMPT[categoria]}\nCafetería: ${input.orgName}. Hoy es ${hoy}. Semilla de variedad: ${Math.floor(Math.random() * 1_000_000)}.`;
 
-  // Same call shape as lib/ai/pos-assistant.ts (proven in production):
-  // non-beta messages.create + structured output. Refusals are surfaced as
-  // an error instead of a server-side fallback chain.
-  const response = await client.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 4000,
-    system: SYSTEM,
-    output_config: { effort: "low", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
-    tools:
-      categoria === "noticia"
-        ? [
-            {
-              type: "web_search_20260209",
-              name: "web_search",
-              max_uses: 2,
-              user_location: { type: "approximate", country: "CO", timezone: "America/Bogota" },
-            },
-          ]
-        : undefined,
-    messages: [{ role: "user", content: [{ type: "text", text: userText }] }],
-  });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error("El modelo no quiso escribir esa frase. Intenta de nuevo.");
+  if (categoria === "noticia") {
+    const r = await groqChat({ system: SYSTEM, user, webSearch: true, maxTokens: 2048 });
+    const texto = sanitizeFrase(r.text);
+    if (texto.length < 4) throw new Error("La IA no devolvió una frase válida.");
+    return { texto, categoria };
   }
-  const text = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+
+  const r = await groqChat({ system: SYSTEM, user, jsonSchema: JSON_SCHEMA });
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(r.text);
   } catch {
     throw new Error("La IA respondió en un formato inesperado.");
   }

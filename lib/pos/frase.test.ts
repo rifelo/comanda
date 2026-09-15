@@ -15,6 +15,9 @@ describe("sanitizeFrase", () => {
     expect(sanitizeFrase('  "Un  café ☕\n y a volar" ')).toBe("Un café ☕ y a volar");
     expect(sanitizeFrase("«Tinto primero, mundo después» 😴")).toBe("Tinto primero, mundo después» 😴");
   });
+  it("strips citation markers left by web search", () => {
+    expect(sanitizeFrase("¡Bacteria colombiana limpia el agua! ☕️【1†L9-L13】 [2]")).toBe("¡Bacteria colombiana limpia el agua! ☕️");
+  });
   it("caps overlong text on a word boundary", () => {
     const long = "palabra ".repeat(40);
     const out = sanitizeFrase(long);

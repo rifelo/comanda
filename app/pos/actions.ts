@@ -6,6 +6,7 @@ import { requirePosContext } from "@/lib/pos/server";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
+import { MissingGroqKeyError, GroqRateLimitError } from "@/lib/ai/groq";
 import type { FraseCategoria } from "@/lib/pos/frase";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
@@ -434,7 +435,9 @@ export async function generarFrase(): Promise<GenerarFraseResult> {
     const r = await generarFraseCafe({ orgName: catalog.orgName });
     return { ok: true, ...r };
   } catch (err) {
-    if (err instanceof MissingApiKeyError) return { ok: false, error: err.message };
+    if (err instanceof MissingGroqKeyError || err instanceof GroqRateLimitError) {
+      return { ok: false, error: err.message };
+    }
     console.error("[generarFrase] failed:", err);
     return { ok: false, error: err instanceof Error ? err.message : "No se pudo generar la frase." };
   }
