@@ -26,9 +26,18 @@ import {
   type PosCatalogFilter,
   type ModSelection,
   type OrderLine,
+  type PendingOrder,
 } from "@/lib/pos/types";
-import { defaultMods } from "@/lib/pos/pending";
-import { crearOrden, posSuggest, transcribeAudio } from "./actions";
+import { defaultMods, linesPayload, rebuildLines } from "@/lib/pos/pending";
+import {
+  cancelarPendiente,
+  cobrarPendiente,
+  crearOrden,
+  guardarPendiente,
+  listarPendientes,
+  posSuggest,
+  transcribeAudio,
+} from "./actions";
 import { printOrderLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
@@ -101,6 +110,19 @@ export interface PosState {
   /** Change handed back on the last completed sale (receipt screen). */
   lastChange: number;
   lastTotal: number;
+
+  // ── pending orders ("enviar · pagar después") ──
+  /**
+   * The stored order the ticket is working on: `edit` = its lines are loaded
+   * for changes, `charge` = loaded only to be paid (stored total is charged).
+   */
+  pending: { id: string; folio: string; total: number; mode: "edit" | "charge" } | null;
+  pendientes: PendingOrder[];
+  pendientesOpen: boolean;
+  pendientesLoading: boolean;
+  pendientesError: string | null;
+  /** What the receipt screen describes: a paid sale or an order sent unpaid. */
+  receiptKind: "pagada" | "pendiente";
 }
 
 export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
@@ -142,6 +164,12 @@ export const POS_INITIAL: PosState = {
   tendered: null,
   lastChange: 0,
   lastTotal: 0,
+  pending: null,
+  pendientes: [],
+  pendientesOpen: false,
+  pendientesLoading: false,
+  pendientesError: null,
+  receiptKind: "pagada",
 };
 
 type StateUpdater = Partial<PosState> | ((s: PosState) => PosState);
@@ -470,6 +498,7 @@ export function resetConversation() {
     listening: s.listening,
     aiOpen: s.aiOpen,
     cat: s.cat,
+    pendientes: s.pendientes,
   }));
 }
 
@@ -480,29 +509,107 @@ export function startTender() {
   posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null });
 }
 export function cancelTender() {
+  const s = posStore.get();
+  if (s.pending?.mode === "charge") {
+    // The ticket only held the order for the summary — drop it and go back to the list.
+    resetConversation();
+    openPendientes();
+    return;
+  }
   posStore.set({ view: "sale", tendered: null, sendError: null });
+}
+
+/** Amount the tender screen charges: the stored total when paying a pending order. */
+export function ticketTotal(s: PosState): number {
+  return s.pending?.mode === "charge" ? s.pending.total : orderTotal(s.order, s.catalog);
 }
 
 /**
  * Persist the sale with its tender. Cash requires `tendered >= total`; the
  * server recomputes prices and the change, we only echo it on the receipt.
+ * When a pending order is loaded, edits are saved first and then the stored
+ * order is charged (cobrarPendiente) instead of creating a new one.
  */
 export async function completeSale() {
   const s = posStore.get();
   if (!s.order.length || s.sending) return;
-  const total = orderTotal(s.order, s.catalog);
+  if (s.order.some((l) => l.missing)) {
+    posStore.set({ sendError: "Quita el producto no disponible para continuar." });
+    return;
+  }
+  const total = ticketTotal(s);
   const tendered = s.payMethod === "efectivo" ? s.tendered ?? total : null;
   if (s.payMethod === "efectivo" && tendered !== null && tendered < total) {
     posStore.set({ sendError: "El efectivo recibido es menor que el total." });
     return;
   }
   posStore.set({ sending: true, sendError: null });
-  const lines = s.order.map((l) => ({ kind: l.kind, id: l.id, qty: l.qty, mods: l.mods ?? {} }));
-  const res = await crearOrden({
+  const base = {
     orderType: s.orderType,
     sinGluten: s.noteSinGluten,
-    lines,
-    payment: { method: s.payMethod, tendered },
+    lines: linesPayload(s.order),
+    customerName: s.customerName.trim() || undefined,
+    note: s.note.trim() || undefined,
+  };
+  const payment = { method: s.payMethod, tendered };
+
+  let res: Awaited<ReturnType<typeof crearOrden>>;
+  if (s.pending) {
+    if (s.pending.mode === "edit") {
+      const saved = await guardarPendiente({ ...base, ordenId: s.pending.id });
+      if (!saved.ok) {
+        posStore.set({ sending: false, sendError: saved.error });
+        return;
+      }
+      // Cash was validated against the client total; re-check against the saved one.
+      if (tendered !== null && tendered < saved.total) {
+        posStore.set({ sending: false, sendError: "El efectivo recibido es menor que el total." });
+        return;
+      }
+    }
+    res = await cobrarPendiente({ ordenId: s.pending.id, payment });
+  } else {
+    res = await crearOrden({ ...base, payment });
+  }
+
+  if (res.ok) {
+    posStore.set({
+      sent: true,
+      sending: false,
+      orderNo: res.folio,
+      view: "done",
+      lastChange: res.change,
+      lastTotal: res.total,
+      receiptKind: "pagada",
+    });
+    // Label for the order (customer name + folio). Queued and non-blocking:
+    // a printer problem shows on the chip, never on the receipt. A pending
+    // order already got its label when it was sent.
+    if (!s.pending) {
+      printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
+    }
+    void refreshPendientes();
+  } else posStore.set({ sending: false, sendError: res.error });
+}
+
+/**
+ * "Enviar · pagar después": persist the ticket as a pending order (or re-save
+ * the pending order being edited) and free the register. The kitchen label
+ * prints on the first send only.
+ */
+export async function savePending() {
+  const s = posStore.get();
+  if (!s.order.length || s.sending) return;
+  if (s.order.some((l) => l.missing)) {
+    posStore.set({ sendError: "Quita el producto no disponible para continuar." });
+    return;
+  }
+  posStore.set({ sending: true, sendError: null });
+  const res = await guardarPendiente({
+    ordenId: s.pending?.id,
+    orderType: s.orderType,
+    sinGluten: s.noteSinGluten,
+    lines: linesPayload(s.order),
     customerName: s.customerName.trim() || undefined,
     note: s.note.trim() || undefined,
   });
@@ -512,13 +619,83 @@ export async function completeSale() {
       sending: false,
       orderNo: res.folio,
       view: "done",
-      lastChange: res.change,
+      lastChange: 0,
       lastTotal: res.total,
+      receiptKind: "pendiente",
     });
-    // Label for the order (customer name + folio). Queued and non-blocking:
-    // a printer problem shows on the chip, never on the receipt.
-    printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
+    if (!s.pending) {
+      printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
+    }
+    void refreshPendientes();
   } else posStore.set({ sending: false, sendError: res.error });
+}
+
+// ── pending list ────────────────────────────────────────────────
+let refreshing = false;
+/** Reload the org's open orders (single-flight; safe to call often). */
+export async function refreshPendientes() {
+  if (refreshing) return;
+  refreshing = true;
+  posStore.set({ pendientesLoading: true });
+  try {
+    const res = await listarPendientes();
+    if (res.ok) posStore.set({ pendientes: res.orders, pendientesError: null, pendientesLoading: false });
+    else posStore.set({ pendientesError: res.error, pendientesLoading: false });
+  } catch {
+    posStore.set({ pendientesError: "Sin conexión con el servidor.", pendientesLoading: false });
+  } finally {
+    refreshing = false;
+  }
+}
+export function openPendientes() {
+  posStore.set({ pendientesOpen: true, sheet: null });
+  void refreshPendientes();
+}
+export function closePendientes() {
+  posStore.set({ pendientesOpen: false });
+}
+
+function loadPending(o: PendingOrder, mode: "edit" | "charge") {
+  const s = posStore.get();
+  const { lines } = rebuildLines(o, s.catalog);
+  posStore.set({
+    order: lines,
+    customerName: o.customerName,
+    note: o.note,
+    orderType: o.orderType,
+    noteSinGluten: o.sinGluten,
+    pending: { id: o.id, folio: o.folio, total: o.total, mode },
+    pendientesOpen: false,
+    sheet: null,
+    sent: false,
+    sendError: null,
+  });
+}
+/** Open a pending order in the ticket to change it. */
+export function editPending(o: PendingOrder) {
+  loadPending(o, "edit");
+  posStore.set({ view: "sale" });
+}
+/** Take payment for a pending order (stored total). */
+export function chargePending(o: PendingOrder) {
+  loadPending(o, "charge");
+  posStore.set({ view: "tender", tendered: null, payMethod: "efectivo" });
+}
+/** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
+export async function cancelPending(id: string) {
+  const res = await cancelarPendiente({ ordenId: id });
+  if (!res.ok) {
+    posStore.set({ pendientesError: res.error });
+    void refreshPendientes();
+    return;
+  }
+  const s = posStore.get();
+  posStore.set({ pendientes: s.pendientes.filter((o) => o.id !== id), pendientesError: null });
+  if (s.pending?.id === id) discardPendingEdit();
+}
+/** Drop the loaded pending order from the ticket without saving. */
+export function discardPendingEdit() {
+  resetConversation();
 }
 
 /** Reprint the label of the sale on the receipt screen. */
