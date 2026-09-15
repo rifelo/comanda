@@ -632,19 +632,44 @@ export async function savePending() {
 
 // ── pending list ────────────────────────────────────────────────
 let refreshing = false;
-/** Reload the org's open orders (single-flight; safe to call often). */
+let refreshAgain = false;
+/**
+ * Reload the org's open orders. Single-flight, but a call that arrives while
+ * one is in progress queues exactly one more run — a sale that lands during
+ * a refresh must not leave the badge stale until the next tick.
+ */
 export async function refreshPendientes() {
-  if (refreshing) return;
+  if (refreshing) {
+    refreshAgain = true;
+    return;
+  }
   refreshing = true;
   posStore.set({ pendientesLoading: true });
   try {
-    const res = await listarPendientes();
-    if (res.ok) posStore.set({ pendientes: res.orders, pendientesError: null, pendientesLoading: false });
-    else posStore.set({ pendientesError: res.error, pendientesLoading: false });
-  } catch {
-    posStore.set({ pendientesError: "Sin conexión con el servidor.", pendientesLoading: false });
+    do {
+      refreshAgain = false;
+      try {
+        const res = await listarPendientes();
+        if (res.ok) {
+          posStore.set((st) => {
+            // A pending order loaded for payment follows the stored total, so
+            // the tender never shows a number the server won't charge.
+            const fresh = st.pending?.mode === "charge" ? res.orders.find((o) => o.id === st.pending!.id) : undefined;
+            return {
+              ...st,
+              pendientes: res.orders,
+              pendientesError: null,
+              pending: fresh && st.pending ? { ...st.pending, total: fresh.total } : st.pending,
+            };
+          });
+        } else posStore.set({ pendientesError: res.error });
+      } catch {
+        posStore.set({ pendientesError: "Sin conexión con el servidor." });
+      }
+    } while (refreshAgain);
   } finally {
     refreshing = false;
+    posStore.set({ pendientesLoading: false });
   }
 }
 export function openPendientes() {
@@ -680,6 +705,7 @@ export function editPending(o: PendingOrder) {
 export function chargePending(o: PendingOrder) {
   loadPending(o, "charge");
   posStore.set({ view: "tender", tendered: null, payMethod: "efectivo" });
+  void refreshPendientes();
 }
 /** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
 export async function cancelPending(id: string) {
