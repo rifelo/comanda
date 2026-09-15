@@ -20,7 +20,9 @@ export const FRASE_MAX = 140;
  * phrase always fits the label (4 lines max at the smallest font).
  */
 export function sanitizeFrase(text: string): string {
-  let t = text.replace(/\s+/g, " ").trim();
+  // Citation markers from web-search answers (【1†L9-L13】, [1]) never belong on a cup.
+  let t = text.replace(/【[^】]*】/g, "").replace(/\[\d+\]/g, "");
+  t = t.replace(/\s+/g, " ").trim();
   t = t.replace(/^["“«']+|["”»']+$/g, "").trim();
   if (t.length > FRASE_MAX) {
     const cut = t.slice(0, FRASE_MAX);
