@@ -6,7 +6,14 @@ import { requirePosContext } from "@/lib/pos/server";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
-import type { PosCatalog, PosSuggest, PosAct, PosCatalogFilter } from "@/lib/pos/types";
+import type {
+  PosCatalog,
+  PosSuggest,
+  PosAct,
+  PosCatalogFilter,
+  PendingOrder,
+  ModSelection,
+} from "@/lib/pos/types";
 
 // ── price recomputation (server is the source of truth, never the client) ────
 const ModSelectionSchema = z.record(
@@ -61,37 +68,71 @@ export type CrearOrdenResult =
   | { ok: true; folio: string; ordenId: string; total: number; change: number }
   | { ok: false; error: string };
 
-/**
- * Persist a POS order. Prices are recomputed from the live catalog — the client
- * payload only carries ids/qty/mods, never trusted money. Returns the human
- * folio ("A-247") for the confirmation screen.
- */
-export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
-  const parsed = CrearOrdenSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+type OrdenBase = Omit<z.infer<typeof CrearOrdenSchema>, "payment">;
+type PricedItem = { line: z.infer<typeof LineSchema>; name: string; unit: number; position: number };
+type PosCtx = Awaited<ReturnType<typeof requirePosContext>>;
 
-  const { catalog, supabase, organizationId: orgId, actor } =
-    await requirePosContext();
-
-  const items = parsed.data.lines.map((l, i) => {
+/** Re-price every line from the live catalog; the client never sends money. */
+function priceLines(
+  catalog: PosCatalog,
+  lines: z.infer<typeof LineSchema>[],
+): { ok: true; items: PricedItem[]; subtotal: number } | { ok: false; error: string } {
+  const items: PricedItem[] = [];
+  for (const [i, l] of lines.entries()) {
     const priced = lineUnitPrice(catalog, l);
-    return priced ? { line: l, ...priced, position: i } : null;
-  });
-  if (items.some((it) => it === null)) {
-    return { ok: false, error: "Un producto del pedido ya no existe." };
+    if (!priced) return { ok: false, error: "Un producto del pedido ya no existe." };
+    items.push({ line: l, ...priced, position: i });
   }
-  const valid = items as NonNullable<(typeof items)[number]>[];
-  const subtotal = valid.reduce((s, it) => s + it.unit * it.line.qty, 0);
+  const subtotal = items.reduce((s, it) => s + it.unit * it.line.qty, 0);
+  return { ok: true, items, subtotal };
+}
 
-  // Tender: change is computed here from the recomputed total, never trusted
-  // from the client. Cash short of the total is rejected.
-  const payment = parsed.data.payment ?? { method: "efectivo" as const, tendered: null };
-  const tendered = payment.method === "efectivo" ? payment.tendered ?? subtotal : null;
-  if (tendered !== null && tendered < subtotal) {
+/**
+ * Tender: change is computed here from the recomputed total, never trusted
+ * from the client. Cash short of the total is rejected.
+ */
+function settleTender(
+  payment: z.infer<typeof PaymentSchema>,
+  total: number,
+): { ok: true; tendered: number | null; change: number } | { ok: false; error: string } {
+  const tendered = payment.method === "efectivo" ? payment.tendered ?? total : null;
+  if (tendered !== null && tendered < total) {
     return { ok: false, error: "El efectivo recibido es menor que el total." };
   }
-  const change = tendered !== null ? tendered - subtotal : 0;
+  return { ok: true, tendered, change: tendered !== null ? tendered - total : 0 };
+}
 
+function itemRows(orgId: string, ordenId: string, items: PricedItem[]) {
+  return items.map((it) => ({
+    organization_id: orgId,
+    orden_id: ordenId,
+    kind: it.line.kind,
+    producto_id: it.line.kind === "item" ? it.line.id : null,
+    combo_id: it.line.kind === "combo" ? it.line.id : null,
+    name: it.name,
+    qty: it.line.qty,
+    unit_price_cop: it.unit,
+    mods: it.line.mods ?? {},
+    position: it.position,
+  }));
+}
+
+type OrdenHeader = {
+  status: "pagada" | "pendiente";
+  payment_method: z.infer<typeof PaymentSchema>["method"] | null;
+  tendered_cop: number | null;
+  change_cop: number;
+  paid_at: string | null;
+};
+
+/** Allocate a folio and insert header + lines (rolls the header back on item failure). */
+async function insertOrden(
+  ctx: PosCtx,
+  data: OrdenBase,
+  priced: { items: PricedItem[]; subtotal: number },
+  header: OrdenHeader,
+): Promise<{ ok: true; folio: string; ordenId: string } | { ok: false; error: string }> {
+  const { supabase, organizationId: orgId, actor } = ctx;
   const restaurantId =
     actor.kind === "device" ? actor.device.restaurantId : actor.restaurantId;
 
@@ -100,7 +141,7 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
     p_org: orgId,
   });
   if (seqErr) {
-    console.error("[crearOrden] folio rpc failed:", seqErr);
+    console.error("[insertOrden] folio rpc failed:", seqErr);
     return { ok: false, error: "No se pudo generar el número de pedido." };
   }
   const folio = `A-${seq}`;
@@ -111,47 +152,272 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
       organization_id: orgId,
       restaurant_id: restaurantId,
       folio,
-      order_type: parsed.data.orderType,
-      subtotal_cop: subtotal,
-      total_cop: subtotal,
-      sin_gluten: parsed.data.sinGluten,
-      notes: parsed.data.note || null,
-      payment_method: payment.method,
-      tendered_cop: tendered,
-      change_cop: change,
-      customer_name: parsed.data.customerName || null,
+      order_type: data.orderType,
+      subtotal_cop: priced.subtotal,
+      total_cop: priced.subtotal,
+      sin_gluten: data.sinGluten,
+      notes: data.note || null,
+      customer_name: data.customerName || null,
       created_by: actor.kind === "user" ? actor.profileId : null,
       pos_device_id: actor.kind === "device" ? actor.device.id : null,
+      ...header,
     })
     .select("id")
     .single();
   if (ordenErr || !orden) {
-    console.error("[crearOrden] insert orden failed:", ordenErr);
+    console.error("[insertOrden] insert orden failed:", ordenErr);
     return { ok: false, error: "No se pudo guardar el pedido." };
   }
 
-  const { error: itemsErr } = await supabase.from("orden_items").insert(
-    valid.map((it) => ({
-      organization_id: orgId,
-      orden_id: orden.id,
-      kind: it.line.kind,
-      producto_id: it.line.kind === "item" ? it.line.id : null,
-      combo_id: it.line.kind === "combo" ? it.line.id : null,
-      name: it.name,
-      qty: it.line.qty,
-      unit_price_cop: it.unit,
-      mods: it.line.mods ?? {},
-      position: it.position,
-    })),
-  );
+  const { error: itemsErr } = await supabase
+    .from("orden_items")
+    .insert(itemRows(orgId, orden.id as string, priced.items));
   if (itemsErr) {
     // Roll back the header so we don't leave an empty order around.
-    await supabase.from("ordenes").delete().eq("id", orden.id);
-    console.error("[crearOrden] insert items failed:", itemsErr);
+    await supabase.from("ordenes").delete().eq("id", orden.id).eq("organization_id", orgId);
+    console.error("[insertOrden] insert items failed:", itemsErr);
     return { ok: false, error: "No se pudieron guardar los productos." };
   }
+  return { ok: true, folio, ordenId: orden.id as string };
+}
 
-  return { ok: true, folio, ordenId: orden.id as string, total: subtotal, change };
+/**
+ * Persist a paid POS order ("Cobrar"). Prices are recomputed from the live
+ * catalog — the client payload only carries ids/qty/mods, never trusted
+ * money. Returns the human folio ("A-247") for the confirmation screen.
+ */
+export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
+  const parsed = CrearOrdenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const ctx = await requirePosContext();
+
+  const priced = priceLines(ctx.catalog, parsed.data.lines);
+  if (!priced.ok) return priced;
+  const payment = parsed.data.payment ?? { method: "efectivo" as const, tendered: null };
+  const tender = settleTender(payment, priced.subtotal);
+  if (!tender.ok) return tender;
+
+  const { payment: _p, ...base } = parsed.data;
+  void _p;
+  const ins = await insertOrden(ctx, base, priced, {
+    status: "pagada",
+    payment_method: payment.method,
+    tendered_cop: tender.tendered,
+    change_cop: tender.change,
+    paid_at: new Date().toISOString(),
+  });
+  if (!ins.ok) return ins;
+  return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };
+}
+
+// ── pending orders ("enviar · pagar después") ────────────────────────────────
+const GuardarPendienteSchema = CrearOrdenSchema.omit({ payment: true }).extend({
+  /** Present when re-saving an order that is already pending (edit). */
+  ordenId: z.string().uuid().optional(),
+});
+const CobrarPendienteSchema = z.object({
+  ordenId: z.string().uuid(),
+  payment: PaymentSchema,
+});
+const CancelarPendienteSchema = z.object({ ordenId: z.string().uuid() });
+
+export type GuardarPendienteResult =
+  | { ok: true; folio: string; ordenId: string; total: number }
+  | { ok: false; error: string };
+export type ListarPendientesResult =
+  | { ok: true; orders: PendingOrder[] }
+  | { ok: false; error: string };
+export type SimpleResult = { ok: true } | { ok: false; error: string };
+
+const YA_NO_PENDIENTE = "El pedido ya fue cobrado o cancelado.";
+
+/**
+ * Save an unpaid order. Without `ordenId` a new pending order is created (it
+ * takes a folio right away so the kitchen label can print). With `ordenId`
+ * the lines and header of an existing pending order are replaced, re-priced
+ * from the live catalog; the folio is kept.
+ */
+export async function guardarPendiente(input: unknown): Promise<GuardarPendienteResult> {
+  const parsed = GuardarPendienteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const ctx = await requirePosContext();
+  const { supabase, organizationId: orgId } = ctx;
+
+  const priced = priceLines(ctx.catalog, parsed.data.lines);
+  if (!priced.ok) return priced;
+  const { ordenId, ...base } = parsed.data;
+
+  if (!ordenId) {
+    const ins = await insertOrden(ctx, base, priced, {
+      status: "pendiente",
+      payment_method: null,
+      tendered_cop: null,
+      change_cop: 0,
+      paid_at: null,
+    });
+    if (!ins.ok) return ins;
+    return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal };
+  }
+
+  const { data: existing } = await supabase
+    .from("ordenes")
+    .select("id, folio")
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .maybeSingle();
+  if (!existing) return { ok: false, error: YA_NO_PENDIENTE };
+
+  const { data: old } = await supabase
+    .from("orden_items")
+    .select("id")
+    .eq("orden_id", ordenId)
+    .eq("organization_id", orgId);
+  const oldIds = (old ?? []).map((r) => r.id as string);
+
+  // Insert the new lines first so a failure never leaves the order empty.
+  const { error: insErr } = await supabase
+    .from("orden_items")
+    .insert(itemRows(orgId, ordenId, priced.items));
+  if (insErr) {
+    console.error("[guardarPendiente] insert items failed:", insErr);
+    return { ok: false, error: "No se pudieron guardar los productos." };
+  }
+  if (oldIds.length) {
+    const { error: delErr } = await supabase
+      .from("orden_items")
+      .delete()
+      .in("id", oldIds)
+      .eq("organization_id", orgId);
+    if (delErr) console.error("[guardarPendiente] delete old items failed:", delErr);
+  }
+  const { error: updErr } = await supabase
+    .from("ordenes")
+    .update({
+      order_type: base.orderType,
+      subtotal_cop: priced.subtotal,
+      total_cop: priced.subtotal,
+      sin_gluten: base.sinGluten,
+      notes: base.note || null,
+      customer_name: base.customerName || null,
+    })
+    .eq("id", ordenId)
+    .eq("organization_id", orgId);
+  if (updErr) {
+    console.error("[guardarPendiente] update orden failed:", updErr);
+    return { ok: false, error: "No se pudo guardar el pedido." };
+  }
+  return { ok: true, folio: existing.folio as string, ordenId, total: priced.subtotal };
+}
+
+/** Open (unpaid) orders of the org, oldest first — the kitchen queue. */
+export async function listarPendientes(): Promise<ListarPendientesResult> {
+  const { supabase, organizationId: orgId } = await requirePosContext();
+  const { data, error } = await supabase
+    .from("ordenes")
+    .select(
+      "id, folio, order_type, total_cop, sin_gluten, notes, customer_name, created_at, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position)",
+    )
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) {
+    console.error("[listarPendientes] failed:", error);
+    return { ok: false, error: "No se pudieron cargar los pedidos pendientes." };
+  }
+  const orders: PendingOrder[] = (data ?? []).map((o) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = ((o as any).orden_items ?? []) as Array<Record<string, unknown>>;
+    return {
+      id: o.id as string,
+      folio: o.folio as string,
+      orderType: o.order_type as PendingOrder["orderType"],
+      total: o.total_cop as number,
+      sinGluten: Boolean(o.sin_gluten),
+      note: (o.notes as string | null) ?? "",
+      customerName: (o.customer_name as string | null) ?? "",
+      createdAt: o.created_at as string,
+      items: items
+        .map((it) => ({
+          id: it.id as string,
+          kind: it.kind as "item" | "combo",
+          productoId: (it.producto_id as string | null) ?? null,
+          comboId: (it.combo_id as string | null) ?? null,
+          name: it.name as string,
+          qty: Number(it.qty),
+          unitPrice: Number(it.unit_price_cop),
+          mods: ((it.mods as ModSelection | null) ?? {}) as ModSelection,
+          position: Number(it.position ?? 0),
+        }))
+        .sort((a, b) => a.position - b.position),
+    };
+  });
+  return { ok: true, orders };
+}
+
+/**
+ * Settle a pending order. Charges the STORED total (what the customer was
+ * quoted and the kitchen made), not a re-price. The status-guarded update
+ * makes a double charge from two registers impossible.
+ */
+export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult> {
+  const parsed = CobrarPendienteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pago inválido." };
+  const { supabase, organizationId: orgId } = await requirePosContext();
+  const { ordenId, payment } = parsed.data;
+
+  const { data: orden } = await supabase
+    .from("ordenes")
+    .select("id, folio, total_cop")
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .maybeSingle();
+  if (!orden) return { ok: false, error: YA_NO_PENDIENTE };
+  const total = orden.total_cop as number;
+  const tender = settleTender(payment, total);
+  if (!tender.ok) return tender;
+
+  const { data: updated, error } = await supabase
+    .from("ordenes")
+    .update({
+      status: "pagada",
+      payment_method: payment.method,
+      tendered_cop: tender.tendered,
+      change_cop: tender.change,
+      paid_at: new Date().toISOString(),
+    })
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .select("id");
+  if (error) {
+    console.error("[cobrarPendiente] update failed:", error);
+    return { ok: false, error: "No se pudo registrar el pago." };
+  }
+  if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
+  return { ok: true, folio: orden.folio as string, ordenId, total, change: tender.change };
+}
+
+/** Void a pending order (never a paid one). */
+export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
+  const parsed = CancelarPendienteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosContext();
+  const { data: updated, error } = await supabase
+    .from("ordenes")
+    .update({ status: "cancelada" })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .select("id");
+  if (error) {
+    console.error("[cancelarPendiente] update failed:", error);
+    return { ok: false, error: "No se pudo cancelar el pedido." };
+  }
+  if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
+  return { ok: true };
 }
 
 // ── live AI suggestions ──────────────────────────────────────────────────────

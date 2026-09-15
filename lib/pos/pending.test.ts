@@ -1,0 +1,81 @@
+import { describe, expect, it } from "vitest";
+import { linesPayload, rebuildLines, sanitizeMods, timeAgo } from "./pending";
+import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
+
+const latte: PosMenuItem = {
+  id: "p-latte", name: "Latte", catId: "c", sub: "", sku: "BC-007", price: 7500,
+  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "",
+};
+const tinto: PosMenuItem = { ...latte, id: "p-tinto", name: "Tinto", price: 3000, mods: [] };
+const catalog: PosCatalog = {
+  cats: [], menu: [latte, tinto], combos: [{ id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 }],
+  modGroups: {
+    "g-size": { id: "g-size", name: "Tamaño", type: "single", required: true, options: [{ name: "Mediano", delta: 0 }, { name: "Grande", delta: 1500 }] },
+    "g-extras": { id: "g-extras", name: "Extras", type: "multi", required: false, options: [{ name: "Canela", delta: 0 }, { name: "Shot extra", delta: 2000 }] },
+  },
+  byId: { "p-latte": latte, "p-tinto": tinto },
+  comboById: { "cb-1": { id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 } },
+  catLabel: {}, orgName: "Cafe",
+};
+
+const order = (items: PendingOrder["items"]): PendingOrder => ({
+  id: "o1", folio: "A-3", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", createdAt: "2026-09-14T10:00:00Z", items,
+});
+
+describe("sanitizeMods", () => {
+  it("keeps valid stored selections", () => {
+    expect(sanitizeMods({ "g-size": "Grande", "g-extras": ["Canela"] }, latte, catalog))
+      .toEqual({ "g-size": "Grande", "g-extras": ["Canela"] });
+  });
+  it("drops vanished options and falls back on required singles", () => {
+    expect(sanitizeMods({ "g-size": "Enorme", "g-extras": ["Canela", "Nada"], "g-old": "x" }, latte, catalog))
+      .toEqual({ "g-size": "Mediano", "g-extras": ["Canela"] });
+  });
+  it("tolerates garbage", () => {
+    expect(sanitizeMods(null, latte, catalog)).toEqual({ "g-size": "Mediano", "g-extras": [] });
+    expect(sanitizeMods("nope", tinto, catalog)).toEqual({});
+  });
+});
+
+describe("rebuildLines", () => {
+  it("rebuilds live lines from the catalog, sorted by position", () => {
+    const { lines, missing } = rebuildLines(order([
+      { id: "i2", kind: "item", productoId: "p-tinto", comboId: null, name: "Tinto viejo", qty: 1, unitPrice: 2500, mods: {}, position: 1 },
+      { id: "i1", kind: "item", productoId: "p-latte", comboId: null, name: "Latte", qty: 2, unitPrice: 9000, mods: { "g-size": "Grande" }, position: 0 },
+    ]), catalog);
+    expect(missing).toBe(0);
+    expect(lines.map((l) => l.name)).toEqual(["Latte", "Tinto"]);
+    expect(lines[0]).toMatchObject({ id: "p-latte", qty: 2, basePrice: 7500, hasMods: true, mods: { "g-size": "Grande", "g-extras": [] } });
+    expect(lines[1]).toMatchObject({ id: "p-tinto", basePrice: 3000, hasMods: false });
+  });
+  it("keeps snapshot lines for missing products and combos", () => {
+    const { lines, missing } = rebuildLines(order([
+      { id: "i1", kind: "item", productoId: "p-gone", comboId: null, name: "Mocca", qty: 1, unitPrice: 8500, mods: { x: "y" }, position: 0 },
+      { id: "i2", kind: "combo", productoId: null, comboId: "cb-gone", name: "Combo viejo", qty: 1, unitPrice: 12000, mods: {}, position: 1 },
+      { id: "i3", kind: "combo", productoId: null, comboId: "cb-1", name: "Desayuno", qty: 1, unitPrice: 9000, mods: {}, position: 2 },
+    ]), catalog);
+    expect(missing).toBe(2);
+    expect(lines[0]).toMatchObject({ id: "p-gone", name: "Mocca", basePrice: 8500, missing: true, mods: {} });
+    expect(lines[1]).toMatchObject({ id: "cb-gone", kind: "combo", price: 12000, missing: true });
+    expect(lines[2]).toMatchObject({ id: "cb-1", kind: "combo", price: 9000, items: ["p-tinto"] });
+    expect(lines[2].missing).toBeUndefined();
+  });
+});
+
+describe("timeAgo", () => {
+  const t0 = Date.parse("2026-09-14T12:00:00Z");
+  it("formats minutes and hours", () => {
+    expect(timeAgo("2026-09-14T11:59:30Z", t0)).toBe("ahora");
+    expect(timeAgo("2026-09-14T11:55:00Z", t0)).toBe("hace 5 min");
+    expect(timeAgo("2026-09-14T11:00:00Z", t0)).toBe("hace 1 h");
+    expect(timeAgo("2026-09-14T10:50:00Z", t0)).toBe("hace 1 h 10 min");
+    expect(timeAgo("2026-09-14T12:05:00Z", t0)).toBe("ahora");
+  });
+});
+
+describe("linesPayload", () => {
+  it("sends ids, qty and mods only", () => {
+    expect(linesPayload([{ id: "a", name: "A", qty: 2, kind: "item", basePrice: 1 }, { id: "c", name: "C", qty: 1, kind: "combo", price: 5, mods: { g: "x" } }]))
+      .toEqual([{ kind: "item", id: "a", qty: 2, mods: {} }, { kind: "combo", id: "c", qty: 1, mods: { g: "x" } }]);
+  });
+});

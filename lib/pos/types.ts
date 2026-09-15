@@ -135,3 +135,51 @@ export const posMoney = (n: number): string =>
 
 export const FAV_CAT = "fav";
 export const COMBO_CAT = "combo";
+
+// ── ticket lines + pending orders ───────────────────────────────
+export type OrderType = "aqui" | "llevar" | "domicilio";
+/** Modifier selections on a ticket line: group id → option name(s). */
+export type ModSelection = Record<string, string | string[] | null>;
+
+/** A line on the cashier's ticket (client-side cart shape). */
+export interface OrderLine {
+  id: string;
+  name: string;
+  qty: number;
+  kind: "item" | "combo";
+  basePrice?: number;
+  price?: number;
+  gluten?: boolean;
+  items?: string[];
+  mods?: ModSelection;
+  hasMods?: boolean;
+  expanded?: boolean;
+  /** Product/combo no longer in the catalog — rebuilt from the order snapshot. */
+  missing?: boolean;
+}
+
+/** A stored orden_items row, as returned by listarPendientes. */
+export interface PendingOrderItem {
+  id: string;
+  kind: "item" | "combo";
+  productoId: string | null;
+  comboId: string | null;
+  name: string;
+  qty: number;
+  unitPrice: number;
+  mods: ModSelection;
+  position: number;
+}
+
+/** An unpaid order the register can reopen, charge or cancel. */
+export interface PendingOrder {
+  id: string;
+  folio: string;
+  orderType: OrderType;
+  total: number;
+  sinGluten: boolean;
+  note: string;
+  customerName: string;
+  createdAt: string;
+  items: PendingOrderItem[];
+}
