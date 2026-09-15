@@ -33,12 +33,13 @@ import {
   cancelarPendiente,
   cobrarPendiente,
   crearOrden,
+  generarFrase,
   guardarPendiente,
   listarPendientes,
   posSuggest,
   transcribeAudio,
 } from "./actions";
-import { printOrderLabel } from "@/lib/printer/serial";
+import { printOrderLabel, printMessageLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
 export const EMPTY_CATALOG: PosCatalog = {
@@ -124,6 +125,10 @@ export interface PosState {
   pendientesError: string | null;
   /** What the receipt screen describes: a paid sale or an order sent unpaid. */
   receiptKind: "pagada" | "pendiente";
+  /** AI "frase del día" label: last generated text + request state. */
+  frase: string | null;
+  fraseLoading: boolean;
+  fraseError: string | null;
 }
 
 export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
@@ -171,6 +176,9 @@ export const POS_INITIAL: PosState = {
   pendientesLoading: false,
   pendientesError: null,
   receiptKind: "pagada",
+  frase: null,
+  fraseLoading: false,
+  fraseError: null,
 };
 
 type StateUpdater = Partial<PosState> | ((s: PosState) => PosState);
@@ -723,6 +731,25 @@ export async function cancelPending(id: string) {
 /** Drop the loaded pending order from the ticket without saving. */
 export function discardPendingEdit() {
   resetConversation();
+}
+
+/**
+ * Ask the AI for a short coffee phrase (funny / motivational / a nod to
+ * today's Colombian news) and print it as a second label for the cup.
+ */
+export async function printFrase() {
+  const s = posStore.get();
+  if (s.fraseLoading) return;
+  posStore.set({ fraseLoading: true, fraseError: null });
+  try {
+    const res = await generarFrase();
+    if (res.ok) {
+      posStore.set({ frase: res.texto, fraseLoading: false });
+      printMessageLabel(res.texto, s.catalog.instagram);
+    } else posStore.set({ fraseLoading: false, fraseError: res.error });
+  } catch {
+    posStore.set({ fraseLoading: false, fraseError: "No se pudo generar la frase." });
+  }
 }
 
 /** Reprint the label of the sale on the receipt screen. */

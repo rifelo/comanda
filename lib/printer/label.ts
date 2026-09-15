@@ -194,6 +194,61 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
 }
 
+export interface MessageLabelInput {
+  /** Short phrase (≤ ~140 chars), may contain emoji. */
+  text: string;
+  orgName?: string;
+  /** Instagram handle for the footer, without "@". */
+  handle?: string | null;
+}
+
+/**
+ * "Frase del día" label: the phrase as the hero, autofit to ≤ 4 lines, the
+ * business on top and the Instagram handle underneath. Stuck on the cup.
+ */
+export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
+  const W = HEAD_WIDTH_PX;
+  const H = LABEL_H_MM * PX_PER_MM;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000";
+  ctx.textBaseline = "top";
+
+  const inkW = INK_RIGHT - INK_LEFT;
+  const cx = INK_LEFT + inkW / 2;
+  let top = 6;
+  if (input.orgName) {
+    ctx.font = `bold 13px ${FONT_STACK}`;
+    ctx.textAlign = "center";
+    ctx.fillText(fitOneLine(ctx, input.orgName.toUpperCase(), inkW), cx, top);
+    top += 20;
+  }
+  let bottom = H - 6;
+  if (input.handle) {
+    ctx.font = `bold 13px ${FONT_STACK}`;
+    ctx.textAlign = "center";
+    ctx.fillText(fitOneLine(ctx, `@${input.handle.replace(/^@/, "")}`, inkW), cx, H - 20);
+    bottom = H - 26;
+  }
+
+  const text = input.text.replace(/\s+/g, " ").trim();
+  const { size, lines } = fitLines(ctx, text, inkW, bottom - top, 34, 15, 4, `bold {px}px ${FONT_STACK}`);
+  ctx.font = `bold ${size}px ${FONT_STACK}`;
+  ctx.textAlign = "center";
+  const lineH = Math.round(size * 1.15);
+  let ty = top + Math.max(0, (bottom - top - lineH * lines.length) / 2);
+  for (const line of lines) {
+    ctx.fillText(line, cx, ty);
+    ty += lineH;
+  }
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+}
+
 /** Small self-test label used from the printer chip ("Probar impresora"). */
 export function renderTestLabel(station?: string): LabelRaster {
   return renderOrderLabel({ name: "Impresora lista", folio: "PRUEBA", station, orgName: "comanda" });

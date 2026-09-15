@@ -33,7 +33,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "./transport";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -349,6 +349,16 @@ export function printInstagramLabel(handle: string): void {
   });
 }
 export const INSTAGRAM_FOLIO = "INSTAGRAM";
+
+/** AI "frase del día" label for the cup. */
+export function printMessageLabel(text: string, handle?: string | null): void {
+  enqueue({
+    raster: () => renderMessageLabel({ text, orgName: labelDefaults.orgName, handle }),
+    folio: FRASE_FOLIO,
+    name: text,
+  });
+}
+export const FRASE_FOLIO = "FRASE";
 
 export function printTestLabel(): void {
   enqueue({ raster: () => renderTestLabel(labelDefaults.station), folio: "PRUEBA", name: "" });

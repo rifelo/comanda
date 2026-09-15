@@ -65,6 +65,7 @@ import {
   cancelTender,
   completeSale,
   reprintLabel,
+  printFrase,
   savePending,
   openPendientes,
   closePendientes,
@@ -90,6 +91,7 @@ import {
   printTestLabel,
   printInstagramLabel,
   INSTAGRAM_FOLIO,
+  FRASE_FOLIO,
   setLabelDefaults,
   type PrinterStatus,
 } from "@/lib/printer/serial";
@@ -1184,6 +1186,7 @@ function ReceiptPrinterLine() {
   if (p.status === "unsupported") return null;
   const printed = p.lastPrinted?.folio === s.orderNo;
   const igPrinted = p.lastPrinted?.folio === INSTAGRAM_FOLIO;
+  const frasePrinted = p.lastPrinted?.folio === FRASE_FOLIO;
   const busy = p.status === "printing" || p.status === "connecting";
   const text = busy
     ? "Imprimiendo etiqueta…"
@@ -1191,11 +1194,19 @@ function ReceiptPrinterLine() {
       ? p.note
       : igPrinted
         ? "Etiqueta de Instagram impresa"
-        : printed
-          ? "Etiqueta impresa"
-          : null;
+        : frasePrinted
+          ? "Frase impresa"
+          : printed
+            ? "Etiqueta impresa"
+            : null;
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 14, minHeight: 20 }}>
+    <>
+    {(s.frase || s.fraseError) && (
+      <div style={{ marginTop: 14, padding: "10px 14px", border: `1px dashed ${s.fraseError ? C.red : C.rule}`, borderRadius: 6, fontSize: 13, color: s.fraseError ? C.red : C.ink, lineHeight: 1.45 }}>
+        {s.fraseError ?? s.frase}
+      </div>
+    )}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 14, minHeight: 20, flexWrap: "wrap" }}>
       {text && (
         <span style={{ fontSize: 11, letterSpacing: ".08em", color: p.status === "error" ? C.red : C.muted, textTransform: "uppercase" }}>
           {text}
@@ -1218,7 +1229,18 @@ function ReceiptPrinterLine() {
           QR Instagram
         </button>
       )}
+      {p.status === "ready" && (
+        <button
+          onClick={() => void printFrase()}
+          disabled={busy || s.fraseLoading}
+          title="La IA escribe una frase corta (graciosa, motivadora o de la noticia del día) y la imprime para el vaso"
+          style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy || s.fraseLoading ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+        >
+          {s.fraseLoading ? "Pensando…" : "Frase IA"}
+        </button>
+      )}
     </div>
+    </>
   );
 }
 
