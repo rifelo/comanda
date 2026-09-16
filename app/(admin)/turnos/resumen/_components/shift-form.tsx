@@ -5,6 +5,7 @@ import * as React from "react";
 import { createPuesto, createShift, deleteShift, updateShift } from "../_actions";
 import { Chip } from "@/app/(admin)/_components/chip";
 import type { Puesto } from "@/lib/types";
+import { puestoColor } from "@/lib/turno/colors";
 
 /**
  * Wraps the deleteShift action so its return type satisfies the React
@@ -59,18 +60,6 @@ export type ShiftFormInitial = {
   }[];
   puestos: { puesto_id: string; position: number; waits_for_task_id: string | null }[];
 };
-
-/** Puesto color token → theme variable (indigo rides on the stamp colour). */
-export const PUESTO_COLORS: Record<string, string> = {
-  ink: "var(--ink)",
-  red: "var(--red)",
-  green: "var(--green)",
-  amber: "var(--amber)",
-  indigo: "var(--stamp)",
-};
-export function puestoColor(token: string | undefined): string {
-  return PUESTO_COLORS[token ?? "ink"] ?? "var(--ink)";
-}
 
 const DIAS_SEMANA = ["L", "M", "M", "J", "V", "S", "D"];
 

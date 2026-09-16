@@ -2,10 +2,22 @@
 
 import * as React from "react";
 import { publishWeek } from "../_actions";
+import { PUESTO_COLORS } from "@/lib/turno/colors";
 
-type GridShift = { id: string; name: string; inicio: string; dias: boolean[] };
+type GridPuesto = { id: string; name: string; color: string };
+type GridShift = { id: string; name: string; inicio: string; dias: boolean[]; puestos: GridPuesto[] };
 type GridMember = { id: string; initials: string; name: string; email: string; active: boolean };
-type GridAssignment = { template_id: string; dia_idx: number; member_id: string | null };
+type GridAssignment = { template_id: string; dia_idx: number; puesto_id: string | null; member_id: string | null };
+type Slot = { id: string | null; name: string | null; color: string | null };
+function slotsOf(s: GridShift): Slot[] {
+  return s.puestos.length
+    ? s.puestos.map((p) => ({ id: p.id, name: p.name, color: p.color }))
+    : [{ id: null, name: null, color: null }];
+}
+function keyFor(templateId: string, diaIdx: number, puestoId: string | null): string {
+  return `${templateId}-${diaIdx}-${puestoId ?? "all"}`;
+}
+
 
 const DAYL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const MON = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -82,12 +94,12 @@ export function AsignacionMobile({
   const [weekStart, setWeekStart] = React.useState(initialWeekStart);
   const [asigByWeek, setAsigByWeek] = React.useState<Record<string, Map<string, string | null>>>(() => {
     const m = new Map<string, string | null>();
-    for (const a of initialAssignments) m.set(`${a.template_id}-${a.dia_idx}`, a.member_id);
+    for (const a of initialAssignments) m.set(keyFor(a.template_id, a.dia_idx, a.puesto_id ?? null), a.member_id);
     return { [initialWeekStart]: m };
   });
   const [dirtyWeeks, setDirtyWeeks] = React.useState<Record<string, boolean>>({});
   const [daySel, setDaySel] = React.useState(() => todayIndexIn(initialWeekStart, today));
-  const [sheet, setSheet] = React.useState<{ templateId: string; dayIdx: number } | null>(null);
+  const [sheet, setSheet] = React.useState<{ templateId: string; dayIdx: number; puestoId: string | null } | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
@@ -133,8 +145,10 @@ export function AsignacionMobile({
     for (const s of shifts) {
       for (let i = 0; i < 7; i++) {
         if (!s.dias[i]) continue;
-        const v = asig.get(`${s.id}-${i}`);
-        changes.push({ template_id: s.id, dia_idx: i, member_id: v == null ? null : v });
+        for (const slot of slotsOf(s)) {
+          const v = asig.get(keyFor(s.id, i, slot.id));
+          changes.push({ template_id: s.id, dia_idx: i, puesto_id: slot.id, member_id: v == null ? null : v });
+        }
       }
     }
     startTransition(async () => {
@@ -152,11 +166,13 @@ export function AsignacionMobile({
   for (const s of shifts) {
     for (let i = 0; i < 7; i++) {
       if (!s.dias[i]) continue;
-      totalCells++;
-      const v = asig.get(`${s.id}-${i}`);
-      if (v != null) {
-        filled++;
-        if (counts[v] != null) counts[v]++;
+      for (const slot of slotsOf(s)) {
+        totalCells++;
+        const v = asig.get(keyFor(s.id, i, slot.id));
+        if (v != null) {
+          filled++;
+          if (counts[v] != null) counts[v]++;
+        }
       }
     }
   }
@@ -220,15 +236,17 @@ export function AsignacionMobile({
       </SectionLabel>
 
       <div style={{ padding: "0 14px 16px" }}>
-        {shifts.map((turno) => {
+        {shifts.flatMap((turno) => slotsOf(turno).map((slot) => ({ turno, slot }))).map(({ turno, slot }) => {
           const operating = turno.dias[daySel];
-          const key = `${turno.id}-${daySel}`;
+          const key = keyFor(turno.id, daySel, slot.id);
           const whoId = asig.get(key) ?? null;
           const person = whoId ? memberById.get(whoId) : null;
+          const rowKey = key;
           if (!operating) {
+            if (slot.id && turno.puestos[0]?.id !== slot.id) return null; // one "cerrado" row per turno
             return (
               <div
-                key={turno.id}
+                key={rowKey}
                 className="flex items-center justify-between"
                 style={{
                   border: "1px solid var(--rule-soft)",
@@ -250,15 +268,16 @@ export function AsignacionMobile({
           }
           return (
             <button
-              key={turno.id}
+              key={rowKey}
               type="button"
-              onClick={() => setSheet({ templateId: turno.id, dayIdx: daySel })}
+              onClick={() => setSheet({ templateId: turno.id, dayIdx: daySel, puestoId: slot.id })}
               className="flex items-center"
               style={{
                 width: "100%",
                 textAlign: "left",
                 gap: 12,
                 border: `1.5px solid ${whoId ? "var(--ink)" : "var(--rule-soft)"}`,
+                boxShadow: slot.color ? `inset 5px 0 0 ${PUESTO_COLORS[slot.color] ?? "var(--ink)"}` : undefined,
                 borderRadius: 3,
                 padding: "13px 14px",
                 marginBottom: 10,
@@ -269,7 +288,7 @@ export function AsignacionMobile({
               <div className="flex-1 min-w-0">
                 <div style={{ fontSize: 14, fontWeight: 600, textTransform: "capitalize" }}>Turno {turno.name}</div>
                 <div className="cmd-num text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>
-                  {turno.inicio}
+                  {turno.inicio}{slot.name ? ` · ${slot.name}` : ""}
                 </div>
               </div>
               {person ? (
@@ -339,8 +358,8 @@ export function AsignacionMobile({
           shifts={shifts}
           roster={roster}
           dayLabel={`${DAYL[sheet.dayIdx]} ${dias[sheet.dayIdx].n}`}
-          current={asig.get(`${sheet.templateId}-${sheet.dayIdx}`) ?? null}
-          onPick={(id) => setAssign(`${sheet.templateId}-${sheet.dayIdx}`, id)}
+          current={asig.get(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId)) ?? null}
+          onPick={(id) => setAssign(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId), id)}
           onClose={() => setSheet(null)}
         />
       ) : null}
@@ -357,7 +376,7 @@ function PersonSheet({
   onPick,
   onClose,
 }: {
-  sheet: { templateId: string; dayIdx: number };
+  sheet: { templateId: string; dayIdx: number; puestoId: string | null };
   shifts: GridShift[];
   roster: GridMember[];
   dayLabel: string;
@@ -365,7 +384,9 @@ function PersonSheet({
   onPick: (id: string | null) => void;
   onClose: () => void;
 }) {
-  const shiftName = shifts.find((s) => s.id === sheet.templateId)?.name ?? "";
+  const shift = shifts.find((s) => s.id === sheet.templateId);
+  const puestoName = shift?.puestos.find((p) => p.id === sheet.puestoId)?.name;
+  const shiftName = `${shift?.name ?? ""}${puestoName ? ` · ${puestoName}` : ""}`;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 40, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,16,10,.4)" }} />
