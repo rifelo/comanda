@@ -6,6 +6,7 @@ import { listShifts } from "@/lib/db/shifts";
 import { listAssignments, isoMonday } from "@/lib/db/assignments";
 import { listRoster } from "@/lib/db/roster";
 import { puestoColor } from "@/lib/turno/colors";
+import { llenarTurno } from "./actions";
 import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 import { CmdProgress, Stamp } from "@/components/comanda/primitives";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -257,9 +258,10 @@ export default async function HoyPage() {
               ) : null}
 
               <div
-                className="flex justify-end"
-                style={{ marginTop: 13, paddingTop: 12, borderTop: "1.5px solid var(--ink)" }}
+                className="flex justify-between items-center"
+                style={{ marginTop: 13, paddingTop: 12, borderTop: "1.5px solid var(--ink)", gap: 8 }}
               >
+                {c.statusLabel !== "CERRADO" ? <LlenarTurnoButton templateId={c.id} /> : <span />}
                 {c.shiftId ? (
                   <Link
                     href={`/hoy/${today}?turno=${c.shiftId}`}
@@ -495,17 +497,18 @@ export default async function HoyPage() {
                   className="flex items-center justify-between"
                   style={{ marginTop: 16, paddingTop: 12, borderTop: "1.5px solid var(--ink)" }}
                 >
-                  {c.shiftId && c.isOpen ? (
-                    <Link
-                      href={`/hoy/${today}?turno=${c.shiftId}#asignar`}
-                      className="cmd-link"
-                      style={{ fontSize: 11, color: "var(--red)" }}
-                    >
-                      + asignar tarea
-                    </Link>
-                  ) : (
-                    <span />
-                  )}
+                  <div className="flex items-center" style={{ gap: 14 }}>
+                    {c.statusLabel !== "CERRADO" ? <LlenarTurnoButton templateId={c.id} /> : null}
+                    {c.shiftId && c.isOpen ? (
+                      <Link
+                        href={`/hoy/${today}?turno=${c.shiftId}#asignar`}
+                        className="cmd-link"
+                        style={{ fontSize: 11, color: "var(--red)" }}
+                      >
+                        + asignar tarea
+                      </Link>
+                    ) : null}
+                  </div>
                   {c.shiftId ? (
                     <Link
                       href={`/hoy/${today}?turno=${c.shiftId}`}
@@ -654,5 +657,17 @@ function PuestoLines({ lines }: { lines: { id: string; name: string; color: stri
         </div>
       ))}
     </div>
+  );
+}
+
+/** Owner fills the turno himself: opens (creating if needed) today's checklist. */
+function LlenarTurnoButton({ templateId }: { templateId: string }) {
+  return (
+    <form action={llenarTurno}>
+      <input type="hidden" name="template_id" value={templateId} />
+      <button type="submit" className="cmd-btn red sm" aria-label="Llenar turno">
+        ✎ Llenar turno
+      </button>
+    </form>
   );
 }
