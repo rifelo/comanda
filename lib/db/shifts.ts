@@ -6,8 +6,10 @@ import type {
   ShiftInstance,
   ShiftView,
   TaskCompletion,
+  TemplatePuesto,
   TemplateTask,
 } from "@/lib/types";
+import { normalizeTemplatePuestoRows } from "./puestos";
 
 /** Hydrated row returned by `getTodayShifts`: shift fields the /today list needs
  *  + the joined restaurant/template names so the page doesn't need a second
@@ -147,7 +149,7 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
   const opener = ((shiftRow as any).opener ?? null) as ShiftView["opener"];
   if (!template || !restaurant) return null;
 
-  const [{ data: tasks }, { data: completions }, { data: adHocRows }] =
+  const [{ data: tasks }, { data: completions }, { data: adHocRows }, { data: puestoRows }] =
     await Promise.all([
       supabase
         .from("template_tasks")
@@ -156,8 +158,13 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
         .order("order_index"),
       completionsPromise,
       adHocPromise,
+      supabase
+        .from("template_puestos")
+        .select("*, puesto:puestos(*)")
+        .eq("template_id", template.id),
     ]);
   if (!tasks) return null;
+  const puestos = normalizeTemplatePuestoRows(puestoRows);
 
   const completionsMap: Record<string, TaskCompletion> = {};
   (completions ?? []).forEach((c) => {
@@ -199,10 +206,11 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
     shift: shiftCols as ShiftInstance,
     template,
     restaurant,
-    tasks,
+    tasks: (tasks as TemplateTask[]).map((t) => ({ ...t, puesto_id: t.puesto_id ?? null })),
     completions: completionsMap,
     opener,
     adHocTasks,
+    puestos,
   };
 }
 
@@ -217,14 +225,15 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
 // kept the storage name and aliased the type.
 // ─────────────────────────────────────────────────────────────────
 
-type ShiftWithTasks = Shift & { tasks: TemplateTask[] };
+export type ShiftWithTasks = Shift & { tasks: TemplateTask[]; puestos: TemplatePuesto[] };
 
 function normalizeShiftRow(row: Record<string, unknown>): ShiftWithTasks | null {
   if (!row || typeof row !== "object") return null;
   const tasksRaw = Array.isArray(row.template_tasks) ? row.template_tasks : [];
-  const tasks = (tasksRaw as TemplateTask[]).slice().sort(
-    (a, b) => a.order_index - b.order_index,
-  );
+  const tasks = (tasksRaw as TemplateTask[])
+    .map((t) => ({ ...t, puesto_id: t.puesto_id ?? null }))
+    .sort((a, b) => a.order_index - b.order_index);
+  const puestos = normalizeTemplatePuestoRows(row.template_puestos);
   return {
     id: row.id as string,
     restaurant_id: row.restaurant_id as string,
@@ -237,6 +246,7 @@ function normalizeShiftRow(row: Record<string, unknown>): ShiftWithTasks | null 
       ? (row.dias as boolean[])
       : [true, true, true, true, true, true, true],
     tasks,
+    puestos,
   };
 }
 
@@ -247,7 +257,7 @@ export async function listShifts(
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("checklist_templates")
-    .select("*, template_tasks(*)")
+    .select("*, template_tasks(*), template_puestos(*, puesto:puestos(*))")
     .eq("restaurant_id", restaurantId)
     .eq("active", true)
     .order("inicio");
@@ -262,7 +272,7 @@ export async function getShift(id: string): Promise<ShiftWithTasks | null> {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("checklist_templates")
-    .select("*, template_tasks(*)")
+    .select("*, template_tasks(*), template_puestos(*, puesto:puestos(*))")
     .eq("id", id)
     .maybeSingle();
   if (!data) return null;
