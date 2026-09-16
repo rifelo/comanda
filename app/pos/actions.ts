@@ -19,6 +19,7 @@ import type {
   ModSelection,
 } from "@/lib/pos/types";
 import { bogotaDay, shiftDay } from "@/lib/pos/pending";
+import { syncOrderConsumption } from "@/lib/pos/stock";
 
 // ── price recomputation (server is the source of truth, never the client) ────
 const ModSelectionSchema = z.record(
@@ -122,6 +123,11 @@ function itemRows(orgId: string, ordenId: string, items: PricedItem[]) {
   }));
 }
 
+/** Profile behind the sale for the movement log (null for a paired device). */
+function actorId(ctx: PosCtx): string | null {
+  return ctx.actor.kind === "user" ? ctx.actor.profileId : null;
+}
+
 type OrdenHeader = {
   status: "pagada" | "pendiente";
   payment_method: z.infer<typeof PaymentSchema>["method"] | null;
@@ -212,6 +218,8 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
     paid_at: new Date().toISOString(),
   });
   if (!ins.ok) return ins;
+  // Inventory follows the sale; a stock problem is logged, never blocks the receipt.
+  await syncOrderConsumption(ctx.supabase, ctx.organizationId, ins.ordenId, actorId(ctx));
   return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };
 }
 
@@ -261,6 +269,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
       paid_at: null,
     });
     if (!ins.ok) return ins;
+    await syncOrderConsumption(supabase, orgId, ins.ordenId, actorId(ctx));
     return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal };
   }
 
@@ -312,6 +321,8 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
     console.error("[guardarPendiente] update orden failed:", updErr);
     return { ok: false, error: "No se pudo guardar el pedido." };
   }
+  // Lines changed → take or give back only the difference.
+  await syncOrderConsumption(supabase, orgId, ordenId, actorId(ctx));
   return { ok: true, folio: existing.folio as string, ordenId, total: priced.subtotal };
 }
 
@@ -437,7 +448,8 @@ export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult>
 export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   const parsed = CancelarPendienteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
-  const { supabase, organizationId: orgId } = await requirePosContext();
+  const ctx = await requirePosContext();
+  const { supabase, organizationId: orgId } = ctx;
   const { data: updated, error } = await supabase
     .from("ordenes")
     .update({ status: "cancelada" })
@@ -450,6 +462,8 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
     return { ok: false, error: "No se pudo cancelar el pedido." };
   }
   if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
+  // Voided → give the ingredients back.
+  await syncOrderConsumption(supabase, orgId, parsed.data.ordenId, actorId(ctx));
   return { ok: true };
 }
 
