@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/auth";
 import { listCatalogo, listProductoCategorias } from "@/lib/db/productos";
 import { CatalogoClient } from "./catalogo-client";
 
-export const metadata = { title: "Productos · Catálogo · co-manda" };
+export const metadata = { title: "Operación · Catálogo · co-manda" };
 
 export default async function CatalogoPage() {
   const { profile, user } = await requireAdmin();

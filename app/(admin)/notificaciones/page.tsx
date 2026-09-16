@@ -3,7 +3,7 @@ import { getIngredientesView } from "@/lib/db/ingredients";
 import { buildAlertas } from "@/lib/notificaciones";
 import { NotificacionesClient } from "./notificaciones-client";
 
-export const metadata = { title: "Productos · Notificaciones · co-manda" };
+export const metadata = { title: "Operación · Notificaciones · co-manda" };
 export const dynamic = "force-dynamic";
 
 export default async function NotificacionesPage() {

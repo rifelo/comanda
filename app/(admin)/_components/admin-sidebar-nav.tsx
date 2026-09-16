@@ -8,12 +8,12 @@ import { todayInTz } from "@/lib/utils";
 import { ComandaModuleNav, activeModuleFor } from "./comanda-module-nav";
 
 /**
- * Module-aware sidebar: top pills (`Hoy / Turnos / Productos`) + a contextual
+ * Module-aware sidebar: top pills (`Hoy / Turnos / Operación`) + a contextual
  * `Secciones` list whose entries change based on the active module.
  *
  *   - Hoy → Dashboard + Detalle de hoy
  *   - Turnos → 5 entries from `TURNOS_SECTIONS`
- *   - Productos → existing `PROD_SECTIONS` (catálogo, ingredientes, …)
+ *   - Operación → existing `PROD_SECTIONS` (catálogo, ingredientes, …)
  *
  * The prior Sedes group is gone — single-sede redesign collapses everything
  * onto Daniel's Burger.

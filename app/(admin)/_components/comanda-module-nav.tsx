@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation";
 import { PROD_SECTIONS } from "@/lib/mock/productos";
 
 /**
- * Top-level module switcher (Hoy / Turnos / Productos).
+ * Top-level module switcher (Hoy / Turnos / Operación / Configuración).
  *
  * Mirrors the design's `ComandaModuleNav` (`comanda-admin.jsx:8-33`). Active
  * state is derived from `usePathname()`:
  *   - Hoy: pathname starts with `/hoy`
  *   - Turnos: pathname starts with `/turnos`
- *   - Productos: pathname matches any href in `PROD_SECTIONS`
+ *   - Operación (id "productos"): pathname matches any href in `PROD_SECTIONS`
  *
  * Uses `<Link>` so navigation does not go through `startTransition` — Next
  * 16 has a bug where `router.push` inside a transition locks pending state
@@ -21,7 +21,7 @@ const MODULES = [
   { id: "hoy", label: "Hoy", href: "/hoy" },
   // link straight to the section (skip the /turnos → /turnos/resumen redirect)
   { id: "turnos", label: "Turnos", href: "/turnos/resumen" },
-  { id: "productos", label: "Productos", href: "/catalogo", badge: "En desarrollo" },
+  { id: "productos", label: "Operación", href: "/catalogo" },
   { id: "configuracion", label: "Configuración", href: "/configuracion" },
 ] as const;
 
@@ -68,7 +68,6 @@ export function ComandaModuleNav() {
       <div className="flex flex-col">
         {MODULES.map((m) => {
           const isActive = m.id === active;
-          const badge = "badge" in m ? m.badge : null;
           return (
             <Link
               key={m.id}
@@ -91,26 +90,6 @@ export function ComandaModuleNav() {
                 {isActive ? "▸ " : "  "}
                 {m.label}
               </span>
-              {badge ? (
-                <span
-                  title="Módulo en desarrollo"
-                  style={{
-                    flexShrink: 0,
-                    fontSize: 7.5,
-                    fontWeight: 700,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    padding: "2px 5px",
-                    borderRadius: 2,
-                    border: "1px solid var(--amber)",
-                    color: "var(--amber)",
-                    whiteSpace: "nowrap",
-                    lineHeight: 1,
-                  }}
-                >
-                  {badge}
-                </span>
-              ) : null}
             </Link>
           );
         })}
