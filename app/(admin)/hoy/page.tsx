@@ -5,6 +5,7 @@ import { getDashboardSummary } from "@/lib/db/reports";
 import { listShifts } from "@/lib/db/shifts";
 import { listAssignments, isoMonday } from "@/lib/db/assignments";
 import { listRoster } from "@/lib/db/roster";
+import { puestoColor } from "@/lib/turno/colors";
 import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 import { CmdProgress, Stamp } from "@/components/comanda/primitives";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -60,9 +61,16 @@ export default async function HoyPage() {
     const s = summaryByTemplate.get(t.id);
     const isOpen = s?.status === "open";
     const closed = s?.status === "closed";
-    const cell = assignments.find((a) => a.template_id === t.id && a.dia_idx === todayIdx);
+    const cell = assignments.find((a) => a.template_id === t.id && a.dia_idx === todayIdx && !a.puesto_id);
     const member = cell?.member_id ? rosterById.get(cell.member_id) ?? null : null;
+    // Turnos with puestos: one line per puesto with today's person.
+    const puestoLines = t.puestos.map((p) => {
+      const pc = assignments.find((a) => a.template_id === t.id && a.dia_idx === todayIdx && a.puesto_id === p.puesto_id);
+      const who = pc?.member_id ? rosterById.get(pc.member_id) ?? null : null;
+      return { id: p.puesto_id, name: p.puesto.name, color: p.puesto.color, who: who?.name ?? null };
+    });
     return {
+      puestoLines,
       id: t.id,
       name: t.name,
       horario: `${t.inicio} – ${t.fin}`,
@@ -206,7 +214,9 @@ export default async function HoyPage() {
                   <div className="text-muted" style={{ fontSize: 8.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                     Personal
                   </div>
-                  {c.memberName ? (
+                  {c.puestoLines.length > 0 ? (
+                    <PuestoLines lines={c.puestoLines} />
+                  ) : c.memberName ? (
                     <>
                       <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 3 }}>{c.memberName}</div>
                       <div className="text-muted" style={{ fontSize: 10, marginTop: 1 }}>
@@ -434,21 +444,27 @@ export default async function HoyPage() {
                     <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                       Personal
                     </div>
-                    <div
-                      style={{
-                        marginTop: 3,
-                        fontWeight: 500,
-                        fontStyle: c.memberName ? "normal" : "italic",
-                        color: c.memberName ? "var(--ink)" : "var(--muted)",
-                      }}
-                    >
-                      {c.memberName ?? "— sin asignar —"}
-                    </div>
-                    {c.memberName ? (
-                      <div className="text-muted" style={{ marginTop: 1 }}>
-                        {c.isOpen ? `${c.total} tareas hoy` : "asignado"}
-                      </div>
-                    ) : null}
+                    {c.puestoLines.length > 0 ? (
+                      <PuestoLines lines={c.puestoLines} />
+                    ) : (
+                      <>
+                        <div
+                          style={{
+                            marginTop: 3,
+                            fontWeight: 500,
+                            fontStyle: c.memberName ? "normal" : "italic",
+                            color: c.memberName ? "var(--ink)" : "var(--muted)",
+                          }}
+                        >
+                          {c.memberName ?? "— sin asignar —"}
+                        </div>
+                        {c.memberName ? (
+                          <div className="text-muted" style={{ marginTop: 1 }}>
+                            {c.isOpen ? `${c.total} tareas hoy` : "asignado"}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                   <div>
                     <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
@@ -624,4 +640,19 @@ async function loadBitacora(
     .slice(0, 8);
 
   return entries;
+}
+
+/** "Apertura · Jesús" lines for turnos with puestos (both layouts). */
+function PuestoLines({ lines }: { lines: { id: string; name: string; color: string; who: string | null }[] }) {
+  return (
+    <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+      {lines.map((l) => (
+        <div key={l.id} className="flex items-center" style={{ gap: 6, fontSize: 11.5 }}>
+          <span aria-hidden style={{ width: 7, height: 7, borderRadius: 7, background: puestoColor(l.color), flexShrink: 0 }} />
+          <span style={{ color: "var(--muted)" }}>{l.name}</span>
+          <span style={{ fontWeight: 500, fontStyle: l.who ? "normal" : "italic", color: l.who ? "var(--ink)" : "var(--muted)" }}>{l.who ?? "sin asignar"}</span>
+        </div>
+      ))}
+    </div>
+  );
 }

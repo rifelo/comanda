@@ -11,6 +11,12 @@ interface PhotoCaptureProps {
   restaurantId: string;
   onUploaded: (publicUrl: string) => void;
   onClose: () => void;
+  /**
+   * Optional uploader (returns the photo URL). The shared tablet has no
+   * browser session, so it uploads through a server action; the staff flow
+   * keeps the direct storage upload.
+   */
+  upload?: (blob: Blob) => Promise<string>;
 }
 
 type FacingMode = "environment" | "user";
@@ -31,6 +37,7 @@ export function PhotoCapture({
   restaurantId,
   onUploaded,
   onClose,
+  upload,
 }: PhotoCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -162,6 +169,10 @@ export function PhotoCapture({
     setUploading(true);
     setError(null);
     try {
+      if (upload) {
+        onUploaded(await upload(blob));
+        return;
+      }
       const supabase = createSupabaseBrowserClient();
       const ext = blob.type.includes("png") ? "png" : "jpg";
       const random = Math.random().toString(36).slice(2, 10);
