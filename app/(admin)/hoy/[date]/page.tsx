@@ -154,6 +154,11 @@ export default async function HoyDetailPage({
               día sig. ›
             </Link>
           </div>
+          {view.shift.status !== "closed" && (
+            <Link href={`/shift/${shiftId}`} className="cmd-btn red" style={{ display: "block", marginTop: 10, textAlign: "center", textDecoration: "none" }}>
+              ✎ Llenar turno
+            </Link>
+          )}
         </div>
 
         {/* tareas inmediatas */}
@@ -389,6 +394,15 @@ export default async function HoyDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {view.shift.status !== "closed" && (
+            <Link
+              href={`/shift/${shiftId}`}
+              className="cmd-btn red sm"
+              style={{ textDecoration: "none", marginRight: 12 }}
+            >
+              ✎ Llenar turno
+            </Link>
+          )}
           <span
             className="cmd-num"
             style={{ fontSize: 10, color: "var(--muted)" }}

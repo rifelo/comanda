@@ -32,11 +32,11 @@ export default async function ShiftPage({
   return (
     <div className="mx-auto w-full max-w-md">
       <Link
-        href="/today"
+        href={profile.role === "admin" ? `/hoy/${view.shift.date}?turno=${view.shift.id}` : "/today"}
         className="block px-4 pt-3 text-muted"
         style={{ fontSize: 11, letterSpacing: "0.06em" }}
       >
-        ← Hoy
+        {profile.role === "admin" ? "← Panel · detalle del turno" : "← Hoy"}
       </Link>
 
       {view.shift.status === "closed" ? (
