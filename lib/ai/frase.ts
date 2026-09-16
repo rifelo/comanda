@@ -6,7 +6,8 @@ import { pickCategoria, sanitizeFrase, type FraseCategoria } from "@/lib/pos/fra
 /**
  * "Frase del día" for the cup label: one short line in Colombian Spanish —
  * funny, motivational, or a wink at today's news in Colombia — always tied
- * to coffee, with one or two emoji. Runs on Groq's free tier
+ * to coffee, plain text without emoji (the thermal label can't render them
+ * well). Runs on Groq's free tier
  * (openai/gpt-oss-120b): JSON-schema output for the creative categories,
  * the built-in browser search for the news one (plain text there — the
  * search tool and strict JSON can't be combined — then sanitised).
@@ -34,20 +35,20 @@ const SYSTEM = `Escribes frases cortas para pegar en el vaso de café de una caf
 Reglas:
 - Una sola frase, máximo 120 caracteres, en español de Colombia, sin comillas.
 - Siempre relacionada con el café o con el momento de tomarse un café (tinto, espresso, latte, cafeína, madrugar, la pausa, el aroma…).
-- Incluye 1 o 2 emojis que aporten (☕ 🌞 😴 🔥 ✨ 🚀 …), nunca más de 2.
+- Sin emojis ni símbolos decorativos: solo texto (se imprime en una etiqueta térmica en blanco y negro).
 - Nada ofensivo, político-partidista, sexual ni sobre religión. Nada de marcas ajenas.
 - Varía el estilo de una frase a otra: que no se parezca a una frase anterior.
 
 Ejemplos del tono gracioso (juegos de palabras, ironía ligera):
-· No tengo insomnio, tengo un espresso doble en las venas ☕😅
-· Comer chocolate encoge la ropa; el café solo encoge el mal genio ☕
-· Un día sin café es, ya sabes, de noche 😴☕
-· Ojos que no ven… cafecito que se enfría 👀☕
+· No tengo insomnio, tengo un espresso doble en las venas.
+· Comer chocolate encoge la ropa; el café solo encoge el mal genio.
+· Un día sin café es, ya sabes, de noche.
+· Ojos que no ven… cafecito que se enfría.
 
 Ejemplos del tono motivador:
-· Cada sorbo es un paso; hoy vas a llegar lejos ☕🚀
-· No necesitas verlo todo claro, solo el primer café ☕✨
-· El esfuerzo es invisible, pero brilla como este espresso 🔥☕`;
+· Cada sorbo es un paso; hoy vas a llegar lejos.
+· No necesitas verlo todo claro, solo el primer café.
+· El esfuerzo es invisible, pero brilla como este espresso.`;
 
 const CATEGORY_PROMPT: Record<FraseCategoria, string> = {
   gracioso:

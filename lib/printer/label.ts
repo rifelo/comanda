@@ -195,7 +195,7 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
 }
 
 export interface MessageLabelInput {
-  /** Short phrase (≤ ~140 chars), may contain emoji. */
+  /** Short phrase (≤ ~140 chars), plain text. */
   text: string;
   orgName?: string;
   /** Instagram handle for the footer, without "@". */
