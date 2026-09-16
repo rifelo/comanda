@@ -55,6 +55,7 @@ export const EMPTY_CATALOG: PosCatalog = {
   catLabel: {},
   orgName: "comanda",
   instagram: null,
+  sticker: null,
 };
 export const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
 export const StationCtx = React.createContext<string>("Caja 01");

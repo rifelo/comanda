@@ -97,6 +97,8 @@ import {
   printInstagramLabel,
   INSTAGRAM_FOLIO,
   FRASE_FOLIO,
+  STICKER_FOLIO,
+  printStickerLabel,
   setLabelDefaults,
   type PrinterStatus,
 } from "@/lib/printer/serial";
@@ -267,7 +269,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
   return (
     <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 9, minWidth: 0 }}>
-        <span style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1, whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: F.slab, fontSize: 20, lineHeight: 1, whiteSpace: "nowrap" }}>
           comanda<span style={{ color: C.red }}>.</span>
         </span>
         <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
@@ -316,7 +318,7 @@ function SearchBox() {
   const s = usePos();
   const ref = React.useRef<HTMLInputElement>(null);
   return (
-    <div style={{ flex: 1, maxWidth: 520, position: "relative" }}>
+    <div style={{ flex: 1, minWidth: 180, maxWidth: 520, position: "relative" }}>
       <span aria-hidden style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.muted, fontSize: 14 }}>⌕</span>
       <input
         ref={ref}
@@ -1309,6 +1311,7 @@ function ReceiptPrinterLine() {
   const printed = p.lastPrinted?.folio === s.orderNo;
   const igPrinted = p.lastPrinted?.folio === INSTAGRAM_FOLIO;
   const frasePrinted = p.lastPrinted?.folio === FRASE_FOLIO;
+  const stickerPrinted = p.lastPrinted?.folio === STICKER_FOLIO;
   const busy = p.status === "printing" || p.status === "connecting";
   const text = busy
     ? "Imprimiendo etiqueta…"
@@ -1318,6 +1321,8 @@ function ReceiptPrinterLine() {
         ? "Etiqueta de Instagram impresa"
         : frasePrinted
           ? "Frase impresa"
+          : stickerPrinted
+            ? "Sticker impreso"
           : printed
             ? "Etiqueta impresa"
             : null;
@@ -1349,6 +1354,16 @@ function ReceiptPrinterLine() {
           style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
         >
           QR Instagram
+        </button>
+      )}
+      {catalog.sticker && p.status === "ready" && (
+        <button
+          onClick={() => printStickerLabel(catalog.sticker!)}
+          disabled={busy}
+          title="Imprime el sticker de la marca"
+          style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+        >
+          Sticker PA&apos;YO
         </button>
       )}
       {p.status === "ready" && (

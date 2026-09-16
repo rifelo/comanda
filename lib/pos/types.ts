@@ -70,6 +70,8 @@ export interface PosCatalog {
   orgName: string;
   /** Instagram handle without "@" (organizations.instagram), null = none. */
   instagram: string | null;
+  /** Brand sticker image for the label printer (organizations.sticker_url), null = none. */
+  sticker: string | null;
 }
 
 /** Catalog narrowed by the assistant to what the customer asked for. */

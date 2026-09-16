@@ -33,7 +33,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "./transport";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -260,7 +260,8 @@ export function usePrinterAutoConnect() {
 
 // ── print queue ─────────────────────────────────────────────────
 interface Job {
-  raster: () => LabelRaster;
+  /** May be async (e.g. an image label that has to load its bitmap first). */
+  raster: () => LabelRaster | Promise<LabelRaster>;
   folio: string;
   name: string;
 }
@@ -299,7 +300,7 @@ async function drain() {
       printerStore.set({ status: "printing", note: null });
       try {
         await client.waitIdle();
-        await client.printRaster(job.raster());
+        await client.printRaster(await job.raster());
         printerStore.set({ status: "ready", lastPrinted: { folio: job.folio, name: job.name } });
       } catch (err) {
         console.error("[printer] job failed:", err);
@@ -359,6 +360,26 @@ export function printMessageLabel(text: string, handle?: string | null): void {
   });
 }
 export const FRASE_FOLIO = "FRASE";
+
+/** Brand sticker (e.g. /labels/payo-sticker.png) — image loaded when the job runs. */
+export function printStickerLabel(src: string): void {
+  enqueue({
+    raster: async () => renderImageLabel(await loadImage(src)),
+    folio: STICKER_FOLIO,
+    name: "Sticker",
+  });
+}
+export const STICKER_FOLIO = "STICKER";
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("No se pudo cargar la imagen del sticker."));
+    img.src = src;
+  });
+}
 
 export function printTestLabel(): void {
   enqueue({ raster: () => renderTestLabel(labelDefaults.station), folio: "PRUEBA", name: "" });
