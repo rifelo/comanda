@@ -16,12 +16,15 @@ export function pickCategoria(rand: number = Math.random()): FraseCategoria {
 export const FRASE_MAX = 140;
 
 /**
- * Trim, collapse whitespace, strip wrapping quotes and cap the length so the
+ * Strip emoji, trim, collapse whitespace, strip wrapping quotes and cap the length so the
  * phrase always fits the label (4 lines max at the smallest font).
  */
 export function sanitizeFrase(text: string): string {
   // Citation markers from web-search answers (【1†L9-L13】, [1]) never belong on a cup.
   let t = text.replace(/【[^】]*】/g, "").replace(/\[\d+\]/g, "");
+  // No emoji: the model is told so, but strip any that slip through
+  // (pictographs, variation selectors, ZWJ, skin tones, keycaps, flags).
+  t = t.replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\u{FE0F}\u{200D}\u{20E3}]/gu, "");
   t = t.replace(/\s+/g, " ").trim();
   t = t.replace(/^["“«']+|["”»']+$/g, "").trim();
   if (t.length > FRASE_MAX) {

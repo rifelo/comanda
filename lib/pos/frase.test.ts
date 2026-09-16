@@ -12,11 +12,15 @@ describe("pickCategoria", () => {
 
 describe("sanitizeFrase", () => {
   it("collapses whitespace and strips wrapping quotes", () => {
-    expect(sanitizeFrase('  "Un  café ☕\n y a volar" ')).toBe("Un café ☕ y a volar");
-    expect(sanitizeFrase("«Tinto primero, mundo después» 😴")).toBe("Tinto primero, mundo después» 😴");
+    expect(sanitizeFrase('  "Un  café\n y a volar" ')).toBe("Un café y a volar");
+    expect(sanitizeFrase("«Tinto primero, mundo después»")).toBe("Tinto primero, mundo después");
   });
   it("strips citation markers left by web search", () => {
-    expect(sanitizeFrase("¡Bacteria colombiana limpia el agua! ☕️【1†L9-L13】 [2]")).toBe("¡Bacteria colombiana limpia el agua! ☕️");
+    expect(sanitizeFrase("¡Bacteria colombiana limpia el agua!【1†L9-L13】 [2]")).toBe("¡Bacteria colombiana limpia el agua!");
+  });
+  it("removes emoji, keeping accents and Spanish punctuation", () => {
+    expect(sanitizeFrase("Un día sin café es de noche 😴☕️ ¡ánimo! 👍🏽 🇨🇴")).toBe("Un día sin café es de noche ¡ánimo!");
+    expect(sanitizeFrase("☕ Primero el tinto, después el mundo 🚀")).toBe("Primero el tinto, después el mundo");
   });
   it("caps overlong text on a word boundary", () => {
     const long = "palabra ".repeat(40);
