@@ -113,6 +113,9 @@ html, body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* The display face ships one weight; never let the browser smear a fake
+     bold over it. The mono face has real 400–700 weights. */
+  font-synthesis: none;
 }
 
 /* iOS Safari: prevent input zoom + maintain tap-target floor for kitchen staff. */

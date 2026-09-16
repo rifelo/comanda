@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono, DM_Serif_Display, Caveat } from "next/font/google";
+import { JetBrains_Mono, Dela_Gothic_One, Caveat } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import type { ThemeName } from "@/lib/types";
@@ -12,7 +12,13 @@ const mono = JetBrains_Mono({
   weight: ["400", "500", "600", "700"],
 });
 
-const slab = DM_Serif_Display({
+// Display face — PA'YO branding. The café's wordmark uses Nority Display
+// (ultra-heavy, wide, ink-trap chunky); Nority is a paid font, so we use
+// its closest free match, Dela Gothic One. It keeps the historic
+// `--font-slab` variable name so every `font-slab` / `F.slab` call site
+// picks it up unchanged. Single weight: `font-synthesis: none` in
+// globals.css stops browsers faking a bolder version.
+const slab = Dela_Gothic_One({
   variable: "--font-slab",
   subsets: ["latin"],
   weight: "400",
