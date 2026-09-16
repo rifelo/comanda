@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getPreciosView } from "@/lib/db/precios";
 import { PreciosClient } from "./precios-client";
 
-export const metadata = { title: "Productos · Precios · co-manda" };
+export const metadata = { title: "Operación · Precios · co-manda" };
 export const dynamic = "force-dynamic";
 
 export default async function PreciosPage() {

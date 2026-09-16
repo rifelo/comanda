@@ -9,7 +9,7 @@ import { activeModuleFor } from "./comanda-module-nav";
 /**
  * Mobile hamburger drawer — the phone translation of the 220px admin sidebar.
  * Slide-in left panel with the wordmark, the signed-in admin (Owner), the four
- * modules (Hoy / Turnos / Productos / Configuración), the sede, and a session
+ * modules (Hoy / Turnos / Operación / Configuración), the sede, and a session
  * footer. Ported from the design's StaffDrawer (comanda-mobile-nav.jsx),
  * adapted to admin module nav + real routing + signOut.
  *
@@ -22,7 +22,7 @@ const MODULES = [
   { id: "hoy", label: "Hoy", href: "/hoy" },
   // link straight to the section (skip the /turnos → /turnos/resumen redirect)
   { id: "turnos", label: "Turnos", href: "/turnos/resumen" },
-  { id: "productos", label: "Productos", href: "/catalogo", badge: "En desarrollo" },
+  { id: "productos", label: "Operación", href: "/catalogo" },
   { id: "configuracion", label: "Configuración", href: "/configuracion" },
 ] as const;
 
@@ -173,7 +173,6 @@ export function AdminMobileDrawer({
             </div>
             {MODULES.map((m) => {
               const on = m.id === active;
-              const badge = "badge" in m ? m.badge : null;
               return (
                 <Link
                   key={m.id}
@@ -194,24 +193,6 @@ export function AdminMobileDrawer({
                 >
                   <span style={{ width: 8, color: "var(--red)" }}>{on ? "▸" : ""}</span>
                   <span style={{ flex: 1 }}>{m.label}</span>
-                  {badge ? (
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        fontSize: 7.5,
-                        fontWeight: 700,
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                        padding: "2px 5px",
-                        borderRadius: 2,
-                        border: "1px solid var(--amber)",
-                        color: on ? "var(--paper-lt)" : "var(--amber)",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {badge}
-                    </span>
-                  ) : null}
                 </Link>
               );
             })}

@@ -165,7 +165,7 @@ export function SectionCrumb({
             textTransform: "uppercase",
           }}
         >
-          Productos · {s?.n}
+          Operación · {s?.n}
         </div>
         <h1
           className="font-slab"

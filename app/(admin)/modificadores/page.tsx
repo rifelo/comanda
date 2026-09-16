@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getModificadores } from "@/lib/db/modificadores";
 import { ModificadoresClient } from "./modificadores-client";
 
-export const metadata = { title: "Productos · Modificadores · co-manda" };
+export const metadata = { title: "Operación · Modificadores · co-manda" };
 export const dynamic = "force-dynamic";
 
 export default async function ModificadoresPage() {

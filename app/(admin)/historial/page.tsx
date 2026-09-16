@@ -3,7 +3,7 @@ import { getMovimientos } from "@/lib/db/movements";
 import { getIngredientesView } from "@/lib/db/ingredients";
 import { HistorialClient } from "./historial-client";
 
-export const metadata = { title: "Productos · Movimientos · co-manda" };
+export const metadata = { title: "Operación · Movimientos · co-manda" };
 export const dynamic = "force-dynamic";
 
 export default async function HistorialPage() {

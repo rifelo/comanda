@@ -22,7 +22,7 @@ type Section = { label: string; href: string };
 const TITLES: Record<NonNullable<ActiveModule>, string> = {
   hoy: "Hoy",
   turnos: "Turnos",
-  productos: "Productos",
+  productos: "Operación",
   configuracion: "Configuración",
 };
 
