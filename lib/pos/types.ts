@@ -173,15 +173,25 @@ export interface PendingOrderItem {
   position: number;
 }
 
-/** An unpaid order the register can reopen, charge or cancel. */
-export interface PendingOrder {
+export type OrderStatus = "pendiente" | "pagada" | "cancelada";
+export type OrdersTab = OrderStatus | "todas";
+
+/** A stored order as the register lists it (pending queue and history). */
+export interface PosOrder {
   id: string;
   folio: string;
+  status: OrderStatus;
   orderType: OrderType;
   total: number;
   sinGluten: boolean;
   note: string;
   customerName: string;
   createdAt: string;
+  paidAt: string | null;
+  paymentMethod: "efectivo" | "tarjeta" | "transferencia" | null;
+  tendered: number | null;
+  change: number;
   items: PendingOrderItem[];
 }
+/** An unpaid order the register can reopen, charge or cancel. */
+export type PendingOrder = PosOrder;

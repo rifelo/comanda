@@ -15,8 +15,10 @@ import type {
   PosAct,
   PosCatalogFilter,
   PendingOrder,
+  PosOrder,
   ModSelection,
 } from "@/lib/pos/types";
+import { bogotaDay, shiftDay } from "@/lib/pos/pending";
 
 // ── price recomputation (server is the source of truth, never the client) ────
 const ModSelectionSchema = z.record(
@@ -313,34 +315,57 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
   return { ok: true, folio: existing.folio as string, ordenId, total: priced.subtotal };
 }
 
-/** Open (unpaid) orders of the org, oldest first — the kitchen queue. */
-export async function listarPendientes(): Promise<ListarPendientesResult> {
+const ListarOrdenesSchema = z.object({
+  status: z.enum(["pendiente", "pagada", "cancelada", "todas"]).default("pendiente"),
+  /** Bogotá calendar day (YYYY-MM-DD); ignored for the pending queue. */
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+/**
+ * Orders of the org for the register's Pedidos view. The pending queue is
+ * date-less (an open order is open whatever day it was sent) and oldest
+ * first; history tabs are one Bogotá day, newest first.
+ */
+export async function listarOrdenes(input: unknown = {}): Promise<ListarPendientesResult> {
+  const parsed = ListarOrdenesSchema.safeParse(input ?? {});
+  if (!parsed.success) return { ok: false, error: "Filtro inválido." };
+  const { status, day } = parsed.data;
   const { supabase, organizationId: orgId } = await requirePosContext();
-  const { data, error } = await supabase
+  let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, order_type, total_cop, sin_gluten, notes, customer_name, created_at, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, created_at, paid_at, payment_method, tendered_cop, change_cop, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position)",
     )
-    .eq("organization_id", orgId)
-    .eq("status", "pendiente")
-    .order("created_at", { ascending: true })
-    .limit(100);
-  if (error) {
-    console.error("[listarPendientes] failed:", error);
-    return { ok: false, error: "No se pudieron cargar los pedidos pendientes." };
+    .eq("organization_id", orgId);
+  if (status !== "todas") q = q.eq("status", status);
+  if (status !== "pendiente") {
+    const d = day ?? bogotaDay();
+    q = q.gte("created_at", `${d}T05:00:00Z`).lt("created_at", `${shiftDay(d, 1)}T05:00:00Z`);
   }
-  const orders: PendingOrder[] = (data ?? []).map((o) => {
+  const { data, error } = await q
+    .order("created_at", { ascending: status === "pendiente" })
+    .limit(200);
+  if (error) {
+    console.error("[listarOrdenes] failed:", error);
+    return { ok: false, error: "No se pudieron cargar los pedidos." };
+  }
+  const orders: PosOrder[] = (data ?? []).map((o) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items = ((o as any).orden_items ?? []) as Array<Record<string, unknown>>;
     return {
       id: o.id as string,
       folio: o.folio as string,
-      orderType: o.order_type as PendingOrder["orderType"],
+      status: o.status as PosOrder["status"],
+      orderType: o.order_type as PosOrder["orderType"],
       total: o.total_cop as number,
       sinGluten: Boolean(o.sin_gluten),
       note: (o.notes as string | null) ?? "",
       customerName: (o.customer_name as string | null) ?? "",
       createdAt: o.created_at as string,
+      paidAt: (o.paid_at as string | null) ?? null,
+      paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
+      tendered: (o.tendered_cop as number | null) ?? null,
+      change: (o.change_cop as number) ?? 0,
       items: items
         .map((it) => ({
           id: it.id as string,
@@ -357,6 +382,11 @@ export async function listarPendientes(): Promise<ListarPendientesResult> {
     };
   });
   return { ok: true, orders };
+}
+
+/** Open (unpaid) orders of the org, oldest first — the kitchen queue / badge. */
+export async function listarPendientes(): Promise<ListarPendientesResult> {
+  return listarOrdenes({ status: "pendiente" });
 }
 
 /**
