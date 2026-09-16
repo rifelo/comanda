@@ -110,3 +110,33 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
 export function linesPayload(order: OrderLine[]) {
   return order.map((l) => ({ kind: l.kind, id: l.id, qty: l.qty, mods: l.mods ?? {} }));
 }
+
+// ── Bogotá calendar days (UTC-5, no DST) ──────────────────────────
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+
+/** YYYY-MM-DD of `now` in America/Bogota. Deterministic (manual UTC-5), no ICU. */
+export function bogotaDay(now: number = Date.now()): string {
+  return new Date(now - 5 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/** Same calendar day shifted by `delta` days. */
+export function shiftDay(day: string, delta: number): string {
+  const t = Date.parse(`${day}T00:00:00Z`) + delta * 86_400_000;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+/** "Hoy · mar 16 sep" / "Ayer · lun 15 sep" / "vie 12 sep". */
+export function dayLabel(day: string, today: string = bogotaDay()): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  const base = `${DIAS[d.getUTCDay()]} ${d.getUTCDate()} ${MESES[d.getUTCMonth()]}`;
+  if (day === today) return `Hoy · ${base}`;
+  if (day === shiftDay(today, -1)) return `Ayer · ${base}`;
+  return base;
+}
+
+/** "14:05" in Bogotá for an ISO timestamp. */
+export function bogotaTime(iso: string): string {
+  const d = new Date(new Date(iso).getTime() - 5 * 3_600_000);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}

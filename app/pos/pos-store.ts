@@ -27,14 +27,17 @@ import {
   type ModSelection,
   type OrderLine,
   type PendingOrder,
+  type PosOrder,
+  type OrdersTab,
 } from "@/lib/pos/types";
-import { defaultMods, linesPayload, rebuildLines } from "@/lib/pos/pending";
+import { bogotaDay, defaultMods, linesPayload, rebuildLines } from "@/lib/pos/pending";
 import {
   cancelarPendiente,
   cobrarPendiente,
   crearOrden,
   generarFrase,
   guardarPendiente,
+  listarOrdenes,
   listarPendientes,
   posSuggest,
   transcribeAudio,
@@ -96,8 +99,8 @@ export interface PosState {
   catalog: PosCatalog;
 
   // ── Square-style screen state ──
-  /** sale = catalog + ticket · tender = choose payment · done = receipt. */
-  view: "sale" | "tender" | "done";
+  /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
+  view: "sale" | "tender" | "done" | "ordenes";
   /** Item sheet (modifiers / qty) — add a new product or edit a ticket line. */
   sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | null;
   /** Free-text search over the catalog (name / sku / description). */
@@ -120,9 +123,17 @@ export interface PosState {
    */
   pending: { id: string; folio: string; total: number; mode: "edit" | "charge" } | null;
   pendientes: PendingOrder[];
-  pendientesOpen: boolean;
   pendientesLoading: boolean;
   pendientesError: string | null;
+  // ── Pedidos view (Square-style cards: open queue + per-day history) ──
+  ordenesTab: OrdersTab;
+  /** Bogotá day shown on the history tabs (YYYY-MM-DD). */
+  ordenesDay: string;
+  ordenes: PosOrder[];
+  ordenesLoading: boolean;
+  ordenesError: string | null;
+  /** Card selected in the Pedidos view (detail panel). */
+  ordenSel: string | null;
   /** What the receipt screen describes: a paid sale or an order sent unpaid. */
   receiptKind: "pagada" | "pendiente";
   /** AI "frase del día" label: last generated text + request state. */
@@ -172,9 +183,14 @@ export const POS_INITIAL: PosState = {
   lastTotal: 0,
   pending: null,
   pendientes: [],
-  pendientesOpen: false,
   pendientesLoading: false,
   pendientesError: null,
+  ordenesTab: "pendiente",
+  ordenesDay: bogotaDay(),
+  ordenes: [],
+  ordenesLoading: false,
+  ordenesError: null,
+  ordenSel: null,
   receiptKind: "pagada",
   frase: null,
   fraseLoading: false,
@@ -508,6 +524,9 @@ export function resetConversation() {
     aiOpen: s.aiOpen,
     cat: s.cat,
     pendientes: s.pendientes,
+    ordenes: s.ordenes,
+    ordenesTab: s.ordenesTab,
+    ordenesDay: s.ordenesDay,
   }));
 }
 
@@ -520,9 +539,9 @@ export function startTender() {
 export function cancelTender() {
   const s = posStore.get();
   if (s.pending?.mode === "charge") {
-    // The ticket only held the order for the summary — drop it and go back to the list.
+    // The ticket only held the order for the summary — drop it and go back to Pedidos.
     resetConversation();
-    openPendientes();
+    openOrdenes();
     return;
   }
   posStore.set({ view: "sale", tendered: null, sendError: null });
@@ -681,12 +700,51 @@ export async function refreshPendientes() {
     posStore.set({ pendientesLoading: false });
   }
 }
-export function openPendientes() {
-  posStore.set({ pendientesOpen: true, sheet: null });
+// ── Pedidos view (queue + history) ──────────────────────────────
+let ordenesReq = 0;
+/** Reload the Pedidos view for the current tab/day. Latest request wins. */
+export async function refreshOrdenes() {
+  const s = posStore.get();
+  const req = ++ordenesReq;
+  posStore.set({ ordenesLoading: true });
+  try {
+    const res = await listarOrdenes({ status: s.ordenesTab, day: s.ordenesDay });
+    if (req !== ordenesReq) return;
+    if (res.ok) posStore.set({ ordenes: res.orders, ordenesError: null, ordenesLoading: false });
+    else posStore.set({ ordenesError: res.error, ordenesLoading: false });
+  } catch {
+    if (req === ordenesReq) posStore.set({ ordenesError: "Sin conexión con el servidor.", ordenesLoading: false });
+  }
+}
+/** Open the Pedidos screen (defaults to the pending queue). */
+export function openOrdenes(tab?: OrdersTab) {
+  posStore.set((st) => ({
+    ...st,
+    view: "ordenes",
+    sheet: null,
+    ordenesTab: tab ?? st.ordenesTab,
+  }));
+  void refreshOrdenes();
   void refreshPendientes();
 }
-export function closePendientes() {
-  posStore.set({ pendientesOpen: false });
+export function closeOrdenes() {
+  posStore.set({ view: "sale", ordenSel: null });
+}
+export function setOrdenesTab(tab: OrdersTab) {
+  posStore.set({ ordenesTab: tab, ordenSel: null, ordenes: [] });
+  void refreshOrdenes();
+}
+export function setOrdenesDay(day: string) {
+  posStore.set({ ordenesDay: day, ordenSel: null, ordenes: [] });
+  void refreshOrdenes();
+}
+export function selectOrden(id: string | null) {
+  posStore.set((st) => ({ ...st, ordenSel: st.ordenSel === id ? null : id }));
+}
+/** Reprint the kitchen label of any stored order. */
+export function printLabelFor(o: PosOrder) {
+  const s = posStore.get();
+  printOrderLabel({ name: o.customerName, folio: o.folio, orgName: s.catalog.orgName });
 }
 
 function loadPending(o: PendingOrder, mode: "edit" | "charge") {
@@ -699,7 +757,7 @@ function loadPending(o: PendingOrder, mode: "edit" | "charge") {
     orderType: o.orderType,
     noteSinGluten: o.sinGluten,
     pending: { id: o.id, folio: o.folio, total: o.total, mode },
-    pendientesOpen: false,
+    ordenSel: null,
     sheet: null,
     sent: false,
     sendError: null,
@@ -725,8 +783,14 @@ export async function cancelPending(id: string) {
     return;
   }
   const s = posStore.get();
-  posStore.set({ pendientes: s.pendientes.filter((o) => o.id !== id), pendientesError: null });
+  posStore.set({
+    pendientes: s.pendientes.filter((o) => o.id !== id),
+    pendientesError: null,
+    // Reflect it in the Pedidos view right away; the refresh confirms.
+    ordenes: s.ordenes.map((o) => (o.id === id ? { ...o, status: "cancelada" as const } : o)),
+  });
   if (s.pending?.id === id) discardPendingEdit();
+  if (s.view === "ordenes") void refreshOrdenes();
 }
 /** Drop the loaded pending order from the ticket without saving. */
 export function discardPendingEdit() {

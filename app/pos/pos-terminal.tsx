@@ -67,8 +67,13 @@ import {
   reprintLabel,
   printFrase,
   savePending,
-  openPendientes,
-  closePendientes,
+  openOrdenes,
+  closeOrdenes,
+  setOrdenesTab,
+  setOrdenesDay,
+  refreshOrdenes,
+  selectOrden,
+  printLabelFor,
   refreshPendientes,
   editPending,
   chargePending,
@@ -81,8 +86,8 @@ import {
   type SuggestionCardState,
   type PayMethod,
 } from "./pos-store";
-import { timeAgo } from "@/lib/pos/pending";
-import type { PendingOrder } from "@/lib/pos/types";
+import { timeAgo, bogotaDay, shiftDay, dayLabel, bogotaTime } from "@/lib/pos/pending";
+import type { PosOrder, OrdersTab } from "@/lib/pos/types";
 import {
   usePrinter,
   usePrinterAutoConnect,
@@ -226,7 +231,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
       const st = posStore.get();
       if (st.sheet) posStore.set({ sheet: null });
       else if (st.view === "tender") cancelTender();
-      else if (st.pendientesOpen) closePendientes();
+      else if (st.view === "ordenes") closeOrdenes();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
     };
     window.addEventListener("keydown", onKey);
@@ -243,7 +248,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
         {s.aiOpen && <AiDrawer />}
       </div>
       {s.sheet && <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />}
-      {s.pendientesOpen && s.view === "sale" && <PendientesPanel />}
+      {s.view === "ordenes" && <OrdenesScreen />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
     </div>
@@ -325,18 +330,19 @@ function SearchBox() {
   );
 }
 
-/** "Pendientes" — open orders waiting to be paid, with a count badge. */
+/** "Pedidos" — opens the Square-style orders screen; badge = open orders. */
 function PendientesChip() {
   const s = usePos();
   const n = s.pendientes.length;
+  const on = s.view === "ordenes";
   return (
     <button
-      onClick={() => (s.pendientesOpen ? closePendientes() : openPendientes())}
-      title="Pedidos pendientes de pago"
-      aria-pressed={s.pendientesOpen}
-      style={{ ...chipStyle, border: `1.5px solid ${n ? C.amber : C.rule}`, position: "relative" }}
+      onClick={() => (on ? closeOrdenes() : openOrdenes())}
+      title="Pedidos: pendientes e historial"
+      aria-pressed={on}
+      style={{ ...chipStyle, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
     >
-      Pendientes
+      Pedidos
       {n > 0 && (
         <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.amber, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           {n}
@@ -774,61 +780,174 @@ function Ticket() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Pending orders — sent to the kitchen, waiting to be paid
+// Pedidos — Square-style cards: open queue + per-day history
 // ════════════════════════════════════════════════════════════════
-function PendientesPanel() {
+const ORDER_TABS: { id: OrdersTab; label: string }[] = [
+  { id: "pendiente", label: "Pendientes" },
+  { id: "pagada", label: "Pagadas" },
+  { id: "cancelada", label: "Canceladas" },
+  { id: "todas", label: "Todas" },
+];
+const STATUS_UI: Record<PosOrder["status"], { label: string; color: string }> = {
+  pendiente: { label: "Pendiente", color: C.amber },
+  pagada: { label: "Pagada", color: C.green },
+  cancelada: { label: "Cancelada", color: C.muted },
+};
+
+function OrdenesScreen() {
   const s = usePos();
   const [, tick] = React.useReducer((n: number) => n + 1, 0);
   React.useEffect(() => {
-    const id = window.setInterval(tick, 30_000);
+    const id = window.setInterval(() => { tick(); if (document.visibilityState === "visible") void refreshOrdenes(); }, 30_000);
     return () => window.clearInterval(id);
   }, []);
-  // Loading something into the ticket discards what's there — ask first.
-  const guard = () => !s.order.length || !!s.pending || window.confirm("Se perderá el pedido actual. ¿Continuar?");
+  const today = bogotaDay();
+  const isQueue = s.ordenesTab === "pendiente";
+  const sel = s.ordenSel ? s.ordenes.find((o) => o.id === s.ordenSel) ?? null : null;
+  const total = s.ordenes.filter((o) => o.status === "pagada").reduce((n, o) => n + o.total, 0);
+
   return (
-    <Overlay align="center" onClose={closePendientes}>
-      <div role="dialog" aria-label="Pedidos pendientes" className="pos-card" style={{ width: "min(780px, 94vw)", maxHeight: "82vh", display: "flex", flexDirection: "column", border: `1.5px solid ${C.ink}`, borderRadius: 10, background: C.paperLt, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: `1.5px solid ${C.ink}` }}>
-          <span style={{ fontFamily: F.slab, fontSize: 24 }}>Pendientes<span style={{ color: C.amber }}>.</span></span>
-          <span className="cmd-num" style={{ fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
-            {s.pendientes.length} pedido{s.pendientes.length === 1 ? "" : "s"} sin pagar
-          </span>
-          <button onClick={closePendientes} aria-label="Cerrar" style={{ marginLeft: "auto", width: 36, height: 36, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontSize: 18, cursor: "pointer" }}>×</button>
-        </div>
-        <div className="pos-scroll" style={{ overflowY: "auto", flex: 1 }}>
-          {s.pendientesError && <div role="alert" style={{ padding: "12px 20px", color: C.red, fontSize: 12 }}>{s.pendientesError}</div>}
-          {!s.pendientes.length && !s.pendientesError && (
-            <div style={{ padding: "48px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
-              {s.pendientesLoading ? "Cargando…" : <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</>}
+    <Overlay align="fill">
+      <div role="region" aria-label="Pedidos" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+        <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
+          <button onClick={closeOrdenes} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>← Volver</button>
+          <span style={{ fontFamily: F.slab, fontSize: 22 }}>Pedidos<span style={{ color: C.amber }}>.</span></span>
+          <div role="tablist" style={{ display: "flex", gap: 6, marginLeft: 10 }}>
+            {ORDER_TABS.map((t) => {
+              const on = s.ordenesTab === t.id;
+              const n = t.id === "pendiente" ? s.pendientes.length : 0;
+              return (
+                <button key={t.id} role="tab" aria-selected={on} onClick={() => setOrdenesTab(t.id)} style={{ height: 36, padding: "0 12px", borderRadius: 3, cursor: "pointer", border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {t.label}
+                  {n > 0 && <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.amber, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {!isQueue && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 12 }}>
+              <button onClick={() => setOrdenesDay(shiftDay(s.ordenesDay, -1))} aria-label="Día anterior" style={dayBtn}>◀</button>
+              <span style={{ fontSize: 12, fontWeight: 600, minWidth: 150, textAlign: "center" }}>{dayLabel(s.ordenesDay, today)}</span>
+              <button onClick={() => setOrdenesDay(shiftDay(s.ordenesDay, 1))} disabled={s.ordenesDay >= today} aria-label="Día siguiente" style={{ ...dayBtn, opacity: s.ordenesDay >= today ? 0.35 : 1 }}>▶</button>
+              {s.ordenesDay !== today && <button onClick={() => setOrdenesDay(today)} style={{ ...dayBtn, width: "auto", padding: "0 10px", fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase" }}>Hoy</button>}
             </div>
           )}
-          {s.pendientes.map((o) => <PendienteRow key={o.id} o={o} guard={guard} />)}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+            {!isQueue && total > 0 && <span>Ventas <span className="cmd-num" style={{ color: C.ink }}>{posMoney(total)}</span></span>}
+            <span className="cmd-num">{s.ordenes.length} pedido{s.ordenes.length === 1 ? "" : "s"}</span>
+            <button onClick={() => void refreshOrdenes()} aria-label="Actualizar" title="Actualizar" style={dayBtn}>{s.ordenesLoading ? "…" : "↻"}</button>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+          <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+            {s.ordenesError && <div role="alert" style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{s.ordenesError}</div>}
+            {!s.ordenes.length && !s.ordenesError && (
+              <div style={{ padding: "64px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
+                {s.ordenesLoading ? "Cargando…" : isQueue ? <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</> : "Sin pedidos ese día."}
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+              {s.ordenes.map((o) => <OrdenCard key={o.id} o={o} selected={o.id === s.ordenSel} />)}
+            </div>
+          </div>
+          {sel && <OrdenDetail o={sel} />}
         </div>
       </div>
     </Overlay>
   );
 }
 
-function PendienteRow({ o, guard }: { o: PendingOrder; guard: () => boolean }) {
+const dayBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" };
+
+function OrdenCard({ o, selected }: { o: PosOrder; selected: boolean }) {
+  const st = STATUS_UI[o.status];
   const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
   const count = o.items.reduce((n, it) => n + it.qty, 0);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${C.ruleSoft}` }}>
-      <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 26, minWidth: 64, color: C.ink }}>{o.folio}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.customerName || "—"}</div>
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>
-          {type} · <span className="cmd-num">{count}</span> ítem{count === 1 ? "" : "s"} · {timeAgo(o.createdAt)}
+    <button
+      onClick={() => selectOrden(o.id)}
+      aria-pressed={selected}
+      aria-label={`Pedido ${o.folio}`}
+      className="pos-card"
+      style={{ textAlign: "left", padding: "12px 14px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${selected ? C.ink : C.rule}`, boxShadow: selected ? `0 0 0 2px ${C.ink}` : "none", background: C.paperLt, color: C.ink, fontFamily: F.mono, display: "flex", flexDirection: "column", gap: 6, opacity: o.status === "cancelada" ? 0.6 : 1 }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1 }}>{o.folio}</span>
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "2px 6px", borderRadius: 3 }}>{st.label}</span>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.customerName || "—"}</div>
+      <div style={{ fontSize: 11, color: C.muted }}>
+        {type} · <span className="cmd-num">{count}</span> ítem{count === 1 ? "" : "s"} · {o.status === "pendiente" ? timeAgo(o.createdAt) : bogotaTime(o.createdAt)}
+      </div>
+      <div style={{ fontSize: 11, color: C.ink2, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+        {o.items.map((it) => `${it.qty}× ${it.name}`).join(" · ")}
+      </div>
+      <div className="cmd-num" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{posMoney(o.total)}</div>
+    </button>
+  );
+}
+
+function OrdenDetail({ o }: { o: PosOrder }) {
+  const s = usePos();
+  const p = usePrinter();
+  const st = STATUS_UI[o.status];
+  const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
+  const method = o.paymentMethod ? PAY_METHODS.find((m) => m.id === o.paymentMethod)?.label ?? o.paymentMethod : null;
+  // Loading something into the ticket discards what's there — ask first.
+  const guard = () => !s.order.length || !!s.pending || window.confirm("Se perderá el pedido actual. ¿Continuar?");
+  const row = (k: string, v: React.ReactNode) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "5px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
+      <span style={{ color: C.muted, letterSpacing: ".08em", textTransform: "uppercase", fontSize: 10.5 }}>{k}</span>
+      <span style={{ color: C.ink, textAlign: "right" }}>{v}</span>
+    </div>
+  );
+  return (
+    <div role="complementary" aria-label={`Detalle ${o.folio}`} style={{ width: 380, flexShrink: 0, borderLeft: `1.5px solid ${C.ink}`, background: C.paperLt, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "18px 20px 12px", borderBottom: `1px solid ${C.rule}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, lineHeight: 1 }}>{o.folio}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "3px 7px", borderRadius: 3 }}>{st.label}</span>
+          <button onClick={() => selectOrden(null)} aria-label="Cerrar detalle" style={{ marginLeft: "auto", width: 32, height: 32, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontSize: 16, cursor: "pointer" }}>×</button>
         </div>
-        <div style={{ fontSize: 11, color: C.ink2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {o.items.map((it) => `${it.qty}× ${it.name}`).join(" · ")}
+        <div style={{ fontSize: 15, fontWeight: 600, marginTop: 8 }}>{o.customerName || "Sin nombre"}</div>
+      </div>
+      <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "10px 20px" }}>
+        {row("Tipo", type)}
+        {row("Enviado", `${bogotaTime(o.createdAt)} · ${timeAgo(o.createdAt)}`)}
+        {o.paidAt && row("Pagado", bogotaTime(o.paidAt))}
+        {method && row("Pago", method)}
+        {o.paymentMethod === "efectivo" && o.tendered !== null && row("Recibido / cambio", <><span className="cmd-num">{posMoney(o.tendered)}</span> / <span className="cmd-num" style={{ color: C.green }}>{posMoney(o.change)}</span></>)}
+        {o.sinGluten && row("Nota", "Sin gluten")}
+        {o.note && row("Nota", o.note)}
+        <div style={{ marginTop: 12 }}>
+          {o.items.map((it) => (
+            <div key={it.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${C.ruleSoft}`, fontSize: 12.5 }}>
+              <span style={{ color: C.ink2, minWidth: 0 }}><span className="cmd-num" style={{ color: C.muted }}>{it.qty}×</span> {it.name}</span>
+              <span className="cmd-num" style={{ color: C.ink, flexShrink: 0 }}>{posMoney(it.unitPrice * it.qty)}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 12 }}>
+          <span style={{ fontSize: 11, letterSpacing: ".12em", color: C.ink2 }}>TOTAL</span>
+          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 28 }}>{posMoney(o.total)}</span>
         </div>
       </div>
-      <div className="cmd-num" style={{ fontSize: 18, fontWeight: 700, color: C.ink, minWidth: 90, textAlign: "right" }}>{posMoney(o.total)}</div>
-      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-        <button className="cmd-btn red" onClick={() => { if (guard()) chargePending(o); }} style={{ height: 44, padding: "0 16px", fontSize: 12 }}>Cobrar</button>
-        <button className="cmd-btn" onClick={() => { if (guard()) editPending(o); }} style={{ height: 44, padding: "0 14px", fontSize: 12 }}>Editar</button>
-        <button onClick={() => { if (window.confirm(`¿Cancelar el pedido ${o.folio}?`)) void cancelPending(o.id); }} aria-label={`Cancelar ${o.folio}`} style={{ height: 44, padding: "0 10px", border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
+      <div style={{ padding: "12px 20px 16px", borderTop: `1.5px solid ${C.ink}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        {o.status === "pendiente" && (
+          <>
+            <button className="cmd-btn red" onClick={() => { if (guard()) chargePending(o); }} style={{ width: "100%", height: 52, fontSize: 14 }}>Cobrar {posMoney(o.total)}</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="cmd-btn" onClick={() => { if (guard()) editPending(o); }} style={{ flex: 1, height: 44, fontSize: 12 }}>Editar</button>
+              <button onClick={() => { if (window.confirm(`¿Cancelar el pedido ${o.folio}?`)) void cancelPending(o.id); }} aria-label={`Cancelar ${o.folio}`} style={{ flex: 1, height: 44, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </>
+        )}
+        {p.status !== "unsupported" && (
+          <button onClick={() => printLabelFor(o)} disabled={p.status !== "ready"} style={{ width: "100%", height: 40, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", cursor: p.status === "ready" ? "pointer" : "default", opacity: p.status === "ready" ? 1 : 0.5 }}>
+            Reimprimir etiqueta
+          </button>
+        )}
       </div>
     </div>
   );

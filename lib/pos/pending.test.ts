@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linesPayload, rebuildLines, sanitizeMods, timeAgo } from "./pending";
+import { bogotaDay, bogotaTime, dayLabel, linesPayload, rebuildLines, sanitizeMods, shiftDay, timeAgo } from "./pending";
 import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
@@ -19,7 +19,7 @@ const catalog: PosCatalog = {
 };
 
 const order = (items: PendingOrder["items"]): PendingOrder => ({
-  id: "o1", folio: "A-3", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", createdAt: "2026-09-14T10:00:00Z", items,
+  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", createdAt: "2026-09-14T10:00:00Z", paidAt: null, paymentMethod: null, tendered: null, change: 0, items,
 });
 
 describe("sanitizeMods", () => {
@@ -77,5 +77,24 @@ describe("linesPayload", () => {
   it("sends ids, qty and mods only", () => {
     expect(linesPayload([{ id: "a", name: "A", qty: 2, kind: "item", basePrice: 1 }, { id: "c", name: "C", qty: 1, kind: "combo", price: 5, mods: { g: "x" } }]))
       .toEqual([{ kind: "item", id: "a", qty: 2, mods: {} }, { kind: "combo", id: "c", qty: 1, mods: { g: "x" } }]);
+  });
+});
+
+describe("Bogotá days", () => {
+  it("rolls the calendar day at 05:00 UTC", () => {
+    expect(bogotaDay(Date.parse("2026-09-16T04:59:00Z"))).toBe("2026-09-15");
+    expect(bogotaDay(Date.parse("2026-09-16T05:00:00Z"))).toBe("2026-09-16");
+  });
+  it("shifts days across month ends", () => {
+    expect(shiftDay("2026-09-30", 1)).toBe("2026-10-01");
+    expect(shiftDay("2026-03-01", -1)).toBe("2026-02-28");
+  });
+  it("labels today, yesterday and older days", () => {
+    expect(dayLabel("2026-09-16", "2026-09-16")).toBe("Hoy · mié 16 sep");
+    expect(dayLabel("2026-09-15", "2026-09-16")).toBe("Ayer · mar 15 sep");
+    expect(dayLabel("2026-09-11", "2026-09-16")).toBe("vie 11 sep");
+  });
+  it("formats Bogotá clock time", () => {
+    expect(bogotaTime("2026-09-16T19:05:00Z")).toBe("14:05");
   });
 });
