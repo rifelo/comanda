@@ -249,6 +249,36 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
 }
 
+/**
+ * Brand sticker label ("Sticker PA'YO"): a black-and-white image scaled to
+ * fit the ink area with its aspect ratio kept, centred, then thresholded
+ * like every other label. White stays paper; black burns.
+ */
+export function renderImageLabel(img: CanvasImageSource & { width: number; height: number }): LabelRaster {
+  const W = HEAD_WIDTH_PX;
+  const H = LABEL_H_MM * PX_PER_MM;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+
+  const pad = 4;
+  const boxW = INK_RIGHT - INK_LEFT - pad * 2;
+  const boxH = H - pad * 2;
+  const scale = Math.min(boxW / img.width, boxH / img.height);
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, INK_LEFT + pad + Math.round((boxW - w) / 2), pad + Math.round((boxH - h) / 2), w, h);
+  // Artwork has thin white lines inside black shapes; burning only clearly
+  // dark pixels keeps them from closing up when scaled down.
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 96);
+}
+
 /** Small self-test label used from the printer chip ("Probar impresora"). */
 export function renderTestLabel(station?: string): LabelRaster {
   return renderOrderLabel({ name: "Impresora lista", folio: "PRUEBA", station, orgName: "comanda" });
@@ -303,7 +333,7 @@ function fitLines(
 }
 
 // ── canvas → 1-bit rows ─────────────────────────────────────────
-function rasterize(ctx: CanvasRenderingContext2D, w: number, h: number, offsetRows: number): LabelRaster {
+function rasterize(ctx: CanvasRenderingContext2D, w: number, h: number, offsetRows: number, threshold: number = THRESHOLD): LabelRaster {
   const { data } = ctx.getImageData(0, 0, w, h);
   const rows: Uint8Array[] = [];
   for (let i = 0; i < offsetRows; i++) rows.push(new Uint8Array(HEAD_WIDTH_BYTES));
@@ -314,7 +344,7 @@ function rasterize(ctx: CanvasRenderingContext2D, w: number, h: number, offsetRo
       const p = base + x * 4;
       // Alpha is always 255 here (opaque white fill), so plain luminance.
       const lum = (data[p] * 299 + data[p + 1] * 587 + data[p + 2] * 114) / 1000;
-      if (lum < THRESHOLD) line[x >> 3] |= 0x80 >> (x & 7);
+      if (lum < threshold) line[x >> 3] |= 0x80 >> (x & 7);
     }
     rows.push(line);
   }

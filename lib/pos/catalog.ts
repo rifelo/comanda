@@ -72,7 +72,7 @@ export async function getPosCatalog({
     getModificadores(organizationId, client),
     supabase
       .from("organizations")
-      .select("instagram")
+      .select("instagram, sticker_url")
       .eq("id", organizationId)
       .maybeSingle(),
   ]);
@@ -199,5 +199,6 @@ export async function getPosCatalog({
     catLabel,
     orgName,
     instagram: ((orgRow as { instagram?: string | null } | null)?.instagram ?? "").replace(/^@/, "").trim() || null,
+    sticker: ((orgRow as { sticker_url?: string | null } | null)?.sticker_url ?? "").trim() || null,
   };
 }

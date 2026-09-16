@@ -97,6 +97,8 @@ import {
   printInstagramLabel,
   INSTAGRAM_FOLIO,
   FRASE_FOLIO,
+  STICKER_FOLIO,
+  printStickerLabel,
   setLabelDefaults,
   type PrinterStatus,
 } from "@/lib/printer/serial";
@@ -1309,6 +1311,7 @@ function ReceiptPrinterLine() {
   const printed = p.lastPrinted?.folio === s.orderNo;
   const igPrinted = p.lastPrinted?.folio === INSTAGRAM_FOLIO;
   const frasePrinted = p.lastPrinted?.folio === FRASE_FOLIO;
+  const stickerPrinted = p.lastPrinted?.folio === STICKER_FOLIO;
   const busy = p.status === "printing" || p.status === "connecting";
   const text = busy
     ? "Imprimiendo etiqueta…"
@@ -1318,6 +1321,8 @@ function ReceiptPrinterLine() {
         ? "Etiqueta de Instagram impresa"
         : frasePrinted
           ? "Frase impresa"
+          : stickerPrinted
+            ? "Sticker impreso"
           : printed
             ? "Etiqueta impresa"
             : null;
@@ -1349,6 +1354,16 @@ function ReceiptPrinterLine() {
           style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
         >
           QR Instagram
+        </button>
+      )}
+      {catalog.sticker && p.status === "ready" && (
+        <button
+          onClick={() => printStickerLabel(catalog.sticker!)}
+          disabled={busy}
+          title="Imprime el sticker de la marca"
+          style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+        >
+          Sticker PA&apos;YO
         </button>
       )}
       {p.status === "ready" && (
