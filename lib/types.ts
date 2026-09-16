@@ -84,6 +84,27 @@ export interface WeeklyAssignment {
   dia_idx: number;
   /** profiles.id, or null when cleared. */
   member_id: string | null;
+  /** puestos.id — one person per puesto per day; null = legacy whole-turno row. */
+  puesto_id: string | null;
+}
+
+/** A role/station inside a turno (Apertura, Barista, Aseo…), per sede. */
+export interface Puesto {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  /** design token: ink | red | green | amber | indigo */
+  color: string;
+  position: number;
+}
+
+/** Which puestos a turno uses, in order, and which task gates each one (soft handoff). */
+export interface TemplatePuesto {
+  template_id: string;
+  puesto_id: string;
+  position: number;
+  waits_for_task_id: string | null;
+  puesto: Puesto;
 }
 
 export interface TemplateTask {
@@ -94,6 +115,8 @@ export interface TemplateTask {
   instructions: string | null;
   due_time: string | null; // 'HH:MM:SS'
   requires_photo: boolean;
+  /** puestos.id; null = compartida (everyone on the turno). */
+  puesto_id: string | null;
 }
 
 export interface ShiftInstance {
@@ -186,6 +209,8 @@ export interface ShiftView {
   opener: { id: string; full_name: string | null } | null;
   /** Ad-hoc tasks raised during this shift (see migration 0015). */
   adHocTasks: AdHocTask[];
+  /** Puestos configured on the template (empty for a flat/legacy turno). */
+  puestos: TemplatePuesto[];
 }
 
 // =============================================================================

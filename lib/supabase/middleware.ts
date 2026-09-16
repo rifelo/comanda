@@ -45,6 +45,9 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     path === "/pos" ||
     path.startsWith("/pos/") ||
+    // The shared shift tablet pairs like the POS (device cookie) — see lib/turno/server.ts.
+    path === "/turno" ||
+    path.startsWith("/turno/") ||
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
     path.startsWith("/api/cron") ||

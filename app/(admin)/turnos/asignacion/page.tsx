@@ -40,9 +40,12 @@ export default async function TurnosAsignacionPage() {
     name: s.name,
     inicio: s.inicio,
     dias: s.dias,
+    puestos: s.puestos.map((p) => ({ id: p.puesto_id, name: p.puesto.name, color: p.puesto.color })),
   }));
+  // Members and org admins (the owner runs Apertura); assigning someone
+  // makes them a member.
   const gridRoster = roster
-    .filter((r) => r.isMember)
+    .filter((r) => r.active)
     .map((r) => ({
       id: r.id,
       initials: r.initials,
@@ -53,6 +56,7 @@ export default async function TurnosAsignacionPage() {
   const gridAssignments = assignments.map((a) => ({
     template_id: a.template_id,
     dia_idx: a.dia_idx,
+    puesto_id: a.puesto_id,
     member_id: a.member_id,
   }));
 

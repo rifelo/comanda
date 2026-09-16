@@ -3,13 +3,28 @@
 import Link from "next/link";
 import * as React from "react";
 import { publishWeek } from "../_actions";
+import { PUESTO_COLORS } from "@/lib/turno/colors";
 
+type GridPuesto = { id: string; name: string; color: string };
 type GridShift = {
   id: string;
   name: string;
   inicio: string;
   dias: boolean[];
+  /** Puestos configured on the turno; empty = one person for the whole turno. */
+  puestos: GridPuesto[];
 };
+/** One assignable slot of a turno-day: a puesto, or the whole turno (id null). */
+type Slot = { id: string | null; name: string | null; color: string | null };
+function slotsOf(s: GridShift): Slot[] {
+  return s.puestos.length
+    ? s.puestos.map((p) => ({ id: p.id, name: p.name, color: p.color }))
+    : [{ id: null, name: null, color: null }];
+}
+function keyFor(templateId: string, diaIdx: number, puestoId: string | null): string {
+  return `${templateId}-${diaIdx}-${puestoId ?? "all"}`;
+}
+
 
 type GridMember = {
   id: string;
@@ -22,6 +37,7 @@ type GridMember = {
 type GridAssignment = {
   template_id: string;
   dia_idx: number;
+  puesto_id: string | null;
   member_id: string | null;
 };
 
@@ -89,7 +105,7 @@ export function AsignacionGrid({
   >(() => {
     const initial = new Map<string, string | null>();
     for (const a of initialAssignments) {
-      initial.set(`${a.template_id}-${a.dia_idx}`, a.member_id);
+      initial.set(keyFor(a.template_id, a.dia_idx, a.puesto_id ?? null), a.member_id);
     }
     return { [initialWeekStart]: initial };
   });
@@ -165,13 +181,15 @@ export function AsignacionGrid({
     for (const s of shifts) {
       for (let i = 0; i < 7; i++) {
         if (!s.dias[i]) continue;
-        const k = `${s.id}-${i}`;
-        const v = asig.get(k);
-        changes.push({
-          template_id: s.id,
-          dia_idx: i,
-          member_id: v == null ? null : v,
-        });
+        for (const slot of slotsOf(s)) {
+          const v = asig.get(keyFor(s.id, i, slot.id));
+          changes.push({
+            template_id: s.id,
+            dia_idx: i,
+            puesto_id: slot.id,
+            member_id: v == null ? null : v,
+          });
+        }
       }
     }
     startTransition(async () => {
@@ -190,9 +208,11 @@ export function AsignacionGrid({
   for (const s of shifts) {
     for (let i = 0; i < 7; i++) {
       if (!s.dias[i]) continue;
-      totalCells++;
-      const v = asig.get(`${s.id}-${i}`);
-      if (v != null) filled++;
+      for (const slot of slotsOf(s)) {
+        totalCells++;
+        const v = asig.get(keyFor(s.id, i, slot.id));
+        if (v != null) filled++;
+      }
     }
   }
 
@@ -202,8 +222,10 @@ export function AsignacionGrid({
   for (const s of shifts) {
     for (let i = 0; i < 7; i++) {
       if (!s.dias[i]) continue;
-      const v = asig.get(`${s.id}-${i}`);
-      if (v != null && counts[v] != null) counts[v]++;
+      for (const slot of slotsOf(s)) {
+        const v = asig.get(keyFor(s.id, i, slot.id));
+        if (v != null && counts[v] != null) counts[v]++;
+      }
     }
   }
 
@@ -368,13 +390,19 @@ export function AsignacionGrid({
                   >
                     {s.inicio}
                   </div>
+                  {s.puestos.length > 0 && (
+                    <div className="flex flex-col" style={{ gap: 3, marginTop: 6 }}>
+                      {s.puestos.map((p) => (
+                        <span key={p.id} className="flex items-center" style={{ gap: 5, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-2)", height: 28 }}>
+                          <span aria-hidden style={{ width: 7, height: 7, borderRadius: 7, background: PUESTO_COLORS[p.color] ?? "var(--ink)" }} />
+                          {p.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {dias.map((d, i) => {
-                  const k = `${s.id}-${i}`;
                   const operating = s.dias[i];
-                  const whoId = asig.get(k) ?? null;
-                  const who = whoId ? memberById.get(whoId) : null;
-                  const open = menuKey === k;
                   const alignRight = i >= 5;
                   const isToday = d.hoy;
 
@@ -408,25 +436,35 @@ export function AsignacionGrid({
                     );
                   }
 
+                  const slots = slotsOf(s);
                   return (
-                    <div key={i} style={{ position: "relative" }}>
+                    <div key={i} className="flex flex-col" style={{ gap: 3, justifyContent: "center" }}>
+                    {slots.map((slot) => {
+                      const k = keyFor(s.id, i, slot.id);
+                      const whoId = asig.get(k) ?? null;
+                      const who = whoId ? memberById.get(whoId) : null;
+                      const open = menuKey === k;
+                      return (
+                    <div key={k} style={{ position: "relative" }}>
                       <button
                         type="button"
                         onClick={() => setMenuKey(open ? null : k)}
+                        aria-label={`${s.name}${slot.name ? ` · ${slot.name}` : ""} · ${d.d} ${d.n}`}
                         style={{
                           width: "100%",
                           border: `1px solid ${who ? "var(--ink)" : "var(--rule-soft)"}`,
                           background: who ? "var(--paper-lt)" : "transparent",
-                          minHeight: 54,
+                          minHeight: slot.id ? 28 : 54,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           cursor: "pointer",
-                          boxShadow: isToday
-                            ? "inset 0 0 0 2px var(--red)"
-                            : open
-                              ? "inset 0 0 0 2px var(--ink)"
-                              : "none",
+                          // Puesto colour bar via an inset shadow (mixing the
+                          // `border` shorthand with borderLeft trips React).
+                          boxShadow: [
+                            slot.color ? `inset 4px 0 0 ${PUESTO_COLORS[slot.color] ?? "var(--ink)"}` : null,
+                            isToday ? "inset 0 0 0 2px var(--red)" : open ? "inset 0 0 0 2px var(--ink)" : null,
+                          ].filter(Boolean).join(", ") || "none",
                           padding: 4,
                         }}
                       >
@@ -434,8 +472,8 @@ export function AsignacionGrid({
                           <span
                             className="inline-flex items-center justify-center"
                             style={{
-                              width: 26,
-                              height: 26,
+                              width: slot.id ? 22 : 26,
+                              height: slot.id ? 22 : 26,
                               borderRadius: "50%",
                               border: "1.5px solid var(--ink)",
                               background: "var(--paper)",
@@ -489,7 +527,7 @@ export function AsignacionGrid({
                               }}
                             >
                               <span style={{ textTransform: "capitalize" }}>
-                                Turno {s.name}
+                                Turno {s.name}{slot.name ? ` · ${slot.name}` : ""}
                               </span>
                               <span>
                                 {d.d} {d.n}
@@ -611,6 +649,9 @@ export function AsignacionGrid({
                           </div>
                         </>
                       ) : null}
+                    </div>
+                      );
+                    })}
                     </div>
                   );
                 })}

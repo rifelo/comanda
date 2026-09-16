@@ -102,6 +102,9 @@ export default async function HoyDetailPage({
 
   const total = view.tasks.length;
   const done = Object.keys(completionsByTask).length;
+  // Puesto name per task (turnos with puestos); shared tasks get none.
+  const puestoName = new Map(view.puestos.map((p) => [p.puesto_id, p.puesto.name]));
+  const puestoOf = (t: { puesto_id: string | null }) => (t.puesto_id ? puestoName.get(t.puesto_id) ?? null : view.puestos.length ? "Compartida" : null);
   const photos = (completionDetails ?? []).filter((c) => c.photo_url);
   const opener = view.opener?.full_name ?? "—";
 
@@ -251,7 +254,7 @@ export default async function HoyDetailPage({
                       </div>
                     ) : (
                       <div className="cmd-num text-muted" style={{ fontSize: 10, marginTop: 2 }}>
-                        {dueLabel ? `programada ${dueLabel}` : "pendiente"}
+                        {puestoOf(task) ? `${puestoOf(task)} · ` : ""}{dueLabel ? `programada ${dueLabel}` : "pendiente"}
                       </div>
                     )}
                   </div>
@@ -509,7 +512,7 @@ export default async function HoyDetailPage({
                       className="cmd-num text-muted whitespace-nowrap"
                       style={{ fontSize: 11 }}
                     >
-                      {dueLabel ?? ""}
+                      {puestoOf(task) ? `${puestoOf(task)} · ` : ""}{dueLabel ?? ""}
                     </span>
                   </div>
                   {c ? (

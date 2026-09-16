@@ -5,8 +5,8 @@ import type { WeeklyAssignment } from "@/lib/types";
  * Weekly assignments for the Asignación grid.
  *
  * `weekStart` is the ISO Monday for the visible week. The grid is
- * `(template_id × dia_idx)` → `member_id | null`; this returns one row per
- * non-null cell. Closed-day cells are derived client-side from the shift's
+ * `(template_id × dia_idx × puesto_id|null)` → `member_id | null`; this
+ * returns one row per non-null cell (puesto_id null = legacy whole-turno). Closed-day cells are derived client-side from the shift's
  * `dias[]` mask.
  */
 export async function listAssignments(
@@ -16,7 +16,7 @@ export async function listAssignments(
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("weekly_assignments")
-    .select("week_start, template_id, dia_idx, member_id")
+    .select("week_start, template_id, dia_idx, member_id, puesto_id")
     .eq("restaurant_id", restaurantId)
     .eq("week_start", weekStart);
   if (!data) return [];
@@ -25,6 +25,7 @@ export async function listAssignments(
     template_id: row.template_id as string,
     dia_idx: row.dia_idx as number,
     member_id: (row.member_id as string | null) ?? null,
+    puesto_id: (row.puesto_id as string | null) ?? null,
   }));
 }
 
