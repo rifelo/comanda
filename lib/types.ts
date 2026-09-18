@@ -226,6 +226,8 @@ export interface ProductoCategoria {
   label: string;
   position: number;
   created_at: string;
+  /** Products here are drinks: the POS prints a cup label for them (0027). */
+  es_bebida?: boolean;
 }
 
 export interface Producto {

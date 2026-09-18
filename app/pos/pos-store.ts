@@ -42,7 +42,7 @@ import {
   posSuggest,
   transcribeAudio,
 } from "./actions";
-import { printOrderLabel, printMessageLabel } from "@/lib/printer/serial";
+import { printOrderLabel, printMessageLabel, printDrinkLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
 export const EMPTY_CATALOG: PosCatalog = {
@@ -616,6 +616,7 @@ export async function completeSale() {
     // order already got its label when it was sent.
     if (!s.pending) {
       printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
+      printDrinkLabels(s);
     }
     void refreshPendientes();
   } else posStore.set({ sending: false, sendError: res.error });
@@ -654,6 +655,7 @@ export async function savePending() {
     });
     if (!s.pending) {
       printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
+      printDrinkLabels(s);
     }
     void refreshPendientes();
   } else posStore.set({ sending: false, sendError: res.error });
@@ -796,6 +798,22 @@ export async function cancelPending(id: string) {
 /** Drop the loaded pending order from the ticket without saving. */
 export function discardPendingEdit() {
   resetConversation();
+}
+
+/**
+ * One menu label per cup for the drinks in the ticket (never for food).
+ * Queued after the order label, so the cashier gets the name/number first.
+ * Capped per line so a bulk order can't run the roll out.
+ */
+function printDrinkLabels(s: PosState) {
+  for (const line of s.order) {
+    if (line.kind !== "item") continue;
+    const p = s.catalog.byId[line.id];
+    if (!p?.drink) continue;
+    for (let i = 0; i < Math.min(line.qty, 12); i++) {
+      printDrinkLabel({ name: p.name, spec: p.spec, desc: p.desc, brand: s.catalog.orgName });
+    }
+  }
 }
 
 /**

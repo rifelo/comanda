@@ -33,7 +33,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "./transport";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, ensureLabelFonts } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -372,6 +372,16 @@ export function printStickerLabel(src: string): void {
   });
 }
 export const STICKER_FOLIO = "STICKER";
+
+/** Menu label for one drink (name, shots and descriptor) — one per cup. */
+export function printDrinkLabel(input: DrinkLabelInput): void {
+  enqueue({
+    raster: () => renderDrinkLabel({ brand: labelDefaults.orgName, ...input }),
+    folio: DRINK_FOLIO,
+    name: input.name,
+  });
+}
+export const DRINK_FOLIO = "BEBIDA";
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

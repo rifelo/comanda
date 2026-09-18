@@ -12,6 +12,7 @@ import {
   type PosMenuItem,
   type PosModGroup,
 } from "./types";
+import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
 
 /**
  * Build the live POS catalog for an org from the catálogo/combos/modificadores
@@ -39,6 +40,7 @@ export async function getPosCatalog({
 
   const [
     { data: productos },
+    { data: recetaRows },
     { data: categorias },
     { data: favorites },
     { data: modLinks },
@@ -53,9 +55,14 @@ export async function getPosCatalog({
       )
       .eq("organization_id", organizationId)
       .order("name"),
+    // Recipes drive the cup label's spec box ("2 SHOTS · 18 G").
+    supabase
+      .from("receta_items")
+      .select("producto_id, qty, ingredientes(name, unit)")
+      .eq("organization_id", organizationId),
     supabase
       .from("producto_categorias")
-      .select("id, organization_id, parent_id, label, position, created_at")
+      .select("id, organization_id, parent_id, label, position, created_at, es_bebida")
       .eq("organization_id", organizationId)
       .order("position"),
     userId
@@ -79,6 +86,17 @@ export async function getPosCatalog({
 
   // ── categories: resolve each product's top-level tab + sub label ──────────
   const cats = (categorias ?? []) as ProductoCategoria[];
+  // producto_id → recipe lines (name + unit + qty), for the cup label spec.
+  const recipeByProduct = new Map<string, RecipeLine[]>();
+  for (const r of (recetaRows ?? []) as Array<Record<string, unknown>>) {
+    const ing = r.ingredientes as { name: string; unit: string } | null;
+    if (!ing) continue;
+    const pid = r.producto_id as string;
+    const arr = recipeByProduct.get(pid) ?? [];
+    arr.push({ name: ing.name, unit: ing.unit, qty: Number(r.qty) });
+    recipeByProduct.set(pid, arr);
+  }
+
   const catById = new Map<string, ProductoCategoria>();
   for (const c of cats) catById.set(c.id, c);
 
@@ -142,6 +160,12 @@ export async function getPosCatalog({
     const mods = noMappings
       ? allGroupIds
       : linksByProduct.get(p.id) ?? [];
+    // Cup label: drinks only. A flagged category decides it; a product with
+    // no category at all (the cold drinks) falls back to its recipe.
+    const coffeeG = coffeeGramsOf(recipeByProduct.get(p.id) ?? []);
+    const drink = p.category_id
+      ? (own?.es_bebida ?? false) || (top?.es_bebida ?? false)
+      : coffeeG > 0;
     return {
       id: p.id,
       name: p.name,
@@ -154,6 +178,8 @@ export async function getPosCatalog({
       stock: p.stock_status,
       mods,
       desc: p.description ?? "",
+      drink,
+      spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
     };
   });
 
