@@ -829,7 +829,7 @@ export async function printFrase() {
     const res = await generarFrase();
     if (res.ok) {
       posStore.set({ frase: res.texto, fraseLoading: false });
-      printMessageLabel(res.texto, s.catalog.instagram);
+      printMessageLabel(res.texto, s.catalog.instagram, s.catalog.cupArt);
     } else posStore.set({ fraseLoading: false, fraseError: res.error });
   } catch {
     posStore.set({ fraseLoading: false, fraseError: "No se pudo generar la frase." });
