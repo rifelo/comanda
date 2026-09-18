@@ -90,10 +90,11 @@ export function orderNumber(folio: string): string {
 }
 
 /**
- * Render the label the cashier expects after "Cobrar": the customer's name as
- * the hero, the folio underneath so the kitchen can match it to the ticket.
- * When no name was captured the bare order number ("247", not "A-247") is
- * the hero instead — that's what the barista calls out.
+ * Render the label the cashier expects after "Cobrar": "Pa'" and then the
+ * customer's name as the hero, with the folio underneath so the kitchen can
+ * match it to the ticket. When no name was captured the bare order number
+ * ("247", not "A-247") is the hero instead — that's what the barista calls
+ * out — and the "Pa'" line is dropped.
  */
 export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -114,14 +115,14 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const name = input.name.trim();
   const hero = name || orderNumber(input.folio);
 
-  // Kicker: business · station, small caps, top-left.
-  const kicker = [input.orgName, input.station].filter(Boolean).join(" · ").toUpperCase();
+  // "Pa'" over the name, the way the barista hands it over. Without a name
+  // the hero is the order number and the line is dropped.
   let y = 6;
-  if (kicker) {
-    ctx.font = `bold 13px ${monoFont()}`;
+  if (name) {
+    ctx.font = `24px ${displayFont()}`;
     ctx.textAlign = "left";
-    ctx.fillText(fitOneLine(ctx, kicker, inkW), INK_LEFT, y);
-    y += 18;
+    ctx.fillText("Pa'", INK_LEFT, y);
+    y += 26;
   }
 
   // Footer: folio (or nothing if the folio is already the hero).
@@ -571,7 +572,7 @@ export function renderImageLabel(img: CanvasImageSource & { width: number; heigh
 
 /** Small self-test label used from the printer chip ("Probar impresora"). */
 export function renderTestLabel(station?: string): LabelRaster {
-  return renderOrderLabel({ name: "Impresora lista", folio: "PRUEBA", station, orgName: "comanda" });
+  return renderOrderLabel({ name: "", folio: "PRUEBA", station, orgName: "comanda" });
 }
 
 // ── text fitting ────────────────────────────────────────────────
