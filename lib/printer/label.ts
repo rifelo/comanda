@@ -151,10 +151,18 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
 }
 
+// The portrait labels (menu + "síguenos") are 30 × 50 mm and print turned
+// 90° on the 50 × 30 stock: the design's height runs across the head and its
+// width along the feed. Ink area: 45 × 28 mm.
+const DRINK_W = 28 * PX_PER_MM; // design width  → along the feed
+const DRINK_H = 45 * PX_PER_MM; // design height → across the head
+
 export interface InstagramLabelInput {
   /** Handle with or without "@" ("cafepayo"). */
   handle: string;
   orgName?: string;
+  /** Brand line art drawn above the QR (optional). */
+  cup?: (CanvasImageSource & { width: number; height: number }) | null;
 }
 
 /** Normalised handle + profile URL: "@CafePayo " → { handle: "cafepayo", url: "https://www.instagram.com/cafepayo" }. */
@@ -164,13 +172,13 @@ export function instagramLink(handle: string): { handle: string; url: string } {
 }
 
 /**
- * "Síguenos" label: a QR to the café's Instagram profile on the left, the
- * handle big on the right. Printed on demand from the receipt screen (a
- * second label the customer takes with the order).
+ * "Síguenos" label, portrait like the menu ones: the brand cup on top, the
+ * rule, a big QR to the profile and the handle underneath. Printed turned
+ * 90° on the 50 × 30 mm stock.
  */
 export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
-  const H = LABEL_H_MM * PX_PER_MM;
+  const H = DRINK_W;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -181,53 +189,67 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   ctx.fillStyle = "#000";
   ctx.textBaseline = "top";
 
+  ctx.save();
+  ctx.translate(INK_RIGHT, 0);
+  ctx.rotate(Math.PI / 2);
+
+  const M = 14;
+  const innerW = DRINK_W - M * 2;
+  const cx = DRINK_W / 2;
   const { handle, url } = instagramLink(input.handle);
 
-  // QR: medium error correction survives thermal fuzz; modules scaled to fill
-  // the label height (a 29-module v3 code lands at 7 px/module ≈ 25 mm).
+  // brand illustration
+  let y = 6;
+  if (input.cup && input.cup.width > 0) {
+    const maxH = 86;
+    const scale = Math.min(innerW / input.cup.width, maxH / input.cup.height);
+    const w = Math.round(input.cup.width * scale);
+    const h = Math.round(input.cup.height * scale);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(input.cup, Math.round(cx - w / 2), y, w, h);
+    y += h + 12;
+  } else {
+    y = 22;
+  }
+
+  ctx.fillRect(M, y, innerW, 3);
+  const qrTop = y + 14;
+
+  // handle and its kicker, bottom-anchored
+  const at = `@${handle}`;
+  let size = 26;
+  for (; size >= 14; size -= 2) {
+    ctx.font = `${size}px ${displayFont()}`;
+    if (ctx.measureText(at).width <= innerW) break;
+  }
+  ctx.textAlign = "center";
+  const atTop = DRINK_H - 8 - Math.round(size * 1.15);
+  ctx.font = `${size}px ${displayFont()}`;
+  ctx.fillText(at, cx, atTop);
+  ctx.font = `bold 11px ${monoFont()}`;
+  setTracking(ctx, "2px");
+  ctx.fillText("SÍGUENOS", cx, atTop - 17);
+  setTracking(ctx, "0px");
+
+  // QR: as big as the gap between the rule and the kicker allows
+  const qrBox = Math.max(60, Math.min(innerW, atTop - 24 - qrTop));
   const qr = createQr(url, { errorCorrectionLevel: "M" });
   const n = qr.modules.size;
-  const quiet = 2; // modules of white kept around the code inside the ink area
-  const scale = Math.max(2, Math.floor((H - 4) / (n + quiet * 2)));
-  const qrPx = n * scale;
-  const qx = INK_LEFT + quiet * scale;
-  const qy = Math.round((H - qrPx) / 2);
+  const mod = Math.max(2, Math.floor(qrBox / (n + 4)));
+  const qrPx = n * mod;
+  const qx = Math.round(cx - qrPx / 2);
+  const qy = qrTop + Math.round((qrBox - qrPx) / 2);
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
-      if (qr.modules.get(r, c)) ctx.fillRect(qx + c * scale, qy + r * scale, scale, scale);
+      if (qr.modules.get(r, c)) ctx.fillRect(qx + c * mod, qy + r * mod, mod, mod);
     }
   }
 
-  // Right column: kicker · @handle (autofit) · hint · business.
-  const colL = qx + qrPx + quiet * scale + 6;
-  const colW = INK_RIGHT - colL;
-  const cx = colL + colW / 2;
-  ctx.textAlign = "center";
-  let y = qy + 2;
-  ctx.font = `bold 15px ${monoFont()}`;
-  ctx.fillText(fitOneLine(ctx, "SÍGUENOS EN", colW), cx, y);
-  y += 19;
-  ctx.fillText(fitOneLine(ctx, "INSTAGRAM", colW), cx, y);
-  y += 26;
-
-  const at = `@${handle}`;
-  let size = 40;
-  for (; size >= 16; size -= 2) {
-    ctx.font = `${size}px ${displayFont()}`;
-    if (ctx.measureText(at).width <= colW) break;
-  }
-  ctx.font = `${size}px ${displayFont()}`;
-  ctx.fillText(at, cx, y);
-  y += Math.round(size * 1.15) + 8;
-
-  ctx.font = `12px ${monoFont()}`;
-  ctx.fillText(fitOneLine(ctx, "Escanea el código", colW), cx, y);
-  if (input.orgName) {
-    ctx.font = `bold 12px ${monoFont()}`;
-    ctx.fillText(fitOneLine(ctx, input.orgName.toUpperCase(), colW), cx, qy + qrPx - 14);
-  }
-
-  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+  ctx.restore();
+  // Like the sticker: only clearly dark pixels burn, so the thin white lines
+  // inside the cup drawing survive the scale-down.
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 96);
 }
 
 export interface MessageLabelInput {
@@ -299,8 +321,6 @@ export interface DrinkLabelInput {
 // The drink label is the menu design: portrait, 30 × 50 mm. The stock is the
 // same 50 × 30 mm roll, so it prints turned 90° — the design's height runs
 // across the head and its width along the feed. Ink area: 45 × 28 mm.
-const DRINK_W = 28 * PX_PER_MM; // design width  → along the feed
-const DRINK_H = 45 * PX_PER_MM; // design height → across the head
 
 /**
  * Break a product name the way the menu does: uppercase, at most `maxLines`

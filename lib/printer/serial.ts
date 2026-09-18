@@ -402,10 +402,14 @@ export function printOrderLabel(input: OrderLabelInput): void {
   });
 }
 
-/** "Síguenos en Instagram" QR label, printed on demand from the receipt. */
-export function printInstagramLabel(handle: string): void {
+/** "Síguenos" QR label; `cupSrc` is the brand art drawn above the code. */
+export function printInstagramLabel(handle: string, cupSrc?: string | null): void {
   enqueue({
-    raster: () => renderInstagramLabel({ handle, orgName: labelDefaults.orgName }),
+    raster: async () => renderInstagramLabel({
+      handle,
+      orgName: labelDefaults.orgName,
+      cup: cupSrc ? await loadImage(cupSrc) : null,
+    }),
     folio: INSTAGRAM_FOLIO,
     name: `@${handle.replace(/^@/, "")}`,
   });
