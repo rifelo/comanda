@@ -42,7 +42,7 @@ import {
   posSuggest,
   transcribeAudio,
 } from "./actions";
-import { printOrderLabel, printMessageLabel, printDrinkLabel } from "@/lib/printer/serial";
+import { printOrderLabel, printMessageLabel, printDrinkLabel, printInstagramLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
 export const EMPTY_CATALOG: PosCatalog = {
@@ -616,8 +616,7 @@ export async function completeSale() {
     // a printer problem shows on the chip, never on the receipt. A pending
     // order already got its label when it was sent.
     if (!s.pending) {
-      printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
-      printDrinkLabels(s);
+      printSaleLabels(s, res.folio);
     }
     void refreshPendientes();
   } else posStore.set({ sending: false, sendError: res.error });
@@ -655,8 +654,7 @@ export async function savePending() {
       receiptKind: "pendiente",
     });
     if (!s.pending) {
-      printOrderLabel({ name: s.customerName, folio: res.folio, orgName: s.catalog.orgName });
-      printDrinkLabels(s);
+      printSaleLabels(s, res.folio);
     }
     void refreshPendientes();
   } else posStore.set({ sending: false, sendError: res.error });
@@ -802,8 +800,21 @@ export function discardPendingEdit() {
 }
 
 /**
+ * Everything that prints when an order is registered, in the order the
+ * counter wants to pick it up: who it is for, the Instagram QR, one menu
+ * label per cup, and the phrase — which comes last because it waits on the
+ * AI and is queued whenever it answers. A missing piece (no handle, no
+ * drinks, AI down) just doesn't print; nothing blocks the sale.
+ */
+function printSaleLabels(s: PosState, folio: string) {
+  printOrderLabel({ name: s.customerName, folio, orgName: s.catalog.orgName });
+  if (s.catalog.instagram) printInstagramLabel(s.catalog.instagram, s.catalog.cupArt);
+  printDrinkLabels(s);
+  void printFrase();
+}
+
+/**
  * One menu label per cup for the drinks in the ticket (never for food).
- * Queued after the order label, so the cashier gets the name/number first.
  * Capped per line so a bulk order can't run the roll out.
  */
 function printDrinkLabels(s: PosState) {
