@@ -33,7 +33,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "./transport";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, ensureLabelFonts } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -300,6 +300,8 @@ async function drain() {
       printerStore.set({ status: "printing", note: null });
       try {
         await client.waitIdle();
+        // The brand face must be loaded before the canvas draws with it.
+        await ensureLabelFonts();
         await client.printRaster(await job.raster());
         printerStore.set({ status: "ready", lastPrinted: { folio: job.folio, name: job.name } });
       } catch (err) {

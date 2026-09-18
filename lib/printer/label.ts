@@ -41,8 +41,44 @@ const INK_RIGHT = 46 * PX_PER_MM;
 /** Luminance below this burns. Text is antialiased; 160 keeps strokes solid. */
 const THRESHOLD = 160;
 
-const FONT_STACK = '"Arial", "Helvetica", "Segoe UI", sans-serif';
-const MONO_STACK = '"Consolas", "Courier New", monospace';
+const FALLBACK_SANS = '"Arial", "Helvetica", "Segoe UI", sans-serif';
+const FALLBACK_MONO = '"Consolas", "Courier New", monospace';
+
+/**
+ * Labels use the app's own typography: the brand display face for the hero
+ * lines (the same `--font-slab` every heading uses — Dela Gothic One, chosen
+ * to match PA'YO's Nority wordmark) and the mono face for the small
+ * technical lines, exactly as the screens do. next/font mangles the family
+ * name at build time, so it's read off the CSS variable at draw time; the
+ * hard-coded stacks stay as the fallback (and for the unit tests, which run
+ * without a document).
+ */
+function cssFamily(varName: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  return v ? `${v}, ${fallback}` : fallback;
+}
+/** Brand display face. Single weight — never ask for bold (faux bold smears at 1 bit). */
+const displayFont = () => cssFamily("--font-slab", FALLBACK_SANS);
+const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
+
+/**
+ * Canvas draws with whatever is loaded at that instant, so a cold label
+ * would silently fall back to Arial. Awaited by the print queue before it
+ * rasterizes a job.
+ */
+export async function ensureLabelFonts(): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  try {
+    await Promise.all([
+      document.fonts.load(`96px ${displayFont()}`),
+      document.fonts.load(`bold 30px ${monoFont()}`),
+    ]);
+    await document.fonts.ready;
+  } catch {
+    // Not fatal: the fallback stack still prints.
+  }
+}
 
 /**
  * Bare order number from a folio: "A-247" → "247". Folios without a series
@@ -82,7 +118,7 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const kicker = [input.orgName, input.station].filter(Boolean).join(" · ").toUpperCase();
   let y = 6;
   if (kicker) {
-    ctx.font = `bold 13px ${FONT_STACK}`;
+    ctx.font = `bold 13px ${monoFont()}`;
     ctx.textAlign = "left";
     ctx.fillText(fitOneLine(ctx, kicker, inkW), INK_LEFT, y);
     y += 18;
@@ -95,8 +131,8 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
 
   // Hero: name autofit to ≤ 2 lines, centred.
   ctx.textAlign = "center";
-  const { size, lines } = fitLines(ctx, hero, inkW, heroBottom - heroTop, 96, 22, 2, `bold {px}px ${FONT_STACK}`);
-  ctx.font = `bold ${size}px ${FONT_STACK}`;
+  const { size, lines } = fitLines(ctx, hero, inkW, heroBottom - heroTop, 150, 22, 2, `{px}px ${displayFont()}`);
+  ctx.font = `${size}px ${displayFont()}`;
   const lineH = Math.round(size * 1.12);
   let ty = heroTop + Math.max(0, (heroBottom - heroTop - lineH * lines.length) / 2);
   for (const line of lines) {
@@ -107,7 +143,7 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   if (name) {
     const ry = H - footerH;
     ctx.fillRect(INK_LEFT, ry, inkW, 2);
-    ctx.font = `bold 30px ${MONO_STACK}`;
+    ctx.font = `bold 30px ${monoFont()}`;
     ctx.textAlign = "center";
     ctx.fillText(input.folio, cx, ry + 8);
   }
@@ -168,7 +204,7 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   const cx = colL + colW / 2;
   ctx.textAlign = "center";
   let y = qy + 2;
-  ctx.font = `bold 15px ${FONT_STACK}`;
+  ctx.font = `bold 15px ${monoFont()}`;
   ctx.fillText(fitOneLine(ctx, "SÍGUENOS EN", colW), cx, y);
   y += 19;
   ctx.fillText(fitOneLine(ctx, "INSTAGRAM", colW), cx, y);
@@ -177,17 +213,17 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   const at = `@${handle}`;
   let size = 40;
   for (; size >= 16; size -= 2) {
-    ctx.font = `bold ${size}px ${FONT_STACK}`;
+    ctx.font = `${size}px ${displayFont()}`;
     if (ctx.measureText(at).width <= colW) break;
   }
-  ctx.font = `bold ${size}px ${FONT_STACK}`;
+  ctx.font = `${size}px ${displayFont()}`;
   ctx.fillText(at, cx, y);
   y += Math.round(size * 1.15) + 8;
 
-  ctx.font = `14px ${FONT_STACK}`;
+  ctx.font = `12px ${monoFont()}`;
   ctx.fillText(fitOneLine(ctx, "Escanea el código", colW), cx, y);
   if (input.orgName) {
-    ctx.font = `bold 12px ${FONT_STACK}`;
+    ctx.font = `bold 12px ${monoFont()}`;
     ctx.fillText(fitOneLine(ctx, input.orgName.toUpperCase(), colW), cx, qy + qrPx - 14);
   }
 
@@ -223,22 +259,22 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   const cx = INK_LEFT + inkW / 2;
   let top = 6;
   if (input.orgName) {
-    ctx.font = `bold 13px ${FONT_STACK}`;
+    ctx.font = `bold 13px ${monoFont()}`;
     ctx.textAlign = "center";
     ctx.fillText(fitOneLine(ctx, input.orgName.toUpperCase(), inkW), cx, top);
     top += 20;
   }
   let bottom = H - 6;
   if (input.handle) {
-    ctx.font = `bold 13px ${FONT_STACK}`;
+    ctx.font = `bold 13px ${monoFont()}`;
     ctx.textAlign = "center";
     ctx.fillText(fitOneLine(ctx, `@${input.handle.replace(/^@/, "")}`, inkW), cx, H - 20);
     bottom = H - 26;
   }
 
   const text = input.text.replace(/\s+/g, " ").trim();
-  const { size, lines } = fitLines(ctx, text, inkW, bottom - top, 34, 15, 4, `bold {px}px ${FONT_STACK}`);
-  ctx.font = `bold ${size}px ${FONT_STACK}`;
+  const { size, lines } = fitLines(ctx, text, inkW, bottom - top, 30, 13, 4, `{px}px ${displayFont()}`);
+  ctx.font = `${size}px ${displayFont()}`;
   ctx.textAlign = "center";
   const lineH = Math.round(size * 1.15);
   let ty = top + Math.max(0, (bottom - top - lineH * lines.length) / 2);
