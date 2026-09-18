@@ -279,6 +279,42 @@ const REJECT_RETRY_MS = 1500;
 const MAX_REJECT_RETRIES = 2;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** What the queue needs from a printer; `NiimbotClient` satisfies it. */
+export interface PrintTarget {
+  waitIdle(timeoutMs?: number): Promise<boolean>;
+  printRaster(raster: LabelRaster): Promise<unknown>;
+}
+
+/**
+ * Print one label, waiting for the printer to be idle first and retrying
+ * while it answers "busy" (219). Exported so the retry policy can be driven
+ * against the fake B21S in the tests.
+ */
+export async function printJobWithRetry(
+  target: PrintTarget,
+  raster: () => LabelRaster | Promise<LabelRaster>,
+  opts: {
+    retries?: number;
+    onRetry?: (attempt: number, of: number) => void;
+    wait?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const max = opts.retries ?? MAX_REJECT_RETRIES;
+  const wait = opts.wait ?? sleep;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await target.waitIdle();
+      await target.printRaster(await raster());
+      return;
+    } catch (err) {
+      // Busy, not broken: let the feed finish and send the page again.
+      if (!(err instanceof PrinterRejectedError) || attempt >= max) throw err;
+      opts.onRetry?.(attempt + 1, max);
+      await wait(REJECT_RETRY_MS);
+    }
+  }
+}
+
 function enqueue(job: Job) {
   queue.push(job);
   printerStore.set((s) => ({ ...s, queued: queue.length - (draining ? 1 : 0) }));
@@ -287,7 +323,6 @@ function enqueue(job: Job) {
 
 async function drain() {
   draining = true;
-  let retries = 0;
   try {
     while (queue.length) {
       const job = queue[0];
@@ -311,27 +346,24 @@ async function drain() {
       }
       printerStore.set({ status: "printing", note: null });
       try {
-        await client.waitIdle();
         // The brand face must be loaded before the canvas draws with it.
         await ensureLabelFonts();
-        await client.printRaster(await job.raster());
+        await printJobWithRetry(client, job.raster, {
+          onRetry: (n, of) => {
+            console.warn(`[printer] rejected, retry ${n}/${of}`);
+            printerStore.set({
+              status: "printing",
+              note: `La impresora estaba ocupada. Reintentando (${n}/${of})…`,
+            });
+          },
+        });
         printerStore.set({ status: "ready", lastPrinted: { folio: job.folio, name: job.name } });
-        retries = 0;
         queue.shift();
+        // The buffer reports idle before the paper stops moving; a breath
+        // here keeps the next START_PRINT from being refused.
         if (queue.length) await sleep(SETTLE_MS);
         continue;
       } catch (err) {
-        // Busy, not broken: wait for the feed to finish and print it again.
-        if (err instanceof PrinterRejectedError && retries < MAX_REJECT_RETRIES) {
-          retries += 1;
-          console.warn(`[printer] rejected, retry ${retries}/${MAX_REJECT_RETRIES}:`, err);
-          printerStore.set({
-            status: "printing",
-            note: `La impresora estaba ocupada. Reintentando (${retries}/${MAX_REJECT_RETRIES})…`,
-          });
-          await sleep(REJECT_RETRY_MS);
-          continue;
-        }
         console.error("[printer] job failed:", err);
         printerStore.set({
           status: transport ? "error" : "disconnected",
@@ -342,7 +374,6 @@ async function drain() {
                 ? "La impresora no responde. Revisa el cable y que esté encendida."
                 : "No se pudo imprimir la etiqueta.",
         });
-        retries = 0;
       }
       queue.shift();
     }

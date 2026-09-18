@@ -17,6 +17,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "@/lib/printer/transport";
+import { printJobWithRetry } from "@/lib/printer/serial";
 
 vi.spyOn(console, "warn").mockImplementation(() => {}); // silence the wire trace
 
@@ -179,6 +180,57 @@ describe("NiimbotClient.printRaster", () => {
     const port = new FakePort();
     const { t, c } = await connect(port);
     await expect(c.printRaster({ width: 368, height: 1, rows: [new Uint8Array(46)] })).rejects.toBeInstanceOf(RangeError);
+    await t.close();
+  });
+});
+
+describe("print queue · a busy printer", () => {
+  /** Rejects the first START_PAGE_PRINT (what the B21S does while it is
+   *  still feeding the previous label), then behaves. */
+  function busyOnce() {
+    let refused = false;
+    return new FakePort((p, port) => {
+      if (p.type === Cmd.START_PAGE_PRINT && !refused) {
+        refused = true;
+        return encodePacket(219, []);
+      }
+      return defaultReply(p, port);
+    });
+  }
+
+  it("retries the label instead of losing it", async () => {
+    const port = busyOnce();
+    const { t, c } = await connect(port);
+    const onRetry = vi.fn();
+    await printJobWithRetry(c, () => raster(240), { onRetry, wait: async () => {} });
+    expect(onRetry).toHaveBeenCalledWith(1, 2);
+    // Two attempts, and the second one actually burned the page.
+    expect(port.sent.filter((p) => p.type === Cmd.START_PAGE_PRINT)).toHaveLength(2);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240);
+    expect(port.sent.filter((p) => p.type === Cmd.END_PRINT)).toHaveLength(1);
+    await t.close();
+  });
+
+  it("gives up after the retries and says so", async () => {
+    const port = new FakePort((p, self) =>
+      p.type === Cmd.START_PAGE_PRINT ? encodePacket(219, []) : defaultReply(p, self),
+    );
+    const { t, c } = await connect(port);
+    await expect(
+      printJobWithRetry(c, () => raster(240), { wait: async () => {} }),
+    ).rejects.toBeInstanceOf(PrinterRejectedError);
+    expect(port.sent.filter((p) => p.type === Cmd.START_PAGE_PRINT)).toHaveLength(3); // 1 + 2 retries
+    await t.close();
+  });
+
+  it("prints a batch of labels back to back", async () => {
+    const port = new FakePort();
+    const { t, c } = await connect(port);
+    for (let i = 0; i < 3; i++) {
+      await printJobWithRetry(c, () => raster(240), { wait: async () => {} });
+    }
+    expect(port.sent.filter((p) => p.type === Cmd.END_PRINT)).toHaveLength(3);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(720);
     await t.close();
   });
 });
