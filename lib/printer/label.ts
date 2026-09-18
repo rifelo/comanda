@@ -253,16 +253,26 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
 }
 
 export interface MessageLabelInput {
-  /** Short phrase (≤ ~140 chars), plain text. */
+  /** The phrase (≤ 140 chars, plain text). */
   text: string;
   orgName?: string;
-  /** Instagram handle for the footer, without "@". */
+  /** Instagram handle for the header, without "@". */
   handle?: string | null;
+  /** Brand line art for the header (optional). */
+  cup?: (CanvasImageSource & { width: number; height: number }) | null;
 }
 
+// The phrase label is the designer's sheet: landscape 50 × 30 mm, header
+// (cup · CAFÉ PA'YO · @handle) over a rule, then the phrase filling the rest
+// in mono bold, shrinking as it gets longer. Laid out in the sheet's own
+// points and scaled into the 45 × 28 mm ink area.
+const SHEET_PT = 2.535; // px per pt (8 px/mm, scaled to the ink width)
+const pt = (v: number) => Math.round(v * SHEET_PT);
+
 /**
- * "Frase del día" label: the phrase as the hero, autofit to ≤ 4 lines, the
- * business on top and the Instagram handle underneath. Stuck on the cup.
+ * "Frase del día" label: what the customer reads on the cup. The phrase is
+ * left-aligned and autofits — three lines at 11 pt for a short one, six at
+ * 8 pt for the longest the generator can produce.
  */
 export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -276,35 +286,73 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#000";
   ctx.textBaseline = "top";
+  ctx.textAlign = "left";
 
-  const inkW = INK_RIGHT - INK_LEFT;
-  const cx = INK_LEFT + inkW / 2;
-  let top = 6;
-  if (input.orgName) {
-    ctx.font = `bold 13px ${monoFont()}`;
-    ctx.textAlign = "center";
-    ctx.fillText(fitOneLine(ctx, input.orgName.toUpperCase(), inkW), cx, top);
-    top += 20;
+  // Sheet origin: the 85 pt tall design centred in the 28 mm ink strip.
+  const x0 = INK_LEFT;
+  const y0 = Math.round((H - pt(85)) / 2);
+  const left = x0 + pt(8);
+  const right = x0 + pt(134);
+  const innerW = right - left;
+
+  // header — cup · business · handle
+  const headTop = y0 + pt(5.6);
+  const headSize = pt(6.4);
+  let textLeft = left;
+  if (input.cup && input.cup.width > 0) {
+    const h = pt(9);
+    const w = Math.round((input.cup.width / input.cup.height) * h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(input.cup, left, headTop - pt(1.5), w, h);
+    textLeft = left + w + pt(4);
   }
-  let bottom = H - 6;
-  if (input.handle) {
-    ctx.font = `bold 13px ${monoFont()}`;
-    ctx.textAlign = "center";
-    ctx.fillText(fitOneLine(ctx, `@${input.handle.replace(/^@/, "")}`, inkW), cx, H - 20);
-    bottom = H - 26;
+  ctx.font = `bold ${headSize}px ${monoFont()}`;
+  setTracking(ctx, "1.2px");
+  ctx.fillText(fitOneLine(ctx, (input.orgName ?? "").toUpperCase(), right - textLeft), textLeft, headTop);
+  setTracking(ctx, "0px");
+  const handle = (input.handle ?? "").trim().replace(/^@/, "");
+  if (handle) {
+    ctx.font = `${headSize}px ${monoFont()}`;
+    ctx.textAlign = "right";
+    ctx.fillText(`@${handle}`, right, headTop);
+    ctx.textAlign = "left";
   }
 
+  // rule
+  const ruleTop = y0 + pt(17.5);
+  ctx.fillRect(left, ruleTop, innerW, Math.max(3, pt(1.75)));
+
+  // phrase — biggest size whose wrap fits the space under the rule
+  const areaTop = ruleTop + pt(4);
+  const areaBottom = y0 + pt(77);
+  const areaH = areaBottom - areaTop;
   const text = input.text.replace(/\s+/g, " ").trim();
-  const { size, lines } = fitLines(ctx, text, inkW, bottom - top, 30, 13, 4, `{px}px ${displayFont()}`);
-  ctx.font = `${size}px ${displayFont()}`;
-  ctx.textAlign = "center";
-  const lineH = Math.round(size * 1.15);
-  let ty = top + Math.max(0, (bottom - top - lineH * lines.length) / 2);
-  for (const line of lines) {
-    ctx.fillText(line, cx, ty);
-    ty += lineH;
+  let size = pt(11.3);
+  let lines: string[] = [];
+  const floor = pt(8);
+  for (; size >= floor; size -= 1) {
+    ctx.font = `bold ${size}px ${monoFont()}`;
+    const candidate = wrap(ctx, text, innerW);
+    if (candidate.length <= 6 && candidate.length * Math.round(size * 1.2) <= areaH) {
+      lines = candidate;
+      break;
+    }
   }
-  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+  if (!lines.length) {
+    size = floor;
+    ctx.font = `bold ${size}px ${monoFont()}`;
+    lines = wrap(ctx, text, innerW).slice(0, 6);
+  }
+  ctx.font = `bold ${size}px ${monoFont()}`;
+  const lh = Math.round(size * 1.2);
+  let ty = areaTop + Math.max(0, Math.round((areaH - lines.length * lh) / 2));
+  for (const l of lines) {
+    ctx.fillText(l, left, ty);
+    ty += lh;
+  }
+
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 96);
 }
 
 export interface DrinkLabelInput {
