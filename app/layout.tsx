@@ -10,6 +10,8 @@ const mono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  // Italic is real, not synthesised: the drink label's descriptor uses it.
+  style: ["normal", "italic"],
 });
 
 // Display face — PA'YO branding. The café's wordmark uses Nority Display

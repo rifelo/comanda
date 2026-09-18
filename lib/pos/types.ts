@@ -26,6 +26,10 @@ export interface PosMenuItem {
   /** Modifier group ids that apply to this product. */
   mods: string[];
   desc: string;
+  /** Gets a cup label when sold (drinks only — never food). */
+  drink: boolean;
+  /** Spec box of the cup label, e.g. ["2 SHOTS · 18 G"]. */
+  spec: string[];
 }
 
 export interface PosCombo {

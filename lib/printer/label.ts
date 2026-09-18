@@ -285,6 +285,192 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
 }
 
+export interface DrinkLabelInput {
+  /** Product name; uppercased and broken with the brand's apostrophe. */
+  name: string;
+  /** Spec box lines, e.g. ["2 SHOTS · 18 G"]. Empty = no box. */
+  spec?: string[];
+  /** Short descriptor under the box ("suave, pa' quedarse un rato"). */
+  desc?: string;
+  /** Kicker on top, e.g. "CAFÉ PA'YO". */
+  brand?: string;
+}
+
+// The drink label is the menu design: portrait, 30 × 50 mm. The stock is the
+// same 50 × 30 mm roll, so it prints turned 90° — the design's height runs
+// across the head and its width along the feed. Ink area: 45 × 28 mm.
+const DRINK_W = 28 * PX_PER_MM; // design width  → along the feed
+const DRINK_H = 45 * PX_PER_MM; // design height → across the head
+
+/**
+ * Break a product name the way the menu does: uppercase, at most `maxLines`
+ * lines, and an apostrophe marking the break — inside a word it closes the
+ * line ("TINT'" / "O"), between words it opens the next one ("LATTE" /
+ * "'FRÍO"). Returns null when it can't be done at that width. Pure: takes a
+ * measuring function, so it is unit-tested without a canvas.
+ */
+export function breakDrinkName(
+  name: string,
+  maxLines: number,
+  maxW: number,
+  width: (s: string) => number,
+): string[] | null {
+  const words = name.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  const lines: string[] = [];
+  let cur = "";
+  let tick = false; // the next line opens with an apostrophe
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const candidate = cur ? `${cur} ${w}` : `${tick ? "'" : ""}${w}`;
+    if (width(candidate) <= maxW) {
+      cur = candidate;
+      tick = false;
+      continue;
+    }
+    if (cur) {
+      // Break between words: this line closes, the next opens with the tick.
+      lines.push(cur);
+      cur = "";
+      tick = true;
+      i--;
+      if (lines.length >= maxLines) return null;
+      continue;
+    }
+    // A single word too wide for the line: cut it and close with the tick.
+    const head = tick ? "'" : "";
+    let best = 0;
+    for (let k = 1; k < w.length; k++) {
+      if (width(`${head}${w.slice(0, k)}'`) <= maxW) best = k;
+      else break;
+    }
+    if (!best) return null;
+    lines.push(`${head}${w.slice(0, best)}'`);
+    if (lines.length >= maxLines) return null;
+    words[i] = w.slice(best);
+    tick = false;
+    i--;
+  }
+  if (cur) lines.push(cur);
+  return lines.length <= maxLines ? lines : null;
+}
+
+/**
+ * The menu label for one drink: brand kicker, rule, the name big, the spec
+ * box ("2 SHOTS · 18 G") and a one-liner. Drawn in portrait design
+ * coordinates and rotated onto the landscape stock.
+ */
+export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
+  const W = HEAD_WIDTH_PX;
+  const H = DRINK_W;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000";
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+
+  ctx.save();
+  // Portrait design space: x runs along the feed, y across the head.
+  ctx.translate(INK_RIGHT, 0);
+  ctx.rotate(Math.PI / 2);
+
+  const M = 14;
+  const innerW = DRINK_W - M * 2;
+
+  // kicker + rule
+  const brand = (input.brand ?? "").trim().toUpperCase();
+  if (brand) {
+    ctx.font = `bold 13px ${monoFont()}`;
+    setTracking(ctx, "1.4px");
+    ctx.fillText(fitOneLine(ctx, brand, innerW), M, 14);
+    setTracking(ctx, "0px");
+  }
+  ctx.fillRect(M, 36, innerW, 3);
+
+  // description, bottom-anchored
+  const descLines: string[] = [];
+  const desc = (input.desc ?? "").trim();
+  if (desc) {
+    ctx.font = `italic 13px ${monoFont()}`;
+    for (const l of wrap(ctx, desc, innerW).slice(0, 2)) descLines.push(l);
+  }
+  const descLH = 17;
+  const descTop = DRINK_H - 12 - descLines.length * descLH;
+  if (descLines.length) {
+    ctx.font = `italic 13px ${monoFont()}`;
+    descLines.forEach((l, i) => ctx.fillText(l, M, descTop + i * descLH));
+  }
+
+  // spec box, above the description
+  const spec = (input.spec ?? []).filter((l) => l.trim());
+  let boxTop = descTop - 14;
+  if (spec.length) {
+    ctx.font = `bold 13px ${monoFont()}`;
+    const specLH = 16;
+    const padX = 9;
+    const padY = 7;
+    const boxH = padY * 2 + spec.length * specLH - 2;
+    const textW = Math.max(...spec.map((l) => ctx.measureText(l).width));
+    const boxW = Math.min(innerW, textW + padX * 2);
+    boxTop = descTop - 14 - boxH;
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(M + 1, boxTop + 1, boxW, boxH);
+    spec.forEach((l, i) => ctx.fillText(l, M + 1 + padX, boxTop + padY + i * specLH));
+  }
+
+  // Name: the biggest size that still fits. The menu keeps names on two
+  // lines, so three are only used when two can't hold the word at any size.
+  const nameTop = 58;
+  const nameH = boxTop - 12 - nameTop;
+  let size = 54;
+  let lines: string[] | null = null;
+  for (const maxLines of [2, 3]) {
+    for (size = 54; size >= 18; size -= 2) {
+      ctx.font = `${size}px ${displayFont()}`;
+      const candidate = breakDrinkName(input.name, maxLines, innerW, (t) => ctx.measureText(t).width);
+      if (candidate && candidate.length * Math.round(size * 0.88) <= nameH) {
+        lines = candidate;
+        break;
+      }
+    }
+    if (lines) break;
+  }
+  if (!lines) {
+    size = 18;
+    ctx.font = `${size}px ${displayFont()}`;
+    lines = [fitOneLine(ctx, input.name.toUpperCase(), innerW)];
+  }
+  ctx.font = `${size}px ${displayFont()}`;
+  const lh = Math.round(size * 0.88);
+  // The display face carries deep internal leading; nudge the block up so it
+  // reads centred in the space the menu leaves between rule and box.
+  const blockH = lines.length * lh;
+  let ty = nameTop + Math.max(0, Math.round((nameH - blockH) / 2)) - Math.round(size * 0.2);
+  for (const l of lines) {
+    ctx.fillText(l, M, ty);
+    ty += lh;
+  }
+
+  ctx.restore();
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+}
+
+/** `letterSpacing` is Chromium-only; ignore it elsewhere. */
+function setTracking(ctx: CanvasRenderingContext2D, value: string): void {
+  try {
+    (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = value;
+  } catch {
+    /* not supported */
+  }
+}
+
 /**
  * Brand sticker label ("Sticker PA'YO"): a black-and-white image scaled to
  * fit the ink area with its aspect ratio kept, centred, then thresholded
