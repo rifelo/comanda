@@ -268,6 +268,17 @@ interface Job {
 const queue: Job[] = [];
 let draining = false;
 
+/**
+ * The line buffer reports idle as soon as the last row has burned, but the
+ * B21S is still feeding the label to the tear-off. Starting the next page
+ * right then makes it answer 219 (rejected), so labels get a breath between
+ * them and a rejection is retried instead of being thrown away.
+ */
+const SETTLE_MS = 800;
+const REJECT_RETRY_MS = 1500;
+const MAX_REJECT_RETRIES = 2;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 function enqueue(job: Job) {
   queue.push(job);
   printerStore.set((s) => ({ ...s, queued: queue.length - (draining ? 1 : 0) }));
@@ -276,6 +287,7 @@ function enqueue(job: Job) {
 
 async function drain() {
   draining = true;
+  let retries = 0;
   try {
     while (queue.length) {
       const job = queue[0];
@@ -304,17 +316,33 @@ async function drain() {
         await ensureLabelFonts();
         await client.printRaster(await job.raster());
         printerStore.set({ status: "ready", lastPrinted: { folio: job.folio, name: job.name } });
+        retries = 0;
+        queue.shift();
+        if (queue.length) await sleep(SETTLE_MS);
+        continue;
       } catch (err) {
+        // Busy, not broken: wait for the feed to finish and print it again.
+        if (err instanceof PrinterRejectedError && retries < MAX_REJECT_RETRIES) {
+          retries += 1;
+          console.warn(`[printer] rejected, retry ${retries}/${MAX_REJECT_RETRIES}:`, err);
+          printerStore.set({
+            status: "printing",
+            note: `La impresora estaba ocupada. Reintentando (${retries}/${MAX_REJECT_RETRIES})…`,
+          });
+          await sleep(REJECT_RETRY_MS);
+          continue;
+        }
         console.error("[printer] job failed:", err);
         printerStore.set({
           status: transport ? "error" : "disconnected",
           note:
             err instanceof PrinterRejectedError
-              ? "La impresora rechazó la etiqueta. Espera a que termine la anterior y reimprime."
+              ? `La impresora rechazó la etiqueta tras ${MAX_REJECT_RETRIES} reintentos (${err.message}). Espera a que termine y reimprime.`
               : err instanceof PrinterTimeoutError
                 ? "La impresora no responde. Revisa el cable y que esté encendida."
                 : "No se pudo imprimir la etiqueta.",
         });
+        retries = 0;
       }
       queue.shift();
     }
