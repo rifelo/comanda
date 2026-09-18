@@ -62,7 +62,7 @@ export async function getPosCatalog({
       .eq("organization_id", organizationId),
     supabase
       .from("producto_categorias")
-      .select("id, organization_id, parent_id, label, position, created_at, es_bebida")
+      .select("id, organization_id, parent_id, label, position, created_at, imprime_etiqueta")
       .eq("organization_id", organizationId)
       .order("position"),
     userId
@@ -160,11 +160,12 @@ export async function getPosCatalog({
     const mods = noMappings
       ? allGroupIds
       : linksByProduct.get(p.id) ?? [];
-    // Cup label: drinks only. A flagged category decides it; a product with
-    // no category at all (the cold drinks) falls back to its recipe.
+    // Cup label: prepared drinks only. A flagged category decides it; a
+    // product with no category at all (the cold drinks) falls back to its
+    // recipe, since anything with coffee in it is prepared at the bar.
     const coffeeG = coffeeGramsOf(recipeByProduct.get(p.id) ?? []);
-    const drink = p.category_id
-      ? (own?.es_bebida ?? false) || (top?.es_bebida ?? false)
+    const printsLabel = p.category_id
+      ? (own?.imprime_etiqueta ?? false) || (top?.imprime_etiqueta ?? false)
       : coffeeG > 0;
     return {
       id: p.id,
@@ -178,7 +179,7 @@ export async function getPosCatalog({
       stock: p.stock_status,
       mods,
       desc: p.description ?? "",
-      drink,
+      printsLabel,
       spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
     };
   });

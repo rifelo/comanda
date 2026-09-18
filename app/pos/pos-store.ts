@@ -821,7 +821,7 @@ function printDrinkLabels(s: PosState) {
   for (const line of s.order) {
     if (line.kind !== "item") continue;
     const p = s.catalog.byId[line.id];
-    if (!p?.drink) continue;
+    if (!p?.printsLabel) continue;
     for (let i = 0; i < Math.min(line.qty, 12); i++) {
       printDrinkLabel({ name: p.name, spec: p.spec, desc: p.desc, brand: s.catalog.orgName });
     }
