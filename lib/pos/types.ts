@@ -76,6 +76,8 @@ export interface PosCatalog {
   instagram: string | null;
   /** Brand sticker image for the label printer (organizations.sticker_url), null = none. */
   sticker: string | null;
+  /** Brand line art for the "síguenos" QR label (organizations.cup_url), null = none. */
+  cupArt: string | null;
 }
 
 /** Catalog narrowed by the assistant to what the customer asked for. */

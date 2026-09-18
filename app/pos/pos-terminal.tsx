@@ -1348,7 +1348,7 @@ function ReceiptPrinterLine() {
       </button>
       {catalog.instagram && p.status === "ready" && (
         <button
-          onClick={() => printInstagramLabel(catalog.instagram!)}
+          onClick={() => printInstagramLabel(catalog.instagram!, catalog.cupArt)}
           disabled={busy}
           title={`Imprime un QR a instagram.com/${catalog.instagram}`}
           style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
