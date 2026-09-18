@@ -226,8 +226,9 @@ export interface ProductoCategoria {
   label: string;
   position: number;
   created_at: string;
-  /** Products here are drinks: the POS prints a cup label for them (0027). */
-  es_bebida?: boolean;
+  /** Products here get the menu cup label when sold (0027, renamed in 0029).
+   *  Off for food and for bottled drinks handed over as they are. */
+  imprime_etiqueta?: boolean;
 }
 
 export interface Producto {
