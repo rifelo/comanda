@@ -167,6 +167,8 @@ export interface OrderLine {
   expanded?: boolean;
   /** Product/combo no longer in the catalog — rebuilt from the order snapshot. */
   missing?: boolean;
+  /** Person at the table this line belongs to (prints on the cup label). */
+  customer?: string;
 }
 
 /** A stored orden_items row, as returned by listarPendientes. */
@@ -180,6 +182,8 @@ export interface PendingOrderItem {
   unitPrice: number;
   mods: ModSelection;
   position: number;
+  /** Person this line belongs to; "" when unassigned. */
+  customer: string;
 }
 
 export type OrderStatus = "pendiente" | "pagada" | "cancelada";
@@ -194,7 +198,10 @@ export interface PosOrder {
   total: number;
   sinGluten: boolean;
   note: string;
+  /** Table / group label ("Mesa 3"); per-person names live on the lines. */
   customerName: string;
+  /** Ordered roster of the table (the ticket's chips), may include people with no line yet. */
+  customerNames: string[];
   createdAt: string;
   paidAt: string | null;
   paymentMethod: "efectivo" | "tarjeta" | "transferencia" | null;

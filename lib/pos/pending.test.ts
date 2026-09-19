@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bogotaDay, bogotaTime, dayLabel, linesPayload, rebuildLines, sanitizeMods, shiftDay, timeAgo } from "./pending";
+import { bogotaDay, bogotaTime, dayLabel, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
 import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
@@ -19,7 +19,7 @@ const catalog: PosCatalog = {
 };
 
 const order = (items: PendingOrder["items"]): PendingOrder => ({
-  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", createdAt: "2026-09-14T10:00:00Z", paidAt: null, paymentMethod: null, tendered: null, change: 0, items,
+  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, paymentMethod: null, tendered: null, change: 0, items,
 });
 
 describe("sanitizeMods", () => {
@@ -40,19 +40,29 @@ describe("sanitizeMods", () => {
 describe("rebuildLines", () => {
   it("rebuilds live lines from the catalog, sorted by position", () => {
     const { lines, missing } = rebuildLines(order([
-      { id: "i2", kind: "item", productoId: "p-tinto", comboId: null, name: "Tinto viejo", qty: 1, unitPrice: 2500, mods: {}, position: 1 },
-      { id: "i1", kind: "item", productoId: "p-latte", comboId: null, name: "Latte", qty: 2, unitPrice: 9000, mods: { "g-size": "Grande" }, position: 0 },
+      { id: "i2", kind: "item", productoId: "p-tinto", comboId: null, name: "Tinto viejo", qty: 1, unitPrice: 2500, mods: {}, position: 1, customer: "" },
+      { id: "i1", kind: "item", productoId: "p-latte", comboId: null, name: "Latte", qty: 2, unitPrice: 9000, mods: { "g-size": "Grande" }, position: 0, customer: "" },
     ]), catalog);
     expect(missing).toBe(0);
     expect(lines.map((l) => l.name)).toEqual(["Latte", "Tinto"]);
     expect(lines[0]).toMatchObject({ id: "p-latte", qty: 2, basePrice: 7500, hasMods: true, mods: { "g-size": "Grande", "g-extras": [] } });
     expect(lines[1]).toMatchObject({ id: "p-tinto", basePrice: 3000, hasMods: false });
   });
+  it("carries the person on live, combo and snapshot lines", () => {
+    const { lines } = rebuildLines(order([
+      { id: "i1", kind: "item", productoId: "p-latte", comboId: null, name: "Latte", qty: 1, unitPrice: 7500, mods: {}, position: 0, customer: "Juan" },
+      { id: "i2", kind: "combo", productoId: null, comboId: "cb-1", name: "Desayuno", qty: 1, unitPrice: 9000, mods: {}, position: 1, customer: "María" },
+      { id: "i3", kind: "item", productoId: "p-gone", comboId: null, name: "Mocca", qty: 1, unitPrice: 8500, mods: {}, position: 2, customer: "Pedro" },
+      { id: "i4", kind: "item", productoId: "p-tinto", comboId: null, name: "Tinto", qty: 1, unitPrice: 3000, mods: {}, position: 3, customer: "" },
+    ]), catalog);
+    expect(lines.map((l) => l.customer)).toEqual(["Juan", "María", "Pedro", undefined]);
+    expect(lines[2].missing).toBe(true);
+  });
   it("keeps snapshot lines for missing products and combos", () => {
     const { lines, missing } = rebuildLines(order([
-      { id: "i1", kind: "item", productoId: "p-gone", comboId: null, name: "Mocca", qty: 1, unitPrice: 8500, mods: { x: "y" }, position: 0 },
-      { id: "i2", kind: "combo", productoId: null, comboId: "cb-gone", name: "Combo viejo", qty: 1, unitPrice: 12000, mods: {}, position: 1 },
-      { id: "i3", kind: "combo", productoId: null, comboId: "cb-1", name: "Desayuno", qty: 1, unitPrice: 9000, mods: {}, position: 2 },
+      { id: "i1", kind: "item", productoId: "p-gone", comboId: null, name: "Mocca", qty: 1, unitPrice: 8500, mods: { x: "y" }, position: 0, customer: "" },
+      { id: "i2", kind: "combo", productoId: null, comboId: "cb-gone", name: "Combo viejo", qty: 1, unitPrice: 12000, mods: {}, position: 1, customer: "" },
+      { id: "i3", kind: "combo", productoId: null, comboId: "cb-1", name: "Desayuno", qty: 1, unitPrice: 9000, mods: {}, position: 2, customer: "" },
     ]), catalog);
     expect(missing).toBe(2);
     expect(lines[0]).toMatchObject({ id: "p-gone", name: "Mocca", basePrice: 8500, missing: true, mods: {} });
@@ -77,6 +87,28 @@ describe("linesPayload", () => {
   it("sends ids, qty and mods only", () => {
     expect(linesPayload([{ id: "a", name: "A", qty: 2, kind: "item", basePrice: 1 }, { id: "c", name: "C", qty: 1, kind: "combo", price: 5, mods: { g: "x" } }]))
       .toEqual([{ kind: "item", id: "a", qty: 2, mods: {} }, { kind: "combo", id: "c", qty: 1, mods: { g: "x" } }]);
+  });
+  it("adds the person only when the line has one", () => {
+    expect(linesPayload([{ id: "a", name: "A", qty: 1, kind: "item", customer: "Juan" }, { id: "b", name: "B", qty: 1, kind: "item", customer: "" }]))
+      .toEqual([{ kind: "item", id: "a", qty: 1, mods: {}, customer: "Juan" }, { kind: "item", id: "b", qty: 1, mods: {} }]);
+  });
+});
+
+describe("rebuildPeople", () => {
+  const item = (customer: string, position: number): PendingOrder["items"][number] =>
+    ({ id: `i${position}`, kind: "item", productoId: "p-tinto", comboId: null, name: "Tinto", qty: 1, unitPrice: 3000, mods: {}, position, customer });
+  it("keeps the header roster order and appends names found only on lines", () => {
+    expect(rebuildPeople({ customerNames: ["María", "Juan"], items: [item("Pedro", 1), item("Juan", 0)] }))
+      .toEqual(["María", "Juan", "Pedro"]);
+  });
+  it("orders line-only names by position and dedupes case-insensitively", () => {
+    expect(rebuildPeople({ customerNames: [], items: [item("ana", 2), item("Ana", 0), item("", 1)] }))
+      .toEqual(["Ana"]);
+  });
+  it("tolerates a missing roster and whitespace", () => {
+    expect(rebuildPeople({ customerNames: undefined as unknown as string[], items: [item("  Luis   Ríos ", 0)] }))
+      .toEqual(["Luis Ríos"]);
+    expect(normalizePerson("  a  b ")).toBe("a b");
   });
 });
 

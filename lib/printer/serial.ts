@@ -446,7 +446,8 @@ export function printDrinkLabel(input: DrinkLabelInput): void {
   enqueue({
     raster: () => renderDrinkLabel({ brand: labelDefaults.orgName, ...input }),
     folio: DRINK_FOLIO,
-    name: input.name,
+    // The "last printed" chip names whose cup it was.
+    name: input.customer ? `${input.customer} · ${input.name}` : input.name,
   });
 }
 export const DRINK_FOLIO = "BEBIDA";
