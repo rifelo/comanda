@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ensureTodayInstances, getTurnoBoard, loadTurnoGate } from "@/lib/turno/server";
-import { todayInTz } from "@/lib/utils";
+import { nowInTz, todayInTz } from "@/lib/utils";
 import { TurnoLogin } from "./_components/turno-login";
 import { TurnoBoard } from "./turno-board";
 
@@ -20,7 +20,7 @@ export default async function TurnoPage() {
   const { ctx } = gate;
   await ensureTodayInstances(ctx, todayInTz(ctx.sede.tz));
   const data = await getTurnoBoard(ctx);
-  return <TurnoBoard data={data} actor={ctx.actor} />;
+  return <TurnoBoard data={data} actor={ctx.actor} serverNow={nowInTz(ctx.sede.tz)} />;
 }
 
 function TurnoUnpaired() {
