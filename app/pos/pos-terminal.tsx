@@ -38,6 +38,7 @@ import {
   type PosSuggestKind,
 } from "@/lib/pos/types";
 import { desvincularPos } from "./actions";
+import { shareStatus } from "@/lib/pos/pagos";
 import {
   CatalogCtx,
   StationCtx,
@@ -70,6 +71,14 @@ import {
   startTender,
   cancelTender,
   completeSale,
+  startSplit,
+  stopSplit,
+  pickShare,
+  paySplit,
+  chargePendingSplit,
+  ticketShares,
+  tenderAmount,
+  orderShares,
   reprintLabel,
   printFrase,
   savePending,
@@ -798,6 +807,9 @@ const STATUS_UI: Record<PosOrder["status"], { label: string; color: string }> = 
   pagada: { label: "Pagada", color: C.green },
   cancelada: { label: "Cancelada", color: C.muted },
 };
+/** Human label for a payment method, including the "mixto" summary. */
+const methodLabel = (m: string | null | undefined): string =>
+  m === "mixto" ? "Mixto" : PAY_METHODS.find((x) => x.id === m)?.label ?? (m ?? "");
 
 function OrdenesScreen() {
   const s = usePos();
@@ -889,6 +901,9 @@ function OrdenCard({ o, selected }: { o: PosOrder; selected: boolean }) {
         {o.items.map((it) => `${it.qty}× ${it.name}`).join(" · ")}
       </div>
       <div className="cmd-num" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{posMoney(o.total)}</div>
+      {o.status === "pendiente" && o.paid > 0 && (
+        <div style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>Pagado <span className="cmd-num">{posMoney(o.paid)}</span> · falta <span className="cmd-num">{posMoney(o.total - o.paid)}</span></div>
+      )}
     </button>
   );
 }
@@ -898,7 +913,9 @@ function OrdenDetail({ o }: { o: PosOrder }) {
   const p = usePrinter();
   const st = STATUS_UI[o.status];
   const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
-  const method = o.paymentMethod ? PAY_METHODS.find((m) => m.id === o.paymentMethod)?.label ?? o.paymentMethod : null;
+  const method = o.paymentMethod ? methodLabel(o.paymentMethod) : null;
+  const remaining = Math.max(0, o.total - o.paid);
+  const shares = orderShares(o);
   // Loading something into the ticket discards what's there — ask first.
   const guard = () => !s.order.length || !!s.pending || window.confirm("Se perderá el pedido actual. ¿Continuar?");
   const row = (k: string, v: React.ReactNode) => (
@@ -924,8 +941,17 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         {row("Tipo", type)}
         {row("Enviado", `${bogotaTime(o.createdAt)} · ${timeAgo(o.createdAt)}`)}
         {o.paidAt && row("Pagado", bogotaTime(o.paidAt))}
-        {method && row("Pago", method)}
-        {o.paymentMethod === "efectivo" && o.tendered !== null && row("Recibido / cambio", <><span className="cmd-num">{posMoney(o.tendered)}</span> / <span className="cmd-num" style={{ color: C.green }}>{posMoney(o.change)}</span></>)}
+        {o.pagos.length === 0 && method && row("Pago", method)}
+        {o.pagos.map((pg) => (
+          <React.Fragment key={pg.id}>
+            {row(
+              `Pago · ${pg.customer ?? "Mesa"}`,
+              <>{methodLabel(pg.method)} · <span className="cmd-num">{posMoney(pg.amount)}</span>{pg.tendered !== null && pg.change > 0 ? <> · cambio <span className="cmd-num" style={{ color: C.green }}>{posMoney(pg.change)}</span></> : null} · {bogotaTime(pg.createdAt)}</>,
+            )}
+          </React.Fragment>
+        ))}
+        {o.status === "pendiente" && o.paid > 0 && row("Falta por cobrar", <span className="cmd-num" style={{ color: C.amber, fontWeight: 700 }}>{posMoney(remaining)}</span>)}
+        {o.pagos.length === 0 && o.paymentMethod === "efectivo" && o.tendered !== null && row("Recibido / cambio", <><span className="cmd-num">{posMoney(o.tendered)}</span> / <span className="cmd-num" style={{ color: C.green }}>{posMoney(o.change)}</span></>)}
         {o.sinGluten && row("Nota", "Sin gluten")}
         {o.note && row("Nota", o.note)}
         <div style={{ marginTop: 12 }}>
@@ -947,10 +973,13 @@ function OrdenDetail({ o }: { o: PosOrder }) {
       <div style={{ padding: "12px 20px 16px", borderTop: `1.5px solid ${C.ink}`, display: "flex", flexDirection: "column", gap: 8 }}>
         {o.status === "pendiente" && (
           <>
-            <button className="cmd-btn red" onClick={() => { if (guard()) chargePending(o); }} style={{ width: "100%", height: 52, fontSize: 14 }}>Cobrar {posMoney(o.total)}</button>
+            <button className="cmd-btn red" onClick={() => { if (guard()) chargePending(o); }} style={{ width: "100%", height: 52, fontSize: 14 }}>Cobrar {posMoney(remaining)}</button>
+            {shares.length >= 2 && (
+              <button className="cmd-btn" onClick={() => { if (guard()) chargePendingSplit(o); }} style={{ width: "100%", height: 44, fontSize: 12 }}>Dividir por persona</button>
+            )}
             <div style={{ display: "flex", gap: 8 }}>
               <button className="cmd-btn" onClick={() => { if (guard()) editPending(o); }} style={{ flex: 1, height: 44, fontSize: 12 }}>Editar</button>
-              <button onClick={() => { if (window.confirm(`¿Cancelar el pedido ${o.folio}?`)) void cancelPending(o.id); }} aria-label={`Cancelar ${o.folio}`} style={{ flex: 1, height: 44, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
+              <button onClick={() => { if (window.confirm(`¿Cancelar el pedido ${o.folio}?${o.paid > 0 ? ` Ya tiene ${posMoney(o.paid)} pagados; el reembolso es manual.` : ""}`)) void cancelPending(o.id); }} aria-label={`Cancelar ${o.folio}`} style={{ flex: 1, height: 44, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
             </div>
           </>
         )}
@@ -1309,12 +1338,21 @@ function quickAmounts(total: number): number[] {
 function TenderScreen() {
   const s = usePos();
   const catalog = useCatalog();
-  const total = ticketTotal(s);
+  const charging = s.pending?.mode === "charge";
+  const split = s.split && charging;
+  const shares = ticketShares(s);
+  const paidSoFar = charging ? s.pending!.paid : 0;
+  const remaining = ticketTotal(s);
+  const total = tenderAmount(s);
+  const target = s.splitTarget;
+  const targetShare = split && target?.kind === "share" ? shares.find((sh) => sh.customer === target.customer) ?? null : null;
+  const targetLabel = !split || !target ? null : target.kind === "rest" ? "el resto" : targetShare?.label ?? "";
   const isCash = s.payMethod === "efectivo";
   const tendered = s.tendered;
   const change = tendered !== null ? tendered - total : 0;
   const short = isCash && tendered !== null && tendered < total;
-  const canConfirm = !s.sending && s.order.length > 0 && (!isCash || (tendered !== null && tendered >= total));
+  const canConfirm = !s.sending && s.order.length > 0 && total > 0 && (!split || !!target) && (!isCash || (tendered !== null && tendered >= total));
+  const confirm = () => { if (canConfirm) void (split ? paySplit() : completeSale()); };
 
   const setMethod = (m: PayMethod) => posStore.set({ payMethod: m, sendError: null });
   const setTendered = (n: number | null) => posStore.set({ tendered: n, sendError: null });
@@ -1329,7 +1367,7 @@ function TenderScreen() {
   // Enter confirms, digits type into the keypad.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && canConfirm) void completeSale();
+      if (e.key === "Enter" && canConfirm) confirm();
       else if (isCash && /^[0-9]$/.test(e.key)) key(e.key);
       else if (isCash && e.key === "Backspace") key("⌫");
     };
@@ -1337,37 +1375,109 @@ function TenderScreen() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const hdrBtn: React.CSSProperties = { height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" };
+  const confirmLabel = s.sending
+    ? "Registrando…"
+    : split
+      ? !target
+        ? "Elige a quién cobrar"
+        : isCash && tendered !== null && !short
+          ? `Cobrar a ${targetLabel} · cambio ${posMoney(change)}`
+          : `Cobrar a ${targetLabel} · ${posMoney(total)}`
+      : isCash && tendered !== null && !short
+        ? `Confirmar · cambio ${posMoney(change)}`
+        : `Confirmar cobro · ${posMoney(total)}`;
+
   return (
     <Overlay align="fill">
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
         <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
-          <button onClick={cancelTender} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>← Volver</button>
+          <button onClick={cancelTender} style={hdrBtn}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Cobrar<span style={{ color: C.red }}>.</span></span>
-          <span style={{ marginLeft: "auto", fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+          <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
             {s.pending ? <>Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.pending.folio}</span> · </> : null}
             {ORDER_TYPES.find((t) => t.id === s.orderType)?.label}{s.customerName ? ` · ${s.customerName}` : ""}
           </span>
+          <div style={{ marginLeft: "auto" }}>
+            {split ? (
+              <button onClick={stopSplit} style={hdrBtn}>Cobrar todo junto</button>
+            ) : shares.length >= 2 ? (
+              <button onClick={() => void startSplit()} disabled={s.sending} style={{ ...hdrBtn, border: `1.5px solid ${C.ink}` }}>Dividir por persona</button>
+            ) : null}
+          </div>
         </div>
 
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
           {/* summary */}
           <div style={{ width: 360, flexShrink: 0, borderRight: `1.5px solid ${C.ink}`, background: C.paperLt, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.rule}` }}>
-              <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase" }}>Total a cobrar</div>
-              <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(total)}</div>
-            </div>
-            <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px" }}>
-              {s.order.map((l, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${C.ruleSoft}`, fontSize: 12.5 }}>
-                  <span style={{ color: C.ink2, minWidth: 0 }}><span className="cmd-num" style={{ color: C.muted }}>{l.qty}×</span> {l.name}</span>
-                  <span className="cmd-num" style={{ color: C.ink, flexShrink: 0 }}>{posMoney(modLinePrice(l, catalog) * l.qty)}</span>
+            {split ? (
+              <>
+                <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.rule}` }}>
+                  <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase" }}>Falta por cobrar</div>
+                  <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(remaining)}</div>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>de <span className="cmd-num">{posMoney(s.pending!.total)}</span>{paidSoFar > 0 ? <> · pagado <span className="cmd-num" style={{ color: C.green }}>{posMoney(paidSoFar)}</span></> : null}</div>
                 </div>
-              ))}
-            </div>
+                <div className="pos-scroll" aria-label="Partes de la cuenta" style={{ flex: 1, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {shares.map((sh) => {
+                    const st = shareStatus(sh, s.pending?.pagos ?? [], false);
+                    const on = target?.kind === "share" && target.customer === sh.customer;
+                    return (
+                      <button key={sh.label} onClick={() => pickShare({ kind: "share", customer: sh.customer })} disabled={st.done} aria-pressed={on} aria-label={`Cobrar a ${sh.label}`} style={{
+                        textAlign: "left", padding: "10px 12px", borderRadius: 6, cursor: st.done ? "default" : "pointer", fontFamily: F.mono,
+                        border: `1.5px solid ${on ? C.ink : st.done ? C.green : C.rule}`, background: on ? C.ink : C.paper, color: on ? C.paperLt : C.ink, opacity: st.done ? 0.75 : 1,
+                        display: "flex", flexDirection: "column", gap: 3,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sh.label}</span>
+                          <span className="cmd-num" style={{ fontSize: 15, fontWeight: 700, flexShrink: 0 }}>{posMoney(sh.amount)}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: on ? C.paperLt : C.ink2, opacity: on ? 0.8 : 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {sh.items.map((i) => `${i.qty > 1 ? `${i.qty}× ` : ""}${i.name}`).join(" + ")}
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: st.done ? C.green : on ? C.paperLt : C.amber }}>
+                          {st.done ? `✓ pagado${st.last ? ` · ${methodLabel(st.last.method)} · ${bogotaTime(st.last.createdAt)}` : ""}` : "○ pendiente"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {remaining > 0 && (
+                    <button onClick={() => pickShare({ kind: "rest" })} aria-pressed={target?.kind === "rest"} style={{
+                      textAlign: "left", padding: "10px 12px", borderRadius: 6, cursor: "pointer", fontFamily: F.mono,
+                      border: `1.5px dashed ${target?.kind === "rest" ? C.ink : C.rule}`, background: target?.kind === "rest" ? C.ink : "transparent", color: target?.kind === "rest" ? C.paperLt : C.ink2,
+                      display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline",
+                    }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600 }}>Cobrar el resto</span>
+                      <span className="cmd-num" style={{ fontSize: 14, fontWeight: 700 }}>{posMoney(remaining)}</span>
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.rule}` }}>
+                  <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase" }}>{charging && paidSoFar > 0 ? "Falta por cobrar" : "Total a cobrar"}</div>
+                  <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(total)}</div>
+                  {charging && paidSoFar > 0 && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>de <span className="cmd-num">{posMoney(s.pending!.total)}</span> · pagado <span className="cmd-num" style={{ color: C.green }}>{posMoney(paidSoFar)}</span></div>}
+                </div>
+                <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px" }}>
+                  {s.order.map((l, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${C.ruleSoft}`, fontSize: 12.5 }}>
+                      <span style={{ color: C.ink2, minWidth: 0 }}><span className="cmd-num" style={{ color: C.muted }}>{l.qty}×</span> {l.name}{l.customer ? <span style={{ color: C.red, fontSize: 10, marginLeft: 6 }}>{l.customer}</span> : null}</span>
+                      <span className="cmd-num" style={{ color: C.ink, flexShrink: 0 }}>{posMoney(modLinePrice(l, catalog) * l.qty)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* tender */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 28px", overflowY: "auto" }} className="pos-scroll">
+            {split && (
+              <div style={{ fontSize: 11, letterSpacing: ".14em", color: target ? C.ink : C.muted, textTransform: "uppercase", marginBottom: 10 }}>
+                {target ? <>Cobrando a <b>{targetLabel}</b> · <span className="cmd-num">{posMoney(total)}</span></> : "Elige a quién cobrar en la lista"}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               {PAY_METHODS.map((m) => {
                 const on = s.payMethod === m.id;
@@ -1384,7 +1494,11 @@ function TenderScreen() {
               })}
             </div>
 
-            {isCash ? (
+            {split && !target ? (
+              <div style={{ marginTop: 22, padding: "22px 20px", border: `1px dashed ${C.rule}`, borderRadius: 6, color: C.ink2, fontSize: 13, lineHeight: 1.6 }}>
+                Toca una persona en la lista de la izquierda para cobrarle su parte, o <b>Cobrar el resto</b> para cerrar la cuenta de una vez.
+              </div>
+            ) : isCash ? (
               <div style={{ marginTop: 18, display: "flex", gap: 20, flex: 1, minHeight: 0 }}>
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                   <div style={{ fontSize: 10.5, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>Recibido</div>
@@ -1422,11 +1536,11 @@ function TenderScreen() {
 
             <button
               className="cmd-btn red"
-              onClick={() => void completeSale()}
+              onClick={confirm}
               disabled={!canConfirm}
               style={{ marginTop: 16, height: 64, fontSize: 16, fontWeight: 600, letterSpacing: ".06em", opacity: canConfirm ? 1 : 0.4, cursor: canConfirm ? "pointer" : "not-allowed", flexShrink: 0 }}
             >
-              {s.sending ? "Registrando…" : isCash && tendered !== null && !short ? `Confirmar · cambio ${posMoney(change)}` : `Confirmar cobro · ${posMoney(total)}`}
+              {confirmLabel}
             </button>
           </div>
         </div>
@@ -1456,7 +1570,7 @@ function Keypad({ onKey }: { onKey: (k: string) => void }) {
 function ReceiptScreen() {
   const s = usePos();
   const pendiente = s.receiptKind === "pendiente";
-  const method = PAY_METHODS.find((m) => m.id === s.payMethod)?.label ?? s.payMethod;
+  const method = methodLabel(s.lastMethod);
   const btnRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { btnRef.current?.focus(); }, []);
   return (
@@ -1472,7 +1586,7 @@ function ReceiptScreen() {
             <div style={{ fontSize: 10.5, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Total</div>
             <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, marginTop: 2 }}>{posMoney(s.lastTotal)}</div>
           </div>
-          {!pendiente && s.payMethod === "efectivo" && (
+          {!pendiente && (s.lastMethod === "efectivo" || s.lastChange > 0) && (
             <div>
               <div style={{ fontSize: 10.5, letterSpacing: ".12em", color: C.muted, textTransform: "uppercase" }}>Cambio</div>
               <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, marginTop: 2, color: C.green }}>{posMoney(s.lastChange)}</div>
