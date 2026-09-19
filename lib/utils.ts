@@ -17,6 +17,22 @@ export function formatTime(value: Date | string, timezone = "America/Bogota") {
   }).format(date);
 }
 
+/**
+ * "HH:MM" (24 h) wall clock in a given timezone. Numeric parts only, so the
+ * server and the browser agree (no locale month names → no hydration drift).
+ */
+export function nowInTz(timezone = "America/Bogota", at = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(at);
+  const h = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${h}:${m}`;
+}
+
 /** YYYY-MM-DD in a given timezone — used for "today's shift" lookups. */
 export function todayInTz(timezone = "America/Bogota", at = new Date()) {
   // en-CA produces YYYY-MM-DD reliably across browsers/runtimes.
