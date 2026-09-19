@@ -278,8 +278,8 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <SearchBox />
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <PrinterChip />
         <PendientesChip />
+        <PrinterChip />
         {mode === "device" && <UnlinkButton station={station} />}
         <DesktopChips />
         {mode === "user" && (
@@ -374,6 +374,17 @@ function DesktopChips() {
   );
 }
 
+/** Printer glyph for {@link PrinterChip}; inherits the status colour. */
+function PrinterIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 9V3h12v6" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" rx="1" />
+    </svg>
+  );
+}
+
 const PRINTER_UI: Record<PrinterStatus, { label: string; dot: string; blink?: boolean }> = {
   unsupported: { label: "sin impresora", dot: C.muted },
   disconnected: { label: "conectar impresora", dot: C.muted },
@@ -408,16 +419,15 @@ function PrinterChip() {
       title={title}
       aria-label={title}
       style={{
-        display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 3,
-        cursor: disabled ? "default" : "pointer", border: `1.5px solid ${p.status === "error" ? C.red : C.rule}`,
-        background: "transparent", color: p.status === "unsupported" ? C.muted : C.ink,
-        fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap",
+        ...iconBtnStyle, position: "relative",
+        cursor: disabled ? "default" : "pointer",
+        border: `1.5px solid ${p.status === "error" ? C.red : C.rule}`,
+        color: ui.dot,
       }}
     >
-      <span className={ui.blink ? "pos-rec" : ""} style={{ width: 8, height: 8, borderRadius: 8, background: ui.dot }} />
-      {ui.label}
+      <PrinterIcon className={ui.blink ? "pos-rec" : ""} />
       {p.queued > 0 && (
-        <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.ink, color: C.paperLt, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span className="cmd-num" style={{ position: "absolute", top: -6, right: -6, minWidth: 17, height: 17, padding: "0 4px", borderRadius: 9, background: C.ink, color: C.paperLt, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           +{p.queued}
         </span>
       )}
