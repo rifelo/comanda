@@ -353,9 +353,10 @@ function DesktopChips() {
         onClick={() => void toggleFullscreen()}
         aria-pressed={d.fullscreen}
         title={d.fullscreen ? "Salir de pantalla completa (Esc)" : "Pantalla completa (F11)"}
-        style={{ ...chipStyle, border: `1.5px solid ${d.fullscreen ? C.ink : C.rule}` }}
+        aria-label={d.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+        style={{ ...chipStyle, gap: 0, justifyContent: "center", width: 32, height: 32, padding: 0, fontSize: 14, letterSpacing: 0, border: `1.5px solid ${d.fullscreen ? C.ink : C.rule}` }}
       >
-        <span aria-hidden>{d.fullscreen ? "⤡" : "⤢"}</span> {d.fullscreen ? "ventana" : "pantalla completa"}
+        <span aria-hidden>{d.fullscreen ? "⤡" : "⤢"}</span>
       </button>
     </>
   );
