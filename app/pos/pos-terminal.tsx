@@ -261,19 +261,13 @@ function Register({ mode }: { mode: "device" | "user" }) {
 // Top bar
 // ════════════════════════════════════════════════════════════════
 function TopBar({ mode }: { mode: "device" | "user" }) {
-  const catalog = useCatalog();
   const station = React.useContext(StationCtx);
 
   return (
     <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 9, minWidth: 0 }}>
-        <span style={{ fontFamily: F.slab, fontSize: 20, lineHeight: 1, whiteSpace: "nowrap" }}>
-          comanda<span style={{ color: C.red }}>.</span>
-        </span>
-        <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-          {station} · {catalog.orgName}
-        </span>
-      </div>
+      <span style={{ fontFamily: F.slab, fontSize: 20, lineHeight: 1, whiteSpace: "nowrap" }}>
+        comanda<span style={{ color: C.red }}>.</span>
+      </span>
 
       <SearchBox />
 
