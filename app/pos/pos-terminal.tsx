@@ -276,8 +276,8 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
         <PrinterChip />
         <PendientesChip />
         {mode === "device" ? <UnlinkButton station={station} /> : (
-          <Link href="/" style={{ display: "inline-flex", alignItems: "center", height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.ink2, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none" }}>
-            ← Panel
+          <Link href="/" title="Panel" aria-label="Panel" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.ink2, fontSize: 14, lineHeight: 1, textDecoration: "none" }}>
+            ←
           </Link>
         )}
       </div>
