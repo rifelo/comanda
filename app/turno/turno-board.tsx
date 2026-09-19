@@ -4,20 +4,22 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CmdCheck, CmdProgress, Wordmark } from "@/components/comanda/primitives";
-import { FotoBadge } from "@/components/comanda/task-bits";
+import { FotoBadge, WhoChip } from "@/components/comanda/task-bits";
 import { PhotoCapture } from "@/components/photo-capture";
 import { puestoColor } from "@/lib/turno/colors";
 import { assignedFor, groupTasksByPuesto, puestoState, turnoProgress, ALL_KEY, type PuestoGroup, type PuestoStatus } from "@/lib/turno/state";
-import type { TurnoBoardData, TurnoShift, TurnoPerson } from "@/lib/turno/server";
+import type { TurnoActor, TurnoBoardData, TurnoShift, TurnoPerson } from "@/lib/turno/server";
 import type { TemplateTask } from "@/lib/types";
 import { closeTurnoAs, completeTaskAs, uncompleteTaskAs, uploadTurnoPhoto } from "./actions";
+import { signOutTurno } from "./auth-actions";
 
 /**
  * Tablet-first (landscape ≥ 1024, degrades to portrait 768). Left rail =
- * today's turnos; main pane = the puesto deck of the selected turno, or the
- * checklist of the selected puesto for the person who tapped their name.
- * Server data arrives as props; after every write we `router.refresh()`,
- * and a 15 s poll keeps two tablets in step.
+ * today's turnos; main pane = the checklist of the selected turno (or the
+ * puesto deck first, when the turno is split into puestos). The signed-in
+ * person (`actor`) is who every tick is recorded under. Server data arrives
+ * as props; after every write we `router.refresh()`, and a 15 s poll keeps
+ * the tablet in step with the admin panel.
  */
 
 const STATUS_UI: Record<PuestoStatus, { label: string; color: string }> = {
@@ -37,6 +39,12 @@ function dateLabel(yyyyMMdd: string, todayIdx: number): string {
 function hhmm(t: string | null): string {
   return t ? t.slice(0, 5) : "";
 }
+/** Same rule as lib/db/roster.ts `makeInitials` (that module is server-only). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const base = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "")).toUpperCase();
+  return base.length === 2 ? base : "XX";
+}
 function readSession<T>(key: string, fallback: T): T {
   try {
     const raw = window.sessionStorage.getItem(key);
@@ -53,30 +61,22 @@ function writeSession(key: string, value: unknown) {
   }
 }
 
-export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device" | "user" }) {
+export function TurnoBoard({ data, actor }: { data: TurnoBoardData; actor: TurnoActor }) {
   const router = useRouter();
   const [shiftId, setShiftId] = React.useState<string | null>(() => {
     const open = data.turnos.find((t) => t.instance.status === "open") ?? data.turnos[0];
     return open?.instance.id ?? null;
   });
   const [puestoKey, setPuestoKey] = React.useState<string | null>(null);
-  const [personByKey, setPersonByKey] = React.useState<Record<string, string>>({});
   const [startedAnyway, setStartedAnyway] = React.useState<string[]>([]);
-  const [picker, setPicker] = React.useState<{ key: string; title: string } | null>(null);
   const [photoFor, setPhotoFor] = React.useState<TemplateTask | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [clock, setClock] = React.useState("--:--");
 
-  // Per-tablet memory of who is working which puesto (survives refreshes).
+  // "Iniciar de todos modos" survives refreshes on this tablet.
   React.useEffect(() => {
-    // Read after mount (sessionStorage is client-only); deferred to a
-    // microtask so the effect body itself doesn't set state.
-    const load = () => {
-      setPersonByKey(readSession("turno:people", {}));
-      setStartedAnyway(readSession("turno:started", []));
-    };
-    queueMicrotask(load);
+    queueMicrotask(() => setStartedAnyway(readSession("turno:started", [])));
   }, []);
   React.useEffect(() => {
     const tick = () => {
@@ -87,7 +87,7 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
     const id = window.setInterval(tick, 15_000);
     return () => window.clearInterval(id);
   }, []);
-  // Keep in step with the other tablet / the admin.
+  // Keep in step with the admin panel.
   React.useEffect(() => {
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") router.refresh();
@@ -97,19 +97,17 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
 
   const shift = data.turnos.find((t) => t.instance.id === shiftId) ?? null;
   const rosterById = React.useMemo(() => new Map(data.roster.map((p) => [p.id, p])), [data.roster]);
+  const me: TurnoPerson = rosterById.get(actor.profileId) ?? {
+    id: actor.profileId,
+    name: actor.fullName || "—",
+    initials: initialsOf(actor.fullName),
+    role: actor.role,
+  };
 
   const keyOf = (s: TurnoShift, k: string) => `${s.instance.id}:${k}`;
-  function personFor(s: TurnoShift, group: PuestoGroup): TurnoPerson | null {
-    const chosen = personByKey[keyOf(s, group.key)];
-    const id = chosen ?? assignedFor(data.assignments, s.template.id, data.todayIdx, group.key === ALL_KEY ? null : group.key);
+  function assignedTo(s: TurnoShift, group: PuestoGroup): TurnoPerson | null {
+    const id = assignedFor(data.assignments, s.template.id, data.todayIdx, group.key === ALL_KEY ? null : group.key);
     return id ? rosterById.get(id) ?? null : null;
-  }
-  function setPerson(key: string, personId: string) {
-    setPersonByKey((prev) => {
-      const next = { ...prev, [key]: personId };
-      writeSession("turno:people", next);
-      return next;
-    });
   }
   function startAnyway(key: string) {
     setStartedAnyway((prev) => {
@@ -128,29 +126,48 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
     router.refresh();
   }
 
-  function openPuesto(s: TurnoShift, group: PuestoGroup) {
-    const key = keyOf(s, group.key);
-    if (!personFor(s, group)) {
-      setPicker({ key, title: group.puesto?.name ?? s.template.name });
-      return;
-    }
-    setPuestoKey(group.key);
+  const group = shift ? groupTasksByPuesto(shift.tasks, shift.puestos) : null;
+  // A turno without puestos has no deck to choose from: open its list directly.
+  const flat = !!group && group.groups.length === 1 && group.groups[0].key === ALL_KEY;
+  const selectedGroup = group ? (puestoKey ? group.groups.find((g) => g.key === puestoKey) ?? null : flat ? group.groups[0] : null) : null;
+
+  function closeShift(s: TurnoShift) {
+    const prog = turnoProgress(s.tasks, s.completions);
+    if (!prog.allDone && !window.confirm(`Faltan ${prog.total - prog.done} tareas. ¿Cerrar el turno igual?`)) return;
+    void run("close", () => closeTurnoAs({ shift_instance_id: s.instance.id }));
   }
 
-  const group = shift ? groupTasksByPuesto(shift.tasks, shift.puestos) : null;
-  const selectedGroup = group && puestoKey ? group.groups.find((g) => g.key === puestoKey) ?? null : null;
+  function toggle(s: TurnoShift, task: TemplateTask) {
+    const done = !!s.completions[task.id];
+    if (!done && task.requires_photo) {
+      setPhotoFor(task);
+      return;
+    }
+    void run(task.id, () =>
+      done
+        ? uncompleteTaskAs({ shift_instance_id: s.instance.id, template_task_id: task.id })
+        : completeTaskAs({ shift_instance_id: s.instance.id, template_task_id: task.id }),
+    );
+  }
 
   return (
     <div className="cmd-paper" style={{ height: "100dvh", display: "grid", gridTemplateRows: "56px 1fr", fontFamily: "var(--font-mono)", color: "var(--ink)", overflow: "hidden" }}>
       {/* top bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)" }}>
         <Wordmark size={22} />
-        <span style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--muted)" }}>
+        <span style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--muted)", whiteSpace: "nowrap" }}>
           {data.sede.name} · {dateLabel(data.date, data.todayIdx)}
         </span>
         <span className="cmd-num" style={{ marginLeft: "auto", fontSize: 18, fontWeight: 700 }}>{clock}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }} title={me.name}>
+          <Avatar initials={me.initials} size={32} />
+          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>{me.name}</span>
+        </span>
+        <form action={signOutTurno}>
+          <button type="submit" style={{ ...linkChip, cursor: "pointer", background: "transparent", fontFamily: "var(--font-mono)" }} title="Cerrar sesión en esta tablet">Salir</button>
+        </form>
         <Link href="/pos" style={linkChip}>POS →</Link>
-        {mode === "user" && <Link href="/" style={linkChip}>← Panel</Link>}
+        {actor.role === "admin" && !actor.viaDevice && <Link href="/" style={linkChip}>← Panel</Link>}
       </div>
 
       <div className="flex flex-col lg:flex-row" style={{ minHeight: 0 }}>
@@ -177,17 +194,10 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
             <PuestoDeck
               shift={shift}
               group={group}
-              personFor={(g) => personFor(shift, g)}
+              assignedTo={(g) => assignedTo(shift, g)}
               started={(g) => startedAnyway.includes(keyOf(shift, g.key))}
-              onOpen={(g) => openPuesto(shift, g)}
-              onPick={(g) => setPicker({ key: keyOf(shift, g.key), title: g.puesto?.name ?? shift.template.name })}
-              onClose={() => {
-                const who = data.roster.find((p) => Object.values(personByKey).includes(p.id)) ?? data.roster[0];
-                if (!who) return;
-                const prog = turnoProgress(shift.tasks, shift.completions);
-                if (!prog.allDone && !window.confirm(`Faltan ${prog.total - prog.done} tareas. ¿Cerrar el turno igual?`)) return;
-                void run("close", () => closeTurnoAs({ shift_instance_id: shift.instance.id, person_id: who.id }));
-              }}
+              onOpen={(g) => setPuestoKey(g.key)}
+              onClose={() => closeShift(shift)}
               busy={busy === "close"}
             />
           )}
@@ -196,48 +206,21 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
               shift={shift}
               group={selectedGroup}
               shared={group.shared}
-              person={personFor(shift, selectedGroup)}
+              me={me}
+              flat={flat}
               started={startedAnyway.includes(keyOf(shift, selectedGroup.key))}
               rosterById={rosterById}
               busy={busy}
               onBack={() => setPuestoKey(null)}
-              onChangePerson={() => setPicker({ key: keyOf(shift, selectedGroup.key), title: selectedGroup.puesto?.name ?? shift.template.name })}
               onStartAnyway={() => startAnyway(keyOf(shift, selectedGroup.key))}
-              onToggle={(task) => {
-                const person = personFor(shift, selectedGroup);
-                if (!person) return;
-                const done = !!shift.completions[task.id];
-                if (!done && task.requires_photo) {
-                  setPhotoFor(task);
-                  return;
-                }
-                void run(task.id, () =>
-                  done
-                    ? uncompleteTaskAs({ shift_instance_id: shift.instance.id, template_task_id: task.id, person_id: person.id })
-                    : completeTaskAs({ shift_instance_id: shift.instance.id, template_task_id: task.id, person_id: person.id }),
-                );
-              }}
+              onToggle={(task) => toggle(shift, task)}
+              onClose={() => closeShift(shift)}
             />
           )}
         </main>
       </div>
 
-      {picker && (
-        <PersonPicker
-          title={picker.title}
-          roster={data.roster}
-          current={personByKey[picker.key] ?? null}
-          onPick={(id) => {
-            setPerson(picker.key, id);
-            const k = picker.key.split(":")[1];
-            setPicker(null);
-            setPuestoKey(k);
-          }}
-          onClose={() => setPicker(null)}
-        />
-      )}
-
-      {photoFor && shift && selectedGroup && (
+      {photoFor && shift && (
         <PhotoCapture
           shiftInstanceId={shift.instance.id}
           taskId={photoFor.id}
@@ -253,11 +236,9 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
             return r.url;
           }}
           onUploaded={(url) => {
-            const person = personFor(shift, selectedGroup);
             const task = photoFor;
             setPhotoFor(null);
-            if (!person) return;
-            void run(task.id, () => completeTaskAs({ shift_instance_id: shift.instance.id, template_task_id: task.id, person_id: person.id, photo_url: url }));
+            void run(task.id, () => completeTaskAs({ shift_instance_id: shift.instance.id, template_task_id: task.id, photo_url: url }));
           }}
           onClose={() => setPhotoFor(null)}
         />
@@ -266,7 +247,7 @@ export function TurnoBoard({ data, mode }: { data: TurnoBoardData; mode: "device
   );
 }
 
-const linkChip: React.CSSProperties = { display: "inline-flex", alignItems: "center", height: 36, padding: "0 12px", borderRadius: 3, border: "1.5px solid var(--rule)", color: "var(--ink-2)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none" };
+const linkChip: React.CSSProperties = { display: "inline-flex", alignItems: "center", height: 36, padding: "0 12px", borderRadius: 3, border: "1.5px solid var(--rule)", color: "var(--ink-2)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none", whiteSpace: "nowrap" };
 
 function RailItem({ t, active, compact, onClick }: { t: TurnoShift; active: boolean; compact?: boolean; onClick: () => void }) {
   const prog = turnoProgress(t.tasks, t.completions);
@@ -294,13 +275,24 @@ function RailItem({ t, active, compact, onClick }: { t: TurnoShift; active: bool
   );
 }
 
-function PuestoDeck({ shift, group, personFor, started, onOpen, onPick, onClose, busy }: {
+function CloseButton({ shift, busy, onClose }: { shift: TurnoShift; busy: boolean; onClose: () => void }) {
+  const prog = turnoProgress(shift.tasks, shift.completions);
+  const closed = shift.instance.status === "closed";
+  return (
+    <div style={{ position: "sticky", bottom: 0, marginTop: 24, paddingTop: 12, background: "linear-gradient(transparent, var(--paper) 30%)" }}>
+      <button type="button" onClick={onClose} disabled={closed || busy} className={prog.allDone ? "cmd-btn red" : "cmd-btn ghost"} style={{ width: "100%", height: 60, fontSize: 14 }}>
+        {closed ? "Turno cerrado" : busy ? "Cerrando…" : prog.allDone ? "Cerrar turno · entregar →" : `Cerrar turno · faltan ${prog.total - prog.done}`}
+      </button>
+    </div>
+  );
+}
+
+function PuestoDeck({ shift, group, assignedTo, started, onOpen, onClose, busy }: {
   shift: TurnoShift;
   group: { groups: PuestoGroup[]; shared: TemplateTask[] };
-  personFor: (g: PuestoGroup) => TurnoPerson | null;
+  assignedTo: (g: PuestoGroup) => TurnoPerson | null;
   started: (g: PuestoGroup) => boolean;
   onOpen: (g: PuestoGroup) => void;
-  onPick: (g: PuestoGroup) => void;
   onClose: () => void;
   busy: boolean;
 }) {
@@ -317,7 +309,7 @@ function PuestoDeck({ shift, group, personFor, started, onOpen, onPick, onClose,
         {group.groups.map((g) => {
           const st = puestoState({ tasks: g.tasks, completions: shift.completions, waitsForTaskId: g.waitsForTaskId, allTasks: shift.tasks, startedAnyway: started(g) });
           const ui = STATUS_UI[st.status];
-          const person = personFor(g);
+          const person = assignedTo(g);
           const color = puestoColor(g.puesto?.color ?? "ink");
           return (
             <div key={g.key} role="group" aria-label={`Puesto ${g.puesto?.name ?? shift.template.name}`} style={{ minHeight: 168, border: "1.5px solid var(--ink)", borderRadius: 8, background: "var(--paper-lt)", boxShadow: `inset 5px 0 0 ${color}`, padding: "14px 16px 14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -325,19 +317,19 @@ function PuestoDeck({ shift, group, personFor, started, onOpen, onPick, onClose,
                 <span className="font-slab" style={{ fontSize: 22, lineHeight: 1 }}>{g.puesto?.name ?? "Checklist"}</span>
                 <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: ui.color, border: `1px solid ${ui.color}`, padding: "3px 7px", borderRadius: 3 }}>{ui.label}</span>
               </div>
-              {person ? (
-                <button type="button" onClick={() => onPick(g)} style={{ display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--font-mono)", color: "var(--ink)", textAlign: "left" }}>
-                  <Avatar initials={person.initials} size={40} />
-                  <span>
-                    <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{person.name}</span>
-                    <span style={{ display: "block", fontSize: 10, color: "var(--muted)" }}>cambiar persona</span>
-                  </span>
-                </button>
-              ) : (
-                <button type="button" onClick={() => onPick(g)} style={{ height: 40, border: "1.5px solid var(--red)", color: "var(--red)", background: "transparent", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
-                  Elegir persona
-                </button>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 40 }}>
+                {person ? (
+                  <>
+                    <Avatar initials={person.initials} size={40} />
+                    <span>
+                      <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{person.name}</span>
+                      <span style={{ display: "block", fontSize: 10, color: "var(--muted)" }}>asignado hoy</span>
+                    </span>
+                  </>
+                ) : (
+                  <WhoChip kind="all" text="Sin asignar · cualquiera" />
+                )}
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1 }}><CmdProgress done={st.done} total={st.total} color={color} /></div>
                 <span className="cmd-num" style={{ fontSize: 12 }}>{st.done}/{st.total}</span>
@@ -359,27 +351,25 @@ function PuestoDeck({ shift, group, personFor, started, onOpen, onPick, onClose,
           {group.shared.length} tarea{group.shared.length === 1 ? "" : "s"} compartida{group.shared.length === 1 ? "" : "s"} aparecen al final de cada lista.
         </div>
       )}
-      <div style={{ position: "sticky", bottom: 0, marginTop: 24, paddingTop: 12, background: "linear-gradient(transparent, var(--paper) 30%)" }}>
-        <button type="button" onClick={onClose} disabled={closed || busy} className={prog.allDone ? "cmd-btn red" : "cmd-btn ghost"} style={{ width: "100%", height: 60, fontSize: 14 }}>
-          {closed ? "Turno cerrado" : busy ? "Cerrando…" : prog.allDone ? "Cerrar turno · entregar →" : `Cerrar turno · faltan ${prog.total - prog.done}`}
-        </button>
-      </div>
+      <CloseButton shift={shift} busy={busy} onClose={onClose} />
     </div>
   );
 }
 
-function PuestoChecklist({ shift, group, shared, person, started, rosterById, busy, onBack, onChangePerson, onStartAnyway, onToggle }: {
+function PuestoChecklist({ shift, group, shared, me, flat, started, rosterById, busy, onBack, onStartAnyway, onToggle, onClose }: {
   shift: TurnoShift;
   group: PuestoGroup;
   shared: TemplateTask[];
-  person: TurnoPerson | null;
+  me: TurnoPerson;
+  /** No puestos on this turno: there is no deck to go back to. */
+  flat: boolean;
   started: boolean;
   rosterById: Map<string, TurnoPerson>;
   busy: string | null;
   onBack: () => void;
-  onChangePerson: () => void;
   onStartAnyway: () => void;
   onToggle: (t: TemplateTask) => void;
+  onClose: () => void;
 }) {
   const st = puestoState({ tasks: group.tasks, completions: shift.completions, waitsForTaskId: group.waitsForTaskId, allTasks: shift.tasks, startedAnyway: started });
   const gateWho = st.gate && !st.gate.done ? (() => {
@@ -396,14 +386,21 @@ function PuestoChecklist({ shift, group, shared, person, started, rosterById, bu
   const keys = [...buckets.keys()].sort((a, b) => (a === "Sin hora" ? 1 : b === "Sin hora" ? -1 : a.localeCompare(b)));
   const closed = shift.instance.status === "closed";
   const color = puestoColor(group.puesto?.color ?? "ink");
+  const prog = turnoProgress(shift.tasks, shift.completions);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-        <button type="button" onClick={onBack} style={{ ...linkChip, cursor: "pointer", background: "transparent", fontFamily: "var(--font-mono)" }}>← Puestos</button>
-        <span className="font-slab" style={{ fontSize: 22 }}>
-          {person?.name ?? "—"} <span style={{ color: "var(--muted)" }}>·</span> <span style={{ color }}>{group.puesto?.name ?? shift.template.name}</span>
+        {!flat && <button type="button" onClick={onBack} style={{ ...linkChip, cursor: "pointer", background: "transparent", fontFamily: "var(--font-mono)" }}>← Puestos</button>}
+        <span className="font-slab" style={{ fontSize: flat ? 28 : 22 }}>
+          {flat ? (
+            <>{shift.template.name}<span style={{ color: "var(--red)" }}>.</span></>
+          ) : (
+            <>{me.name} <span style={{ color: "var(--muted)" }}>·</span> <span style={{ color }}>{group.puesto?.name ?? shift.template.name}</span></>
+          )}
         </span>
-        <button type="button" onClick={onChangePerson} className="cmd-btn ghost sm" style={{ marginLeft: "auto" }}>Cambiar de persona</button>
+        <span className="cmd-num" style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+          {shift.template.inicio} – {shift.template.fin} · {prog.done}/{prog.total}
+        </span>
       </div>
 
       {st.status === "esperando" && st.gate && (
@@ -419,7 +416,7 @@ function PuestoChecklist({ shift, group, shared, person, started, rosterById, bu
         <section key={k} style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 10, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--muted)", padding: "8px 0 4px" }}>{k}</div>
           {buckets.get(k)!.map((t) => (
-            <TaskRow key={t.id} t={t} shift={shift} rosterById={rosterById} busy={busy === t.id} disabled={closed || !person} onToggle={() => onToggle(t)} />
+            <TaskRow key={t.id} t={t} shift={shift} rosterById={rosterById} busy={busy === t.id} disabled={closed} onToggle={() => onToggle(t)} />
           ))}
         </section>
       ))}
@@ -427,11 +424,12 @@ function PuestoChecklist({ shift, group, shared, person, started, rosterById, bu
         <section style={{ marginTop: 18 }}>
           <div style={{ fontSize: 10, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--muted)", padding: "8px 0 4px", borderTop: "1px dashed var(--rule)" }}>Compartidas · todos</div>
           {shared.map((t) => (
-            <TaskRow key={t.id} t={t} shift={shift} rosterById={rosterById} busy={busy === t.id} disabled={closed || !person} onToggle={() => onToggle(t)} />
+            <TaskRow key={t.id} t={t} shift={shift} rosterById={rosterById} busy={busy === t.id} disabled={closed} onToggle={() => onToggle(t)} />
           ))}
         </section>
       )}
-      {group.tasks.length === 0 && shared.length === 0 && <div style={{ padding: "40px 0", color: "var(--muted)", fontSize: 13 }}>Este puesto no tiene tareas.</div>}
+      {group.tasks.length === 0 && shared.length === 0 && <div style={{ padding: "40px 0", color: "var(--muted)", fontSize: 13 }}>Este turno no tiene tareas.</div>}
+      {flat && <CloseButton shift={shift} busy={busy === "close"} onClose={onClose} />}
     </div>
   );
 }
@@ -464,31 +462,6 @@ function TaskRow({ t, shift, rosterById, busy, disabled, onToggle }: { t: Templa
         {t.requires_photo && <FotoBadge done={done && !!c?.photo_url} />}
         {done && <span>✓ {atLabel}{who ? ` · ${who}` : ""}</span>}
       </span>
-    </div>
-  );
-}
-
-function PersonPicker({ title, roster, current, onPick, onClose }: { title: string; roster: TurnoPerson[]; current: string | null; onPick: (id: string) => void; onClose: () => void }) {
-  return (
-    <div role="dialog" aria-label={`Quién hace ${title}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ width: "min(720px, 96vw)", maxHeight: "86vh", overflowY: "auto", border: "1.5px solid var(--ink)", borderRadius: 10, background: "var(--paper-lt)", padding: "18px 20px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <span className="font-slab" style={{ fontSize: 22 }}>¿Quién hace <span style={{ color: "var(--red)" }}>{title}</span>?</span>
-          <button type="button" onClick={onClose} aria-label="Cerrar" style={{ marginLeft: "auto", width: 36, height: 36, border: "1.5px solid var(--rule)", borderRadius: 3, background: "transparent", fontSize: 18, cursor: "pointer", color: "var(--ink)" }}>×</button>
-        </div>
-        {roster.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13 }}>Sin equipo en la sede. Agrégalo en Configuración → Equipo.</div>}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-          {roster.map((p) => (
-            <button key={p.id} type="button" onClick={() => onPick(p.id)} aria-pressed={current === p.id} style={{ height: 88, display: "flex", alignItems: "center", gap: 12, padding: "0 14px", border: `1.5px solid ${current === p.id ? "var(--ink)" : "var(--rule)"}`, borderRadius: 8, background: current === p.id ? "var(--paper)" : "transparent", color: "var(--ink)", fontFamily: "var(--font-mono)", cursor: "pointer", textAlign: "left" }}>
-              <Avatar initials={p.initials} size={48} />
-              <span>
-                <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{p.name}</span>
-                <span style={{ display: "block", fontSize: 10, color: "var(--muted)", letterSpacing: ".1em", textTransform: "uppercase" }}>{p.role === "admin" ? "admin" : "equipo"}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
