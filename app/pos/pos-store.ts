@@ -32,6 +32,7 @@ import {
 } from "@/lib/pos/types";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
+import { planDrinkLabels } from "@/lib/pos/drink-label";
 import {
   cancelarPendiente,
   cobrarPendiente,
@@ -857,7 +858,7 @@ export function selectOrden(id: string | null) {
 /** Reprint the kitchen label of any stored order. */
 export function printLabelFor(o: PosOrder) {
   const s = posStore.get();
-  printOrderLabel({ name: o.customerName, folio: o.folio, orgName: s.catalog.orgName });
+  printOrderLabel({ name: o.customerName, folio: o.folio, orgName: s.catalog.orgName, people: rebuildPeople(o) });
 }
 
 function loadPending(o: PendingOrder, mode: "edit" | "charge") {
@@ -921,24 +922,21 @@ export function discardPendingEdit() {
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
 function printSaleLabels(s: PosState, folio: string) {
-  printOrderLabel({ name: s.customerName, folio, orgName: s.catalog.orgName });
+  printOrderLabel({ name: s.customerName, folio, orgName: s.catalog.orgName, people: s.people });
   if (s.catalog.instagram) printInstagramLabel(s.catalog.instagram, s.catalog.cupArt);
   printDrinkLabels(s);
   void printFrase();
 }
 
 /**
- * One menu label per cup for the drinks in the ticket (never for food).
- * Capped per line so a bulk order can't run the roll out.
+ * One menu label per cup for the drinks in the ticket (never for food),
+ * grouped by person so the barista gets each table-mate's cups together.
+ * planDrinkLabels caps per line and overall so a bulk order can't run the
+ * roll out.
  */
 function printDrinkLabels(s: PosState) {
-  for (const line of s.order) {
-    if (line.kind !== "item") continue;
-    const p = s.catalog.byId[line.id];
-    if (!p?.printsLabel) continue;
-    for (let i = 0; i < Math.min(line.qty, 12); i++) {
-      printDrinkLabel({ name: p.name, spec: p.spec, desc: p.desc, brand: s.catalog.orgName });
-    }
+  for (const it of planDrinkLabels(s.order, s.people, s.catalog.byId)) {
+    printDrinkLabel({ name: it.name, spec: it.spec, desc: it.desc, customer: it.customer, brand: s.catalog.orgName });
   }
 }
 
@@ -965,7 +963,7 @@ export async function printFrase() {
 export function reprintLabel() {
   const s = posStore.get();
   if (!s.sent) return;
-  printOrderLabel({ name: s.customerName, folio: s.orderNo, orgName: s.catalog.orgName });
+  printOrderLabel({ name: s.customerName, folio: s.orderNo, orgName: s.catalog.orgName, people: s.people });
 }
 
 

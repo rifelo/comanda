@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { breakDrinkName, instagramLink, orderNumber } from "./label";
+import { breakDrinkName, drinkKicker, instagramLink, orderNumber, rosterLine } from "./label";
+
+describe("drinkKicker", () => {
+  it("names the person, uppercased, with the brand's Pa'", () => {
+    expect(drinkKicker("Juan", "Cafe PA'YO")).toBe("PA' JUAN");
+    expect(drinkKicker("  juan   carlos ", "x")).toBe("PA' JUAN CARLOS");
+    expect(drinkKicker("María", "x")).toBe("PA' MARÍA");
+  });
+  it("falls back to the brand when there is no person", () => {
+    expect(drinkKicker(undefined, "Cafe PA'YO")).toBe("CAFE PA'YO");
+    expect(drinkKicker("   ", "Cafe PA'YO")).toBe("CAFE PA'YO");
+    expect(drinkKicker(null, null)).toBe("");
+  });
+});
+
+describe("rosterLine", () => {
+  const upTo = (n: number) => (s: string) => s.length <= n;
+  it("joins the names when they fit", () => {
+    expect(rosterLine(["Juan", "María"], upTo(40))).toBe("Juan · María");
+  });
+  it("drops names from the end and counts the rest", () => {
+    expect(rosterLine(["Juan", "María", "Pedro", "Camila"], upTo(20))).toBe("Juan · María +2");
+    expect(rosterLine(["Juan", "María", "Pedro"], upTo(9))).toBe("Juan +2");
+  });
+  it("gives up to a count when not even one name fits", () => {
+    expect(rosterLine(["Maximiliano"], upTo(5))).toBe("1 personas");
+    expect(rosterLine([], upTo(40))).toBe("");
+    expect(rosterLine(["  ", "Ana "], upTo(40))).toBe("Ana");
+  });
+});
 
 describe("orderNumber", () => {
   it("strips the series prefix from a folio", () => {
