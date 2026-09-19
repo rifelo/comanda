@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
-import { listRoster } from "@/lib/db/roster";
+import { attachEmails, listRoster } from "@/lib/db/roster";
 import { TurnosHeader } from "../../_components/turnos-header";
 import { EquipoClient } from "./_components/equipo-client";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function ConfigEquipoPage() {
   const [, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
 
-  const roster = sede ? await listRoster(sede.id) : [];
+  const roster = sede ? await attachEmails(await listRoster(sede.id)) : [];
 
   return (
     <div>
