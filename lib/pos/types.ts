@@ -187,6 +187,19 @@ export interface PendingOrderItem {
 }
 
 export type OrderStatus = "pendiente" | "pagada" | "cancelada";
+export type PayMethodId = "efectivo" | "tarjeta" | "transferencia";
+
+/** One payment on an order (several when the table pays per person). */
+export interface OrderPayment {
+  id: string;
+  /** Person this payment was for; null = the table / unassigned lines. */
+  customer: string | null;
+  method: PayMethodId;
+  amount: number;
+  tendered: number | null;
+  change: number;
+  createdAt: string;
+}
 export type OrdersTab = OrderStatus | "todas";
 
 /** A stored order as the register lists it (pending queue and history). */
@@ -204,9 +217,13 @@ export interface PosOrder {
   customerNames: string[];
   createdAt: string;
   paidAt: string | null;
-  paymentMethod: "efectivo" | "tarjeta" | "transferencia" | null;
+  /** Summary over the payments: the one method, or "mixto". */
+  paymentMethod: PayMethodId | "mixto" | null;
   tendered: number | null;
   change: number;
+  /** Sum of the payments so far (cached on the order). */
+  paid: number;
+  pagos: OrderPayment[];
   items: PendingOrderItem[];
 }
 /** An unpaid order the register can reopen, charge or cancel. */

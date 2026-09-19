@@ -29,7 +29,11 @@ import {
   type PendingOrder,
   type PosOrder,
   type OrdersTab,
+  type OrderPayment,
+  type PendingOrderItem,
+  type PayMethodId,
 } from "@/lib/pos/types";
+import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@/lib/pos/pagos";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
 import { planDrinkLabels } from "@/lib/pos/drink-label";
@@ -41,6 +45,7 @@ import {
   guardarPendiente,
   listarOrdenes,
   listarPendientes,
+  registrarPago,
   posSuggest,
   transcribeAudio,
 } from "./actions";
@@ -124,13 +129,29 @@ export interface PosState {
   /** Change handed back on the last completed sale (receipt screen). */
   lastChange: number;
   lastTotal: number;
+  /** Method summary of the last completed sale ("mixto" when paid in parts). */
+  lastMethod: PayMethodId | "mixto";
 
   // ── pending orders ("enviar · pagar después") ──
   /**
    * The stored order the ticket is working on: `edit` = its lines are loaded
    * for changes, `charge` = loaded only to be paid (stored total is charged).
    */
-  pending: { id: string; folio: string; total: number; mode: "edit" | "charge" } | null;
+  pending: {
+    id: string;
+    folio: string;
+    total: number;
+    mode: "edit" | "charge";
+    /** Stored payments so far (charge mode drives the split from these). */
+    paid: number;
+    pagos: OrderPayment[];
+    items: PendingOrderItem[];
+    people: string[];
+  } | null;
+  /** Tender screen in per-person mode (only meaningful while charging a pendiente). */
+  split: boolean;
+  /** What the split tender is charging right now; null = nothing picked yet. */
+  splitTarget: SplitTarget | null;
   pendientes: PendingOrder[];
   pendientesLoading: boolean;
   pendientesError: string | null;
@@ -192,7 +213,10 @@ export const POS_INITIAL: PosState = {
   tendered: null,
   lastChange: 0,
   lastTotal: 0,
+  lastMethod: "efectivo",
   pending: null,
+  split: false,
+  splitTarget: null,
   pendientes: [],
   pendientesLoading: false,
   pendientesError: null,
@@ -659,9 +683,122 @@ export function cancelTender() {
   posStore.set({ view: "sale", tendered: null, sendError: null });
 }
 
-/** Amount the tender screen charges: the stored total when paying a pending order. */
+/** Amount the tender screen charges: what is still owed on a pending order, else the ticket. */
 export function ticketTotal(s: PosState): number {
-  return s.pending?.mode === "charge" ? s.pending.total : orderTotal(s.order, s.catalog);
+  return s.pending?.mode === "charge" ? Math.max(0, s.pending.total - s.pending.paid) : orderTotal(s.order, s.catalog);
+}
+
+// ── paying in parts ─────────────────────────────────────────────
+export type SplitTarget = { kind: "share"; customer: string | null } | { kind: "rest" };
+
+/** A stored order's bill split by person. */
+export function orderShares(o: Pick<PosOrder, "items" | "customerNames">): PersonShare[] {
+  return splitByPerson(
+    o.items.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.unitPrice, customer: it.customer })),
+    rebuildPeople(o),
+  );
+}
+/** The bill split by person: stored lines when charging a pendiente, live lines otherwise. */
+export function ticketShares(s: PosState): PersonShare[] {
+  if (s.pending?.mode === "charge") {
+    return splitByPerson(
+      s.pending.items.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.unitPrice, customer: it.customer })),
+      s.pending.people,
+    );
+  }
+  return splitByPerson(
+    s.order.map((l) => ({ name: l.name, qty: l.qty, unitPrice: modLinePrice(l, s.catalog), customer: l.customer ?? "" })),
+    s.people,
+  );
+}
+/** What the tender charges right now: one share, the rest, or the whole ticket. */
+export function tenderAmount(s: PosState): number {
+  if (s.pending?.mode === "charge" && s.split && s.splitTarget) {
+    if (s.splitTarget.kind === "rest") return ticketTotal(s);
+    const who = s.splitTarget.customer;
+    const share = ticketShares(s).find((sh) => sh.customer === who);
+    if (!share) return 0;
+    return Math.max(0, share.amount - shareStatus(share, s.pending.pagos, false).paid);
+  }
+  return ticketTotal(s);
+}
+export function pickShare(target: SplitTarget | null) {
+  posStore.set({ splitTarget: target, tendered: null, sendError: null });
+}
+export function stopSplit() {
+  posStore.set({ split: false, splitTarget: null, tendered: null, sendError: null });
+}
+/**
+ * Switch the tender to per-person mode. Splitting always works on a stored
+ * order: a fresh ticket is saved as pendiente first (its labels print on
+ * that first send) and then reopened for charging.
+ */
+export async function startSplit() {
+  const s = posStore.get();
+  if (s.sending) return;
+  if (s.pending?.mode === "charge") {
+    posStore.set({ split: true, splitTarget: null, tendered: null, sendError: null });
+    return;
+  }
+  const res = await persistPending();
+  if (!res.ok) return;
+  // Fetch the stored order directly: refreshPendientes is single-flight and
+  // persistPending just kicked one off, so awaiting it would return at once.
+  const list = await listarPendientes();
+  const o = list.ok ? list.orders.find((x) => x.id === res.ordenId) : undefined;
+  if (!o) {
+    posStore.set({ sendError: "El pedido se guardó, pero no se pudo abrir para cobrar. Búscalo en Pedidos." });
+    return;
+  }
+  loadPending(o, "charge");
+  posStore.set({ view: "tender", split: true, splitTarget: null, tendered: null, payMethod: "efectivo", sendError: null });
+}
+/** Take the selected share (or the rest) with the chosen method. */
+export async function paySplit() {
+  const s = posStore.get();
+  if (!s.pending || s.pending.mode !== "charge" || !s.splitTarget || s.sending) return;
+  const amount = tenderAmount(s);
+  if (amount <= 0) return;
+  const tendered = s.payMethod === "efectivo" ? s.tendered ?? amount : null;
+  if (tendered !== null && tendered < amount) {
+    posStore.set({ sendError: "El efectivo recibido es menor que el monto." });
+    return;
+  }
+  posStore.set({ sending: true, sendError: null });
+  const target = s.splitTarget;
+  const res = await registrarPago({
+    ordenId: s.pending.id,
+    customerName: target.kind === "share" ? target.customer : null,
+    payment: { method: s.payMethod, tendered },
+    amount: target.kind === "share" ? amount : undefined,
+  });
+  if (!res.ok) {
+    posStore.set({ sending: false, sendError: res.error });
+    return;
+  }
+  if (res.status === "pagada") {
+    posStore.set({
+      sending: false,
+      sent: true,
+      orderNo: res.folio,
+      view: "done",
+      receiptKind: "pagada",
+      lastTotal: res.total,
+      lastChange: res.change,
+      lastMethod: summarizeMethod(res.pagos.map((p) => p.method)) ?? s.payMethod,
+      split: false,
+      splitTarget: null,
+    });
+  } else {
+    posStore.set((st) => ({
+      ...st,
+      sending: false,
+      splitTarget: null,
+      tendered: null,
+      pending: st.pending ? { ...st.pending, paid: res.paid, pagos: res.pagos } : st.pending,
+    }));
+  }
+  void refreshPendientes();
 }
 
 /**
@@ -721,6 +858,7 @@ export async function completeSale() {
       view: "done",
       lastChange: res.change,
       lastTotal: res.total,
+      lastMethod: s.payMethod,
       receiptKind: "pagada",
     });
     // Label for the order (customer name + folio). Queued and non-blocking:
@@ -739,11 +877,28 @@ export async function completeSale() {
  * prints on the first send only.
  */
 export async function savePending() {
+  const res = await persistPending();
+  if (!res.ok) return;
+  posStore.set({
+    sent: true,
+    orderNo: res.folio,
+    view: "done",
+    lastChange: 0,
+    lastTotal: res.total,
+    receiptKind: "pendiente",
+  });
+}
+
+/**
+ * Store the ticket as a pending order (or re-save the one being edited)
+ * without leaving the current screen. Labels print on the first send only.
+ */
+async function persistPending(): Promise<{ ok: true; folio: string; ordenId: string; total: number } | { ok: false }> {
   const s = posStore.get();
-  if (!s.order.length || s.sending) return;
+  if (!s.order.length || s.sending) return { ok: false };
   if (s.order.some((l) => l.missing)) {
     posStore.set({ sendError: "Quita el producto no disponible para continuar." });
-    return;
+    return { ok: false };
   }
   posStore.set({ sending: true, sendError: null });
   const res = await guardarPendiente({
@@ -755,21 +910,14 @@ export async function savePending() {
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
   });
-  if (res.ok) {
-    posStore.set({
-      sent: true,
-      sending: false,
-      orderNo: res.folio,
-      view: "done",
-      lastChange: 0,
-      lastTotal: res.total,
-      receiptKind: "pendiente",
-    });
-    if (!s.pending) {
-      printSaleLabels(s, res.folio);
-    }
-    void refreshPendientes();
-  } else posStore.set({ sending: false, sendError: res.error });
+  if (!res.ok) {
+    posStore.set({ sending: false, sendError: res.error });
+    return { ok: false };
+  }
+  posStore.set({ sending: false });
+  if (!s.pending) printSaleLabels(s, res.folio);
+  void refreshPendientes();
+  return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total };
 }
 
 // ── pending list ────────────────────────────────────────────────
@@ -801,7 +949,9 @@ export async function refreshPendientes() {
               ...st,
               pendientes: res.orders,
               pendientesError: null,
-              pending: fresh && st.pending ? { ...st.pending, total: fresh.total } : st.pending,
+              pending: fresh && st.pending
+                ? { ...st.pending, total: fresh.total, paid: fresh.paid, pagos: fresh.pagos, items: fresh.items, people: rebuildPeople(fresh) }
+                : st.pending,
             };
           });
         } else posStore.set({ pendientesError: res.error });
@@ -873,7 +1023,9 @@ function loadPending(o: PendingOrder, mode: "edit" | "charge") {
     note: o.note,
     orderType: o.orderType,
     noteSinGluten: o.sinGluten,
-    pending: { id: o.id, folio: o.folio, total: o.total, mode },
+    pending: { id: o.id, folio: o.folio, total: o.total, mode, paid: o.paid, pagos: o.pagos, items: o.items, people: rebuildPeople(o) },
+    split: false,
+    splitTarget: null,
     ordenSel: null,
     sheet: null,
     sent: false,
@@ -889,6 +1041,12 @@ export function editPending(o: PendingOrder) {
 export function chargePending(o: PendingOrder) {
   loadPending(o, "charge");
   posStore.set({ view: "tender", tendered: null, payMethod: "efectivo" });
+  void refreshPendientes();
+}
+/** Take payment for a pending order person by person. */
+export function chargePendingSplit(o: PendingOrder) {
+  loadPending(o, "charge");
+  posStore.set({ view: "tender", tendered: null, payMethod: "efectivo", split: true, splitTarget: null });
   void refreshPendientes();
 }
 /** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
