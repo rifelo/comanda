@@ -56,6 +56,7 @@ export async function createAdHocTask(input: {
 
   revalidatePath(`/hoy/${shift.date}`);
   revalidatePath(`/shift/${parsed.data.shift_instance_id}`);
+  revalidatePath("/turno");
   return { ok: true };
 }
 
@@ -79,5 +80,6 @@ export async function cancelAdHocTask(input: {
   if (error || !row) return { ok: false, error: "No se pudo cancelar." };
 
   revalidatePath(`/shift/${row.shift_instance_id}`);
+  revalidatePath("/turno");
   return { ok: true };
 }

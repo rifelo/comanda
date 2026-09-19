@@ -9,6 +9,7 @@ import { isoMonday } from "@/lib/db/assignments";
 import { todayInTz } from "@/lib/utils";
 import { todayIdxOf } from "./state";
 import type {
+  AdHocTask,
   ChecklistTemplate,
   ShiftInstance,
   TaskCompletion,
@@ -206,12 +207,31 @@ export async function ensureTodayInstances(ctx: TurnoContext, date: string): Pro
 
 export type TurnoCompletion = TaskCompletion & { completed_by_name: string | null };
 
+export interface TurnoNovedad {
+  id: string;
+  body: string;
+  submitted_at: string;
+  submitted_by: string;
+  submitted_by_name: string | null;
+}
+
 export interface TurnoShift {
   instance: ShiftInstance;
   template: ChecklistTemplate;
   tasks: TemplateTask[];
   puestos: TemplatePuesto[];
   completions: Record<string, TurnoCompletion>;
+  /** Inmediatas the admin raised on this turno from /hoy (all statuses). */
+  adHoc: AdHocTask[];
+  /** Shift notes, newest first. */
+  novedades: TurnoNovedad[];
+  opened_by_name: string | null;
+  closed_by_name: string | null;
+}
+
+function embeddedName(v: unknown): string | null {
+  const who = v as { full_name: string | null } | { full_name: string | null }[] | null | undefined;
+  return (Array.isArray(who) ? who[0]?.full_name : who?.full_name) ?? null;
 }
 
 export interface TurnoBoardData {
@@ -223,7 +243,7 @@ export interface TurnoBoardData {
   turnos: TurnoShift[];
 }
 
-/** Everything the tablet needs for today, in three round-trips. */
+/** Everything the tablet needs for today, in four round-trips. */
 export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> {
   const date = todayInTz(ctx.sede.tz);
   const todayIdx = todayIdxOf(date);
@@ -232,7 +252,9 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
   const [{ data: instances }, roster, { data: asg }] = await Promise.all([
     ctx.admin
       .from("shift_instances")
-      .select("*, template:checklist_templates!inner(*, template_tasks(*), template_puestos(*, puesto:puestos(*)))")
+      .select(
+        "*, template:checklist_templates!inner(*, template_tasks(*), template_puestos(*, puesto:puestos(*))), opener:profiles!shift_instances_opened_by_fkey(full_name), closer:profiles!shift_instances_closed_by_fkey(full_name)",
+      )
       .eq("restaurant_id", ctx.restaurantId)
       .eq("date", date),
     listTurnoRoster(ctx),
@@ -245,17 +267,29 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
 
   const rows = (instances ?? []) as Array<Record<string, unknown>>;
   const ids = rows.map((r) => r.id as string);
-  const { data: comps } = ids.length
-    ? await ctx.admin
-        .from("task_completions")
-        .select("*, who:profiles!task_completions_completed_by_fkey(full_name)")
-        .in("shift_instance_id", ids)
-    : { data: [] as Array<Record<string, unknown>> };
+  const empty = { data: [] as Array<Record<string, unknown>> };
+  const [{ data: comps }, { data: adHocRows }, { data: novRows }] = ids.length
+    ? await Promise.all([
+        ctx.admin
+          .from("task_completions")
+          .select("*, who:profiles!task_completions_completed_by_fkey(full_name)")
+          .in("shift_instance_id", ids),
+        ctx.admin
+          .from("ad_hoc_tasks")
+          .select("*, assignee:profiles!ad_hoc_tasks_assigned_to_fkey(full_name)")
+          .in("shift_instance_id", ids)
+          .order("created_at"),
+        ctx.admin
+          .from("novedades")
+          .select("id, shift_instance_id, body, submitted_at, submitted_by, who:profiles!novedades_submitted_by_fkey(full_name)")
+          .in("shift_instance_id", ids)
+          .order("submitted_at", { ascending: false }),
+      ])
+    : [empty, empty, empty];
   const compsByShift = new Map<string, Record<string, TurnoCompletion>>();
   for (const c of (comps ?? []) as Array<Record<string, unknown>>) {
     const sid = c.shift_instance_id as string;
     const m = compsByShift.get(sid) ?? {};
-    const who = c.who as { full_name: string | null } | { full_name: string | null }[] | null;
     m[c.template_task_id as string] = {
       id: c.id as string,
       shift_instance_id: sid,
@@ -264,9 +298,43 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
       completed_at: c.completed_at as string,
       photo_url: (c.photo_url as string | null) ?? null,
       note: (c.note as string | null) ?? null,
-      completed_by_name: (Array.isArray(who) ? who[0]?.full_name : who?.full_name) ?? null,
+      completed_by_name: embeddedName(c.who),
     };
     compsByShift.set(sid, m);
+  }
+  const adHocByShift = new Map<string, AdHocTask[]>();
+  for (const r of (adHocRows ?? []) as Array<Record<string, unknown>>) {
+    const sid = r.shift_instance_id as string;
+    const list = adHocByShift.get(sid) ?? [];
+    list.push({
+      id: r.id as string,
+      shift_instance_id: sid,
+      restaurant_id: r.restaurant_id as string,
+      title: r.title as string,
+      instructions: (r.instructions as string | null) ?? null,
+      assigned_to: (r.assigned_to as string | null) ?? null,
+      assignee_name: embeddedName(r.assignee),
+      created_by: r.created_by as string,
+      due_time: (r.due_time as string | null) ?? null,
+      status: r.status as AdHocTask["status"],
+      completed_by: (r.completed_by as string | null) ?? null,
+      completed_at: (r.completed_at as string | null) ?? null,
+      created_at: r.created_at as string,
+    });
+    adHocByShift.set(sid, list);
+  }
+  const novByShift = new Map<string, TurnoNovedad[]>();
+  for (const n of (novRows ?? []) as Array<Record<string, unknown>>) {
+    const sid = n.shift_instance_id as string;
+    const list = novByShift.get(sid) ?? [];
+    list.push({
+      id: n.id as string,
+      body: n.body as string,
+      submitted_at: n.submitted_at as string,
+      submitted_by: n.submitted_by as string,
+      submitted_by_name: embeddedName(n.who),
+    });
+    novByShift.set(sid, list);
   }
 
   const turnos: TurnoShift[] = rows
@@ -276,9 +344,13 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
       const tasks = ((t.template_tasks as TemplateTask[] | undefined) ?? [])
         .map((x) => ({ ...x, puesto_id: x.puesto_id ?? null }))
         .sort((a, b) => a.order_index - b.order_index);
-      const { template: _t, ...instance } = r; // eslint-disable-line @typescript-eslint/no-unused-vars
+      const { template: _t, opener, closer, ...instance } = r; // eslint-disable-line @typescript-eslint/no-unused-vars
       return {
         instance: instance as unknown as ShiftInstance,
+        opened_by_name: embeddedName(opener),
+        closed_by_name: embeddedName(closer),
+        adHoc: adHocByShift.get(r.id as string) ?? [],
+        novedades: novByShift.get(r.id as string) ?? [],
         template: {
           id: t.id as string,
           restaurant_id: t.restaurant_id as string,
