@@ -16,9 +16,12 @@ import type {
   PosCatalogFilter,
   PendingOrder,
   PosOrder,
+  OrderPayment,
+  PayMethodId,
   ModSelection,
 } from "@/lib/pos/types";
 import { bogotaDay, shiftDay } from "@/lib/pos/pending";
+import { summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
 
 // ── price recomputation (server is the source of truth, never the client) ────
@@ -353,7 +356,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, payment_method, tendered_cop, change_cop, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, payment_method, tendered_cop, change_cop, paid_cop, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
     )
     .eq("organization_id", orgId);
   if (status !== "todas") q = q.eq("status", status);
@@ -371,6 +374,8 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   const orders: PosOrder[] = (data ?? []).map((o) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items = ((o as any).orden_items ?? []) as Array<Record<string, unknown>>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pagos = ((o as any).orden_pagos ?? []) as Array<Record<string, unknown>>;
     return {
       id: o.id as string,
       folio: o.folio as string,
@@ -386,6 +391,8 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
+      paid: Number(o.paid_cop ?? 0),
+      pagos: mapPagos(pagos),
       items: items
         .map((it) => ({
           id: it.id as string,
@@ -410,59 +417,175 @@ export async function listarPendientes(): Promise<ListarPendientesResult> {
   return listarOrdenes({ status: "pendiente" });
 }
 
-/**
- * Settle a pending order. Charges the STORED total (what the customer was
- * quoted and the kitchen made), not a re-price. The status-guarded update
- * makes a double charge from two registers impossible.
- */
-export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult> {
-  const parsed = CobrarPendienteSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Pago inválido." };
-  const { supabase, organizationId: orgId } = await requirePosContext();
-  const { ordenId, payment } = parsed.data;
+function mapPagos(rows: Array<Record<string, unknown>>): OrderPayment[] {
+  return rows
+    .map((p) => ({
+      id: p.id as string,
+      customer: (p.customer_name as string | null) ?? null,
+      method: p.method as PayMethodId,
+      amount: Number(p.amount_cop),
+      tendered: (p.tendered_cop as number | null) ?? null,
+      change: Number(p.change_cop ?? 0),
+      createdAt: p.created_at as string,
+    }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
 
+const RegistrarPagoSchema = z.object({
+  ordenId: z.string().uuid(),
+  /** Person this payment is for; null/absent = the table. */
+  customerName: z.string().trim().max(40).nullable().optional(),
+  payment: PaymentSchema,
+  /** Amount to take now; absent = whatever is still owed. */
+  amount: z.coerce.number().int().min(1).max(100_000_000).optional(),
+});
+export type RegistrarPagoResult =
+  | {
+      ok: true;
+      folio: string;
+      ordenId: string;
+      total: number;
+      paid: number;
+      remaining: number;
+      change: number;
+      status: "pendiente" | "pagada";
+      pagos: OrderPayment[];
+    }
+  | { ok: false; error: string };
+
+/**
+ * Take one payment on a pending order — the whole balance or one person's
+ * part. Every payment is a row in orden_pagos; the order caches the sum in
+ * paid_cop, summarises the method (or "mixto") and flips to pagada once the
+ * stored total is covered. Charges STORED prices, never a re-price.
+ */
+async function applyPago(
+  ctx: PosCtx,
+  ordenId: string,
+  customerName: string | null,
+  payment: z.infer<typeof PaymentSchema>,
+  amount: number | undefined,
+): Promise<RegistrarPagoResult> {
+  const { supabase, organizationId: orgId } = ctx;
   const { data: orden } = await supabase
     .from("ordenes")
-    .select("id, folio, total_cop")
+    .select("id, folio, total_cop, paid_cop")
     .eq("id", ordenId)
     .eq("organization_id", orgId)
     .eq("status", "pendiente")
     .maybeSingle();
   if (!orden) return { ok: false, error: YA_NO_PENDIENTE };
-  const total = orden.total_cop as number;
-  const tender = settleTender(payment, total);
+  const total = Number(orden.total_cop);
+  const remainingBefore = total - Number(orden.paid_cop ?? 0);
+  if (remainingBefore <= 0) return { ok: false, error: "Este pedido ya está pagado." };
+  const amt = amount ?? remainingBefore;
+  if (amt > remainingBefore) return { ok: false, error: "El monto supera lo que falta por cobrar." };
+  const tender = settleTender(payment, amt);
   if (!tender.ok) return tender;
 
-  const { data: updated, error } = await supabase
+  const { error: insErr } = await supabase.from("orden_pagos").insert({
+    organization_id: orgId,
+    orden_id: ordenId,
+    customer_name: customerName || null,
+    method: payment.method,
+    amount_cop: amt,
+    tendered_cop: tender.tendered,
+    change_cop: tender.change,
+    created_by: actorId(ctx),
+  });
+  if (insErr) {
+    console.error("[applyPago] insert failed:", insErr);
+    return { ok: false, error: "No se pudo registrar el pago." };
+  }
+
+  const { data: rows } = await supabase
+    .from("orden_pagos")
+    .select("id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at")
+    .eq("orden_id", ordenId)
+    .eq("organization_id", orgId);
+  const pagos = mapPagos((rows ?? []) as Array<Record<string, unknown>>);
+  const paid = pagos.reduce((s, p) => s + p.amount, 0);
+  const cash = pagos.filter((p) => p.tendered !== null);
+  const settled = paid >= total;
+  const { data: updated, error: updErr } = await supabase
     .from("ordenes")
     .update({
-      status: "pagada",
-      payment_method: payment.method,
-      tendered_cop: tender.tendered,
-      change_cop: tender.change,
-      paid_at: new Date().toISOString(),
+      paid_cop: paid,
+      payment_method: summarizeMethod(pagos.map((p) => p.method)),
+      tendered_cop: cash.length ? cash.reduce((s, p) => s + (p.tendered ?? 0), 0) : null,
+      change_cop: pagos.reduce((s, p) => s + p.change, 0),
+      ...(settled ? { status: "pagada", paid_at: new Date().toISOString() } : {}),
     })
     .eq("id", ordenId)
     .eq("organization_id", orgId)
     .eq("status", "pendiente")
     .select("id");
-  if (error) {
-    console.error("[cobrarPendiente] update failed:", error);
+  if (updErr) {
+    console.error("[applyPago] update failed:", updErr);
     return { ok: false, error: "No se pudo registrar el pago." };
   }
   if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
-  return { ok: true, folio: orden.folio as string, ordenId, total, change: tender.change };
+  return {
+    ok: true,
+    folio: orden.folio as string,
+    ordenId,
+    total,
+    paid,
+    remaining: Math.max(0, total - paid),
+    change: tender.change,
+    status: settled ? "pagada" : "pendiente",
+    pagos,
+  };
 }
 
-/** Void a pending order (never a paid one). */
+/** One payment — a person's share, or the rest of the bill. */
+export async function registrarPago(input: unknown): Promise<RegistrarPagoResult> {
+  const parsed = RegistrarPagoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pago inválido." };
+  const ctx = await requirePosContext();
+  const { ordenId, customerName, payment, amount } = parsed.data;
+  return applyPago(ctx, ordenId, customerName ?? null, payment, amount);
+}
+
+/**
+ * Settle a pending order in one go: a single payment for whatever is still
+ * owed (the stored total, minus any partial payments). Kept for the
+ * register's "Cobrar" button; per-person payments go through registrarPago.
+ */
+export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult> {
+  const parsed = CobrarPendienteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pago inválido." };
+  const ctx = await requirePosContext();
+  const res = await applyPago(ctx, parsed.data.ordenId, null, parsed.data.payment, undefined);
+  if (!res.ok) return res;
+  return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total, change: res.change };
+}
+
+/**
+ * Void a pending order (never a paid one). Partial payments are not
+ * refunded here — the note records them so the cash drawer can be squared.
+ */
 export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   const parsed = CancelarPendienteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
   const ctx = await requirePosContext();
   const { supabase, organizationId: orgId } = ctx;
+  const { data: cur } = await supabase
+    .from("ordenes")
+    .select("paid_cop, notes")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .maybeSingle();
+  if (!cur) return { ok: false, error: YA_NO_PENDIENTE };
+  const paid = Number(cur.paid_cop ?? 0);
+  const prev = ((cur.notes as string | null) ?? "").trim();
+  const notes = paid > 0
+    ? `${prev ? `${prev} · ` : ""}Cancelado con $${paid.toLocaleString("es-CO")} ya pagados (reembolso manual)`
+    : cur.notes;
   const { data: updated, error } = await supabase
     .from("ordenes")
-    .update({ status: "cancelada" })
+    .update({ status: "cancelada", notes })
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
     .eq("status", "pendiente")
