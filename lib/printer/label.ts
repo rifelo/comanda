@@ -24,6 +24,8 @@ export interface LabelRaster {
 }
 
 export interface OrderLabelInput {
+  /** The table's roster. When present the label names the table, not one person. */
+  people?: string[];
   /** Customer name typed on the ticket; may be empty. */
   name: string;
   /** Human folio, "A-247". */
@@ -84,6 +86,32 @@ export async function ensureLabelFonts(): Promise<void> {
  * Bare order number from a folio: "A-247" → "247". Folios without a series
  * prefix ("PRUEBA") come back unchanged.
  */
+/**
+ * Kicker of the cup label: the person's name when the line has one
+ * ("PA' JUAN"), otherwise the brand. Pure — unit-tested.
+ */
+export function drinkKicker(customer: string | undefined | null, brand: string | undefined | null): string {
+  const who = (customer ?? "").replace(/\s+/g, " ").trim();
+  if (who) return `PA' ${who}`.toUpperCase();
+  return (brand ?? "").trim().toUpperCase();
+}
+
+/**
+ * The table's names for the order label, joined with " · ". When the full
+ * list doesn't fit (per the injected predicate), names are dropped from the
+ * end and " +N" is appended, so the label always names as many as fit.
+ */
+export function rosterLine(people: ReadonlyArray<string>, fits: (s: string) => boolean): string {
+  const names = people.map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (!names.length) return "";
+  for (let keep = names.length; keep >= 1; keep--) {
+    const rest = names.length - keep;
+    const s = names.slice(0, keep).join(" · ") + (rest ? ` +${rest}` : "");
+    if (fits(s)) return s;
+  }
+  return `${names.length} personas`;
+}
+
 export function orderNumber(folio: string): string {
   const m = /^[A-Za-z]+-(\d+)$/.exec(folio.trim());
   return m ? m[1] : folio.trim();
@@ -113,20 +141,24 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const inkW = INK_RIGHT - INK_LEFT;
   const cx = INK_LEFT + inkW / 2;
   const name = input.name.trim();
+  const people = (input.people ?? []).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const roster = people.length > 0;
   const hero = name || orderNumber(input.folio);
 
   // "Pa'" over the name, the way the barista hands it over. Without a name
-  // the hero is the order number and the line is dropped.
+  // the hero is the order number and the line is dropped. With a roster the
+  // "Pa'" belongs on each cup, so the label names the table instead.
   let y = 6;
-  if (name) {
+  if (name && !roster) {
     ctx.font = `24px ${displayFont()}`;
     ctx.textAlign = "left";
     ctx.fillText("Pa'", INK_LEFT, y);
     y += 26;
   }
 
-  // Footer: folio (or nothing if the folio is already the hero).
-  const footerH = name ? 44 : 0;
+  // Footer: folio (+ the roster), or nothing if the folio is already the hero.
+  const ROSTER_LH = 18;
+  const footerH = roster ? 44 + 4 + ROSTER_LH * 2 : name ? 44 : 0;
   const heroTop = y;
   const heroBottom = H - footerH - 6;
 
@@ -141,12 +173,18 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
     ty += lineH;
   }
 
-  if (name) {
+  if (name || roster) {
     const ry = H - footerH;
     ctx.fillRect(INK_LEFT, ry, inkW, 2);
     ctx.font = `bold 30px ${monoFont()}`;
     ctx.textAlign = "center";
     ctx.fillText(input.folio, cx, ry + 8);
+    if (roster) {
+      ctx.font = `15px ${monoFont()}`;
+      const text = rosterLine(people, (s) => wrap(ctx, s, inkW).length <= 2);
+      const lines = wrap(ctx, text, inkW).slice(0, 2);
+      lines.forEach((l, i) => ctx.fillText(l, cx, ry + 8 + 36 + i * ROSTER_LH));
+    }
   }
 
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
@@ -365,6 +403,8 @@ export interface DrinkLabelInput {
   desc?: string;
   /** Kicker on top, e.g. "CAFÉ PA'YO". */
   brand?: string;
+  /** Whose cup it is; replaces the brand kicker with "PA' <NOMBRE>". */
+  customer?: string;
 }
 
 // The drink label is the menu design: portrait, 30 × 50 mm. The stock is the
@@ -453,12 +493,44 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   const innerW = DRINK_W - M * 2;
 
   // kicker + rule
-  const brand = (input.brand ?? "").trim().toUpperCase();
-  if (brand) {
-    ctx.font = `bold 13px ${monoFont()}`;
-    setTracking(ctx, "1.4px");
-    ctx.fillText(fitOneLine(ctx, brand, innerW), M, 14);
+  const who = (input.customer ?? "").replace(/\s+/g, " ").trim();
+  if (who) {
+    // A person's name: bigger than the brand it replaces, and it shrinks
+    // before it truncates — a cut-off name is useless for handing a cup over.
+    // Ladder: 16 → 10 px on the full name, then the first name alone, then
+    // (last resort) the ellipsis.
+    const ladder: Array<[number, string]> = [[16, "1.2px"], [14, "1.2px"], [13, "1px"], [11, "0.6px"], [10, "0.6px"]];
+    const tryFit = (text: string): number | null => {
+      for (const [px, track] of ladder) {
+        ctx.font = `bold ${px}px ${monoFont()}`;
+        setTracking(ctx, track);
+        if (ctx.measureText(text).width <= innerW) return px;
+      }
+      return null;
+    };
+    let text = drinkKicker(who, input.brand);
+    let px = tryFit(text);
+    if (px === null && who.includes(" ")) {
+      text = drinkKicker(who.split(" ")[0], input.brand);
+      px = tryFit(text);
+    }
+    if (px === null) {
+      px = 13;
+      ctx.font = `bold 13px ${monoFont()}`;
+      setTracking(ctx, "1px");
+      text = fitOneLine(ctx, text, innerW);
+    }
+    // Sit the text just above the rule at y = 36 whatever the size.
+    ctx.fillText(text, M, Math.max(8, Math.round(34 - px * 1.25)));
     setTracking(ctx, "0px");
+  } else {
+    const brand = drinkKicker(null, input.brand);
+    if (brand) {
+      ctx.font = `bold 13px ${monoFont()}`;
+      setTracking(ctx, "1.4px");
+      ctx.fillText(fitOneLine(ctx, brand, innerW), M, 14);
+      setTracking(ctx, "0px");
+    }
   }
   ctx.fillRect(M, 36, innerW, 3);
 

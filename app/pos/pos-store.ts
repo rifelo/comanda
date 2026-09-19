@@ -30,7 +30,9 @@ import {
   type PosOrder,
   type OrdersTab,
 } from "@/lib/pos/types";
-import { bogotaDay, defaultMods, linesPayload, rebuildLines } from "@/lib/pos/pending";
+import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
+import { findMergeIndex } from "@/lib/pos/cart";
+import { planDrinkLabels } from "@/lib/pos/drink-label";
 import {
   cancelarPendiente,
   cobrarPendiente,
@@ -109,7 +111,12 @@ export interface PosState {
   search: string;
   /** Assistant drawer open? */
   aiOpen: boolean;
+  /** Table / group label ("Mesa 3"); the people are in `people`. */
   customerName: string;
+  /** The table's roster, in chip order. May hold someone with no line yet. */
+  people: string[];
+  /** Chip that new lines are assigned to. null = "sin nombre". */
+  activePerson: string | null;
   note: string;
   payMethod: PayMethod;
   /** Cash received (efectivo only). null = not entered yet. */
@@ -178,6 +185,8 @@ export const POS_INITIAL: PosState = {
   search: "",
   aiOpen: false,
   customerName: "",
+  people: [],
+  activePerson: null,
   note: "",
   payMethod: "efectivo",
   tendered: null,
@@ -296,16 +305,24 @@ export function tapItem(id: string) {
   else addItem(id);
 }
 
+/** A fresh line stamped with the active person (when there is one). */
+function makeLineFor(p: PosMenuItem, s: PosState): OrderLine {
+  const line = posMakeLine(p, s.catalog);
+  return s.activePerson ? { ...line, customer: s.activePerson } : line;
+}
+
 /** Add a product with its default modifiers (used by the assistant + tapItem). */
 export function addItem(id: string) {
   posStore.set((s) => {
     const p = s.catalog.byId[id];
     if (!p) return s;
     const hasMods = p.mods.length > 0;
-    const i = hasMods ? -1 : s.order.findIndex((l) => l.id === id && l.kind === "item");
+    const line = makeLineFor(p, s);
+    // Merge only with a twin of the same person — see findMergeIndex.
+    const i = hasMods ? -1 : findMergeIndex(s.order, { id, kind: "item", mods: line.mods, customer: s.activePerson });
     let order: OrderLine[];
     if (i >= 0) order = s.order.map((l, k) => (k === i ? { ...l, qty: l.qty + 1 } : l));
-    else order = [...s.order, posMakeLine(p, s.catalog)];
+    else order = [...s.order, line];
     return { ...s, order, sent: false, highlightId: s.highlightId === id ? null : s.highlightId };
   });
 }
@@ -313,9 +330,10 @@ export function addCombo(comboId: string) {
   posStore.set((s) => {
     const c = s.catalog.comboById[comboId];
     if (!c) return s;
+    const who = s.activePerson ? { customer: s.activePerson } : {};
     return {
       ...s,
-      order: [...s.order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items }],
+      order: [...s.order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items, ...who }],
       sent: false,
       highlightId: s.highlightId === comboId ? null : s.highlightId,
     };
@@ -326,8 +344,11 @@ export function swapCombo(removeId: string, comboId: string) {
     const c = s.catalog.comboById[comboId];
     if (!c) return s;
     let removed = false;
+    // The combo takes over the swapped line's person (the swap is about that line).
+    let who: { customer?: string } = {};
     const order = s.order.filter((l) => {
       if (!removed && l.kind === "item" && l.id === removeId) {
+        if (l.customer) who = { customer: l.customer };
         if (l.qty > 1) {
           l.qty -= 1;
           return true;
@@ -339,31 +360,43 @@ export function swapCombo(removeId: string, comboId: string) {
     });
     return {
       ...s,
-      order: [...order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items }],
+      order: [...order, { id: c.id, name: c.name, price: c.price, qty: 1, kind: "combo", items: c.items, ...who }],
       sent: false,
       highlightId: s.highlightId === comboId ? null : s.highlightId,
     };
   });
 }
-/** Commit the item sheet: a fully-specified line (mods + qty). */
-export function addLineWithMods(productId: string, mods: ModSelection, qty: number) {
+/**
+ * Commit the item sheet: a fully-specified line (mods + qty). `customer`
+ * defaults to the active chip; the sheet passes its own pick when the
+ * cashier changed it there. Merges only with a twin of the same person.
+ */
+export function addLineWithMods(productId: string, mods: ModSelection, qty: number, customer?: string | null) {
   posStore.set((s) => {
     const p = s.catalog.byId[productId];
     if (!p) return s;
-    const line: OrderLine = { ...posMakeLine(p, s.catalog), mods, qty: Math.max(1, qty) };
-    // Merge with an identical existing line (same product + same mods).
-    const key = JSON.stringify(mods);
-    const i = s.order.findIndex((l) => l.kind === "item" && l.id === productId && JSON.stringify(l.mods ?? {}) === key);
+    const who = customer === undefined ? s.activePerson : customer;
+    const line: OrderLine = { ...posMakeLine(p, s.catalog), mods, qty: Math.max(1, qty), ...(who ? { customer: who } : {}) };
+    const i = findMergeIndex(s.order, { id: productId, kind: "item", mods, customer: who });
     const order = i >= 0 ? s.order.map((l, k) => (k === i ? { ...l, qty: l.qty + line.qty } : l)) : [...s.order, line];
     return { ...s, order, sent: false, sheet: null, highlightId: s.highlightId === productId ? null : s.highlightId };
   });
 }
-export function replaceLine(idx: number, mods: ModSelection, qty: number) {
+/** Edit a line in place. Never merges into a twin (that would change a qty under the cashier's finger). */
+export function replaceLine(idx: number, mods: ModSelection, qty: number, customer?: string | null) {
   posStore.set((s) => ({
     ...s,
     order: qty <= 0
       ? s.order.filter((_, k) => k !== idx)
-      : s.order.map((l, k) => (k === idx ? { ...l, mods, qty } : l)),
+      : s.order.map((l, k) => {
+          if (k !== idx) return l;
+          const next: OrderLine = { ...l, mods, qty };
+          if (customer !== undefined) {
+            if (customer) next.customer = customer;
+            else delete next.customer;
+          }
+          return next;
+        }),
     sent: false,
     sheet: null,
   }));
@@ -372,7 +405,84 @@ export function removeLine(idx: number) {
   posStore.set((s) => ({ ...s, order: s.order.filter((_, k) => k !== idx), sent: false, sheet: null }));
 }
 export function clearTicket() {
-  posStore.set((s) => ({ ...s, order: [], customerName: "", note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null }));
+  posStore.set((s) => ({ ...s, order: [], customerName: "", people: [], activePerson: null, note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null }));
+}
+
+// ── people at the table ─────────────────────────────────────────
+const samePerson = (a: string, b: string) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+
+export function setActivePerson(name: string | null) {
+  posStore.set({ activePerson: name });
+}
+/**
+ * Add a person to the table and make them active. A name already on the
+ * roster (case-insensitive) just becomes active: two "Juan"s would be one
+ * person on the labels anyway. Returns the roster spelling.
+ */
+export function addPerson(raw: string, opts: { activate?: boolean } = {}): string | null {
+  const name = normalizePerson(raw);
+  if (!name) return null;
+  const activate = opts.activate ?? true;
+  let out: string | null = null;
+  posStore.set((s) => {
+    const existing = s.people.find((p) => samePerson(p, name));
+    out = existing ?? name;
+    return { ...s, activePerson: activate ? out : s.activePerson, people: existing ? s.people : [...s.people, name] };
+  });
+  return out;
+}
+/**
+ * Rename a person everywhere (roster + their lines). Renaming onto another
+ * roster entry merges the two — the intuitive fix for a typo.
+ */
+export function renamePerson(oldName: string, raw: string) {
+  const next = normalizePerson(raw);
+  if (!next || next === oldName) return;
+  posStore.set((s) => {
+    const other = s.people.find((p) => p !== oldName && samePerson(p, next));
+    const final = other ?? next;
+    const people = other
+      ? s.people.filter((p) => p !== oldName)
+      : s.people.map((p) => (p === oldName ? next : p));
+    const order = s.order.map((l) => (l.customer === oldName ? { ...l, customer: final } : l));
+    return { ...s, people, order, sent: false, activePerson: s.activePerson === oldName ? final : s.activePerson };
+  });
+}
+/**
+ * Take a person off the table. Their lines stay and become unassigned —
+ * deleting drinks because a chip was tapped would be unrecoverable.
+ */
+export function removePerson(name: string) {
+  posStore.set((s) => ({
+    ...s,
+    people: s.people.filter((p) => p !== name),
+    order: s.order.map((l) => {
+      if (l.customer !== name) return l;
+      const rest = { ...l };
+      delete rest.customer;
+      return rest;
+    }),
+    sent: false,
+    activePerson: s.activePerson === name ? null : s.activePerson,
+  }));
+}
+/** Reassign one ticket line to a person (or to nobody). */
+export function setLinePerson(idx: number, name: string | null) {
+  posStore.set((s) => ({
+    ...s,
+    order: s.order.map((l, k) => {
+      if (k !== idx) return l;
+      const next = { ...l };
+      if (name) next.customer = name;
+      else delete next.customer;
+      return next;
+    }),
+    sent: false,
+  }));
+}
+/** Lines assigned to a person ("" / null = the unassigned ones). */
+export function linesOf(order: ReadonlyArray<OrderLine>, name: string | null): number {
+  return order.reduce((n, l) => n + ((l.customer ?? "") === (name ?? "") ? l.qty : 0), 0);
 }
 
 export function changeQty(idx: number, d: number) {
@@ -579,6 +689,7 @@ export async function completeSale() {
     sinGluten: s.noteSinGluten,
     lines: linesPayload(s.order),
     customerName: s.customerName.trim() || undefined,
+    customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
   };
   const payment = { method: s.payMethod, tendered };
@@ -641,6 +752,7 @@ export async function savePending() {
     sinGluten: s.noteSinGluten,
     lines: linesPayload(s.order),
     customerName: s.customerName.trim() || undefined,
+    customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
   });
   if (res.ok) {
@@ -746,7 +858,7 @@ export function selectOrden(id: string | null) {
 /** Reprint the kitchen label of any stored order. */
 export function printLabelFor(o: PosOrder) {
   const s = posStore.get();
-  printOrderLabel({ name: o.customerName, folio: o.folio, orgName: s.catalog.orgName });
+  printOrderLabel({ name: o.customerName, folio: o.folio, orgName: s.catalog.orgName, people: rebuildPeople(o) });
 }
 
 function loadPending(o: PendingOrder, mode: "edit" | "charge") {
@@ -755,6 +867,9 @@ function loadPending(o: PendingOrder, mode: "edit" | "charge") {
   posStore.set({
     order: lines,
     customerName: o.customerName,
+    people: rebuildPeople(o),
+    // Start neutral so the cashier consciously picks who the next drink is for.
+    activePerson: null,
     note: o.note,
     orderType: o.orderType,
     noteSinGluten: o.sinGluten,
@@ -807,24 +922,21 @@ export function discardPendingEdit() {
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
 function printSaleLabels(s: PosState, folio: string) {
-  printOrderLabel({ name: s.customerName, folio, orgName: s.catalog.orgName });
+  printOrderLabel({ name: s.customerName, folio, orgName: s.catalog.orgName, people: s.people });
   if (s.catalog.instagram) printInstagramLabel(s.catalog.instagram, s.catalog.cupArt);
   printDrinkLabels(s);
   void printFrase();
 }
 
 /**
- * One menu label per cup for the drinks in the ticket (never for food).
- * Capped per line so a bulk order can't run the roll out.
+ * One menu label per cup for the drinks in the ticket (never for food),
+ * grouped by person so the barista gets each table-mate's cups together.
+ * planDrinkLabels caps per line and overall so a bulk order can't run the
+ * roll out.
  */
 function printDrinkLabels(s: PosState) {
-  for (const line of s.order) {
-    if (line.kind !== "item") continue;
-    const p = s.catalog.byId[line.id];
-    if (!p?.printsLabel) continue;
-    for (let i = 0; i < Math.min(line.qty, 12); i++) {
-      printDrinkLabel({ name: p.name, spec: p.spec, desc: p.desc, brand: s.catalog.orgName });
-    }
+  for (const it of planDrinkLabels(s.order, s.people, s.catalog.byId)) {
+    printDrinkLabel({ name: it.name, spec: it.spec, desc: it.desc, customer: it.customer, brand: s.catalog.orgName });
   }
 }
 
@@ -851,7 +963,7 @@ export async function printFrase() {
 export function reprintLabel() {
   const s = posStore.get();
   if (!s.sent) return;
-  printOrderLabel({ name: s.customerName, folio: s.orderNo, orgName: s.catalog.orgName });
+  printOrderLabel({ name: s.customerName, folio: s.orderNo, orgName: s.catalog.orgName, people: s.people });
 }
 
 

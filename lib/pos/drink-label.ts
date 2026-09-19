@@ -4,8 +4,59 @@
  * the box. No I/O — unit-tested in drink-label.test.ts.
  */
 
+import type { OrderLine } from "./types";
+
 /** One espresso shot, in grams (the menu's own wording: "1 SHOT · 9 G"). */
 export const GRAMS_PER_SHOT = 9;
+
+export interface DrinkLabelPlanItem {
+  productId: string;
+  name: string;
+  spec?: string[];
+  desc?: string;
+  customer?: string;
+}
+
+/** What the planner needs to know about a product. */
+export interface DrinkLabelProduct {
+  name: string;
+  desc?: string;
+  spec?: string[];
+  printsLabel?: boolean;
+}
+
+/**
+ * The cup labels an order should print, in the order the barista wants
+ * them: grouped by person (roster order), the unassigned lines last, lines
+ * in ticket order inside each group. One entry per cup, capped per line
+ * (a bulk order can't run the roll out) and overall. Food never prints.
+ */
+export function planDrinkLabels(
+  order: ReadonlyArray<OrderLine>,
+  people: ReadonlyArray<string>,
+  byId: Readonly<Record<string, DrinkLabelProduct | undefined>>,
+  caps: { perLine?: number; total?: number } = {},
+): DrinkLabelPlanItem[] {
+  const perLine = caps.perLine ?? 12;
+  const total = caps.total ?? 24;
+  const out: DrinkLabelPlanItem[] = [];
+  // Names on lines but not on the roster still get their own group, after the roster.
+  const extra = [...new Set(order.map((l) => l.customer ?? "").filter((c) => c && !people.includes(c)))];
+  const groups: Array<string | null> = [...people, ...extra, null];
+  for (const who of groups) {
+    for (const line of order) {
+      if (line.kind !== "item") continue;
+      if ((line.customer ?? "") !== (who ?? "")) continue;
+      const p = byId[line.id];
+      if (!p?.printsLabel) continue;
+      for (let i = 0; i < Math.min(line.qty, perLine); i++) {
+        if (out.length >= total) return out;
+        out.push({ productId: line.id, name: p.name, spec: p.spec, desc: p.desc, ...(who ? { customer: who } : {}) });
+      }
+    }
+  }
+  return out;
+}
 
 export interface RecipeLine {
   name: string;

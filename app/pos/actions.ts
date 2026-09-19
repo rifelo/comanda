@@ -31,6 +31,8 @@ const LineSchema = z.object({
   id: z.string(),
   qty: z.coerce.number().int().min(1).max(99),
   mods: ModSelectionSchema.optional(),
+  /** Person at the table this line is for (snapshot text; prints on the cup). */
+  customer: z.string().trim().max(40).optional(),
 });
 const PaymentSchema = z.object({
   method: z.enum(["efectivo", "tarjeta", "transferencia"]),
@@ -42,7 +44,10 @@ const CrearOrdenSchema = z.object({
   sinGluten: z.boolean(),
   lines: z.array(LineSchema).min(1).max(60),
   payment: PaymentSchema.optional(),
+  /** Table / group label ("Mesa 3"). */
   customerName: z.string().trim().max(80).optional(),
+  /** Ordered roster of the table; keeps people who have no line yet. */
+  customerNames: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   note: z.string().trim().max(500).optional(),
 });
 
@@ -120,6 +125,7 @@ function itemRows(orgId: string, ordenId: string, items: PricedItem[]) {
     unit_price_cop: it.unit,
     mods: it.line.mods ?? {},
     position: it.position,
+    customer_name: it.line.customer || null,
   }));
 }
 
@@ -169,6 +175,7 @@ async function insertOrden(
       sin_gluten: data.sinGluten,
       notes: data.note || null,
       customer_name: data.customerName || null,
+      customer_names: data.customerNames ?? [],
       created_by: actor.kind === "user" ? actor.profileId : null,
       pos_device_id: actor.kind === "device" ? actor.device.id : null,
       ...header,
@@ -314,6 +321,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
       sin_gluten: base.sinGluten,
       notes: base.note || null,
       customer_name: base.customerName || null,
+      customer_names: base.customerNames ?? [],
     })
     .eq("id", ordenId)
     .eq("organization_id", orgId);
@@ -345,7 +353,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, created_at, paid_at, payment_method, tendered_cop, change_cop, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, payment_method, tendered_cop, change_cop, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name)",
     )
     .eq("organization_id", orgId);
   if (status !== "todas") q = q.eq("status", status);
@@ -372,6 +380,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       sinGluten: Boolean(o.sin_gluten),
       note: (o.notes as string | null) ?? "",
       customerName: (o.customer_name as string | null) ?? "",
+      customerNames: (o.customer_names as string[] | null) ?? [],
       createdAt: o.created_at as string,
       paidAt: (o.paid_at as string | null) ?? null,
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
@@ -388,6 +397,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
           unitPrice: Number(it.unit_price_cop),
           mods: ((it.mods as ModSelection | null) ?? {}) as ModSelection,
           position: Number(it.position ?? 0),
+          customer: (it.customer_name as string | null) ?? "",
         }))
         .sort((a, b) => a.position - b.position),
     };
