@@ -63,6 +63,9 @@ export function rebuildLines(
   const lines = [...order.items]
     .sort((a, b) => a.position - b.position)
     .map((it): OrderLine => {
+      // The person travels on every branch, including snapshots of deleted
+      // products: a missing item must not lose whose it was.
+      const who = it.customer ? { customer: it.customer } : {};
       if (it.kind === "item" && it.productoId && catalog.byId[it.productoId]) {
         const p = catalog.byId[it.productoId];
         return {
@@ -75,11 +78,12 @@ export function rebuildLines(
           mods: sanitizeMods(it.mods, p, catalog),
           hasMods: p.mods.length > 0,
           expanded: false,
+          ...who,
         };
       }
       if (it.kind === "combo" && it.comboId && catalog.comboById[it.comboId]) {
         const c = catalog.comboById[it.comboId];
-        return { id: c.id, name: c.name, price: c.price, qty: it.qty, kind: "combo", items: c.items };
+        return { id: c.id, name: c.name, price: c.price, qty: it.qty, kind: "combo", items: c.items, ...who };
       }
       missing += 1;
       return {
@@ -91,9 +95,38 @@ export function rebuildLines(
         mods: {},
         hasMods: false,
         missing: true,
+        ...who,
       };
     });
   return { lines, missing };
+}
+
+/** Trim + collapse inner whitespace; the canonical form of a person's name. */
+export function normalizePerson(name: string): string {
+  return name.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The table's roster for a stored order: the header roster first (it holds
+ * the chip order and people who haven't ordered yet), then any name that only
+ * exists on a line, in line order. Dedupes case-insensitively. This is the
+ * one place that reconciles the two sources, so an old order with no roster,
+ * or a hand-edited row, still rebuilds a coherent chip row.
+ */
+export function rebuildPeople(order: Pick<PendingOrder, "customerNames" | "items">): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string | undefined | null) => {
+    const n = normalizePerson(raw ?? "");
+    if (!n) return;
+    const k = n.toLocaleLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(n);
+  };
+  for (const n of order.customerNames ?? []) push(n);
+  for (const it of [...order.items].sort((a, b) => a.position - b.position)) push(it.customer);
+  return out;
 }
 
 /** "ahora" · "hace 5 min" · "hace 1 h 10 min" — for the pending list. */
@@ -106,9 +139,15 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   return m ? `hace ${h} h ${m} min` : `hace ${h} h`;
 }
 
-/** What the server actions accept for a ticket: ids + qty + mods only. */
+/** What the server actions accept for a ticket: ids + qty + mods, plus the person when there is one. */
 export function linesPayload(order: OrderLine[]) {
-  return order.map((l) => ({ kind: l.kind, id: l.id, qty: l.qty, mods: l.mods ?? {} }));
+  return order.map((l) => ({
+    kind: l.kind,
+    id: l.id,
+    qty: l.qty,
+    mods: l.mods ?? {},
+    ...(l.customer ? { customer: l.customer } : {}),
+  }));
 }
 
 // ── Bogotá calendar days (UTC-5, no DST) ──────────────────────────
