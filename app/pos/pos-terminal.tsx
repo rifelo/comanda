@@ -323,7 +323,7 @@ function PendientesChip() {
       onClick={() => (on ? closeOrdenes() : openOrdenes())}
       title="Pedidos: pendientes e historial"
       aria-pressed={on}
-      style={{ ...chipStyle, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
+      style={{ ...chipStyle, justifyContent: "center", minWidth: 150, padding: "0 24px", fontSize: 12, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
     >
       Pedidos
       {n > 0 && (
