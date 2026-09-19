@@ -272,11 +272,12 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <SearchBox />
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <DesktopChips />
         <PrinterChip />
         <PendientesChip />
-        {mode === "device" ? <UnlinkButton station={station} /> : (
-          <Link href="/" title="Panel" aria-label="Panel" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.ink2, fontSize: 14, lineHeight: 1, textDecoration: "none" }}>
+        {mode === "device" && <UnlinkButton station={station} />}
+        <DesktopChips />
+        {mode === "user" && (
+          <Link href="/" title="Panel" aria-label="Panel" style={{ ...iconBtnStyle, color: C.ink2, textDecoration: "none" }}>
             ←
           </Link>
         )}
@@ -334,6 +335,11 @@ const chipStyle: React.CSSProperties = {
   fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap",
 };
 
+/** Square icon-only variant of {@link chipStyle} — same height as the chips. */
+const iconBtnStyle: React.CSSProperties = {
+  ...chipStyle, gap: 0, justifyContent: "center", width: 40, padding: 0, fontSize: 15, letterSpacing: 0,
+};
+
 /**
  * Desktop-app chips: "instalar" while Chrome/Edge offers the install prompt
  * (hidden once installed / already in an app window), and a full-screen
@@ -345,8 +351,8 @@ function DesktopChips() {
   return (
     <>
       {d.canInstall && !d.standalone && (
-        <button onClick={() => void installApp()} title="Instalar el POS como app en este PC" style={chipStyle}>
-          <span aria-hidden>⤓</span> instalar
+        <button onClick={() => void installApp()} title="Instalar el POS como app en este PC" aria-label="Instalar el POS como app" style={iconBtnStyle}>
+          <span aria-hidden>⤓</span>
         </button>
       )}
       <button
@@ -354,7 +360,7 @@ function DesktopChips() {
         aria-pressed={d.fullscreen}
         title={d.fullscreen ? "Salir de pantalla completa (Esc)" : "Pantalla completa (F11)"}
         aria-label={d.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
-        style={{ ...chipStyle, gap: 0, justifyContent: "center", width: 32, height: 32, padding: 0, fontSize: 14, letterSpacing: 0, border: `1.5px solid ${d.fullscreen ? C.ink : C.rule}` }}
+        style={{ ...iconBtnStyle, border: `1.5px solid ${d.fullscreen ? C.ink : C.rule}` }}
       >
         <span aria-hidden>{d.fullscreen ? "⤡" : "⤢"}</span>
       </button>
