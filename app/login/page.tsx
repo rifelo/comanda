@@ -1,5 +1,6 @@
 import { Wordmark } from "@/components/comanda/primitives";
 import { GoogleSignInButton } from "./google-signin-button";
+import { PasswordForm } from "./password-form";
 
 export default async function LoginPage({
   searchParams,
@@ -36,12 +37,21 @@ export default async function LoginPage({
           </p>
         ) : null}
 
+        <div className="mt-8 flex items-center gap-3" aria-hidden>
+          <span style={{ flex: 1, borderTop: "1px solid var(--rule)" }} />
+          <span className="text-muted" style={{ fontSize: 10, letterSpacing: "0.16em" }}>O CON CONTRASEÑA</span>
+          <span style={{ flex: 1, borderTop: "1px solid var(--rule)" }} />
+        </div>
+        <div className="mt-4">
+          <PasswordForm next={sp.next} />
+        </div>
+
         <p
           className="text-muted mt-6 text-center"
           style={{ fontSize: 11, letterSpacing: "0.04em", lineHeight: 1.5 }}
         >
-          Inicia sesión con tu cuenta de Google. Si tu administrador te asignó
-          a un restaurante, usa el mismo correo que te dio.
+          Usa el mismo correo que te dio tu administrador: con Google, o con
+          la contraseña que te entregó.
         </p>
 
         <div
