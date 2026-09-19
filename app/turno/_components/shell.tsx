@@ -44,6 +44,7 @@ export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, on
       <form action={signOutTurno}>
         <button type="submit" style={{ ...linkChip, cursor: "pointer", background: "transparent", fontFamily: "var(--font-mono)" }} title="Cerrar sesión en esta tablet">Salir</button>
       </form>
+      <Link href="/turno/conteo" style={linkChip}>Conteo</Link>
       <Link href="/pos" style={linkChip}>POS →</Link>
       {actor.role === "admin" && !actor.viaDevice && <Link href="/" style={linkChip}>← Panel</Link>}
     </div>

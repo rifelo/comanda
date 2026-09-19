@@ -299,6 +299,39 @@ export interface Ingrediente {
   pack_cost_cop: number | null;
   pack_qty: number | null;
   archived: boolean;
+  /** Part of the short list counted at every shift close. */
+  conteo_diario: boolean;
+}
+
+// ── stock counts (end-of-shift, approved by the owner) ──────────
+export type ConteoKind = "diario" | "completo";
+export type ConteoStatus = "pendiente" | "aprobado" | "rechazado";
+export interface InventarioConteoItem {
+  id: string;
+  ingrediente_id: string;
+  name: string;
+  unit: string;
+  /** stock_current when the count was submitted. */
+  expected: number;
+  counted: number;
+  unit_cost_cop: number;
+  note: string | null;
+}
+export interface InventarioConteo {
+  id: string;
+  organization_id: string;
+  restaurant_id: string | null;
+  shift_instance_id: string | null;
+  kind: ConteoKind;
+  status: ConteoStatus;
+  counted_by: string | null;
+  counted_by_name: string | null;
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  note: string | null;
+  review_note: string | null;
+  items: InventarioConteoItem[];
 }
 
 export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import";
