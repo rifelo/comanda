@@ -18,31 +18,42 @@ import type {
 } from "@/lib/types";
 
 /**
- * Context for the shared shift tablet (/turno). Two ways in, like the POS:
- *   · a paired device (cookie from the POS pairing) → its org + restaurant
- *   · a signed-in user → the first restaurant they can see
- * Either way the page and its actions run on the service-role client: the
- * tablet completes tasks *as* the person who tapped their name, which the
- * RLS (`completed_by = auth.uid()`) can't express. Authorization is the
- * device cookie or the user's visibility of the restaurant; every write
- * checks the row belongs to `restaurantId`.
+ * Context for the shared shift tablet (/turno).
+ *
+ * The *sede* comes from the POS pairing cookie (a paired device) or, on a
+ * laptop, from the signed-in user's org. The *person* is always the
+ * signed-in Supabase user: on the tablet the shift lead types their email +
+ * password (see `app/turno/auth-actions.ts`), so every completion carries a
+ * real `auth.uid()`. Writes still run on the service-role client — the
+ * device cookie (not the user) authorises the sede, undoing someone else's
+ * tick must work on a shared device, and photo uploads never had a browser
+ * session — and every write checks the row belongs to `restaurantId`.
  */
-export type TurnoActor =
-  | { kind: "device"; device: PosDevice }
-  | { kind: "user"; profileId: string; fullName: string };
+export type TurnoActor = {
+  profileId: string;
+  fullName: string;
+  role: "admin" | "staff";
+  /** true when the sede came from the device cookie (the shop tablet). */
+  viaDevice: boolean;
+};
+
+export type TurnoSede = { id: string; name: string; tz: string };
 
 export type TurnoContext = {
   admin: SupabaseClient;
   organizationId: string;
   restaurantId: string;
-  sede: { id: string; name: string; tz: string };
+  sede: TurnoSede;
   actor: TurnoActor;
 };
 
-async function firstRestaurant(
-  client: SupabaseClient,
-  organizationId: string,
-): Promise<{ id: string; name: string; tz: string } | null> {
+/** What `/turno` should render. */
+export type TurnoGate =
+  | { kind: "unpaired" }
+  | { kind: "needs_login"; sede: TurnoSede; error?: string }
+  | { kind: "ready"; ctx: TurnoContext };
+
+async function firstRestaurant(client: SupabaseClient, organizationId: string): Promise<TurnoSede | null> {
   const { data } = await client
     .from("restaurants")
     .select("id, name, timezone")
@@ -53,51 +64,88 @@ async function firstRestaurant(
   return data ? { id: data.id as string, name: data.name as string, tz: (data.timezone as string) ?? "America/Bogota" } : null;
 }
 
-export async function loadTurnoContext(): Promise<TurnoContext | null> {
-  const admin = createSupabaseAdminClient();
-  const device = await getPosDeviceFromCookie();
-  if (device) {
-    let sede: { id: string; name: string; tz: string } | null = null;
-    if (device.restaurantId) {
-      const { data } = await admin
-        .from("restaurants")
-        .select("id, name, timezone")
-        .eq("id", device.restaurantId)
-        .maybeSingle();
-      if (data) sede = { id: data.id as string, name: data.name as string, tz: (data.timezone as string) ?? "America/Bogota" };
-    }
-    sede ??= await firstRestaurant(admin, device.organizationId);
-    if (!sede) return null;
-    return { admin, organizationId: device.organizationId, restaurantId: sede.id, sede, actor: { kind: "device", device } };
+async function deviceSede(admin: SupabaseClient, device: PosDevice): Promise<TurnoSede | null> {
+  if (device.restaurantId) {
+    const { data } = await admin.from("restaurants").select("id, name, timezone").eq("id", device.restaurantId).maybeSingle();
+    if (data) return { id: data.id as string, name: data.name as string, tz: (data.timezone as string) ?? "America/Bogota" };
   }
+  return firstRestaurant(admin, device.organizationId);
+}
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name, organization_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.organization_id) return null;
-  // RLS client: only restaurants this user can see.
-  const sede = await firstRestaurant(supabase, profile.organization_id as string);
-  if (!sede) return null;
+type ProfileRow = { id: string; full_name: string | null; role: "admin" | "staff" | null; organization_id: string | null };
+
+/**
+ * The signed-in person's profile plus their role *in this org*. A person can
+ * belong to several orgs (`organization_members`); `profiles.organization_id`
+ * is only the active pointer, so membership decides access here.
+ */
+async function resolveActor(admin: SupabaseClient, userId: string, organizationId: string): Promise<TurnoActor | null> {
+  const [{ data: profile }, { data: membership }] = await Promise.all([
+    admin.from("profiles").select("id, full_name, role, organization_id").eq("id", userId).maybeSingle<ProfileRow>(),
+    admin
+      .from("organization_members")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("organization_id", organizationId)
+      .maybeSingle<{ role: "admin" | "staff" }>(),
+  ]);
+  if (!profile) return null;
+  if (!membership && profile.organization_id !== organizationId) return null;
   return {
-    admin,
-    organizationId: profile.organization_id as string,
-    restaurantId: sede.id,
-    sede,
-    actor: { kind: "user", profileId: profile.id as string, fullName: (profile.full_name as string | null) ?? "" },
+    profileId: profile.id,
+    fullName: profile.full_name ?? "",
+    role: membership?.role ?? profile.role ?? "staff",
+    viaDevice: false,
   };
 }
 
+/** Staff must be an active member of the sede; org admins always pass. */
+async function actorOnRoster(ctx: TurnoContext): Promise<boolean> {
+  if (ctx.actor.role === "admin") return true;
+  const roster = await listTurnoRoster(ctx);
+  return roster.some((p) => p.id === ctx.actor.profileId);
+}
+
+function notOnTeam(name: string, sede: string): string {
+  return `${name || "Esta cuenta"} no está en el equipo de ${sede}. Pide al administrador que te agregue en Configuración → Equipo.`;
+}
+
+export async function loadTurnoGate(): Promise<TurnoGate> {
+  const admin = createSupabaseAdminClient();
+  const supabase = await createSupabaseServerClient();
+  const [device, userRes] = await Promise.all([getPosDeviceFromCookie(), supabase.auth.getUser()]);
+  const user = userRes.data.user;
+
+  if (device) {
+    const sede = await deviceSede(admin, device);
+    if (!sede) return { kind: "unpaired" };
+    if (!user) return { kind: "needs_login", sede };
+    const actor = await resolveActor(admin, user.id, device.organizationId);
+    if (!actor) {
+      return { kind: "needs_login", sede, error: `Esta cuenta no pertenece a ${sede.name}. Cierra sesión y entra con tu usuario.` };
+    }
+    const ctx: TurnoContext = { admin, organizationId: device.organizationId, restaurantId: sede.id, sede, actor: { ...actor, viaDevice: true } };
+    if (!(await actorOnRoster(ctx))) return { kind: "needs_login", sede, error: notOnTeam(actor.fullName, sede.name) };
+    return { kind: "ready", ctx };
+  }
+
+  if (!user) return { kind: "unpaired" };
+  const { data: profile } = await admin.from("profiles").select("id, full_name, role, organization_id").eq("id", user.id).maybeSingle<ProfileRow>();
+  if (!profile?.organization_id) return { kind: "unpaired" };
+  // RLS client: only restaurants this user can see.
+  const sede = await firstRestaurant(supabase, profile.organization_id);
+  if (!sede) return { kind: "unpaired" };
+  const actor = await resolveActor(admin, user.id, profile.organization_id);
+  if (!actor) return { kind: "unpaired" };
+  const ctx: TurnoContext = { admin, organizationId: profile.organization_id, restaurantId: sede.id, sede, actor };
+  if (!(await actorOnRoster(ctx))) return { kind: "needs_login", sede, error: notOnTeam(actor.fullName, sede.name) };
+  return { kind: "ready", ctx };
+}
+
 export async function requireTurnoContext(): Promise<TurnoContext> {
-  const ctx = await loadTurnoContext();
-  if (!ctx) throw new Error("unauthorized");
-  return ctx;
+  const gate = await loadTurnoGate();
+  if (gate.kind !== "ready") throw new Error("unauthorized");
+  return gate.ctx;
 }
 
 export interface TurnoPerson {
@@ -135,12 +183,6 @@ export async function listTurnoRoster(ctx: TurnoContext): Promise<TurnoPerson[]>
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
-/** A person may act on the tablet only if they are on the sede roster or an org admin. */
-export async function assertPersonOnRoster(ctx: TurnoContext, personId: string): Promise<void> {
-  const roster = await listTurnoRoster(ctx);
-  if (!roster.some((p) => p.id === personId)) throw new Error("Esa persona no está en el equipo de la sede.");
-}
-
 /**
  * Today's shift_instances for the sede's active turnos that operate today.
  * The nightly cron also creates them; this covers a tablet opened first.
@@ -173,7 +215,7 @@ export interface TurnoShift {
 }
 
 export interface TurnoBoardData {
-  sede: { id: string; name: string; tz: string };
+  sede: TurnoSede;
   date: string;
   todayIdx: number;
   roster: TurnoPerson[];

@@ -2,7 +2,15 @@
 
 import * as React from "react";
 import type { RosterMember } from "@/lib/types";
-import { inviteMember, removeMember, updateMember } from "../_actions";
+import {
+  createMemberWithPassword,
+  inviteMember,
+  removeMember,
+  setMemberPassword,
+  updateMember,
+} from "../_actions";
+
+type AccessMode = "password" | "invite";
 
 export function EquipoClient({
   initialRoster,
@@ -11,9 +19,17 @@ export function EquipoClient({
 }) {
   const [roster, setRoster] = React.useState(initialRoster);
   const [adding, setAdding] = React.useState(false);
-  const [draft, setDraft] = React.useState({ name: "", email: "", phone: "" });
+  const [mode, setMode] = React.useState<AccessMode>("password");
+  const [draft, setDraft] = React.useState({ name: "", email: "", phone: "", password: "" });
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  // Inline "nueva contraseña" editor for one row at a time.
+  const [pw, setPw] = React.useState<{ id: string; value: string; saved: boolean } | null>(null);
+
+  const canAdd =
+    draft.name.trim().length > 0 &&
+    draft.email.trim().length > 0 &&
+    (mode === "invite" || draft.password.length >= 8);
 
   const activos = roster.filter((p) => p.active).length;
 
@@ -79,22 +95,40 @@ export function EquipoClient({
   }
 
   function add() {
-    if (!draft.name.trim() || !draft.email.trim()) return;
+    if (!canAdd) return;
     setError(null);
     startTransition(async () => {
-      const r = await inviteMember({
+      const base = {
         name: draft.name.trim(),
         email: draft.email.trim(),
         phone: draft.phone.trim() || undefined,
-      });
+      };
+      const r =
+        mode === "password"
+          ? await createMemberWithPassword({ ...base, password: draft.password })
+          : await inviteMember(base);
       if ("error" in r && r.error) setError(r.error);
       else if ("member" in r && r.member) {
         const added = r.member;
         setRoster((prev) =>
-          [...prev, added].sort((a, b) => a.name.localeCompare(b.name, "es")),
+          [...prev.filter((x) => x.id !== added.id), added].sort((a, b) => a.name.localeCompare(b.name, "es")),
         );
-        setDraft({ name: "", email: "", phone: "" });
+        setDraft({ name: "", email: "", phone: "", password: "" });
         setAdding(false);
+      }
+    });
+  }
+
+  function savePassword() {
+    if (!pw || pw.value.length < 8) return;
+    const { id, value } = pw;
+    setError(null);
+    startTransition(async () => {
+      const r = await setMemberPassword({ id, password: value });
+      if ("error" in r && r.error) setError(r.error);
+      else {
+        setPw({ id, value: "", saved: true });
+        window.setTimeout(() => setPw((cur) => (cur?.id === id && cur.saved ? null : cur)), 2500);
       }
     });
   }
@@ -121,7 +155,7 @@ export function EquipoClient({
           className="cmd-btn sm"
           onClick={() => setAdding((a) => !a)}
         >
-          {adding ? "✕ Cerrar" : "+ Invitar persona"}
+          {adding ? "✕ Cerrar" : "+ Agregar persona"}
         </button>
       </div>
 
@@ -136,21 +170,52 @@ export function EquipoClient({
             boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
           }}
         >
-          <div
-            className="text-muted"
-            style={{
-              fontSize: 9,
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            Invitar persona
+          <div className="flex items-center" style={{ gap: 14, marginBottom: 12, flexWrap: "wrap" }}>
+            <div
+              className="text-muted"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+              }}
+            >
+              Agregar persona · cómo entra
+            </div>
+            <div className="flex" style={{ gap: 6 }} role="radiogroup" aria-label="Cómo entra">
+              {(
+                [
+                  ["password", "Con contraseña"],
+                  ["invite", "Invitación por correo"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === value}
+                  onClick={() => setMode(value)}
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    padding: "5px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${mode === value ? "var(--ink)" : "var(--rule)"}`,
+                    background: mode === value ? "var(--ink)" : "transparent",
+                    color: mode === value ? "var(--paper-lt)" : "var(--muted)",
+                    cursor: "pointer",
+                    minHeight: 0,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <div
             className="grid items-end"
             style={{
-              gridTemplateColumns: "1.4fr 1.6fr 1fr auto",
+              gridTemplateColumns: mode === "password" ? "1.3fr 1.5fr 1.2fr .9fr auto" : "1.4fr 1.6fr 1fr auto",
               gap: 12,
             }}
           >
@@ -182,6 +247,25 @@ export function EquipoClient({
                 style={formInput}
               />
             </div>
+            {mode === "password" ? (
+              <div>
+                <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
+                  Contraseña <span style={{ opacity: 0.7 }}>(mín. 8)</span>
+                </div>
+                <input
+                  type="text"
+                  value={draft.password}
+                  onChange={(e) => setDraft((d) => ({ ...d, password: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && add()}
+                  autoComplete="new-password"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="la que le vas a entregar"
+                  className="cmd-num"
+                  style={formInput}
+                />
+              </div>
+            ) : null}
             <div>
               <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
                 Teléfono
@@ -200,11 +284,16 @@ export function EquipoClient({
               type="button"
               className="cmd-btn red sm"
               onClick={add}
-              disabled={pending || !draft.name.trim() || !draft.email.trim()}
+              disabled={pending || !canAdd}
               style={{ height: 38 }}
             >
-              {pending ? "…" : "Invitar"}
+              {pending ? "…" : mode === "password" ? "Crear acceso" : "Invitar"}
             </button>
+          </div>
+          <div className="text-muted" style={{ fontSize: 10.5, marginTop: 10, lineHeight: 1.5 }}>
+            {mode === "password"
+              ? "La persona entra en la tablet del turno con su correo y esta contraseña. Entrégasela en persona; puedes cambiarla cuando quieras desde la lista."
+              : "Le llega un correo con un enlace para activar la cuenta; luego entra con Google usando ese mismo correo."}
           </div>
         </div>
       ) : null}
@@ -227,7 +316,7 @@ export function EquipoClient({
         <div
           className="grid"
           style={{
-            gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 40px",
+            gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 96px",
             padding: "10px 16px",
             background: "var(--ink)",
             color: "var(--paper-lt)",
@@ -244,14 +333,14 @@ export function EquipoClient({
           <span></span>
         </div>
         {roster.map((p, i) => (
+          <React.Fragment key={p.id}>
           <div
-            key={p.id}
             className="grid items-center"
             style={{
-              gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 40px",
+              gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 96px",
               padding: "12px 16px",
               borderBottom:
-                i < roster.length - 1 ? "1px solid var(--rule-soft)" : "none",
+                i < roster.length - 1 && pw?.id !== p.id ? "1px solid var(--rule-soft)" : "none",
               background: p.active ? "var(--paper-lt)" : "transparent",
               opacity: p.active ? 1 : 0.55,
             }}
@@ -354,35 +443,102 @@ export function EquipoClient({
                 </span>
               )}
             </div>
-            {p.isMember ? (
+            <div className="flex items-center justify-end" style={{ gap: 6 }}>
               <button
                 type="button"
-                onClick={() => remove(p.id)}
-                title="Eliminar"
+                onClick={() => setPw(pw?.id === p.id ? null : { id: p.id, value: "", saved: false })}
+                title="Asignar o cambiar la contraseña"
+                aria-pressed={pw?.id === p.id}
                 className="text-muted"
                 style={{
-                  background: "transparent",
-                  border: "none",
+                  background: pw?.id === p.id ? "var(--ink)" : "transparent",
+                  color: pw?.id === p.id ? "var(--paper-lt)" : undefined,
+                  border: "1px solid var(--rule)",
+                  borderRadius: 2,
                   cursor: "pointer",
-                  fontSize: 16,
-                  lineHeight: 1,
-                  justifySelf: "center",
+                  fontSize: 9,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  padding: "4px 7px",
                   minHeight: 0,
                 }}
               >
-                ×
+                clave
               </button>
-            ) : (
-              <span />
-            )}
+              {p.isMember ? (
+                <button
+                  type="button"
+                  onClick={() => remove(p.id)}
+                  title="Eliminar"
+                  className="text-muted"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 16,
+                    lineHeight: 1,
+                    minHeight: 0,
+                    padding: "0 2px",
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
           </div>
+          {pw?.id === p.id ? (
+            <div
+              className="flex items-center"
+              style={{
+                gap: 10,
+                padding: "8px 16px 12px 56px",
+                borderBottom: i < roster.length - 1 ? "1px solid var(--rule-soft)" : "none",
+                background: "var(--paper-lt)",
+              }}
+            >
+              <span className="text-muted" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                Nueva contraseña
+              </span>
+              <input
+                autoFocus
+                type="text"
+                value={pw.value}
+                onChange={(e) => setPw({ id: p.id, value: e.target.value, saved: false })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") savePassword();
+                  if (e.key === "Escape") setPw(null);
+                }}
+                autoComplete="new-password"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="mín. 8 caracteres"
+                className="cmd-num"
+                style={{ ...formInput, maxWidth: 260, padding: "7px 10px" }}
+              />
+              <button
+                type="button"
+                className="cmd-btn sm"
+                onClick={savePassword}
+                disabled={pending || pw.value.length < 8}
+              >
+                {pending ? "…" : "Guardar"}
+              </button>
+              <button type="button" className="cmd-btn ghost sm" onClick={() => setPw(null)}>
+                Cancelar
+              </button>
+              {pw.saved ? (
+                <span style={{ fontSize: 11, color: "var(--green)" }}>✓ Contraseña actualizada</span>
+              ) : null}
+            </div>
+          ) : null}
+          </React.Fragment>
         ))}
         {roster.length === 0 ? (
           <div
             className="text-muted"
             style={{ padding: 28, textAlign: "center", fontSize: 12 }}
           >
-            Sin personas. Invita a la primera con &ldquo;+ Invitar
+            Sin personas. Agrega la primera con &ldquo;+ Agregar
             persona&rdquo;.
           </div>
         ) : null}
@@ -392,7 +548,8 @@ export function EquipoClient({
         style={{ fontSize: 10, marginTop: 12, letterSpacing: "0.04em" }}
       >
         Las personas activas aparecen al asignar turnos en{" "}
-        <strong>Turnos · Asignación</strong>.
+        <strong>Turnos · Asignación</strong>. El equipo entra en la tablet del
+        turno con correo + contraseña (o con Google usando el mismo correo).
       </div>
     </div>
   );
