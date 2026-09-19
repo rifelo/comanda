@@ -261,10 +261,8 @@ function Register({ mode }: { mode: "device" | "user" }) {
 // Top bar
 // ════════════════════════════════════════════════════════════════
 function TopBar({ mode }: { mode: "device" | "user" }) {
-  const s = usePos();
   const catalog = useCatalog();
   const station = React.useContext(StationCtx);
-  const openCount = s.suggestions.length;
 
   return (
     <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
@@ -283,27 +281,6 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
         <DesktopChips />
         <PrinterChip />
         <PendientesChip />
-        <button
-          onClick={() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen }))}
-          title="Asistente de IA"
-          aria-pressed={s.aiOpen}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer",
-            border: `1.5px solid ${s.aiOpen ? C.ink : C.rule}`, background: s.aiOpen ? C.ink : "transparent", color: s.aiOpen ? C.paperLt : C.ink,
-            fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", position: "relative",
-          }}
-        >
-          <span className={s.listening ? "pos-rec" : ""} style={{ width: 8, height: 8, borderRadius: 8, background: s.listening ? C.red : s.aiOpen ? C.paperLt : C.muted, opacity: s.listening ? 1 : 0.6 }} />
-          Asistente
-          {openCount > 0 && (
-            <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.red, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-              {openCount}
-            </span>
-          )}
-        </button>
-        <Link href="/turno" title="Turno del día: puestos y checklist" style={{ display: "inline-flex", alignItems: "center", height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.ink2, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none" }}>
-          Turno
-        </Link>
         {mode === "device" ? <UnlinkButton station={station} /> : (
           <Link href="/" style={{ display: "inline-flex", alignItems: "center", height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.ink2, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none" }}>
             ← Panel
