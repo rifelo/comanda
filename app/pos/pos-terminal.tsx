@@ -57,6 +57,12 @@ import {
   removeLine,
   changeQty,
   clearTicket,
+  setActivePerson,
+  addPerson,
+  renamePerson,
+  removePerson,
+  setLinePerson,
+  linesOf,
   applyAct,
   dismissSuggestion,
   appendTranscript,
@@ -646,6 +652,8 @@ function Ticket() {
   const s = usePos();
   const catalog = useCatalog();
   const total = orderTotal(s.order, catalog);
+  // Local (not in the store): a second global modal key would collide with `s.sheet!`.
+  const [personSheet, setPersonSheet] = React.useState<PersonSheetState | null>(null);
   const editing = s.pending?.mode === "edit" ? s.pending : null;
   const hasMissing = s.order.some((l) => l.missing);
   const canSend = s.order.length > 0 && !s.sending && !hasMissing;
@@ -688,11 +696,24 @@ function Ticket() {
         <input
           value={s.customerName}
           onChange={(e) => posStore.set({ customerName: e.target.value })}
-          placeholder="Nombre del cliente (opcional)"
-          aria-label="Nombre del cliente"
+          placeholder="Mesa / grupo (opcional)"
+          aria-label="Mesa o grupo"
           maxLength={80}
           style={{ marginTop: 8, width: "100%", height: 36, padding: "0 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 13, borderRadius: 4, outline: "none" }}
         />
+        {/* People at the table. Inline styles only on these nodes (no responsive Tailwind). */}
+        <div style={{ marginTop: 8 }}>
+          <PersonPicker
+            value={s.activePerson}
+            onPick={setActivePerson}
+            onAdd={() => setPersonSheet({ mode: "add" })}
+            onEdit={(name) => setPersonSheet({ mode: "edit", name })}
+            counts
+          />
+          {s.people.length > 0 && (
+            <div style={{ fontSize: 10.5, color: C.muted, marginTop: 6 }}>Toca un nombre para asignarle lo que agregues.</div>
+          )}
+        </div>
       </div>
 
       {/* lines */}
@@ -702,8 +723,9 @@ function Ticket() {
             Toca un producto<br />para empezar el pedido.
           </div>
         )}
-        {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} />)}
+        {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} onPerson={() => setPersonSheet({ mode: "line", idx: i })} />)}
       </div>
+      {personSheet && <PersonSheet state={personSheet} onClose={() => setPersonSheet(null)} />}
 
       {/* footer */}
       <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "10px 14px 14px", background: C.paperLt }}>
@@ -892,7 +914,10 @@ function OrdenDetail({ o }: { o: PosOrder }) {
           <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "3px 7px", borderRadius: 3 }}>{st.label}</span>
           <button onClick={() => selectOrden(null)} aria-label="Cerrar detalle" style={{ marginLeft: "auto", width: 32, height: 32, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontSize: 16, cursor: "pointer" }}>×</button>
         </div>
-        <div style={{ fontSize: 15, fontWeight: 600, marginTop: 8 }}>{o.customerName || "Sin nombre"}</div>
+        <div style={{ fontSize: 15, fontWeight: 600, marginTop: 8 }}>{o.customerName || (o.customerNames.length ? "Mesa" : "Sin nombre")}</div>
+        {o.customerNames.length > 0 && (
+          <div style={{ fontSize: 11.5, color: C.ink2, marginTop: 3, lineHeight: 1.5 }}>{o.customerNames.join(" · ")}</div>
+        )}
       </div>
       <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "10px 20px" }}>
         {row("Tipo", type)}
@@ -905,7 +930,10 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         <div style={{ marginTop: 12 }}>
           {o.items.map((it) => (
             <div key={it.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${C.ruleSoft}`, fontSize: 12.5 }}>
-              <span style={{ color: C.ink2, minWidth: 0 }}><span className="cmd-num" style={{ color: C.muted }}>{it.qty}×</span> {it.name}</span>
+              <span style={{ color: C.ink2, minWidth: 0 }}>
+                <span className="cmd-num" style={{ color: C.muted }}>{it.qty}×</span> {it.name}
+                {it.customer && <span style={{ display: "block", fontSize: 9.5, color: C.red, letterSpacing: ".06em", textTransform: "uppercase", marginTop: 1 }}>Pa&apos; {it.customer}</span>}
+              </span>
               <span className="cmd-num" style={{ color: C.ink, flexShrink: 0 }}>{posMoney(it.unitPrice * it.qty)}</span>
             </div>
           ))}
@@ -935,14 +963,187 @@ function OrdenDetail({ o }: { o: PosOrder }) {
   );
 }
 
-function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
+// ════════════════════════════════════════════════════════════════
+// People at the table — chips, sheet, per-line badge
+// ════════════════════════════════════════════════════════════════
+const personChip = (on: boolean, dashed = false): React.CSSProperties => ({
+  height: 34, padding: "0 10px", borderRadius: 4, cursor: "pointer", maxWidth: 190,
+  border: `1.5px ${dashed ? "dashed" : "solid"} ${on ? C.ink : C.rule}`,
+  background: on ? C.ink : C.paper, color: on ? C.paperLt : C.ink2,
+  fontFamily: F.mono, fontSize: 12.5, fontWeight: 600,
+  display: "inline-flex", alignItems: "center", gap: 6,
+});
+const personInput: React.CSSProperties = {
+  height: 40, padding: "0 12px", border: `1.5px solid ${C.ink}`, borderRadius: 4, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 14, outline: "none", minWidth: 0,
+};
+
+function Count({ n, on }: { n: number; on: boolean }) {
+  return <span className="cmd-num" style={{ fontSize: 10.5, fontWeight: 400, color: on ? C.paperLt : C.muted, opacity: on ? 0.75 : 1 }}>{n}</span>;
+}
+
+/**
+ * Chip row for the table's people. Used by the ticket header (with counts,
+ * tapping the active chip edits it, "+ persona" opens the bulk sheet), by
+ * the item sheet and by the line picker (no counts; "+ persona" adds inline).
+ */
+function PersonPicker({ value, onPick, onAdd, onEdit, counts }: {
+  value: string | null;
+  onPick: (name: string | null) => void;
+  onAdd?: () => void;
+  onEdit?: (name: string) => void;
+  counts?: boolean;
+}) {
+  const s = usePos();
+  const [adding, setAdding] = React.useState(false);
+  const [text, setText] = React.useState("");
+  const ref = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => { if (adding) ref.current?.focus(); }, [adding]);
+  const addInline = () => {
+    const name = addPerson(text, { activate: false });
+    if (!name) return;
+    onPick(name);
+    setText("");
+    setAdding(false);
+  };
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {s.people.length > 0 && (
+        <button type="button" onClick={() => onPick(null)} aria-pressed={value === null} style={{ ...personChip(value === null), fontWeight: 500, color: value === null ? C.paperLt : C.muted }}>
+          Sin nombre{counts && <Count n={linesOf(s.order, null)} on={value === null} />}
+        </button>
+      )}
+      {s.people.map((name) => {
+        const on = value === name;
+        return (
+          <button type="button" key={name} onClick={() => (on && onEdit ? onEdit(name) : onPick(name))} aria-pressed={on} aria-label={`Cliente ${name}`} title={on && onEdit ? "Editar o quitar" : undefined} style={personChip(on)}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+            {counts && <Count n={linesOf(s.order, name)} on={on} />}
+            {on && onEdit && <span aria-hidden style={{ opacity: 0.7, fontSize: 11 }}>✎</span>}
+          </button>
+        );
+      })}
+      {onAdd ? (
+        <button type="button" onClick={onAdd} style={personChip(false, true)}>+ persona</button>
+      ) : adding ? (
+        <form onSubmit={(e) => { e.preventDefault(); addInline(); }} style={{ display: "inline-flex", gap: 6 }}>
+          <input ref={ref} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }} maxLength={40} placeholder="Nombre" aria-label="Nombre de la persona" style={{ ...personInput, height: 34, width: 150, fontSize: 12.5 }} />
+          <button type="submit" style={personChip(true)}>OK</button>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} style={personChip(false, true)}>+ persona</button>
+      )}
+    </div>
+  );
+}
+
+type PersonSheetState = { mode: "add" } | { mode: "edit"; name: string } | { mode: "line"; idx: number };
+
+/** Add people in a burst, rename / remove one, or pick who a line is for. */
+function PersonSheet({ state, onClose }: { state: PersonSheetState; onClose: () => void }) {
+  const s = usePos();
+  const [text, setText] = React.useState(state.mode === "edit" ? state.name : "");
+  const ref = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => { ref.current?.focus(); }, []);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  const line = state.mode === "line" ? s.order[state.idx] : undefined;
+  const count = state.mode === "edit" ? linesOf(s.order, state.name) : 0;
+
+  const submit = () => {
+    if (state.mode === "add") {
+      if (!addPerson(text)) return;
+      setText("");
+      ref.current?.focus();
+    } else if (state.mode === "edit") {
+      renamePerson(state.name, text);
+      onClose();
+    } else {
+      const name = addPerson(text, { activate: false });
+      if (!name) return;
+      setLinePerson(state.idx, name);
+      onClose();
+    }
+  };
+  const remove = () => {
+    if (state.mode !== "edit") return;
+    if (count > 0 && !window.confirm(`¿Quitar a ${state.name}? Sus ${count} ítem${count === 1 ? "" : "s"} quedan sin nombre.`)) return;
+    removePerson(state.name);
+    onClose();
+  };
+
+  const title = state.mode === "add" ? "Personas de la mesa" : state.mode === "edit" ? state.name : line?.name ?? "Persona";
+  const hint = state.mode === "add"
+    ? "Escribe un nombre y Enter. Repite para cada persona."
+    : state.mode === "edit" ? "Cambia el nombre o quita a la persona de la mesa." : "¿Para quién es?";
+  const btn: React.CSSProperties = { height: 40, padding: "0 16px", borderRadius: 4, border: `1.5px solid ${C.ink}`, background: C.ink, color: C.paperLt, fontFamily: F.mono, fontSize: 12, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer", flexShrink: 0 };
+
+  return (
+    <Overlay onClose={onClose} align="center">
+      <div role="dialog" aria-modal aria-label={title} style={{ width: "min(520px, 94vw)", maxHeight: "88dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: F.slab, fontSize: 22, lineHeight: 1.1, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>{hint}</div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+        </div>
+
+        <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 20px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {state.mode === "line" && (
+            <PersonPicker value={line?.customer ?? null} onPick={(name) => { setLinePerson(state.idx, name); onClose(); }} onAdd={() => ref.current?.focus()} />
+          )}
+          <form onSubmit={(e) => { e.preventDefault(); submit(); }} style={{ display: "flex", gap: 8 }}>
+            <input ref={ref} value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder={state.mode === "line" ? "Nombre nuevo" : "Nombre"} aria-label="Nombre de la persona" style={{ ...personInput, flex: 1 }} />
+            <button type="submit" style={btn}>{state.mode === "edit" ? "Guardar" : "Agregar"}</button>
+          </form>
+          {state.mode === "add" && s.people.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {s.people.map((n) => <span key={n} style={{ ...personChip(n === s.activePerson), cursor: "default" }}>{n}<Count n={linesOf(s.order, n)} on={n === s.activePerson} /></span>)}
+            </div>
+          )}
+        </div>
+
+        <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+          {state.mode === "edit" && (
+            <button onClick={remove} style={{ height: 44, padding: "0 14px", borderRadius: 4, border: `1.5px solid ${C.red}`, background: "transparent", color: C.red, fontFamily: F.mono, fontSize: 12, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}>Quitar persona</button>
+          )}
+          <button className="cmd-btn" onClick={onClose} style={{ flex: 1, height: 48, fontSize: 13, marginLeft: "auto" }}>{state.mode === "add" ? "Listo" : "Cerrar"}</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function TicketLine({ idx, line, onPerson }: { idx: number; line: OrderLine; onPerson: () => void }) {
+  const s = usePos();
   const catalog = useCatalog();
   const unit = modLinePrice(line, catalog);
   const mods = modSummary(line, catalog);
-  const editable = line.kind === "item" && !!line.hasMods;
+  // A line with no options only opens the sheet once there are people to pick from.
+  const editable = line.kind === "item" && !line.missing && (!!line.hasMods || s.people.length > 0);
   const open = () => { if (editable) posStore.set({ sheet: { mode: "edit", idx } }); };
+  const showPerson = !!line.customer || s.people.length > 0;
   return (
-    <div className={editable ? "pos-line" : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px 10px 14px", borderBottom: `1px solid ${C.ruleSoft}`, opacity: line.missing ? 0.55 : 1 }}>
+    <div className={editable ? "pos-line" : undefined} style={{ padding: "10px 12px 10px 14px", borderBottom: `1px solid ${C.ruleSoft}`, opacity: line.missing ? 0.55 : 1 }}>
+      {/* The person badge sits OUTSIDE the row's role="button": a control nested
+          in a control merges into its accessible name and steals its clicks. */}
+      {showPerson && (
+        <div style={{ marginBottom: 4 }}>
+          <button
+            type="button"
+            onClick={onPerson}
+            aria-label={line.customer ? `Persona: ${line.customer}. Cambiar` : "Asignar persona"}
+            style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", padding: "2px 5px", borderRadius: 2, cursor: "pointer", fontFamily: F.mono, background: "transparent", border: `1px solid ${line.customer ? C.red : C.rule}`, color: line.customer ? C.red : C.muted, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {line.customer ? `Pa' ${line.customer}` : "+ nombre"}
+          </button>
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <div role={editable ? "button" : undefined} tabIndex={editable ? 0 : undefined} onClick={open} onKeyDown={(e) => { if (editable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }} style={{ flex: 1, minWidth: 0, cursor: editable ? "pointer" : "default" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {line.kind === "combo" && <span style={{ fontSize: 8, color: C.green, border: `1px solid ${C.green}`, padding: "1px 3px", letterSpacing: ".06em", borderRadius: 2 }}>COMBO</span>}
@@ -965,6 +1166,7 @@ function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
         <button onClick={() => changeQty(idx, +1)} aria-label="Agregar uno" style={qtyBtn}>+</button>
       </div>
       <div className="cmd-num" style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 70, textAlign: "right" }}>{posMoney(unit * line.qty)}</div>
+      </div>
     </div>
   );
 }
@@ -982,6 +1184,8 @@ function ItemSheet() {
 
   const [mods, setMods] = React.useState<ModSelection>(() => (line?.mods ? { ...line.mods } : p ? posDefaultMods(p, catalog) : {}));
   const [qty, setQty] = React.useState(line?.qty ?? 1);
+  // Who the cup is for: the line's person when editing, else the active chip.
+  const [person, setPerson] = React.useState<string | null>(() => line?.customer ?? s.activePerson);
   const close = () => posStore.set({ sheet: null });
 
   React.useEffect(() => {
@@ -994,8 +1198,8 @@ function ItemSheet() {
   const unit = modLinePrice({ id: p.id, name: p.name, qty: 1, kind: "item", basePrice: p.price, mods }, catalog);
   const commit = () => {
     if (missing.length) return;
-    if (sheet.mode === "add") addLineWithMods(p.id, mods, qty);
-    else replaceLine(sheet.idx, mods, qty);
+    if (sheet.mode === "add") addLineWithMods(p.id, mods, qty, person);
+    else replaceLine(sheet.idx, mods, qty, person);
   };
 
   return (
@@ -1010,7 +1214,16 @@ function ItemSheet() {
         </div>
 
         <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px 12px" }}>
-          {groups.length === 0 && <div style={{ padding: "16px 0", color: C.muted, fontSize: 12 }}>Este producto no tiene opciones.</div>}
+          {(s.people.length > 0 || person) && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: C.ink }}>Persona</span>
+                <span style={{ fontSize: 9.5, color: C.muted, letterSpacing: ".04em" }}>para quién es</span>
+              </div>
+              <PersonPicker value={person} onPick={setPerson} />
+            </div>
+          )}
+          {groups.length === 0 && s.people.length === 0 && <div style={{ padding: "16px 0", color: C.muted, fontSize: 12 }}>Este producto no tiene opciones.</div>}
           {groups.map((g) => {
             const sel = mods[g.id];
             const isSel = (name: string) => (g.type === "single" ? sel === name : Array.isArray(sel) && sel.includes(name));

@@ -418,14 +418,15 @@ export function setActivePerson(name: string | null) {
  * roster (case-insensitive) just becomes active: two "Juan"s would be one
  * person on the labels anyway. Returns the roster spelling.
  */
-export function addPerson(raw: string): string | null {
+export function addPerson(raw: string, opts: { activate?: boolean } = {}): string | null {
   const name = normalizePerson(raw);
   if (!name) return null;
+  const activate = opts.activate ?? true;
   let out: string | null = null;
   posStore.set((s) => {
     const existing = s.people.find((p) => samePerson(p, name));
     out = existing ?? name;
-    return { ...s, activePerson: out, people: existing ? s.people : [...s.people, name] };
+    return { ...s, activePerson: activate ? out : s.activePerson, people: existing ? s.people : [...s.people, name] };
   });
   return out;
 }
