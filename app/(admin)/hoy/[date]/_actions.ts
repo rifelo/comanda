@@ -60,6 +60,46 @@ export async function createAdHocTask(input: {
   return { ok: true };
 }
 
+const ReviewSchema = z.object({
+  shift_instance_id: z.string().uuid(),
+  reviewed: z.boolean(),
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Admin stamps a closed turno as reviewed (or takes the stamp back). The
+ * RLS update policy on shift_instances is visibility-based; admin is
+ * enforced here.
+ */
+export async function reviewShift(input: {
+  shift_instance_id: string;
+  reviewed: boolean;
+  note?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const parsed = ReviewSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Datos inválidos." };
+
+  const { supabase, user } = await requireAdmin();
+  const { data: row, error } = await supabase
+    .from("shift_instances")
+    .update(
+      parsed.data.reviewed
+        ? { reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_note: parsed.data.note || null }
+        : { reviewed_by: null, reviewed_at: null, review_note: null },
+    )
+    .eq("id", parsed.data.shift_instance_id)
+    .eq("status", "closed")
+    .select("date")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!row) return { ok: false, error: "El turno debe estar cerrado para revisarlo." };
+
+  revalidatePath("/hoy");
+  revalidatePath(`/hoy/${row.date}`);
+  revalidatePath("/turnos/historial");
+  return { ok: true };
+}
+
 const CancelSchema = z.object({ id: z.string().uuid() });
 
 /** Admin cancels an ad-hoc task (soft — keeps the record for the bitácora). */

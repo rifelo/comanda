@@ -13,6 +13,10 @@ export interface ShiftSummary {
   completed_tasks: number;
   pct: number;
   novedad_count: number;
+  closed_at: string | null;
+  /** Admin review (0032). */
+  reviewed_at: string | null;
+  reviewed_by_name: string | null;
 }
 
 export async function getDashboardSummary(date: string): Promise<ShiftSummary[]> {
@@ -22,7 +26,8 @@ export async function getDashboardSummary(date: string): Promise<ShiftSummary[]>
   const { data: shifts } = await supabase
     .from("shift_instances")
     .select(
-      `id, restaurant_id, status, date,
+      `id, restaurant_id, status, date, closed_at, reviewed_at,
+       reviewer:profiles!shift_instances_reviewed_by_fkey(full_name),
        restaurants:restaurants!inner(name),
        templates:checklist_templates!inner(id, name),
        completions:task_completions(count),
@@ -68,6 +73,12 @@ export async function getDashboardSummary(date: string): Promise<ShiftSummary[]>
       completed_tasks: done,
       pct: total > 0 ? Math.round((done / total) * 100) : 0,
       novedad_count: novedadCount[s.id] ?? 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      closed_at: ((s as any).closed_at as string | null) ?? null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      reviewed_at: ((s as any).reviewed_at as string | null) ?? null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      reviewed_by_name: ((s as any).reviewer?.full_name as string | null) ?? null,
     };
   });
 }

@@ -4,13 +4,14 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { PhotoCapture } from "@/components/photo-capture";
 import { bucketAdHoc, bucketTasks } from "@/lib/turno/blocks";
-import { assignedFor, groupTasksByPuesto, turnoProgress, ALL_KEY, type PuestoGroup } from "@/lib/turno/state";
+import { assignedFor, groupTasksByPuesto, ALL_KEY, type PuestoGroup } from "@/lib/turno/state";
 import type { TurnoActor, TurnoBoardData, TurnoShift, TurnoPerson } from "@/lib/turno/server";
 import type { AdHocTask, TemplateTask } from "@/lib/types";
 import { nowInTz } from "@/lib/utils";
 import { closeTurnoAs, completeTaskAs, setAdHocDoneAs, submitNovedadAs, uncompleteTaskAs, uploadTurnoPhoto } from "./actions";
 import { initialsOf } from "./_components/avatar";
 import { Checklist } from "./_components/checklist";
+import { CloseConfirm, CloseSummary } from "./_components/close-summary";
 import { NovedadesSheet } from "./_components/novedades-sheet";
 import { PuestoDeck } from "./_components/puesto-deck";
 import { BlockNav, RailItem, TopBar, type BlockCounts } from "./_components/shell";
@@ -50,7 +51,9 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
   const [puestoKey, setPuestoKey] = React.useState<string | null>(null);
   const [startedAnyway, setStartedAnyway] = React.useState<string[]>([]);
   const [photoFor, setPhotoFor] = React.useState<TemplateTask | null>(null);
-  const [panel, setPanel] = React.useState<null | "novedades">(null);
+  const [panel, setPanel] = React.useState<null | "novedades" | "cerrar">(null);
+  // The turno this person just closed on this tablet → show its receipt.
+  const [justClosedId, setJustClosedId] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   // Wall clock in the sede's tz. Seeded by the server so SSR and the first
@@ -121,11 +124,16 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function closeShift(s: TurnoShift) {
-    const prog = turnoProgress(s.tasks, s.completions);
-    if (!prog.allDone && !window.confirm(`Faltan ${prog.total - prog.done} tareas. ¿Cerrar el turno igual?`)) return;
-    void run("close", () => closeTurnoAs({ shift_instance_id: s.instance.id }));
+  async function confirmClose(s: TurnoShift) {
+    const ok = await run("close", () => closeTurnoAs({ shift_instance_id: s.instance.id }));
+    if (ok) {
+      setJustClosedId(s.instance.id);
+      setPanel(null);
+    }
   }
+  // Receipt: the turno this tablet just closed, or a closed turno this person closed.
+  const showSummary = !!shift && shift.instance.status === "closed" && (justClosedId === shift.instance.id || shift.instance.closed_by === actor.profileId);
+  const othersOpen = data.turnos.some((t) => t.instance.status === "open" && t.instance.id !== shiftId);
 
   function toggle(s: TurnoShift, task: TemplateTask) {
     const done = !!s.completions[task.id];
@@ -165,7 +173,7 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
           {data.turnos.map((t) => (
             <React.Fragment key={t.instance.id}>
               <RailItem t={t} active={t.instance.id === shiftId} onClick={() => { setShiftId(t.instance.id); setPuestoKey(null); }} />
-              {t.instance.id === shiftId && counts && (flat || selectedGroup) && <BlockNav counts={counts} onJump={jump} />}
+              {t.instance.id === shiftId && counts && !showSummary && (flat || selectedGroup) && <BlockNav counts={counts} onJump={jump} />}
             </React.Fragment>
           ))}
         </aside>
@@ -178,25 +186,38 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
 
         {/* main */}
         <main style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "16px 24px 96px", position: "relative" }}>
-          {counts && (flat || selectedGroup) && (
+          {counts && !showSummary && (flat || selectedGroup) && (
             <div className="lg:hidden" style={{ margin: "-8px -12px 8px" }}>
               <BlockNav counts={counts} onJump={jump} compact />
             </div>
           )}
           {error && <div role="alert" style={{ marginBottom: 12, padding: "10px 14px", border: "1.5px solid var(--red)", color: "var(--red)", fontSize: 12, borderRadius: 4 }}>{error}</div>}
           {!shift && <div style={{ padding: "64px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Ningún turno opera hoy en {data.sede.name}.</div>}
-          {shift && group && !selectedGroup && (
+          {shift && showSummary && (
+            <CloseSummary
+              shift={shift}
+              actor={actor}
+              tz={data.sede.tz}
+              now={now}
+              othersOpen={othersOpen}
+              onSwitch={() => {
+                const next = data.turnos.find((t) => t.instance.status === "open" && t.instance.id !== shiftId);
+                if (next) { setShiftId(next.instance.id); setPuestoKey(null); }
+              }}
+            />
+          )}
+          {shift && !showSummary && group && !selectedGroup && (
             <PuestoDeck
               shift={shift}
               group={group}
               assignedTo={(g) => assignedTo(shift, g)}
               started={(g) => startedAnyway.includes(keyOf(shift, g.key))}
               onOpen={(g) => setPuestoKey(g.key)}
-              onClose={() => closeShift(shift)}
+              onClose={() => setPanel("cerrar")}
               busy={busy === "close"}
             />
           )}
-          {shift && group && selectedGroup && (
+          {shift && !showSummary && group && selectedGroup && (
             <Checklist
               shift={shift}
               group={selectedGroup}
@@ -212,11 +233,15 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
               onStartAnyway={() => startAnyway(keyOf(shift, selectedGroup.key))}
               onToggle={(task) => toggle(shift, task)}
               onToggleAdHoc={(task, done) => toggleAdHoc(shift, task, done)}
-              onClose={() => closeShift(shift)}
+              onClose={() => setPanel("cerrar")}
             />
           )}
         </main>
       </div>
+
+      {panel === "cerrar" && shift && (
+        <CloseConfirm shift={shift} now={now} busy={busy === "close"} onCancel={() => setPanel(null)} onConfirm={() => void confirmClose(shift)} />
+      )}
 
       {panel === "novedades" && shift && (
         <NovedadesSheet
