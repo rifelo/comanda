@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0032 · admin review of a closed turno
+-- 0033 · admin review of a closed turno
 -- =============================================================================
 -- The shift lead closes the turno on the tablet; the owner then looks at the
 -- evidence in /hoy and stamps it "revisado". Three nullable columns on the
