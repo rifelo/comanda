@@ -11,6 +11,7 @@ import {
   type PosCombo,
   type PosMenuItem,
   type PosModGroup,
+  type PosRecipeLine,
 } from "./types";
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
 
@@ -51,14 +52,14 @@ export async function getPosCatalog({
     supabase
       .from("productos")
       .select(
-        "id, category_id, name, description, sku, price_cop, stock_status",
+        "id, category_id, name, description, sku, price_cop, stock_status, image_url",
       )
       .eq("organization_id", organizationId)
       .order("name"),
     // Recipes drive the cup label's spec box ("2 SHOTS · 18 G").
     supabase
       .from("receta_items")
-      .select("producto_id, qty, ingredientes(name, unit)")
+      .select("producto_id, qty, unit, note, position, ingredientes(name, unit)")
       .eq("organization_id", organizationId),
     supabase
       .from("producto_categorias")
@@ -88,6 +89,8 @@ export async function getPosCatalog({
   const cats = (categorias ?? []) as ProductoCategoria[];
   // producto_id → recipe lines (name + unit + qty), for the cup label spec.
   const recipeByProduct = new Map<string, RecipeLine[]>();
+  // producto_id → the recipe as displayed (long-press on a tile), in line order.
+  const shownByProduct = new Map<string, Array<PosRecipeLine & { position: number }>>();
   for (const r of (recetaRows ?? []) as Array<Record<string, unknown>>) {
     const ing = r.ingredientes as { name: string; unit: string } | null;
     if (!ing) continue;
@@ -95,6 +98,9 @@ export async function getPosCatalog({
     const arr = recipeByProduct.get(pid) ?? [];
     arr.push({ name: ing.name, unit: ing.unit, qty: Number(r.qty) });
     recipeByProduct.set(pid, arr);
+    const shown = shownByProduct.get(pid) ?? [];
+    shown.push({ name: ing.name, qty: Number(r.qty), unit: (r.unit as string | null) || ing.unit, note: (r.note as string | null) ?? null, position: Number(r.position ?? 0) });
+    shownByProduct.set(pid, shown);
   }
 
   const catById = new Map<string, ProductoCategoria>();
@@ -143,6 +149,7 @@ export async function getPosCatalog({
     sku: string;
     price_cop: number;
     stock_status: "ok" | "bajo" | "sin";
+    image_url: string | null;
   }>).map((p) => {
     const own = p.category_id ? catById.get(p.category_id) ?? null : null;
     const top = topLevelOf(p.category_id);
@@ -181,6 +188,10 @@ export async function getPosCatalog({
       desc: p.description ?? "",
       printsLabel,
       spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
+      image: (p.image_url ?? "").trim() || null,
+      recipe: (shownByProduct.get(p.id) ?? [])
+        .sort((a, b) => a.position - b.position)
+        .map(({ name, qty, unit, note }) => ({ name, qty, unit, note })),
     };
   });
 

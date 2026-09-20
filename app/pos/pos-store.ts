@@ -111,7 +111,7 @@ export interface PosState {
   /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
   view: "sale" | "tender" | "done" | "ordenes";
   /** Item sheet (modifiers / qty) — add a new product or edit a ticket line. */
-  sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | null;
+  sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | { mode: "receta"; productId: string } | null;
   /** Free-text search over the catalog (name / sku / description). */
   search: string;
   /** Assistant drawer open? */
@@ -322,6 +322,11 @@ export const orderTotal = (order: OrderLine[], catalog: PosCatalog): number =>
  * cashier picks size/milk/etc. first (Square behaviour); plain items go
  * straight into the ticket, merging with an identical line.
  */
+/** Long-press on a tile: show the recipe (with the product photo) without touching the ticket. */
+export function showRecipe(id: string) {
+  if (!posStore.get().catalog.byId[id]) return;
+  posStore.set({ sheet: { mode: "receta", productId: id } });
+}
 export function tapItem(id: string) {
   const p = posStore.get().catalog.byId[id];
   if (!p) return;

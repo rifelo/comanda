@@ -52,6 +52,7 @@ import {
   modSummary,
   posDefaultMods,
   tapItem,
+  showRecipe,
   addCombo,
   addLineWithMods,
   replaceLine,
@@ -157,6 +158,7 @@ const POS_CSS = `
   .pos-root a{min-height:0}
   .pos-root button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .pos-tile:active:not(:disabled){transform:scale(.97)}
+  .pos-tile{-webkit-touch-callout:none;user-select:none}
   .pos-tile{transition:transform .06s, border-color .12s}
   .pos-eq i{display:inline-block;width:3px;height:14px;background:currentColor;transform-origin:bottom;
     animation:pos-eq .9s ease-in-out infinite}
@@ -264,7 +266,9 @@ function Register({ mode }: { mode: "device" | "user" }) {
         <Ticket />
         {s.aiOpen && <AiDrawer />}
       </div>
-      {s.sheet && <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />}
+      {s.sheet && (s.sheet.mode === "receta"
+        ? <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />
+        : <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />)}
       {s.view === "ordenes" && <OrdenesScreen />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
@@ -593,10 +597,39 @@ function Banner({ children, onClose, closeLabel }: { children: React.ReactNode; 
   );
 }
 
+/** How long a finger has to rest on a tile before it shows the recipe instead of adding. */
+const LONG_PRESS_MS = 550;
+
+/**
+ * Tap = add to the ticket. Hold (or right-click) = open the recipe sheet.
+ * The hold arms a timer on pointer down and disarms it on up / leave /
+ * cancel; when it fires, the click that follows the release is swallowed.
+ */
+function useLongPress(onLong: () => void) {
+  const timer = React.useRef<number | null>(null);
+  const fired = React.useRef(false);
+  const clear = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0 && e.pointerType === "mouse") return;
+      fired.current = false;
+      clear();
+      timer.current = window.setTimeout(() => { fired.current = true; timer.current = null; onLong(); }, LONG_PRESS_MS);
+    },
+    onPointerUp: clear,
+    onPointerLeave: clear,
+    onPointerCancel: clear,
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); clear(); fired.current = true; onLong(); },
+    /** Wrap the click handler so a completed hold doesn't also add. */
+    guard: (fn: () => void) => () => { if (fired.current) { fired.current = false; return; } fn(); },
+  };
+}
+
 function ProductTile({ p, accent, hl, hlRef }: { p: PosMenuItem; accent: string; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
   const out = p.stock === "sin";
+  const hold = useLongPress(() => showRecipe(p.id));
   return (
-    <button ref={hlRef} disabled={out} onClick={() => tapItem(p.id)} className={"pos-tile" + (hl ? " pos-hl" : "")} title={p.desc || p.name} style={{
+    <button ref={hlRef} disabled={out} onClick={hold.guard(() => tapItem(p.id))} onPointerDown={hold.onPointerDown} onPointerUp={hold.onPointerUp} onPointerLeave={hold.onPointerLeave} onPointerCancel={hold.onPointerCancel} onContextMenu={hold.onContextMenu} className={"pos-tile" + (hl ? " pos-hl" : "")} title={p.desc || p.name} style={{
       textAlign: "left", padding: "12px 12px 10px", borderRadius: 6, cursor: out ? "not-allowed" : "pointer", minHeight: 112, position: "relative", overflow: "hidden",
       border: `1.5px solid ${hl ? C.red : C.rule}`, background: hl ? C.paperLt : out ? C.paperDk : C.paperLt, opacity: out ? 0.55 : 1, display: "flex", flexDirection: "column",
     }}>
@@ -1217,7 +1250,7 @@ function TicketLine({ idx, line, onPerson }: { idx: number; line: OrderLine; onP
 function ItemSheet() {
   const s = usePos();
   const catalog = useCatalog();
-  const sheet = s.sheet!;
+  const sheet = s.sheet as { mode: "add"; productId: string } | { mode: "edit"; idx: number };
   const line = sheet.mode === "edit" ? s.order[sheet.idx] : undefined;
   const productId = sheet.mode === "add" ? sheet.productId : line?.id;
   const p = productId ? catalog.byId[productId] : undefined;
@@ -1317,6 +1350,62 @@ function ItemSheet() {
           >
             {missing.length ? `Elige ${missing[0].name.toLowerCase()}` : sheet.mode === "add" ? `Agregar · ${posMoney(unit * qty)}` : qty === 0 ? "Quitar del pedido" : `Guardar · ${posMoney(unit * qty)}`}
           </button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Recipe sheet — long-press on a tile: photo, description, ingredients
+// ════════════════════════════════════════════════════════════════
+function RecetaSheet({ productId }: { productId: string }) {
+  const catalog = useCatalog();
+  const p = catalog.byId[productId];
+  const close = () => posStore.set({ sheet: null });
+  React.useEffect(() => { if (!p) close(); }, [p]);
+  if (!p) return null;
+  const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000).replace(".", ","));
+  return (
+    <Overlay onClose={close} align="center">
+      <div role="dialog" aria-modal aria-label={`Receta · ${p.name}`} style={{ width: "min(620px, 94vw)", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
+        {p.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={p.image} alt={p.name} style={{ width: "100%", height: 220, objectFit: "cover", display: "block", background: C.paperDk, flexShrink: 0 }} />
+        ) : (
+          <div aria-hidden style={{ height: 8, background: C.ink, flexShrink: 0 }} />
+        )}
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted }}>Receta</div>
+            <div style={{ fontFamily: F.slab, fontSize: 26, lineHeight: 1.1, color: C.ink, marginTop: 2 }}>{p.name}</div>
+            {p.desc && <div style={{ fontSize: 12.5, color: C.ink2, marginTop: 6, lineHeight: 1.5 }}>{p.desc}</div>}
+            {p.spec.length > 0 && p.printsLabel && (
+              <div style={{ display: "inline-flex", gap: 6, marginTop: 8 }}>
+                {p.spec.map((sp) => <span key={sp} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", border: `1.5px solid ${C.ink}`, padding: "3px 8px", borderRadius: 2 }}>{sp}</span>)}
+              </div>
+            )}
+          </div>
+          <button onClick={close} aria-label="Cerrar" style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+        </div>
+        <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "6px 20px 14px" }}>
+          {p.recipe.length === 0 ? (
+            <div style={{ padding: "18px 0", color: C.muted, fontSize: 12.5, lineHeight: 1.5 }}>Este producto no tiene receta cargada. Se agrega desde el panel, en Operación → Recetas.</div>
+          ) : (
+            p.recipe.map((l, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "10px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
+                <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, color: C.ink, minWidth: 82, textAlign: "right", whiteSpace: "nowrap" }}>{fmtQty(l.qty)} <span style={{ fontSize: 11, fontWeight: 400, color: C.muted }}>{l.unit}</span></span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.ink }}>{l.name}</span>
+                  {l.note && <span style={{ display: "block", fontSize: 12, color: C.ink2, marginTop: 2, lineHeight: 1.45 }}>{l.note}</span>}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+        <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 11, color: C.muted }}>Mantén presionado un producto para ver su receta.</span>
+          <button className="cmd-btn" onClick={() => { close(); tapItem(p.id); }} disabled={p.stock === "sin"} style={{ marginLeft: "auto", height: 48, padding: "0 18px", fontSize: 13 }}>Agregar al pedido</button>
         </div>
       </div>
     </Overlay>

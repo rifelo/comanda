@@ -31,6 +31,17 @@ export interface PosMenuItem {
   printsLabel: boolean;
   /** Spec box of the cup label, e.g. ["2 SHOTS · 18 G"]. */
   spec: string[];
+  /** Product photo uploaded from the catálogo (public URL), if any. */
+  image: string | null;
+  /** The recipe as the barista reads it: one line per ingredient, in order. */
+  recipe: PosRecipeLine[];
+}
+
+export interface PosRecipeLine {
+  name: string;
+  qty: number;
+  unit: string;
+  note: string | null;
 }
 
 export interface PosCombo {
