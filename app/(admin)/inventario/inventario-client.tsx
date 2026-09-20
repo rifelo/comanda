@@ -9,6 +9,7 @@
  * truth for stock_current).
  */
 import * as React from "react";
+import Link from "next/link";
 import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
 import { unitCostFromPack } from "@/lib/cost";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
@@ -1912,6 +1913,9 @@ export function InventarioClient({
             >
               {conteoMode ? "✓ Aplicar conteo" : "Modo conteo"}
             </button>
+            {!conteoMode && (
+              <Link href="/inventario/conteos" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Conteos del equipo</Link>
+            )}
             {conteoMode ? (
               <button
                 type="button"
