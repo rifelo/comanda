@@ -129,6 +129,10 @@ export interface ShiftInstance {
   opened_at: string | null;
   closed_by: string | null;
   closed_at: string | null;
+  /** Admin review of a closed turno (0032). */
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
 }
 
 export interface TaskCompletion {

@@ -13,6 +13,7 @@ import {
 } from "@/components/comanda/primitives";
 import { formatTime, formatDateLabelEs } from "@/lib/utils";
 import { AsignarTareaForm } from "./asignar-tarea-form";
+import { ReviewButton } from "./review-button";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,12 @@ export default async function HoyDetailPage({
   const puestoOf = (t: { puesto_id: string | null }) => (t.puesto_id ? puestoName.get(t.puesto_id) ?? null : view.puestos.length ? "Compartida" : null);
   const photos = (completionDetails ?? []).filter((c) => c.photo_url);
   const opener = view.opener?.full_name ?? "—";
+  // Admin review (0032): the reviewer is an org admin, so the roster has the name.
+  const review = {
+    status: view.shift.status,
+    reviewedAt: view.shift.reviewed_at ? formatTime(view.shift.reviewed_at, sede.tz) : null,
+    reviewedBy: view.shift.reviewed_by ? roster.find((r) => r.id === view.shift.reviewed_by)?.name ?? null : null,
+  };
 
   // Ad-hoc tasks (0015): drop cancelled, immediate (no due_time) first.
   const adHoc = view.adHocTasks
@@ -158,6 +165,11 @@ export default async function HoyDetailPage({
             <Link href={`/shift/${shiftId}`} className="cmd-btn red" style={{ display: "block", marginTop: 10, textAlign: "center", textDecoration: "none" }}>
               ✎ Llenar turno
             </Link>
+          )}
+          {view.shift.status === "closed" && (
+            <div style={{ marginTop: 12 }}>
+              <ReviewButton shiftId={shiftId} status={review.status} reviewedAt={review.reviewedAt} reviewedBy={review.reviewedBy} compact />
+            </div>
           )}
         </div>
 
@@ -402,6 +414,11 @@ export default async function HoyDetailPage({
             >
               ✎ Llenar turno
             </Link>
+          )}
+          {view.shift.status === "closed" && (
+            <span style={{ marginRight: 12 }}>
+              <ReviewButton shiftId={shiftId} status={review.status} reviewedAt={review.reviewedAt} reviewedBy={review.reviewedBy} />
+            </span>
           )}
           <span
             className="cmd-num"

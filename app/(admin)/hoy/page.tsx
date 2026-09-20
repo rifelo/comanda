@@ -52,7 +52,14 @@ export default async function HoyPage() {
   const todayIdx = dowToday === 0 ? 6 : dowToday - 1;
 
   const shiftIds = sedeSummary.map((s) => s.shift_id);
-  const bitacora = shiftIds.length ? await loadBitacora(supabase, shiftIds) : [];
+  const [bitacora, { data: photoRows }] = await Promise.all([
+    shiftIds.length ? loadBitacora(supabase, shiftIds) : Promise.resolve([] as BitacoraEntry[]),
+    shiftIds.length
+      ? supabase.from("task_completions").select("shift_instance_id, template_task_id, photo_url").in("shift_instance_id", shiftIds)
+      : Promise.resolve({ data: [] as { shift_instance_id: string; template_task_id: string; photo_url: string | null }[] }),
+  ]);
+  // Evidence taken today: (shift, task) pairs whose completion carries a photo.
+  const photoTaken = new Set((photoRows ?? []).filter((r) => r.photo_url).map((r) => `${r.shift_instance_id}:${r.template_task_id}`));
   const lastMovement = new Map<string, string>();
   for (const e of bitacora) {
     if (e.tag === "task" && !lastMovement.has(e.shiftId)) lastMovement.set(e.shiftId, e.body);
@@ -70,15 +77,22 @@ export default async function HoyPage() {
       const who = pc?.member_id ? rosterById.get(pc.member_id) ?? null : null;
       return { id: p.puesto_id, name: p.puesto.name, color: p.puesto.color, who: who?.name ?? null };
     });
+    // Photo-evidence tasks of today's instance still without a photo.
+    const photosPending = s ? t.tasks.filter((tk) => tk.requires_photo && !photoTaken.has(`${s.shift_id}:${tk.id}`)).length : 0;
     return {
       puestoLines,
       id: t.id,
       name: t.name,
       horario: `${t.inicio} – ${t.fin}`,
       isOpen,
+      closed,
       statusLabel: isOpen ? "EN CURSO" : closed ? "CERRADO" : "POR ABRIR",
       hasData: !!s,
       shiftId: s?.shift_id ?? null,
+      photosPending,
+      reviewedAt: s?.reviewed_at ? formatTime(s.reviewed_at, tz) : null,
+      reviewedBy: s?.reviewed_by_name ?? null,
+      needsReview: closed && !s?.reviewed_at,
       done: s?.completed_tasks ?? 0,
       total: s?.total_tasks ?? t.tasks.length,
       novedades: s?.novedad_count ?? 0,
@@ -94,13 +108,14 @@ export default async function HoyPage() {
   const doneTasks = cards.reduce((a, c) => a + c.done, 0);
   const globalPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
   const totalNovedades = cards.reduce((a, c) => a + c.novedades, 0);
-  const photosPending = 1; // No DB field for "pending verified photos" yet; mirror the design's static count.
+  const photosPending = cards.reduce((a, c) => a + c.photosPending, 0);
+  const porRevisar = cards.filter((c) => c.needsReview).length;
 
   const kpis = [
     {
       label: "Turnos en curso",
       val: String(openCount),
-      sub: `de ${cards.length} hoy`,
+      sub: porRevisar > 0 ? `de ${cards.length} hoy · ${porRevisar} por revisar` : `de ${cards.length} hoy`,
     },
     { label: "Avance del día", val: `${globalPct}%`, sub: `${doneTasks} / ${totalTasks} tareas` },
     {
@@ -108,7 +123,7 @@ export default async function HoyPage() {
       val: String(totalNovedades),
       sub: totalNovedades > 0 ? "revisar bitácora" : "sin reportes nuevos",
     },
-    { label: "Fotos pendientes", val: String(photosPending), sub: "por verificar" },
+    { label: "Fotos pendientes", val: String(photosPending), sub: photosPending > 0 ? "sin tomar hoy" : "todas tomadas" },
   ];
 
   return (
@@ -199,6 +214,11 @@ export default async function HoyPage() {
                   {c.statusLabel}
                 </span>
               </div>
+              {c.reviewedAt ? (
+                <div style={{ marginTop: 8 }}>
+                  <Stamp rotate={-3} size={8.5} color="var(--green)">revisado · {c.reviewedBy ?? "admin"} · {c.reviewedAt}</Stamp>
+                </div>
+              ) : null}
 
               <div className="flex items-center" style={{ gap: 10, marginTop: 14 }}>
                 <CmdProgress done={c.done} total={c.total} color={c.isOpen ? "var(--ink)" : "var(--muted)"} />
@@ -265,10 +285,10 @@ export default async function HoyPage() {
                 {c.shiftId ? (
                   <Link
                     href={`/hoy/${today}?turno=${c.shiftId}`}
-                    className="cmd-btn ghost sm"
-                    style={{ textDecoration: "none", opacity: c.isOpen ? 1 : 0.7 }}
+                    className={c.needsReview ? "cmd-btn red sm" : "cmd-btn ghost sm"}
+                    style={{ textDecoration: "none", opacity: c.isOpen || c.needsReview ? 1 : 0.7 }}
                   >
-                    {c.isOpen ? "abrir detalle →" : "ver plantilla →"}
+                    {c.isOpen ? "abrir detalle →" : c.needsReview ? "revisar →" : c.closed ? "ver detalle →" : "ver plantilla →"}
                   </Link>
                 ) : (
                   <span className="cmd-btn ghost sm" style={{ opacity: 0.5, cursor: "default" }}>
@@ -423,6 +443,11 @@ export default async function HoyPage() {
                     {c.statusLabel}
                   </span>
                 </div>
+                {c.reviewedAt ? (
+                  <div style={{ marginTop: 10 }}>
+                    <Stamp rotate={-3} size={9} color="var(--green)">revisado · {c.reviewedBy ?? "admin"} · {c.reviewedAt}</Stamp>
+                  </div>
+                ) : null}
 
                 <div className="flex items-center" style={{ gap: 10, marginTop: 18 }}>
                   <CmdProgress done={c.done} total={c.total} color={c.isOpen ? "var(--ink)" : "var(--muted)"} />
@@ -513,9 +538,9 @@ export default async function HoyPage() {
                     <Link
                       href={`/hoy/${today}?turno=${c.shiftId}`}
                       className="cmd-link"
-                      style={{ fontSize: 11 }}
+                      style={{ fontSize: 11, color: c.needsReview ? "var(--red)" : undefined, fontWeight: c.needsReview ? 700 : undefined }}
                     >
-                      {c.isOpen ? "abrir detalle →" : "ver detalle →"}
+                      {c.isOpen ? "abrir detalle →" : c.needsReview ? "revisar →" : "ver detalle →"}
                     </Link>
                   ) : (
                     <span className="cmd-link" style={{ fontSize: 11, opacity: 0.5 }}>
