@@ -4,7 +4,7 @@ import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
   id: "p-latte", name: "Latte", catId: "c", sub: "", sku: "BC-007", price: 7500,
-  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "", printsLabel: true, spec: ["1 SHOT · 9 G"],
+  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "", printsLabel: true, spec: ["1 SHOT · 9 G"], image: null, recipe: [],
 };
 const tinto: PosMenuItem = { ...latte, id: "p-tinto", name: "Tinto", price: 3000, mods: [] };
 const catalog: PosCatalog = {
