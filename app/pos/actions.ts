@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requirePosContext } from "@/lib/pos/server";
+import { requirePosContext, requirePosAuth, type PosAuth } from "@/lib/pos/server";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
@@ -133,7 +133,7 @@ function itemRows(orgId: string, ordenId: string, items: PricedItem[]) {
 }
 
 /** Profile behind the sale for the movement log (null for a paired device). */
-function actorId(ctx: PosCtx): string | null {
+function actorId(ctx: Pick<PosAuth, "actor">): string | null {
   return ctx.actor.kind === "user" ? ctx.actor.profileId : null;
 }
 
@@ -352,7 +352,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   const parsed = ListarOrdenesSchema.safeParse(input ?? {});
   if (!parsed.success) return { ok: false, error: "Filtro inválido." };
   const { status, day } = parsed.data;
-  const { supabase, organizationId: orgId } = await requirePosContext();
+  const { supabase, organizationId: orgId } = await requirePosAuth();
   let q = supabase
     .from("ordenes")
     .select(
@@ -469,7 +469,7 @@ export type RegistrarPagoResult =
  * stored total is covered. Charges STORED prices, never a re-price.
  */
 async function applyPago(
-  ctx: PosCtx,
+  ctx: PosAuth,
   ordenId: string,
   customerName: string | null,
   payment: z.infer<typeof PaymentSchema>,
@@ -551,7 +551,7 @@ async function applyPago(
 export async function registrarPago(input: unknown): Promise<RegistrarPagoResult> {
   const parsed = RegistrarPagoSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pago inválido." };
-  const ctx = await requirePosContext();
+  const ctx = await requirePosAuth();
   const { ordenId, customerName, payment, amount } = parsed.data;
   return applyPago(ctx, ordenId, customerName ?? null, payment, amount);
 }
@@ -564,7 +564,7 @@ export async function registrarPago(input: unknown): Promise<RegistrarPagoResult
 export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult> {
   const parsed = CobrarPendienteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pago inválido." };
-  const ctx = await requirePosContext();
+  const ctx = await requirePosAuth();
   const res = await applyPago(ctx, parsed.data.ordenId, null, parsed.data.payment, undefined);
   if (!res.ok) return res;
   return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total, change: res.change };
@@ -590,7 +590,7 @@ export type CombinarResult = { ok: true; targetId: string } | { ok: false; error
 export async function combinarPendientes(input: unknown): Promise<CombinarResult> {
   const parsed = CombinarSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Selección inválida." };
-  const ctx = await requirePosContext();
+  const ctx = await requirePosAuth();
   const { supabase, organizationId: orgId } = ctx;
   const { targetId, sourceIds } = parsed.data;
   if (sourceIds.includes(targetId)) return { ok: false, error: "El destino no puede estar entre las fuentes." };
@@ -606,7 +606,7 @@ export async function combinarPendientes(input: unknown): Promise<CombinarResult
 export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   const parsed = CancelarPendienteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
-  const ctx = await requirePosContext();
+  const ctx = await requirePosAuth();
   const { supabase, organizationId: orgId } = ctx;
   const { data: cur } = await supabase
     .from("ordenes")
@@ -803,7 +803,7 @@ export type TranscribeResult =
 export async function transcribeAudio(
   formData: FormData,
 ): Promise<TranscribeResult> {
-  await requirePosContext();
+  await requirePosAuth();
 
   const file = formData.get("audio");
   if (!(file instanceof File) || file.size === 0) {

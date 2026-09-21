@@ -70,6 +70,10 @@ import {
   dismissSuggestion,
   appendTranscript,
   resetConversation,
+  hydrateOutbox,
+  hydratePendientes,
+  retryOutbox,
+  dropOutbox,
   startTender,
   cancelTender,
   completeSale,
@@ -246,6 +250,8 @@ function Register({ mode }: { mode: "device" | "user" }) {
   // Open (unpaid) orders: load on mount and keep the badge fresh while the
   // tab is visible — another register may send or settle orders too.
   React.useEffect(() => {
+    hydratePendientes();
+    hydrateOutbox();
     void refreshPendientes();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshPendientes();
@@ -301,6 +307,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <SearchBox />
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <OutboxChip />
         <PendientesChip />
         <PrinterChip />
         {mode === "device" && <UnlinkButton station={station} />}
@@ -1558,6 +1565,26 @@ function RecetaSheet({ productId }: { productId: string }) {
   );
 }
 
+/** Orders still on their way to the server, or that failed and wait for a retry. */
+function OutboxChip() {
+  const s = usePos();
+  const sending = s.outbox.filter((j) => j.status === "sending").length;
+  const failed = s.outbox.filter((j) => j.status === "failed").length;
+  if (!sending && !failed) return null;
+  if (failed) {
+    return (
+      <button onClick={() => retryOutbox()} title={s.outbox.find((j) => j.status === "failed")?.error ?? undefined} style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.red}`, background: C.red, color: C.paperLt, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
+        {failed} sin registrar · reintentar
+      </button>
+    );
+  }
+  return (
+    <span style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>
+      Enviando {sending}…
+    </span>
+  );
+}
+
 function Overlay({ children, onClose, align }: { children: React.ReactNode; onClose?: () => void; align: "center" | "fill" }) {
   return (
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} style={{ position: "absolute", inset: 0, zIndex: 40, background: align === "fill" ? C.paper : "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: align === "fill" ? 0 : 16 }}>
@@ -1816,13 +1843,26 @@ function ReceiptScreen() {
   const s = usePos();
   const pendiente = s.receiptKind === "pendiente";
   const method = methodLabel(s.lastMethod);
+  const job = s.receiptJobId ? s.outbox.find((j) => j.id === s.receiptJobId) ?? null : null;
+  const registrando = !!job && job.status === "sending";
+  const failed = !!job && job.status === "failed";
   const btnRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { btnRef.current?.focus(); }, []);
   return (
     <Overlay align="fill">
       <div className="pos-card" style={{ width: "min(560px, 92vw)", textAlign: "center", padding: "40px 32px 32px", border: `1.5px solid ${C.ink}`, borderRadius: 10, background: C.paperLt }}>
-        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: pendiente ? C.amber : C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{pendiente ? "⏱" : "✓"}</div>
-        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>{pendiente ? "Pedido enviado" : "Venta registrada"}</div>
+        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: failed ? C.red : registrando ? C.muted : pendiente ? C.amber : C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{failed ? "!" : registrando ? "…" : pendiente ? "⏱" : "✓"}</div>
+        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>{failed ? "No se registró" : registrando ? "Registrando pedido…" : pendiente ? "Pedido enviado" : "Venta registrada"}</div>
+        {registrando && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Puedes empezar el siguiente pedido; el número y las etiquetas salen solos en cuanto el servidor confirme.</div>}
+        {failed && job && (
+          <div role="alert" style={{ marginTop: 10, border: `1px solid ${C.red}`, color: C.red, padding: "10px 12px", borderRadius: 4, fontSize: 12.5, textAlign: "left" }}>
+            {job.error ?? "No se pudo registrar el pedido."}
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button className="cmd-btn" onClick={() => retryOutbox(job.id)} style={{ height: 40 }}>Reintentar</button>
+              <button onClick={() => { if (window.confirm("¿Descartar este pedido? No quedará registrado.")) { dropOutbox(job.id); resetConversation(); } }} style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.red}`, background: "transparent", color: C.red, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Descartar</button>
+            </div>
+          </div>
+        )}
         <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase", marginTop: 6 }}>
           {pendiente ? "Pendiente de pago · " : ""}Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.orderNo}</span>{pendiente ? "" : ` · ${method}`}{s.customerName ? ` · ${s.customerName}` : ""}
         </div>

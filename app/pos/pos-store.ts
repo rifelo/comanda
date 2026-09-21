@@ -170,6 +170,10 @@ export interface PosState {
   merge: { on: boolean; sel: string[]; target: string | null; targetChosen: boolean; confirming: boolean; busy: boolean; error: string | null };
   /** What the receipt screen describes: a paid sale or an order sent unpaid. */
   receiptKind: "pagada" | "pendiente";
+  /** New orders on their way to the server; the register never waits on them. */
+  outbox: OutboxItem[];
+  /** The outbox job the receipt screen is showing, until it lands. */
+  receiptJobId: string | null;
   /** AI "frase del día" label: last generated text + request state. */
   frase: string | null;
   fraseLoading: boolean;
@@ -232,6 +236,8 @@ export const POS_INITIAL: PosState = {
   ordenSel: null,
   merge: { on: false, sel: [], target: null, targetChosen: false, confirming: false, busy: false, error: null },
   receiptKind: "pagada",
+  outbox: [],
+  receiptJobId: null,
   frase: null,
   fraseLoading: false,
   fraseError: null,
@@ -673,7 +679,107 @@ export function resetConversation() {
     ordenes: s.ordenes,
     ordenesTab: s.ordenesTab,
     ordenesDay: s.ordenesDay,
+    outbox: s.outbox,
   }));
+}
+
+// ── outbox: new orders are sent in the background ───────────────
+/**
+ * A new order leaves the register the moment the cashier confirms it: the
+ * receipt opens at once ("Registrando…"), the next ticket can start, and
+ * the request runs behind. When it lands the receipt gets its folio and the
+ * labels print; if it fails the job stays here, marked, until it is retried
+ * or dropped. Persisted per tablet so a reload never loses a sale.
+ */
+export interface OutboxItem {
+  id: string;
+  kind: "pagada" | "pendiente";
+  status: "sending" | "failed";
+  error: string | null;
+  createdAt: number;
+  base: {
+    orderType: PosState["orderType"];
+    sinGluten: boolean;
+    lines: ReturnType<typeof linesPayload>;
+    customerName?: string;
+    customerNames?: string[];
+    note?: string;
+  };
+  payment?: { method: PayMethodId; tendered: number | null };
+  /** What the labels and the receipt need, frozen at confirm time. */
+  snapshot: { order: OrderLine[]; people: string[]; customerName: string; total: number; change: number };
+}
+const OUTBOX_KEY = "pos:outbox";
+function persistOutbox() {
+  try {
+    window.localStorage.setItem(OUTBOX_KEY, JSON.stringify(posStore.get().outbox));
+  } catch { /* private mode */ }
+}
+/** Restore unsent orders from the last session and send them. */
+export function hydrateOutbox() {
+  try {
+    const raw = window.localStorage.getItem(OUTBOX_KEY);
+    if (!raw) return;
+    const items = (JSON.parse(raw) as OutboxItem[]).map((j) => ({ ...j, status: "sending" as const, error: null }));
+    if (!items.length) return;
+    posStore.set((st) => ({ ...st, outbox: [...items, ...st.outbox] }));
+    void runOutbox();
+  } catch { /* ignore */ }
+}
+function enqueueOutbox(job: OutboxItem) {
+  posStore.set((st) => ({ ...st, outbox: [...st.outbox, job] }));
+  persistOutbox();
+  void runOutbox();
+}
+let outboxRunning = false;
+export async function runOutbox() {
+  if (outboxRunning) return;
+  outboxRunning = true;
+  try {
+    for (;;) {
+      const job = posStore.get().outbox.find((j) => j.status === "sending");
+      if (!job) break;
+      let res: Awaited<ReturnType<typeof crearOrden>> | Awaited<ReturnType<typeof guardarPendiente>>;
+      try {
+        res = job.kind === "pagada"
+          ? await crearOrden({ ...job.base, payment: job.payment })
+          : await guardarPendiente(job.base);
+      } catch {
+        res = { ok: false, error: "Sin conexión con el servidor." };
+      }
+      if (res.ok) {
+        const folio = res.folio;
+        const change = Number((res as { change?: number }).change ?? 0);
+        posStore.set((st) => ({
+          ...st,
+          outbox: st.outbox.filter((j) => j.id !== job.id),
+          ...(st.receiptJobId === job.id ? { orderNo: folio, sent: true, lastChange: change, lastTotal: res.total, receiptJobId: null } : {}),
+        }));
+        printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio);
+        void refreshPendientes();
+      } else {
+        const error = res.error;
+        posStore.set((st) => ({ ...st, outbox: st.outbox.map((j) => (j.id === job.id ? { ...j, status: "failed", error } : j)) }));
+      }
+      persistOutbox();
+    }
+  } finally {
+    outboxRunning = false;
+    persistOutbox();
+  }
+}
+export function retryOutbox(id?: string) {
+  posStore.set((st) => ({ ...st, outbox: st.outbox.map((j) => (j.status === "failed" && (!id || j.id === id) ? { ...j, status: "sending", error: null } : j)) }));
+  persistOutbox();
+  void runOutbox();
+}
+/** Drop a failed order for good (the cashier decided it is not coming back). */
+export function dropOutbox(id: string) {
+  posStore.set((st) => ({ ...st, outbox: st.outbox.filter((j) => j.id !== id), receiptJobId: st.receiptJobId === id ? null : st.receiptJobId }));
+  persistOutbox();
+}
+function newJobId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** Go to the tender screen (Square "Charge"). */
@@ -841,6 +947,20 @@ export async function completeSale() {
   };
   const payment = { method: s.payMethod, tendered };
 
+  if (!s.pending) {
+    // A new sale: hand it to the outbox and open the receipt right away.
+    const change = tendered !== null ? tendered - total : 0;
+    const job: OutboxItem = {
+      id: newJobId(), kind: "pagada", status: "sending", error: null, createdAt: Date.now(),
+      base, payment, snapshot: { order: s.order, people: s.people, customerName: s.customerName, total, change },
+    };
+    posStore.set({
+      sending: false, sent: false, orderNo: "…", view: "done", receiptKind: "pagada",
+      lastTotal: total, lastChange: change, lastMethod: s.payMethod, receiptJobId: job.id,
+    });
+    enqueueOutbox(job);
+    return;
+  }
   let res: Awaited<ReturnType<typeof crearOrden>>;
   if (s.pending) {
     if (s.pending.mode === "edit") {
@@ -871,12 +991,7 @@ export async function completeSale() {
       lastMethod: s.payMethod,
       receiptKind: "pagada",
     });
-    // Label for the order (customer name + folio). Queued and non-blocking:
-    // a printer problem shows on the chip, never on the receipt. A pending
-    // order already got its label when it was sent.
-    if (!s.pending) {
-      printSaleLabels(s, res.folio);
-    }
+    // A pending order already got its labels when it was sent.
     void refreshPendientes();
   } else posStore.set({ sending: false, sendError: res.error });
 }
@@ -887,6 +1002,30 @@ export async function completeSale() {
  * prints on the first send only.
  */
 export async function savePending() {
+  const s = posStore.get();
+  if (!s.pending) {
+    if (!s.order.length || s.sending) return;
+    if (s.order.some((l) => l.missing)) {
+      posStore.set({ sendError: "Quita el producto no disponible para continuar." });
+      return;
+    }
+    const total = orderTotal(s.order, s.catalog);
+    const job: OutboxItem = {
+      id: newJobId(), kind: "pendiente", status: "sending", error: null, createdAt: Date.now(),
+      base: {
+        orderType: s.orderType,
+        sinGluten: s.noteSinGluten,
+        lines: linesPayload(s.order),
+        customerName: s.customerName.trim() || undefined,
+        customerNames: s.people.length ? s.people : undefined,
+        note: s.note.trim() || undefined,
+      },
+      snapshot: { order: s.order, people: s.people, customerName: s.customerName, total, change: 0 },
+    };
+    posStore.set({ sending: false, sent: false, orderNo: "…", view: "done", lastChange: 0, lastTotal: total, receiptKind: "pendiente", receiptJobId: job.id });
+    enqueueOutbox(job);
+    return;
+  }
   const res = await persistPending();
   if (!res.ok) return;
   posStore.set({
@@ -925,7 +1064,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     return { ok: false };
   }
   posStore.set({ sending: false });
-  if (!s.pending) printSaleLabels(s, res.folio);
+  if (!s.pending) printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio);
   void refreshPendientes();
   return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total };
 }
@@ -938,6 +1077,16 @@ let refreshAgain = false;
  * one is in progress queues exactly one more run — a sale that lands during
  * a refresh must not leave the badge stale until the next tick.
  */
+const PENDIENTES_KEY = "pos:pendientes";
+/** Show the last known queue immediately; the refresh that follows corrects it. */
+export function hydratePendientes() {
+  try {
+    const raw = window.localStorage.getItem(PENDIENTES_KEY);
+    if (!raw) return;
+    const cached = JSON.parse(raw) as PendingOrder[];
+    posStore.set((st) => (st.pendientes.length ? st : { ...st, pendientes: cached }));
+  } catch { /* ignore */ }
+}
 export async function refreshPendientes() {
   if (refreshing) {
     refreshAgain = true;
@@ -955,6 +1104,7 @@ export async function refreshPendientes() {
             // A pending order loaded for payment follows the stored total, so
             // the tender never shows a number the server won't charge.
             const fresh = st.pending?.mode === "charge" ? res.orders.find((o) => o.id === st.pending!.id) : undefined;
+            try { window.localStorage.setItem(PENDIENTES_KEY, JSON.stringify(res.orders)); } catch { /* ignore */ }
             return {
               ...st,
               pendientes: res.orders,
@@ -1100,21 +1250,28 @@ export function chargePendingSplit(o: PendingOrder) {
 }
 /** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
 export async function cancelPending(id: string) {
-  const res = await cancelarPendiente({ ordenId: id });
-  if (!res.ok) {
-    posStore.set({ pendientesError: res.error });
-    void refreshPendientes();
-    return;
-  }
-  const s = posStore.get();
+  // Optimistic: the card leaves at once; the server confirms behind, and a
+  // refusal puts it back with the reason.
+  const before = posStore.get();
   posStore.set({
-    pendientes: s.pendientes.filter((o) => o.id !== id),
+    pendientes: before.pendientes.filter((o) => o.id !== id),
     pendientesError: null,
-    // Reflect it in the Pedidos view right away; the refresh confirms.
-    ordenes: s.ordenes.map((o) => (o.id === id ? { ...o, status: "cancelada" as const } : o)),
+    // In the queue the card leaves; in history it turns cancelada in place.
+    ordenes: before.ordenesTab === "pendiente"
+      ? before.ordenes.filter((o) => o.id !== id)
+      : before.ordenes.map((o) => (o.id === id ? { ...o, status: "cancelada" as const } : o)),
+    ordenSel: before.ordenSel === id ? null : before.ordenSel,
   });
-  if (s.pending?.id === id) discardPendingEdit();
-  if (s.view === "ordenes") void refreshOrdenes();
+  if (before.pending?.id === id) discardPendingEdit();
+  let res: Awaited<ReturnType<typeof cancelarPendiente>>;
+  try {
+    res = await cancelarPendiente({ ordenId: id });
+  } catch {
+    res = { ok: false, error: "Sin conexión con el servidor." };
+  }
+  if (!res.ok) posStore.set({ pendientesError: res.error });
+  void refreshPendientes();
+  if (posStore.get().view === "ordenes") void refreshOrdenes();
 }
 /** Drop the loaded pending order from the ticket without saving. */
 export function discardPendingEdit() {
@@ -1129,7 +1286,7 @@ export function discardPendingEdit() {
  * on the AI and are queued when it answers. A missing piece (no handle, no
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
-function printSaleLabels(s: PosState, folio: string) {
+function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog }, folio: string) {
   const orgName = s.catalog.orgName;
   const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim(), instagram: !!s.catalog.instagram });
   let cups = 0;
@@ -1155,9 +1312,13 @@ function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio:
  * answers every request; if some fail (rate limit), the successful ones are
  * reused so every cup still gets a message. None answered → nothing prints.
  */
+let fraseBatches = 0;
 export async function printFrases(n: number) {
   const s = posStore.get();
-  if (n <= 0 || s.fraseLoading) return;
+  if (n <= 0) return;
+  // Batches run side by side: an order that lands while the previous one is
+  // still waiting on the AI must not lose its phrases.
+  fraseBatches += 1;
   posStore.set({ fraseLoading: true, fraseError: null });
   try {
     const results = await Promise.allSettled(Array.from({ length: n }, () => generarFrase()));
@@ -1168,13 +1329,16 @@ export async function printFrases(n: number) {
       else if (r.status === "fulfilled" && !r.value.ok) err = r.value.error;
     }
     if (!ok.length) {
-      posStore.set({ fraseLoading: false, fraseError: err ?? "No se pudo generar la frase." });
+      posStore.set({ fraseError: err ?? "No se pudo generar la frase." });
       return;
     }
     for (let i = 0; i < n; i++) printMessageLabel(ok[i % ok.length], s.catalog.instagram, s.catalog.cupArt);
-    posStore.set({ frase: ok[0], fraseLoading: false });
+    posStore.set({ frase: ok[0] });
   } catch {
-    posStore.set({ fraseLoading: false, fraseError: "No se pudo generar la frase." });
+    posStore.set({ fraseError: "No se pudo generar la frase." });
+  } finally {
+    fraseBatches -= 1;
+    if (fraseBatches === 0) posStore.set({ fraseLoading: false });
   }
 }
 
