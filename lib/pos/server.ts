@@ -71,34 +71,52 @@ export async function requirePosContext(): Promise<PosContext> {
   return loadUserPosContext();
 }
 
-async function loadUserPosContext(): Promise<PosContext> {
+/** The context minus the catalog. */
+export type PosAuth = Omit<PosContext, "catalog">;
+
+/**
+ * Who is calling, without building the catalog. Listing, charging,
+ * cancelling and combining orders never price anything, and the catalog is
+ * eight queries — building it on every one of those calls was most of the
+ * latency the register felt.
+ */
+export async function requirePosAuth(): Promise<PosAuth> {
+  const device = await getPosDeviceFromCookie();
+  if (device) {
+    return {
+      supabase: createSupabaseAdminClient(),
+      organizationId: device.organizationId,
+      actor: { kind: "device", device },
+      station: device.name,
+    };
+  }
+  return loadUserPosAuth();
+}
+
+async function loadUserPosAuth(): Promise<PosAuth> {
   const { profile, supabase } = await requireUser();
-
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("name")
-    .eq("id", profile.organization_id)
-    .maybeSingle();
-
-  const catalog = await getPosCatalog({
-    organizationId: profile.organization_id,
-    userId: profile.id,
-    orgName: (org?.name as string | undefined) ?? "comanda",
-  });
-
-  const restaurantId = await resolvePosSede(
-    supabase,
-    profile.organization_id,
-    profile.id,
-  );
-
+  const restaurantId = await resolvePosSede(supabase, profile.organization_id, profile.id);
   return {
-    catalog,
     supabase,
     organizationId: profile.organization_id,
     actor: { kind: "user", profileId: profile.id, restaurantId },
     station: "Caja 01",
   };
+}
+
+async function loadUserPosContext(): Promise<PosContext> {
+  const auth = await loadUserPosAuth();
+  const { data: org } = await auth.supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", auth.organizationId)
+    .maybeSingle();
+  const catalog = await getPosCatalog({
+    organizationId: auth.organizationId,
+    userId: auth.actor.kind === "user" ? auth.actor.profileId : null,
+    orgName: (org?.name as string | undefined) ?? "comanda",
+  });
+  return { ...auth, catalog };
 }
 
 /** True when there is a signed-in user (any org state). Used by the page only. */
