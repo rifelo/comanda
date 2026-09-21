@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coffeeGramsOf, drinkSpec, planDrinkLabels } from "./drink-label";
+import { coffeeGramsOf, drinkSpec, planDrinkLabels, planSaleLabels } from "./drink-label";
 import type { OrderLine } from "./types";
 
 const latte = [
@@ -51,6 +51,31 @@ describe("planDrinkLabels", () => {
     expect(planDrinkLabels([line("latte", 40, "Juan")], ["Juan"], byId).length).toBe(12);
     expect(planDrinkLabels([line("latte", 12, "Juan"), line("tinto", 12, "Juan"), line("latte", 12)], ["Juan"], byId).length).toBe(24);
     expect(planDrinkLabels([line("latte", 40)], [], byId, { perLine: 3, total: 2 }).length).toBe(2);
+  });
+});
+
+describe("planSaleLabels", () => {
+  const byId = { latte: { name: "Latte", printsLabel: true }, torta: { name: "Torta", printsLabel: false } };
+  const line = (id: string, qty: number, customer?: string): OrderLine => ({ id, name: id, qty, kind: "item", ...(customer ? { customer } : {}) });
+  const kinds = (jobs: ReturnType<typeof planSaleLabels>) => jobs.map((j) => (j.kind === "name" ? `name:${j.name}` : j.kind === "drink" ? `drink:${j.item.customer ?? "-"}` : "ig"));
+
+  it("without people: order label, QR, cups", () => {
+    expect(kinds(planSaleLabels({ order: [line("latte", 2)], people: [], byId, tableName: "", instagram: true })))
+      .toEqual(["name:", "ig", "drink:-", "drink:-"]);
+  });
+  it("with people: a name label per person followed by their cups, QR once", () => {
+    const order = [line("latte", 1, "María"), line("latte", 1, "Juan"), line("torta", 1, "Juan")];
+    expect(kinds(planSaleLabels({ order, people: ["Juan", "María"], byId, tableName: "Mesa 3", instagram: true })))
+      .toEqual(["name:Juan", "ig", "drink:Juan", "name:María", "drink:María"]);
+  });
+  it("a person with only food still gets their name label", () => {
+    expect(kinds(planSaleLabels({ order: [line("torta", 1, "Ana")], people: ["Ana"], byId, tableName: "", instagram: false })))
+      .toEqual(["name:Ana"]);
+  });
+  it("unassigned cups come last behind the table label", () => {
+    const order = [line("latte", 1), line("latte", 1, "Ana")];
+    expect(kinds(planSaleLabels({ order, people: ["Ana"], byId, tableName: "Mesa 3", instagram: false })))
+      .toEqual(["name:Ana", "drink:Ana", "name:Mesa 3", "drink:-"]);
   });
 });
 
