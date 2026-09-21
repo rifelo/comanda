@@ -159,6 +159,9 @@ const POS_CSS = `
   .pos-root button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .pos-tile:active:not(:disabled){transform:scale(.97)}
   .pos-tile{-webkit-touch-callout:none;user-select:none}
+  /* Kiosk: no browser callout / text-selection bubble on a long press anywhere. */
+  .pos-root{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  .pos-root input,.pos-root textarea{-webkit-user-select:text;user-select:text}
   .pos-tile{transition:transform .06s, border-color .12s}
   .pos-eq i{display:inline-block;width:3px;height:14px;background:currentColor;transform-origin:bottom;
     animation:pos-eq .9s ease-in-out infinite}
@@ -258,7 +261,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
   }, []);
 
   return (
-    <div className="pos-root cmd-paper" style={{ height: "100dvh", display: "flex", flexDirection: "column", background: C.paper, fontFamily: F.mono, color: C.ink, overflow: "hidden" }}>
+    <div className="pos-root cmd-paper" onContextMenu={(e) => { e.preventDefault(); }} style={{ height: "100dvh", display: "flex", flexDirection: "column", background: C.paper, fontFamily: F.mono, color: C.ink, overflow: "hidden" }}>
       <style>{POS_CSS}</style>
       <TopBar mode={mode} />
       <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
