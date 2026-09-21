@@ -9,6 +9,52 @@ import type { OrderLine } from "./types";
 /** One espresso shot, in grams (the menu's own wording: "1 SHOT · 9 G"). */
 export const GRAMS_PER_SHOT = 9;
 
+/** One job in the label run of a sale, in print order. */
+export type SaleLabelJob =
+  | { kind: "name"; name: string }
+  | { kind: "instagram" }
+  | { kind: "drink"; item: DrinkLabelPlanItem };
+
+/**
+ * The whole label run of a sale. With people on the ticket, every person
+ * gets their own "Pa' <nombre>" label followed by their cups; cups that
+ * belong to nobody come last behind the order label (table name or number).
+ * Without people it is the order label and the cups, as always. The
+ * Instagram QR prints once, right after the first label. Phrases are not
+ * here: they wait on the AI and are queued per cup when it answers.
+ */
+export function planSaleLabels(input: {
+  order: ReadonlyArray<OrderLine>;
+  people: ReadonlyArray<string>;
+  byId: Readonly<Record<string, DrinkLabelProduct | undefined>>;
+  /** Table / group label ("Mesa 3"), "" for none. */
+  tableName: string;
+  instagram: boolean;
+}): SaleLabelJob[] {
+  const cups = planDrinkLabels(input.order, input.people, input.byId);
+  const jobs: SaleLabelJob[] = [];
+  let igDone = !input.instagram;
+  const pushName = (name: string) => {
+    jobs.push({ kind: "name", name });
+    if (!igDone) { jobs.push({ kind: "instagram" }); igDone = true; }
+  };
+  if (input.people.length === 0) {
+    pushName(input.tableName);
+    for (const item of cups) jobs.push({ kind: "drink", item });
+    return jobs;
+  }
+  for (const who of input.people) {
+    pushName(who);
+    for (const item of cups) if (item.customer === who) jobs.push({ kind: "drink", item });
+  }
+  const rest = cups.filter((c) => !c.customer || !input.people.includes(c.customer));
+  if (rest.length) {
+    pushName(input.tableName);
+    for (const item of rest) jobs.push({ kind: "drink", item });
+  }
+  return jobs;
+}
+
 export interface DrinkLabelPlanItem {
   productId: string;
   name: string;

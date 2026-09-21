@@ -36,7 +36,7 @@ import {
 import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@/lib/pos/pagos";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
-import { planDrinkLabels } from "@/lib/pos/drink-label";
+import { planSaleLabels } from "@/lib/pos/drink-label";
 import {
   cancelarPendiente,
   cobrarPendiente,
@@ -1013,7 +1013,7 @@ export function selectOrden(id: string | null) {
 /** Reprint the kitchen label of any stored order. */
 export function printLabelFor(o: PosOrder) {
   const s = posStore.get();
-  printOrderLabel({ name: o.customerName, folio: o.folio, orgName: s.catalog.orgName, people: rebuildPeople(o) });
+  printNameLabels(rebuildPeople(o), o.customerName, o.folio, s.catalog.orgName);
 }
 
 function loadPending(o: PendingOrder, mode: "edit" | "charge") {
@@ -1079,27 +1079,58 @@ export function discardPendingEdit() {
 
 /**
  * Everything that prints when an order is registered, in the order the
- * counter wants to pick it up: who it is for, the Instagram QR, one menu
- * label per cup, and the phrase — which comes last because it waits on the
- * AI and is queued whenever it answers. A missing piece (no handle, no
+ * counter wants to pick it up. With people on the ticket: "Pa' Juan", his
+ * cups, "Pa' María", her cups… (planSaleLabels); without: the order label
+ * and the cups. The Instagram QR once. Then one phrase per cup — they wait
+ * on the AI and are queued when it answers. A missing piece (no handle, no
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
 function printSaleLabels(s: PosState, folio: string) {
-  printOrderLabel({ name: s.customerName, folio, orgName: s.catalog.orgName, people: s.people });
-  if (s.catalog.instagram) printInstagramLabel(s.catalog.instagram, s.catalog.cupArt);
-  printDrinkLabels(s);
-  void printFrase();
+  const orgName = s.catalog.orgName;
+  const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim(), instagram: !!s.catalog.instagram });
+  let cups = 0;
+  for (const j of jobs) {
+    if (j.kind === "name") printOrderLabel({ name: j.name, folio, orgName });
+    else if (j.kind === "instagram") printInstagramLabel(s.catalog.instagram!, s.catalog.cupArt);
+    else {
+      cups += 1;
+      printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
+    }
+  }
+  void printFrases(Math.max(1, cups));
+}
+
+/** The "Pa' <nombre>" labels of a stored order (one per person, else the order label). */
+function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio: string, orgName: string) {
+  if (names.length === 0) printOrderLabel({ name: tableName, folio, orgName });
+  for (const n of names) printOrderLabel({ name: n, folio, orgName });
 }
 
 /**
- * One menu label per cup for the drinks in the ticket (never for food),
- * grouped by person so the barista gets each table-mate's cups together.
- * planDrinkLabels caps per line and overall so a bulk order can't run the
- * roll out.
+ * One phrase label per cup. Each cup gets its own phrase when the AI
+ * answers every request; if some fail (rate limit), the successful ones are
+ * reused so every cup still gets a message. None answered → nothing prints.
  */
-function printDrinkLabels(s: PosState) {
-  for (const it of planDrinkLabels(s.order, s.people, s.catalog.byId)) {
-    printDrinkLabel({ name: it.name, spec: it.spec, desc: it.desc, customer: it.customer, brand: s.catalog.orgName });
+export async function printFrases(n: number) {
+  const s = posStore.get();
+  if (n <= 0 || s.fraseLoading) return;
+  posStore.set({ fraseLoading: true, fraseError: null });
+  try {
+    const results = await Promise.allSettled(Array.from({ length: n }, () => generarFrase()));
+    const ok: string[] = [];
+    let err: string | null = null;
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.ok) ok.push(r.value.texto);
+      else if (r.status === "fulfilled" && !r.value.ok) err = r.value.error;
+    }
+    if (!ok.length) {
+      posStore.set({ fraseLoading: false, fraseError: err ?? "No se pudo generar la frase." });
+      return;
+    }
+    for (let i = 0; i < n; i++) printMessageLabel(ok[i % ok.length], s.catalog.instagram, s.catalog.cupArt);
+    posStore.set({ frase: ok[0], fraseLoading: false });
+  } catch {
+    posStore.set({ fraseLoading: false, fraseError: "No se pudo generar la frase." });
   }
 }
 
@@ -1122,11 +1153,11 @@ export async function printFrase() {
   }
 }
 
-/** Reprint the label of the sale on the receipt screen. */
+/** Reprint the name labels of the sale on the receipt screen. */
 export function reprintLabel() {
   const s = posStore.get();
   if (!s.sent) return;
-  printOrderLabel({ name: s.customerName, folio: s.orderNo, orgName: s.catalog.orgName, people: s.people });
+  printNameLabels(s.people, s.customerName.trim(), s.orderNo, s.catalog.orgName);
 }
 
 
