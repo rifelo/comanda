@@ -16,6 +16,7 @@ import {
   updateRecetaItemQty,
   removeRecetaItem,
   createReceta,
+  updatePreparacion,
 } from "./actions";
 
 const MARGEN_MIN = 55;
@@ -256,7 +257,12 @@ function RecetaDetail({
           marginBottom: 20,
         }}
       >
-        <Thumb w={80} h={80} label={receta.product.split(" ")[0]} />
+        {receta.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={receta.image_url} alt={receta.product} style={{ width: 80, height: 80, objectFit: "cover", border: "1.5px solid var(--ink)" }} />
+        ) : (
+          <Thumb w={80} h={80} label={receta.product.split(" ")[0]} />
+        )}
         <div>
           <div
             className="text-muted"
@@ -382,6 +388,55 @@ function RecetaDetail({
               ${fmtCOP(receta.price_cop - receta.cost)}
             </div>
           </div>
+        </div>
+      </div>
+
+      <PreparacionEditor key={receta.producto_id} productoId={receta.producto_id} initial={receta.preparacion} onError={setError} />
+    </div>
+  );
+}
+
+/**
+ * Preparation steps, one per line. Saved as free text; the POS recipe sheet
+ * numbers the lines. Plain save button (no autosave) so a half-typed step
+ * never reaches the tablet.
+ */
+function PreparacionEditor({ productoId, initial, onError }: { productoId: string; initial: string; onError: (m: string | null) => void }) {
+  const router = useRouter();
+  const [text, setText] = React.useState(initial);
+  const [saving, setSaving] = React.useState(false);
+  const [savedAt, setSavedAt] = React.useState<number | null>(null);
+  const dirty = text.trim() !== initial.trim();
+  const steps = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).length;
+  async function save() {
+    setSaving(true);
+    onError(null);
+    const r = await updatePreparacion({ producto_id: productoId, preparacion: text });
+    setSaving(false);
+    if ("error" in r && r.error) { onError(r.error); return; }
+    setSavedAt(Date.now());
+    router.refresh();
+  }
+  return (
+    <div className="cmd-paper-lt" style={{ border: "1.5px solid var(--ink)", marginTop: 20 }}>
+      <div className="bg-paper" style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "8px 14px", borderBottom: "1.5px solid var(--ink)" }}>
+        <span style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600 }}>Preparación</span>
+        <span className="text-muted" style={{ fontSize: 10 }}>un paso por línea · {steps} paso{steps === 1 ? "" : "s"} · lo ve el barista al mantener presionado el producto en la caja</span>
+      </div>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={Math.min(12, Math.max(4, steps + 2))}
+          maxLength={2000}
+          placeholder={"Muele 18 g y extrae 36 g en 28 s\nTextura 150 ml de leche a 60 °C\nSirve en vaso de 12 oz y decora"}
+          aria-label="Pasos de preparación"
+          style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button type="button" className="cmd-btn sm" onClick={() => void save()} disabled={!dirty || saving}>{saving ? "Guardando…" : "Guardar pasos"}</button>
+          {!dirty && savedAt && <span className="text-muted" style={{ fontSize: 11 }}>Guardado</span>}
+          {dirty && <span className="text-muted" style={{ fontSize: 11 }}>Cambios sin guardar</span>}
         </div>
       </div>
     </div>

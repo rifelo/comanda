@@ -1402,6 +1402,19 @@ function RecetaSheet({ productId }: { productId: string }) {
               </div>
             ))
           )}
+          {p.prep.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted, paddingBottom: 6, borderBottom: `1px solid ${C.rule}` }}>Preparación</div>
+              <ol aria-label="Pasos de preparación" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {p.prep.map((step, i) => (
+                  <li key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "9px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
+                    <span className="cmd-num" style={{ width: 26, height: 26, borderRadius: 13, border: `1.5px solid ${C.ink}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ fontSize: 14, color: C.ink, lineHeight: 1.5, paddingTop: 3 }}>{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
         <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 11, color: C.muted }}>Mantén presionado un producto para ver su receta.</span>
