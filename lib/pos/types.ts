@@ -35,6 +35,16 @@ export interface PosMenuItem {
   image: string | null;
   /** The recipe as the barista reads it: one line per ingredient, in order. */
   recipe: PosRecipeLine[];
+  /** Preparation steps (productos.preparacion, one per line), empty when none. */
+  prep: string[];
+}
+
+/** "1. Muele…\n2. Extrae…" or plain lines → trimmed steps, numbering stripped. */
+export function prepSteps(text: string | null | undefined): string[] {
+  return (text ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, "").trim())
+    .filter(Boolean);
 }
 
 export interface PosRecipeLine {

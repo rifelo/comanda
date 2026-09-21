@@ -30,6 +30,10 @@ export interface RecetaRow {
   items: RecetaItemRow[];
   cost: number;
   margin_pct: number;
+  /** Product photo from the catálogo, if any. */
+  image_url: string | null;
+  /** Preparation steps, one per line ("" when none). */
+  preparacion: string;
 }
 
 export interface IngredienteOption {
@@ -63,7 +67,7 @@ export async function getRecetasView(
         .order("position"),
       supabase
         .from("productos")
-        .select("id, name, sku, price_cop, category_id")
+        .select("id, name, sku, price_cop, category_id, image_url, preparacion")
         .eq("organization_id", organizationId)
         .order("name"),
       supabase
@@ -129,6 +133,8 @@ export async function getRecetasView(
         items: lines,
         cost,
         margin_pct: margenOf(p.price_cop as number, cost),
+        image_url: ((p.image_url as string | null) ?? "").trim() || null,
+        preparacion: (p.preparacion as string | null) ?? "",
       });
     } else {
       productosSinReceta.push({

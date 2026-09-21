@@ -105,6 +105,29 @@ export async function removeRecetaItem(input: unknown) {
   return { ok: true };
 }
 
+const PreparacionSchema = z.object({
+  producto_id: z.string().uuid(),
+  preparacion: z.string().max(2000),
+});
+
+/** Save the preparation steps of a producto (free text, one step per line). */
+export async function updatePreparacion(input: unknown) {
+  const parsed = PreparacionSchema.safeParse(input);
+  if (!parsed.success) return { error: "Texto demasiado largo (máximo 2000 caracteres)." };
+  const { profile, supabase } = await requireAdmin();
+  const text = parsed.data.preparacion.replace(/\r\n/g, "\n").trim();
+  const { data, error } = await supabase
+    .from("productos")
+    .update({ preparacion: text || null })
+    .eq("id", parsed.data.producto_id)
+    .eq("organization_id", profile.organization_id)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Producto no encontrado." };
+  revalidatePath("/recetas");
+  return { ok: true };
+}
+
 const CreateRecetaSchema = z.object({
   producto_id: z.string().uuid(),
   items: z

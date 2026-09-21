@@ -12,6 +12,7 @@ import {
   type PosMenuItem,
   type PosModGroup,
   type PosRecipeLine,
+  prepSteps,
 } from "./types";
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
 
@@ -52,7 +53,7 @@ export async function getPosCatalog({
     supabase
       .from("productos")
       .select(
-        "id, category_id, name, description, sku, price_cop, stock_status, image_url",
+        "id, category_id, name, description, sku, price_cop, stock_status, image_url, preparacion",
       )
       .eq("organization_id", organizationId)
       .order("name"),
@@ -150,6 +151,7 @@ export async function getPosCatalog({
     price_cop: number;
     stock_status: "ok" | "bajo" | "sin";
     image_url: string | null;
+    preparacion: string | null;
   }>).map((p) => {
     const own = p.category_id ? catById.get(p.category_id) ?? null : null;
     const top = topLevelOf(p.category_id);
@@ -189,6 +191,7 @@ export async function getPosCatalog({
       printsLabel,
       spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
       image: (p.image_url ?? "").trim() || null,
+      prep: prepSteps(p.preparacion),
       recipe: (shownByProduct.get(p.id) ?? [])
         .sort((a, b) => a.position - b.position)
         .map(({ name, qty, unit, note }) => ({ name, qty, unit, note })),
