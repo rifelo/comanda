@@ -1097,7 +1097,7 @@ function printSaleLabels(s: PosState, folio: string) {
       printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
     }
   }
-  void printFrases(Math.max(1, cups));
+  if (cups > 0) void printFrases(cups);
 }
 
 /** The "Pa' <nombre>" labels of a stored order (one per person, else the order label). */
