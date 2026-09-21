@@ -1365,16 +1365,27 @@ function ItemSheet() {
 function RecetaSheet({ productId }: { productId: string }) {
   const catalog = useCatalog();
   const p = catalog.byId[productId];
+  const [zoom, setZoom] = React.useState(false);
   const close = () => posStore.set({ sheet: null });
   React.useEffect(() => { if (!p) close(); }, [p]);
+  // Escape closes the zoomed photo first, before the root handler closes the sheet.
+  React.useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setZoom(false); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [zoom]);
   if (!p) return null;
   const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000).replace(".", ","));
   return (
     <Overlay onClose={close} align="center">
       <div role="dialog" aria-modal aria-label={`Receta · ${p.name}`} style={{ width: "min(620px, 94vw)", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
         {p.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.image} alt={p.name} style={{ width: "100%", height: 220, objectFit: "cover", display: "block", background: C.paperDk, flexShrink: 0 }} />
+          <button type="button" onClick={() => setZoom(true)} aria-label={`Ver la foto de ${p.name} en grande`} style={{ position: "relative", padding: 0, border: "none", background: C.paperDk, cursor: "zoom-in", flexShrink: 0, display: "block", width: "100%" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.image} alt={p.name} style={{ width: "100%", height: 220, objectFit: "cover", display: "block" }} />
+            <span style={{ position: "absolute", right: 10, bottom: 10, fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: C.paperLt, background: "rgba(20,14,8,.6)", padding: "4px 8px", borderRadius: 3, fontFamily: F.mono }}>Toca para ampliar</span>
+          </button>
         ) : (
           <div aria-hidden style={{ height: 8, background: C.ink, flexShrink: 0 }} />
         )}
@@ -1424,6 +1435,17 @@ function RecetaSheet({ productId }: { productId: string }) {
           <button className="cmd-btn" onClick={() => { close(); tapItem(p.id); }} disabled={p.stock === "sin"} style={{ marginLeft: "auto", height: 48, padding: "0 18px", fontSize: 13 }}>Agregar al pedido</button>
         </div>
       </div>
+      {zoom && p.image && (
+        <div role="dialog" aria-modal aria-label={`Foto de ${p.name}`} onClick={() => setZoom(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(20,14,8,.92)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, cursor: "zoom-out" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={p.image} alt={p.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 6, boxShadow: "0 30px 80px -30px rgba(0,0,0,.8)" }} />
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 18, textAlign: "center", color: C.paperLt, fontFamily: F.mono }}>
+            <div style={{ fontFamily: F.slab, fontSize: 22 }}>{p.name}</div>
+            <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", opacity: 0.75, marginTop: 4 }}>Así debe verse · toca para cerrar</div>
+          </div>
+          <button type="button" onClick={() => setZoom(false)} aria-label="Cerrar foto" style={{ position: "absolute", top: 14, right: 14, width: 44, height: 44, borderRadius: 22, border: `1.5px solid ${C.paperLt}`, background: "transparent", color: C.paperLt, fontSize: 22, cursor: "pointer" }}>×</button>
+        </div>
+      )}
     </Overlay>
   );
 }
