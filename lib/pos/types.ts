@@ -246,6 +246,9 @@ export interface PosOrder {
   paid: number;
   pagos: OrderPayment[];
   items: PendingOrderItem[];
+  /** Set when this order was folded into another one (it is then cancelada). */
+  mergedInto: string | null;
+  mergedIntoFolio: string | null;
 }
 /** An unpaid order the register can reopen, charge or cancel. */
 export type PendingOrder = PosOrder;

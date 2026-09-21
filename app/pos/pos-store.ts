@@ -34,6 +34,7 @@ import {
   type PayMethodId,
 } from "@/lib/pos/types";
 import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@/lib/pos/pagos";
+import { defaultMergeTarget } from "@/lib/pos/combinar";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
 import { planSaleLabels } from "@/lib/pos/drink-label";
@@ -46,6 +47,7 @@ import {
   listarOrdenes,
   listarPendientes,
   registrarPago,
+  combinarPendientes,
   posSuggest,
   transcribeAudio,
 } from "./actions";
@@ -164,6 +166,8 @@ export interface PosState {
   ordenesError: string | null;
   /** Card selected in the Pedidos view (detail panel). */
   ordenSel: string | null;
+  /** Combining pending orders: pick two or more, confirm, fold them into the target. */
+  merge: { on: boolean; sel: string[]; target: string | null; targetChosen: boolean; confirming: boolean; busy: boolean; error: string | null };
   /** What the receipt screen describes: a paid sale or an order sent unpaid. */
   receiptKind: "pagada" | "pendiente";
   /** AI "frase del día" label: last generated text + request state. */
@@ -226,6 +230,7 @@ export const POS_INITIAL: PosState = {
   ordenesLoading: false,
   ordenesError: null,
   ordenSel: null,
+  merge: { on: false, sel: [], target: null, targetChosen: false, confirming: false, busy: false, error: null },
   receiptKind: "pagada",
   frase: null,
   fraseLoading: false,
@@ -1000,7 +1005,7 @@ export function closeOrdenes() {
   posStore.set({ view: "sale", ordenSel: null });
 }
 export function setOrdenesTab(tab: OrdersTab) {
-  posStore.set({ ordenesTab: tab, ordenSel: null, ordenes: [] });
+  posStore.set({ ordenesTab: tab, ordenSel: null, ordenes: [], merge: { ...MERGE_OFF } });
   void refreshOrdenes();
 }
 export function setOrdenesDay(day: string) {
@@ -1009,6 +1014,45 @@ export function setOrdenesDay(day: string) {
 }
 export function selectOrden(id: string | null) {
   posStore.set((st) => ({ ...st, ordenSel: st.ordenSel === id ? null : id }));
+}
+
+// ── combining pending orders ────────────────────────────────────
+const MERGE_OFF = { on: false, sel: [] as string[], target: null, targetChosen: false, confirming: false, busy: false, error: null };
+export function startMerge() {
+  posStore.set({ merge: { ...MERGE_OFF, on: true }, ordenSel: null });
+}
+export function cancelMerge() {
+  posStore.set({ merge: { ...MERGE_OFF } });
+}
+/** Tap a card while combining: in or out of the selection; the oldest folio is the target unless chosen. */
+export function toggleMergeSel(id: string) {
+  posStore.set((st) => {
+    const sel = st.merge.sel.includes(id) ? st.merge.sel.filter((x) => x !== id) : [...st.merge.sel, id];
+    // A target the cashier picked sticks while it stays selected; otherwise the oldest folio.
+    const keep = st.merge.targetChosen && st.merge.target && sel.includes(st.merge.target);
+    const target = keep ? st.merge.target : defaultMergeTarget(st.ordenes.filter((o) => sel.includes(o.id)));
+    return { ...st, merge: { ...st.merge, sel, target, targetChosen: !!keep, error: null } };
+  });
+}
+export function setMergeTarget(id: string) {
+  posStore.set((st) => (st.merge.sel.includes(id) ? { ...st, merge: { ...st.merge, target: id, targetChosen: true } } : st));
+}
+export function setMergeConfirming(on: boolean) {
+  posStore.set((st) => ({ ...st, merge: { ...st.merge, confirming: on, error: null } }));
+}
+export async function confirmMerge() {
+  const s = posStore.get();
+  const { target, sel, busy } = s.merge;
+  if (!target || sel.length < 2 || busy) return;
+  posStore.set({ merge: { ...s.merge, busy: true, error: null } });
+  const res = await combinarPendientes({ targetId: target, sourceIds: sel.filter((id) => id !== target) });
+  if (!res.ok) {
+    posStore.set((st) => ({ ...st, merge: { ...st.merge, busy: false, error: res.error } }));
+    return;
+  }
+  posStore.set({ merge: { ...MERGE_OFF }, ordenSel: res.targetId });
+  await refreshOrdenes();
+  void refreshPendientes();
 }
 /** Reprint the kitchen label of any stored order. */
 export function printLabelFor(o: PosOrder) {
