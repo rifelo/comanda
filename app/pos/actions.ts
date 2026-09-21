@@ -356,7 +356,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, payment_method, tendered_cop, change_cop, paid_cop, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
     )
     .eq("organization_id", orgId);
   if (status !== "todas") q = q.eq("status", status);
@@ -370,6 +370,13 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   if (error) {
     console.error("[listarOrdenes] failed:", error);
     return { ok: false, error: "No se pudieron cargar los pedidos." };
+  }
+  // Folios of the orders these were folded into (a self-join the API can't express).
+  const mergedIds = [...new Set((data ?? []).map((o) => o.merged_into as string | null).filter((x): x is string => !!x))];
+  const folioById = new Map<string, string>();
+  if (mergedIds.length) {
+    const { data: targets } = await supabase.from("ordenes").select("id, folio").eq("organization_id", orgId).in("id", mergedIds);
+    for (const t of targets ?? []) folioById.set(t.id as string, t.folio as string);
   }
   const orders: PosOrder[] = (data ?? []).map((o) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -393,6 +400,8 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       change: (o.change_cop as number) ?? 0,
       paid: Number(o.paid_cop ?? 0),
       pagos: mapPagos(pagos),
+      mergedInto: (o.merged_into as string | null) ?? null,
+      mergedIntoFolio: o.merged_into ? folioById.get(o.merged_into as string) ?? null : null,
       items: items
         .map((it) => ({
           id: it.id as string,
@@ -565,6 +574,35 @@ export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult>
  * Void a pending order (never a paid one). Partial payments are not
  * refunded here — the note records them so the cash drawer can be squared.
  */
+const CombinarSchema = z.object({
+  targetId: z.string().uuid(),
+  sourceIds: z.array(z.string().uuid()).min(1).max(20),
+});
+export type CombinarResult = { ok: true; targetId: string } | { ok: false; error: string };
+
+/**
+ * Fold pending orders into one. The database function moves lines and
+ * payments, unions the roster, recomputes totals and cancels the sources in
+ * a single transaction (nothing half-moved on failure); then inventory is
+ * re-synced for every order involved — the sources give their ingredients
+ * back and the target takes them, so the net is zero.
+ */
+export async function combinarPendientes(input: unknown): Promise<CombinarResult> {
+  const parsed = CombinarSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Selección inválida." };
+  const ctx = await requirePosContext();
+  const { supabase, organizationId: orgId } = ctx;
+  const { targetId, sourceIds } = parsed.data;
+  if (sourceIds.includes(targetId)) return { ok: false, error: "El destino no puede estar entre las fuentes." };
+  const { error } = await supabase.rpc("combinar_ordenes", { p_org: orgId, p_target: targetId, p_sources: sourceIds });
+  if (error) {
+    console.error("[combinarPendientes] rpc:", error);
+    return { ok: false, error: error.message || "No se pudieron combinar los pedidos." };
+  }
+  for (const id of [targetId, ...sourceIds]) await syncOrderConsumption(supabase, orgId, id, actorId(ctx));
+  return { ok: true, targetId };
+}
+
 export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   const parsed = CancelarPendienteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };

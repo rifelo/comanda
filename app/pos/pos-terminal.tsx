@@ -39,6 +39,7 @@ import {
 } from "@/lib/pos/types";
 import { desvincularPos } from "./actions";
 import { shareStatus } from "@/lib/pos/pagos";
+import { mergePreview } from "@/lib/pos/combinar";
 import {
   CatalogCtx,
   StationCtx,
@@ -77,6 +78,12 @@ import {
   pickShare,
   paySplit,
   chargePendingSplit,
+  startMerge,
+  cancelMerge,
+  toggleMergeSel,
+  setMergeTarget,
+  setMergeConfirming,
+  confirmMerge,
   ticketShares,
   tenderAmount,
   orderShares,
@@ -895,7 +902,16 @@ function OrdenesScreen() {
               {s.ordenesDay !== today && <button onClick={() => setOrdenesDay(today)} style={{ ...dayBtn, width: "auto", padding: "0 10px", fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase" }}>Hoy</button>}
             </div>
           )}
+          {isQueue && s.merge.on && (
+            <span style={{ marginLeft: 12, fontSize: 11, color: C.ink, letterSpacing: ".06em" }}>Elige dos o más pedidos para combinarlos.</span>
+          )}
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+            {isQueue && !s.merge.on && s.ordenes.length >= 2 && (
+              <button onClick={startMerge} style={{ height: 36, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.ink}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Combinar</button>
+            )}
+            {isQueue && s.merge.on && (
+              <button onClick={cancelMerge} style={{ height: 36, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
+            )}
             {!isQueue && total > 0 && <span>Ventas <span className="cmd-num" style={{ color: C.ink }}>{posMoney(total)}</span></span>}
             <span className="cmd-num">{s.ordenes.length} pedido{s.ordenes.length === 1 ? "" : "s"}</span>
             <button onClick={() => void refreshOrdenes()} aria-label="Actualizar" title="Actualizar" style={dayBtn}>{s.ordenesLoading ? "…" : "↻"}</button>
@@ -910,11 +926,97 @@ function OrdenesScreen() {
                 {s.ordenesLoading ? "Cargando…" : isQueue ? <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</> : "Sin pedidos ese día."}
               </div>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-              {s.ordenes.map((o) => <OrdenCard key={o.id} o={o} selected={o.id === s.ordenSel} />)}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, paddingBottom: s.merge.on ? 90 : 0 }}>
+              {s.ordenes.map((o) => (
+                <OrdenCard key={o.id} o={o} selected={s.merge.on ? s.merge.sel.includes(o.id) : o.id === s.ordenSel} merging={s.merge.on} isTarget={s.merge.on && s.merge.target === o.id} />
+              ))}
             </div>
           </div>
-          {sel && <OrdenDetail o={sel} />}
+          {sel && !s.merge.on && <OrdenDetail o={sel} />}
+        </div>
+        {isQueue && s.merge.on && <MergeBar />}
+        {isQueue && s.merge.on && s.merge.confirming && <MergeConfirm />}
+      </div>
+    </Overlay>
+  );
+}
+
+/** Sticky footer while combining: how many are picked, which one receives them, and Continuar. */
+function MergeBar() {
+  const s = usePos();
+  const picked = s.ordenes.filter((o) => s.merge.sel.includes(o.id));
+  const target = picked.find((o) => o.id === s.merge.target) ?? null;
+  const ready = picked.length >= 2 && !!target;
+  return (
+    <div role="region" aria-label="Combinar pedidos" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "12px 16px", background: C.paperLt, borderTop: `1.5px solid ${C.ink}`, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 13, fontWeight: 600 }}>
+        {picked.length < 2
+          ? `${picked.length} de 2 pedidos elegidos`
+          : <>Combinar {picked.length} pedidos en <span className="cmd-num">{target?.folio}</span></>}
+      </span>
+      {picked.length >= 2 && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: C.muted }}>
+          Destino:
+          {picked.map((o) => (
+            <button key={o.id} onClick={() => setMergeTarget(o.id)} aria-pressed={o.id === s.merge.target} style={{ height: 32, padding: "0 10px", borderRadius: 3, border: `1.5px solid ${o.id === s.merge.target ? C.ink : C.rule}`, background: o.id === s.merge.target ? C.ink : "transparent", color: o.id === s.merge.target ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 11, cursor: "pointer" }} className="cmd-num">{o.folio}</button>
+          ))}
+        </span>
+      )}
+      {s.merge.error && <span role="alert" style={{ fontSize: 12, color: C.red }}>{s.merge.error}</span>}
+      <button className="cmd-btn" onClick={() => setMergeConfirming(true)} disabled={!ready} style={{ marginLeft: "auto", height: 48, padding: "0 20px", fontSize: 13, opacity: ready ? 1 : 0.45 }}>Continuar</button>
+    </div>
+  );
+}
+
+/** What the combined order will be — folios, names, total, what is still owed — then Confirmar. */
+function MergeConfirm() {
+  const s = usePos();
+  const picked = s.ordenes.filter((o) => s.merge.sel.includes(o.id));
+  const target = picked.find((o) => o.id === s.merge.target);
+  if (!target) return null;
+  const sources = picked.filter((o) => o.id !== target.id);
+  const pv = mergePreview(target, sources);
+  const close = () => setMergeConfirming(false);
+  return (
+    <Overlay onClose={close} align="center">
+      <div role="dialog" aria-modal aria-label="Confirmar combinación" style={{ width: "min(560px, 94vw)", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "88dvh" }}>
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}` }}>
+          <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted }}>Combinar pedidos</div>
+          <div style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1.1, marginTop: 2 }}>{pv.sourceFolios.join(" + ")} → <span style={{ color: C.red }}>{pv.targetFolio}</span></div>
+          <div style={{ fontSize: 12, color: C.ink2, marginTop: 6, lineHeight: 1.5 }}>Los productos y pagos de {pv.sourceFolios.join(" y ")} pasan a {pv.targetFolio}, que conserva su número. Los otros quedan como «Combinado». El inventario no cambia.</div>
+        </div>
+        <div className="pos-scroll" style={{ padding: "12px 20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+          {[target, ...sources].map((o) => (
+            <div key={o.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
+              <span style={{ minWidth: 0 }}>
+                <span className="cmd-num" style={{ fontWeight: 700 }}>{o.folio}</span>
+                <span style={{ color: C.muted }}> · {o.customerName || (o.customerNames.length ? o.customerNames.join(" · ") : "sin nombre")}</span>
+                <span style={{ display: "block", fontSize: 11, color: C.ink2 }}>{o.items.map((it) => `${it.qty}× ${it.name}`).join(" · ")}</span>
+              </span>
+              <span className="cmd-num" style={{ flexShrink: 0 }}>{posMoney(o.total)}{o.paid > 0 ? <span style={{ display: "block", fontSize: 10.5, color: C.green }}>pagado {posMoney(o.paid)}</span> : null}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 6, fontSize: 12 }}>
+            <span style={{ color: C.muted }}>Personas</span>
+            <span style={{ textAlign: "right" }}>{pv.people.length ? pv.people.join(" · ") : "—"}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12 }}>
+            <span style={{ color: C.muted }}>Ítems</span><span className="cmd-num">{pv.items}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginTop: 4 }}>
+            <span style={{ fontSize: 11, letterSpacing: ".12em", color: C.ink2 }}>TOTAL</span>
+            <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 28 }}>{posMoney(pv.total)}</span>
+          </div>
+          {pv.paid > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12 }}>
+              <span style={{ color: C.muted }}>Pagado {posMoney(pv.paid)}</span><span className="cmd-num" style={{ color: C.amber, fontWeight: 700 }}>falta {posMoney(pv.remaining)}</span>
+            </div>
+          )}
+          {s.merge.error && <div role="alert" style={{ fontSize: 12, color: C.red, border: `1px solid ${C.red}`, padding: "8px 10px", borderRadius: 4 }}>{s.merge.error}</div>}
+        </div>
+        <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", gap: 10 }}>
+          <button onClick={close} disabled={s.merge.busy} style={{ height: 48, padding: "0 16px", borderRadius: 4, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}>Volver</button>
+          <button className="cmd-btn red" onClick={() => void confirmMerge()} disabled={s.merge.busy} style={{ flex: 1, height: 48, fontSize: 13 }}>{s.merge.busy ? "Combinando…" : "Confirmar combinación"}</button>
         </div>
       </div>
     </Overlay>
@@ -923,21 +1025,26 @@ function OrdenesScreen() {
 
 const dayBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" };
 
-function OrdenCard({ o, selected }: { o: PosOrder; selected: boolean }) {
-  const st = STATUS_UI[o.status];
+function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosOrder; selected: boolean; merging?: boolean; isTarget?: boolean }) {
+  const st = o.mergedInto ? { label: "Combinado", color: C.muted } : STATUS_UI[o.status];
   const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
   const count = o.items.reduce((n, it) => n + it.qty, 0);
   return (
     <button
-      onClick={() => selectOrden(o.id)}
+      onClick={() => (merging ? toggleMergeSel(o.id) : selectOrden(o.id))}
       aria-pressed={selected}
       aria-label={`Pedido ${o.folio}`}
       className="pos-card"
       style={{ textAlign: "left", padding: "12px 14px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${selected ? C.ink : C.rule}`, boxShadow: selected ? `0 0 0 2px ${C.ink}` : "none", background: C.paperLt, color: C.ink, fontFamily: F.mono, display: "flex", flexDirection: "column", gap: 6, opacity: o.status === "cancelada" ? 0.6 : 1 }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1 }}>{o.folio}</span>
-        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "2px 6px", borderRadius: 3 }}>{st.label}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {merging && <span aria-hidden style={{ width: 20, height: 20, borderRadius: 4, border: `1.5px solid ${C.ink}`, background: selected ? C.ink : "transparent", color: C.paperLt, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{selected ? "✓" : ""}</span>}
+          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1 }}>{o.folio}</span>
+        </span>
+        {isTarget
+          ? <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: C.paperLt, background: C.red, padding: "2px 6px", borderRadius: 3 }}>Destino</span>
+          : <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "2px 6px", borderRadius: 3 }}>{st.label}{o.mergedIntoFolio ? <span className="cmd-num"> → {o.mergedIntoFolio}</span> : null}</span>}
       </div>
       <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.customerName || "—"}</div>
       <div style={{ fontSize: 11, color: C.muted }}>
@@ -998,6 +1105,7 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         ))}
         {o.status === "pendiente" && o.paid > 0 && row("Falta por cobrar", <span className="cmd-num" style={{ color: C.amber, fontWeight: 700 }}>{posMoney(remaining)}</span>)}
         {o.pagos.length === 0 && o.paymentMethod === "efectivo" && o.tendered !== null && row("Recibido / cambio", <><span className="cmd-num">{posMoney(o.tendered)}</span> / <span className="cmd-num" style={{ color: C.green }}>{posMoney(o.change)}</span></>)}
+        {o.mergedInto && row("Combinado en", <span className="cmd-num">{o.mergedIntoFolio ?? "otro pedido"}</span>)}
         {o.sinGluten && row("Nota", "Sin gluten")}
         {o.note && row("Nota", o.note)}
         <div style={{ marginTop: 12 }}>

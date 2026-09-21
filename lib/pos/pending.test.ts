@@ -19,7 +19,7 @@ const catalog: PosCatalog = {
 };
 
 const order = (items: PendingOrder["items"]): PendingOrder => ({
-  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, paymentMethod: null, tendered: null, change: 0, paid: 0, pagos: [], items,
+  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, paymentMethod: null, tendered: null, change: 0, paid: 0, pagos: [], items, mergedInto: null, mergedIntoFolio: null,
 });
 
 describe("sanitizeMods", () => {
