@@ -16,12 +16,14 @@ export type SaleLabelJob =
   | { kind: "drink"; item: DrinkLabelPlanItem };
 
 /**
- * The whole label run of a sale. With people on the ticket, every person
- * gets their own "Pa' <nombre>" label followed by their cups; cups that
- * belong to nobody come last behind the order label (table name or number).
- * Without people it is the order label and the cups, as always. The
- * Instagram QR prints once, right after the first label. Phrases are not
- * here: they wait on the AI and are queued per cup when it answers.
+ * The whole label run of a sale. Labels are for the cups the bar prepares:
+ * with people on the ticket, each person who has at least one prepared
+ * drink gets "Pa' <nombre>", the Instagram QR and their cups; someone with
+ * only food or a bottle gets nothing. Cups that belong to nobody come last
+ * behind the order label (table name or number) with their own QR. Without
+ * people it is the order label (always — it is the pickup number), the QR
+ * when there is a cup, and the cups. Phrases are not here: they wait on the
+ * AI and are queued per cup when it answers.
  */
 export function planSaleLabels(input: {
   order: ReadonlyArray<OrderLine>;
@@ -33,25 +35,18 @@ export function planSaleLabels(input: {
 }): SaleLabelJob[] {
   const cups = planDrinkLabels(input.order, input.people, input.byId);
   const jobs: SaleLabelJob[] = [];
-  let igDone = !input.instagram;
-  const pushName = (name: string) => {
+  const group = (name: string, items: DrinkLabelPlanItem[], always: boolean) => {
+    if (!items.length && !always) return;
     jobs.push({ kind: "name", name });
-    if (!igDone) { jobs.push({ kind: "instagram" }); igDone = true; }
+    if (input.instagram && items.length) jobs.push({ kind: "instagram" });
+    for (const item of items) jobs.push({ kind: "drink", item });
   };
   if (input.people.length === 0) {
-    pushName(input.tableName);
-    for (const item of cups) jobs.push({ kind: "drink", item });
+    group(input.tableName, cups, true);
     return jobs;
   }
-  for (const who of input.people) {
-    pushName(who);
-    for (const item of cups) if (item.customer === who) jobs.push({ kind: "drink", item });
-  }
-  const rest = cups.filter((c) => !c.customer || !input.people.includes(c.customer));
-  if (rest.length) {
-    pushName(input.tableName);
-    for (const item of rest) jobs.push({ kind: "drink", item });
-  }
+  for (const who of input.people) group(who, cups.filter((c) => c.customer === who), false);
+  group(input.tableName, cups.filter((c) => !c.customer || !input.people.includes(c.customer)), false);
   return jobs;
 }
 
