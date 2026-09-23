@@ -41,7 +41,7 @@ const CreateIngredienteSchema = z
     stockCurrent: z.coerce.number().min(0),
     stockMin: z.coerce.number().min(0),
     mermaPct: z.coerce.number().min(0).max(100).default(0),
-    costCop: z.coerce.number().int().min(0),
+    costCop: z.coerce.number().min(0),
     // Pack-purchase costing (optional). When both are present, cost_cop is
     // derived server-side as round(packCostCop / packQty). Both null/absent
     // means costCop is taken as the manual per-unit cost.
@@ -72,7 +72,7 @@ const UpdateIngredienteSchema = z
     conversionFactor: z.coerce.number().positive().nullable().optional(),
     stockMin: z.coerce.number().min(0),
     mermaPct: z.coerce.number().min(0).max(100).default(0),
-    costCop: z.coerce.number().int().min(0),
+    costCop: z.coerce.number().min(0),
     // Pack-purchase costing (optional). When both are present, cost_cop is
     // derived server-side as round(packCostCop / packQty). Both null/absent
     // means costCop is taken as the manual per-unit cost.

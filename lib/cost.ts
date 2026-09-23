@@ -10,14 +10,16 @@ export function lineTotal(qty: number, costPerUnit: number): number {
 
 /**
  * Per-unit cost derived from a pack purchase: what you paid for the pack
- * divided by how many units it holds, rounded to whole COP. Returns 0 when
- * the pack quantity isn't positive (avoids divide-by-zero). Mirrors the
- * `cost_cop = round(pack_cost_cop / pack_qty)` rule the inventario action
+ * divided by how many units it holds, kept to 2 decimals because g / ml
+ * ingredients cost fractions of a peso (a 900 ml bag of milk at 3.250 is
+ * 3,61 COP/ml; rounding to 4 overstated every milk recipe by 11 %). Returns
+ * 0 when the pack quantity isn't positive (avoids divide-by-zero). Mirrors
+ * the `cost_cop = pack_cost_cop / pack_qty` rule the inventario action
  * applies when an ingrediente is bought by pack.
- * Example: unitCostFromPack(4400, 12) === 367.
+ * Example: unitCostFromPack(4400, 12) === 366.67.
  */
 export function unitCostFromPack(packCost: number, packQty: number): number {
-  return packQty > 0 ? Math.round(packCost / packQty) : 0;
+  return packQty > 0 ? Math.round((packCost / packQty) * 100) / 100 : 0;
 }
 
 /** Total recipe cost = Σ line totals. */
