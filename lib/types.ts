@@ -297,9 +297,10 @@ export interface Ingrediente {
   merma_pct: number;
   cost_cop: number;
   // Pack-purchase costing. When both are set, `cost_cop` is derived as
-  // round(pack_cost_cop / pack_qty) — what you paid for a pack and how many
-  // units it holds (e.g. 4400 paid for a pack of 12 -> cost_cop 367). Both
-  // null means `cost_cop` was entered directly per unit.
+  // pack_cost_cop / pack_qty to 2 decimals — what you paid for a pack and how
+  // many units it holds (e.g. 4400 paid for a pack of 12 -> cost_cop 366.67;
+  // 3250 for a 900 ml bag of milk -> 3.61 per ml). Both null means `cost_cop`
+  // was entered directly per unit.
   pack_cost_cop: number | null;
   pack_qty: number | null;
   archived: boolean;

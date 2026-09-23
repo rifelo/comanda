@@ -25,8 +25,9 @@ describe("lineTotal", () => {
 });
 
 describe("unitCostFromPack", () => {
-  it("divides pack cost by pack quantity and rounds", () => {
-    expect(unitCostFromPack(4400, 12)).toBe(367); // 366.67 → 367 (vasos 12oz)
+  it("divides pack cost by pack quantity, keeping 2 decimals", () => {
+    expect(unitCostFromPack(4400, 12)).toBe(366.67); // vasos 12oz
+    expect(unitCostFromPack(3250, 900)).toBe(3.61); // bolsa de leche, per ml
     expect(unitCostFromPack(10200, 50)).toBe(204); // tapa domo Darnel x50
     expect(unitCostFromPack(18000, 24)).toBe(750);
   });
