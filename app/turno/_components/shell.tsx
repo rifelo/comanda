@@ -27,7 +27,7 @@ export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, on
   onNovedades: () => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)" }}>
+    <div className="turno-topbar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)", minWidth: 0, overflowX: "auto", overflowY: "hidden", fontFamily: "var(--font-mono)" }}>
       <Wordmark size={22} />
       <span className="hidden md:inline" style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--muted)", whiteSpace: "nowrap" }}>
         {sedeName} · {dateLabel(date, todayIdx)}
@@ -77,13 +77,13 @@ export function BlockNav({ counts, onJump, compact }: { counts: BlockCounts; onJ
           type="button"
           onClick={() => onJump(`turno-sec-${i.id}`)}
           style={{
-            display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: compact ? "0 10px" : "0 8px", borderRadius: 4,
-            border: compact ? "1px solid var(--rule)" : "none", background: "transparent", color: i.tone ?? "var(--muted)",
-            fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", textAlign: "left",
+            display: "inline-flex", alignItems: "center", gap: 8, minHeight: 40, padding: compact ? "0 12px" : "0 8px", borderRadius: 6,
+            border: compact ? "1.5px solid var(--rule)" : "none", background: "transparent", color: i.tone ?? "var(--muted)",
+            fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", textAlign: "left",
           }}
         >
           <span style={{ flex: compact ? undefined : 1 }}>{i.label}</span>
-          <span className="cmd-num" style={{ minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, background: i.tone ? i.tone : "transparent", color: i.tone ? "var(--paper-lt)" : "var(--muted)", border: i.tone ? "none" : "1px solid var(--rule)" }}>
+          <span className="cmd-num" style={{ minWidth: 24, height: 24, padding: "0 7px", borderRadius: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: i.tone ? i.tone : "transparent", color: i.tone ? "var(--paper-lt)" : "var(--muted)", border: i.tone ? "none" : "1px solid var(--rule)" }}>
             {i.n}
           </span>
         </button>

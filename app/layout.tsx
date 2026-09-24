@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono, Dela_Gothic_One, Caveat } from "next/font/google";
+import { JetBrains_Mono, Dela_Gothic_One, Caveat, Atkinson_Hyperlegible } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import type { ThemeName } from "@/lib/types";
@@ -24,6 +24,17 @@ const slab = Dela_Gothic_One({
   variable: "--font-slab",
   subsets: ["latin"],
   weight: "400",
+});
+
+// Reading face for the shift tablet: task titles and step-by-step
+// instructions are read at arm's length in a hurry, and a monospace makes
+// long Spanish sentences tiring. Atkinson Hyperlegible is built for exactly
+// that (distinct letterforms, generous counters). Numbers, times and the
+// chrome stay in the mono; headlines stay in the display face.
+const sans = Atkinson_Hyperlegible({
+  variable: "--font-sans",
+  subsets: ["latin"],
+  weight: ["400", "700"],
 });
 
 const script = Caveat({
@@ -73,7 +84,7 @@ export default async function RootLayout({
     <html
       lang="es"
       data-theme={theme}
-      className={`${mono.variable} ${slab.variable} ${script.variable} h-full antialiased`}
+      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} h-full antialiased`}
     >
       <body className="bg-paper text-ink min-h-full flex flex-col">
         {children}

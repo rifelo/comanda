@@ -153,7 +153,7 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
   }
 
   return (
-    <div className="cmd-paper" style={{ height: "100dvh", display: "grid", gridTemplateRows: "56px 1fr", fontFamily: "var(--font-mono)", color: "var(--ink)", overflow: "hidden" }}>
+    <div className="cmd-paper turno-ui" style={{ height: "100dvh", display: "grid", gridTemplateRows: "56px 1fr", color: "var(--ink)", overflow: "hidden" }}>
       <TopBar
         sedeName={data.sede.name}
         date={data.date}
@@ -165,7 +165,7 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
         onNovedades={() => setPanel("novedades")}
       />
 
-      <div className="flex flex-col lg:flex-row" style={{ minHeight: 0 }}>
+      <div className="flex flex-col lg:flex-row" style={{ minHeight: 0, minWidth: 0 }}>
         {/* rail (landscape) */}
         <aside className="hidden lg:flex" style={{ width: 300, flexShrink: 0, flexDirection: "column", borderRight: "1.5px solid var(--ink)", background: "var(--paper-lt)", overflowY: "auto" }}>
           <div style={{ padding: "14px 16px 6px", fontSize: 10, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--muted)" }}>Turnos de hoy</div>
@@ -185,14 +185,14 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
         </div>
 
         {/* main */}
-        <main style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "16px 24px 96px", position: "relative" }}>
+        <main style={{ flex: 1, minWidth: 0, overflowY: "auto", overflowX: "hidden", padding: "16px 24px 96px", position: "relative" }}>
           {counts && !showSummary && (flat || selectedGroup) && (
             <div className="lg:hidden" style={{ margin: "-8px -12px 8px" }}>
               <BlockNav counts={counts} onJump={jump} compact />
             </div>
           )}
-          {error && <div role="alert" style={{ marginBottom: 12, padding: "10px 14px", border: "1.5px solid var(--red)", color: "var(--red)", fontSize: 12, borderRadius: 4 }}>{error}</div>}
-          {!shift && <div style={{ padding: "64px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Ningún turno opera hoy en {data.sede.name}.</div>}
+          {error && <div role="alert" style={{ marginBottom: 12, padding: "12px 16px", border: "1.5px solid var(--red)", color: "var(--red)", fontSize: 15, borderRadius: 6 }}>{error}</div>}
+          {!shift && <div style={{ padding: "64px 24px", textAlign: "center", color: "var(--muted)", fontSize: 16 }}>Ningún turno opera hoy en {data.sede.name}.</div>}
           {shift && showSummary && (
             <CloseSummary
               shift={shift}

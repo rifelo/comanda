@@ -45,19 +45,19 @@ export function Inmediatas({ adHoc, actor, now, tz, busy, disabled, onToggle }: 
             aria-pressed={done}
             aria-label={t.title}
             style={{
-              display: "grid", gridTemplateColumns: "40px 1fr auto", alignItems: "center", gap: 12, minHeight: 64, padding: "10px 12px", marginBottom: 6, borderRadius: 6,
+              display: "grid", gridTemplateColumns: "48px 1fr auto", alignItems: "center", gap: 14, minHeight: 72, padding: "14px 16px", marginBottom: 8, borderRadius: 8,
               border: `1.5px solid ${done ? "var(--rule)" : "var(--red)"}`, boxShadow: done ? undefined : "inset 4px 0 0 var(--red)",
-              background: done ? "var(--paper)" : "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)",
+              background: done ? "var(--paper)" : "var(--paper-lt)", color: "var(--ink)",
               cursor: locked ? "default" : "pointer", opacity: busy === t.id ? 0.6 : locked && !done ? 0.7 : 1,
             }}
           >
-            {locked && !done ? <LockBox /> : <CmdCheck checked={done} size={32} mode="check" disabled={locked} onClick={(e) => { e.stopPropagation(); act(); }} />}
+            {locked && !done ? <LockBox /> : <CmdCheck checked={done} size={44} mode="check" disabled={locked} onClick={(e) => { e.stopPropagation(); act(); }} />}
             <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 17, fontWeight: 600, lineHeight: 1.2, textDecoration: done ? "line-through" : "none", opacity: done ? 0.6 : 1 }}>{t.title}</span>
-              {t.instructions && !done && <span style={{ display: "block", fontSize: 12, color: "var(--ink-2)", marginTop: 3, lineHeight: 1.4 }}>{t.instructions}</span>}
+              <span style={{ display: "block", fontSize: done ? 17 : 20, fontWeight: 700, lineHeight: 1.25, textDecoration: done ? "line-through" : "none", opacity: done ? 0.6 : 1 }}>{t.title}</span>
+              {t.instructions && !done && <span style={{ display: "block", fontSize: 15.5, color: "var(--ink-2)", marginTop: 6, lineHeight: 1.5 }}>{t.instructions}</span>}
               <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 6 }}>
                 {done ? (
-                  <span style={{ fontSize: 10.5, color: "var(--green)" }}>✓ {t.completed_at ? formatTime(t.completed_at, tz) : ""}</span>
+                  <span className="cmd-num" style={{ fontSize: 13, color: "var(--green)" }}>✓ {t.completed_at ? formatTime(t.completed_at, tz) : ""}</span>
                 ) : (
                   <>
                     <ScheduleTag label={t.due_time ? t.due_time.slice(0, 5) : "INMEDIATA"} immediate={!t.due_time} overdue={late} />
