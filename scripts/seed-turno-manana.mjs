@@ -42,7 +42,7 @@ const TEMPLATES = [
       [null, "Barrer la zona exterior y sacar mesas y sillas", "06:45", false, "Barre el frente del local, limpia la fachada si está sucia y ubica las mesas y sillas de afuera."],
       [null, "Sacar el punto ecológico", "06:45", true, "Residuos separados, en el horario de recolección. Canecas con bolsa nueva. Foto del punto ecológico."],
       [null, "Vaciar el garrafón del desagüe de la máquina", "06:45", true, "Vacíalo, enjuágalo y déjalo conectado con la manguera bien adentro. Foto del garrafón vacío y conectado."],
-      [null, "Revisar y surtir el baño", "06:50", true, "Aseo, papel higiénico, jabón, toallas y caneca vacía. Sin olores. Foto del baño listo."],
+      [null, "Revisar que haya papel y jabón líquido en el baño", "06:50", true, "Papel higiénico suficiente y jabón líquido en el dispensador. Si falta, surte y foto del baño listo.", { was: "Revisar y surtir el baño" }],
       [null, "Purgar los grupos y alistar la estación de café", "06:50", false, "Purga cada grupo, limpia duchas y portafiltros y cambia el agua del rinser. Paños limpios: uno para la lanza de vapor y otro para la barra."],
       [null, "Calibrar el espresso del día", "06:55", true, "Shots de prueba hasta que dosis, tiempo y peso queden en rango; los de prueba se botan. Molienda anotada en Novedades. Foto de la báscula con el shot final."],
       [null, "Montar la barra: vasos, tapas, leches y siropes", "06:55", false, "Todo surtido y a la mano, por tamaño. Lo que no alcance para el día, repórtalo."],
