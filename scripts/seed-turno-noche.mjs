@@ -4,7 +4,7 @@
 //   puestos (Barista, Aseo, Cierre; Cierre gated on Aseo's last task) plus
 //   the "Arqueo y cierre de caja" task that points at Turno → Caja. The
 //   Barista tasks carry the DAILY cleaning procedure of the espresso machine
-//   from the Caravel by Fiamma manual (§6.1) as instructions.
+//   (Caravel by Fiamma, automatic CV model, §6.1) as instructions.
 //
 //   "Limpieza semanal máquina" 20:00–21:00 sábados — the WEEKLY procedure
 //   (§6.2): groups with detergent, trays, drain cup, body, water softener.
@@ -41,12 +41,12 @@ const PUESTOS = [
   { name: "Cierre", color: "amber", position: 3 },
 ];
 
-// Procedures for the team, condensed from the Caravel by Fiamma manual
-// (semiautomatic column; the CV automatic models start the wash with
-// buttons 5 + 1 and stop by themselves). ≤ 1000 chars each (admin form cap).
+// Procedures for the team, condensed from the Caravel by Fiamma manual for
+// the AUTOMATIC CV models (PAYO's machine): the group wash is the built-in
+// self-cleaning cycle started with buttons 5 + 1. ≤ 1000 chars each.
 const PROC = {
   gruposDiario:
-    "1) Pon el filtro ciego en un portafiltro. 2) Engánchalo en el grupo. 3) Activa el grupo ~30 s (en los modelos CV: botón 5 + botón 1, los LEDs parpadean y el ciclo para solo). 4) Detén el grupo. 5) Repite hasta que el agua salga limpia. 6) Quita el filtro ciego y vuelve a poner el filtro normal. Se pueden lavar varios grupos a la vez. Sin detergente: el detergente va en la limpieza semanal.",
+    "1) Pon el filtro ciego en un portafiltro. 2) Engánchalo en el grupo. 3) Pulsa el botón 5 y el botón 1 a la vez para iniciar el lavado: los LEDs de los dos botones parpadean durante el ciclo. 4) Cuando dejan de parpadear, el ciclo terminó y la máquina vuelve sola al modo normal. 5) Repite hasta que el agua salga limpia. 6) Quita el filtro ciego y vuelve a poner el filtro normal. Puedes lavar varios grupos a la vez. Sin detergente: el detergente va en la limpieza semanal.",
   portafiltros:
     "Enjuaga filtros y portafiltros con agua caliente y detergente para máquinas de café hasta disolver la grasa del café. Sin residuos en la canasta ni en la oreja.",
   lanzas:
@@ -54,7 +54,7 @@ const PROC = {
   juntas:
     "Con la máquina apagada (interruptor general) y fría si se apaga al cierre. Limpia las juntas de los portafiltros y las guías de los grupos (donde engancha el portafiltro) con un paño o esponja.",
   gruposSemanal:
-    "1) Filtro ciego en un portafiltro + una cucharadita de detergente para máquinas de café. 2) Engancha en el grupo. 3) Activa el grupo ~30 s (CV: botón 5 + botón 1). 4) Detén. 5) Quita el portafiltro, límpialo y vuelve a engancharlo. 6) Repite hasta que el agua salga sin restos de detergente en la cubeta de desagüe. 7) Filtro ciego fuera, filtro normal puesto. Se pueden lavar varios grupos a la vez.",
+    "1) Filtro ciego en un portafiltro + una cucharadita de detergente para máquinas de café. 2) Engancha en el grupo. 3) Pulsa el botón 5 y el botón 1 a la vez: los LEDs parpadean mientras dura el ciclo y la máquina para sola. 4) Quita el portafiltro con el detergente, límpialo y vuelve a engancharlo. 5) Repite el ciclo hasta que el agua salga sin restos de detergente en la cubeta de desagüe. 6) Filtro ciego fuera, filtro normal puesto. Puedes lavar varios grupos a la vez.",
   cafePrueba: "Después del lavado con detergente prepara un café normal y bótalo: se lleva cualquier sabor desagradable.",
   rejillas:
     "Rejillas plásticas de la bandeja superior: paño húmedo. Rejilla y bandeja inferior (bajo los grupos): lavar con agua y detergente especial. Nunca productos abrasivos ni disolventes.",
