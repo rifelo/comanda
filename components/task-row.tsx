@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Loader2 } from "lucide-react";
 import type { TaskCompletion, TemplateTask } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
+import { splitSteps } from "@/lib/turno/steps";
 import { completeTask, uncompleteTask } from "@/app/(staff)/shift/[id]/actions";
 import { CmdCheck, PhotoPlaceholder } from "@/components/comanda/primitives";
 import { PhotoCapture } from "./photo-capture";
@@ -30,6 +31,7 @@ export function TaskRow({
   const [photoOpen, setPhotoOpen] = useState(false);
 
   const isComplete = !!completion;
+  const steps = !isComplete ? splitSteps(task.instructions) : null;
 
   function toggleSimple() {
     if (disabled || pending) return;
@@ -75,7 +77,7 @@ export function TaskRow({
       <li
         onClick={onClick}
         className={cn(
-          "flex gap-3 cursor-pointer relative px-4 py-3",
+          "flex gap-3 md:gap-4 cursor-pointer relative px-4 py-3 md:py-4",
           disabled && "opacity-60 cursor-not-allowed",
         )}
         style={{
@@ -88,8 +90,8 @@ export function TaskRow({
             <span
               className="inline-flex items-center justify-center"
               style={{
-                width: 22,
-                height: 22,
+                width: 30,
+                height: 30,
                 border: "1.5px solid var(--ink)",
                 borderRadius: 3,
                 background: "var(--paper-lt)",
@@ -100,6 +102,7 @@ export function TaskRow({
           ) : (
             <CmdCheck
               checked={isComplete}
+              size={30}
               onClick={(e) => {
                 e.stopPropagation();
                 // Route through the photo-aware handler so completing a
@@ -116,30 +119,36 @@ export function TaskRow({
           <div
             className="text-ink"
             style={{
-              fontSize: 14,
-              fontWeight: 500,
+              fontSize: isComplete ? 15 : 17,
+              fontWeight: 700,
               lineHeight: 1.25,
               textDecorationLine: isComplete ? "line-through" : "none",
               textDecorationColor: "rgba(31,26,20,0.5)",
+              opacity: isComplete ? 0.7 : 1,
             }}
           >
             {task.title}
           </div>
-          {task.instructions ? (
-            <div
-              className="text-muted mt-0.5"
-              style={{ fontSize: 11, lineHeight: 1.3 }}
-            >
-              {task.instructions}
+          {steps && (steps.intro || steps.steps.length > 0) ? (
+            <div className="text-ink-2 mt-1" style={{ fontSize: 14.5, lineHeight: 1.45 }}>
+              {steps.intro ? <div>{steps.intro}</div> : null}
+              {steps.steps.length > 0 ? (
+                <ol className="tsteps">
+                  {steps.steps.map((st, i) => (
+                    <li key={i}><b>{i + 1}</b><span>{st}</span></li>
+                  ))}
+                </ol>
+              ) : null}
+              {steps.note ? <div className="text-muted" style={{ marginTop: 5, fontSize: 13 }}>{steps.note}</div> : null}
             </div>
           ) : null}
           {completion ? (
             <div
               className="mt-1.5 flex items-center gap-1.5"
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 color: "var(--green)",
-                letterSpacing: "0.06em",
+                letterSpacing: "0.04em",
               }}
             >
               <span>✓ {formatTime(completion.completed_at)}</span>
@@ -160,14 +169,17 @@ export function TaskRow({
 
         {task.requires_photo && !isComplete ? (
           <span
-            className="self-start"
+            className="self-start font-mono"
             style={{
-              border: "1px solid var(--red)",
-              color: "var(--red)",
-              padding: "2px 5px",
-              fontSize: 8,
-              letterSpacing: "0.16em",
-              borderRadius: 2,
+              border: "1.5px solid var(--red)",
+              background: "var(--red)",
+              color: "var(--paper-lt)",
+              padding: "5px 9px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              borderRadius: 5,
+              whiteSpace: "nowrap",
             }}
           >
             FOTO
