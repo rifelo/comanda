@@ -7,7 +7,9 @@
 //   (Caravel by Fiamma, automatic CV model, §6.1) as instructions.
 //
 //   "Limpieza semanal máquina" 20:00–21:00 sábados — the WEEKLY procedure
-//   (§6.2): groups with detergent, trays, drain cup, body, water softener.
+//   (§6.2): groups, trays, drain cup, body, water softener. Written for a
+//   café WITHOUT machine detergent yet; each task says what changes when
+//   there is some.
 //
 //   node scripts/seed-turno-noche.mjs [restaurant_id] [--prune]
 //
@@ -48,19 +50,19 @@ const PROC = {
   gruposDiario:
     "1) Pon el filtro ciego en un portafiltro. 2) Engánchalo en el grupo. 3) Pulsa el botón 5 y el botón 1 a la vez para iniciar el lavado: los LEDs de los dos botones parpadean durante el ciclo. 4) Cuando dejan de parpadear, el ciclo terminó y la máquina vuelve sola al modo normal. 5) Repite hasta que el agua salga limpia. 6) Quita el filtro ciego y vuelve a poner el filtro normal. Puedes lavar varios grupos a la vez. Sin detergente: el detergente va en la limpieza semanal.",
   portafiltros:
-    "Enjuaga filtros y portafiltros con agua caliente y detergente para máquinas de café hasta disolver la grasa del café. Sin residuos en la canasta ni en la oreja.",
+    "Enjuaga filtros y portafiltros con agua bien caliente y un cepillo hasta que no quede grasa de café en la canasta ni en la oreja. Cuando haya detergente para máquinas de café, una cucharadita en el agua ayuda a disolver la grasa.",
   lanzas:
     "Purga vapor unos segundos y limpia cada lanza y grifo con el trapo húmedo de lácteos. Nada de leche seca ni incrustaciones: se acumulan y tapan la lanza.",
   juntas:
     "Con la máquina apagada (interruptor general) y fría si se apaga al cierre. Limpia las juntas de los portafiltros y las guías de los grupos (donde engancha el portafiltro) con un paño o esponja.",
   gruposSemanal:
-    "1) Filtro ciego en un portafiltro + una cucharadita de detergente para máquinas de café. 2) Engancha en el grupo. 3) Pulsa el botón 5 y el botón 1 a la vez: los LEDs parpadean mientras dura el ciclo y la máquina para sola. 4) Quita el portafiltro con el detergente, límpialo y vuelve a engancharlo. 5) Repite el ciclo hasta que el agua salga sin restos de detergente en la cubeta de desagüe. 6) Filtro ciego fuera, filtro normal puesto. Puedes lavar varios grupos a la vez.",
-  cafePrueba: "Después del lavado con detergente prepara un café normal y bótalo: se lleva cualquier sabor desagradable.",
+    "Por ahora sin detergente (no hay en la cafetería): mismo lavado con el filtro ciego, solo agua. 1) Filtro ciego en un portafiltro. 2) Engancha en el grupo. 3) Pulsa el botón 5 y el botón 1 a la vez: los LEDs parpadean mientras dura el ciclo y la máquina para sola. 4) Repite el ciclo 3 o 4 veces por grupo hasta que el agua salga limpia. 5) Filtro ciego fuera, filtro normal puesto. Cuando llegue el detergente: pon una cucharadita en el filtro ciego, y entre ciclos quita el portafiltro, límpialo y vuelve a engancharlo hasta que el agua salga sin restos en la cubeta; al final prepara un café y bótalo para quitar el sabor.",
   rejillas:
-    "Rejillas plásticas de la bandeja superior: paño húmedo. Rejilla y bandeja inferior (bajo los grupos): lavar con agua y detergente especial. Nunca productos abrasivos ni disolventes.",
+    "Rejillas plásticas de la bandeja superior: paño húmedo. Rejilla y bandeja inferior (bajo los grupos): lavar con agua caliente (y detergente para máquinas cuando lo haya). Nunca productos abrasivos ni disolventes.",
   cubeta:
     "Con la bandeja inferior retirada queda visible la cubeta de desagüe. Limpia la cubeta y el orificio de descarga con un cepillo para sacar residuos y evitar que se tape el tubo.",
-  cuerpo: "Exterior de la máquina con un paño húmedo y detergente adecuado. Nunca abrasivos ni disolventes.",
+  cuerpo:
+    "Exterior de la máquina con un paño húmedo (y detergente suave cuando lo haya). Nunca abrasivos ni disolventes.",
   suavizador:
     "Cada 2 semanas como mínimo (alterna sábados). Sigue las instrucciones que vienen con el suavizador de agua.",
 };
@@ -78,7 +80,7 @@ const TEMPLATES = [
     tasks: [
       ["Barista", "Lavar utensilios sucios", "20:15", false, null],
       ["Barista", "Lavar los grupos con el filtro ciego (limpieza diaria)", "20:30", true, PROC.gruposDiario],
-      ["Barista", "Lavar filtros y portafiltros con agua caliente y detergente", "20:30", true, PROC.portafiltros],
+      ["Barista", "Lavar filtros y portafiltros con agua caliente", "20:30", true, PROC.portafiltros],
       ["Barista", "Purgar y limpiar las lanzas de vapor", "20:30", true, PROC.lanzas],
       ["Barista", "Lavar la bandeja de la máquina de espresso", "20:35", false, null],
       ["Barista", "Limpiar las juntas y guías de los grupos", "20:40", false, PROC.juntas],
@@ -109,8 +111,7 @@ const TEMPLATES = [
     puestos: ["Barista"],
     gate: null,
     tasks: [
-      ["Barista", "Lavar los grupos con detergente (filtro ciego)", "20:15", true, PROC.gruposSemanal],
-      ["Barista", "Preparar un café de prueba y botarlo", "20:25", false, PROC.cafePrueba],
+      ["Barista", "Lavado semanal de los grupos (filtro ciego)", "20:15", true, PROC.gruposSemanal],
       ["Barista", "Lavar rejillas y bandejas de la máquina", "20:35", true, PROC.rejillas],
       ["Barista", "Limpiar la cubeta de residuos y el orificio de descarga", "20:40", true, PROC.cubeta],
       ["Barista", "Limpiar el cuerpo de la máquina", "20:45", false, PROC.cuerpo],
