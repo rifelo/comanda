@@ -26,6 +26,7 @@ const TEMPLATES = [
     tasks: [
       [null, "Abrir las puertas del local", "06:00", false, "Abre por completo la puerta de la calle y la de la carrera.", { was: "Abrir el local y dar la ronda de revisión" }],
       [null, "Revisar fugas y charcos de agua", "06:02", false, "Nevera: mira si hay goteo, charcos o agua en el piso alrededor. Baño: fugas en el sanitario y el lavamanos. Si hay algo, foto y Novedad antes de seguir."],
+      [null, "Dar una ronda por el exterior", "06:03", false, "Nada anormal afuera: vidrios sanos, sin excremento de perro en el frente, bombillos exteriores en su lugar y funcionando. Si hay algo, foto y Novedad."],
       [null, "Subir los tacos de la luz (todos en ON)", "06:05", false, "Todos los tacos arriba. Confirma que prendieron nevera, vitrina, luces y tomas de la barra."],
       [null, "Abrir el paso de agua de la máquina", "06:05", false, "Abre la llave por completo. Revisa que no gotee el filtro ni las mangueras."],
       [null, "Encender la máquina de café y el molino", "06:10", true, "Es lo primero: necesita 30 a 40 min para tomar temperatura y presión. Foto del manómetro en presión de trabajo."],
