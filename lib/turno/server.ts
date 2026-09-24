@@ -227,6 +227,8 @@ export interface TurnoShift {
   novedades: TurnoNovedad[];
   opened_by_name: string | null;
   closed_by_name: string | null;
+  /** Live (non-rejected) cash close of this turno, if the team sent one (0037). */
+  cajaCierreId: string | null;
 }
 
 function embeddedName(v: unknown): string | null {
@@ -268,7 +270,7 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
   const rows = (instances ?? []) as Array<Record<string, unknown>>;
   const ids = rows.map((r) => r.id as string);
   const empty = { data: [] as Array<Record<string, unknown>> };
-  const [{ data: comps }, { data: adHocRows }, { data: novRows }] = ids.length
+  const [{ data: comps }, { data: adHocRows }, { data: novRows }, { data: cajaRows }] = ids.length
     ? await Promise.all([
         ctx.admin
           .from("task_completions")
@@ -284,8 +286,17 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
           .select("id, shift_instance_id, body, submitted_at, submitted_by, who:profiles!novedades_submitted_by_fkey(full_name)")
           .in("shift_instance_id", ids)
           .order("submitted_at", { ascending: false }),
+        ctx.admin
+          .from("caja_cierres")
+          .select("id, shift_instance_id")
+          .in("shift_instance_id", ids)
+          .neq("status", "rechazado"),
       ])
-    : [empty, empty, empty];
+    : [empty, empty, empty, empty];
+  const cajaByShift = new Map<string, string>();
+  for (const c of (cajaRows ?? []) as Array<Record<string, unknown>>) {
+    cajaByShift.set(c.shift_instance_id as string, c.id as string);
+  }
   const compsByShift = new Map<string, Record<string, TurnoCompletion>>();
   for (const c of (comps ?? []) as Array<Record<string, unknown>>) {
     const sid = c.shift_instance_id as string;
@@ -349,6 +360,7 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
         instance: instance as unknown as ShiftInstance,
         opened_by_name: embeddedName(opener),
         closed_by_name: embeddedName(closer),
+        cajaCierreId: cajaByShift.get(r.id as string) ?? null,
         adHoc: adHocByShift.get(r.id as string) ?? [],
         novedades: novByShift.get(r.id as string) ?? [],
         template: {

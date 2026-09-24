@@ -14,6 +14,8 @@ import {
 import { formatTime, formatDateLabelEs } from "@/lib/utils";
 import { AsignarTareaForm } from "./asignar-tarea-form";
 import { ReviewButton } from "./review-button";
+import { CajaCard } from "./caja-card";
+import { getCierreByInstance } from "@/lib/caja/cierres";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +34,7 @@ export default async function HoyDetailPage({
   searchParams: Promise<{ turno?: string }>;
 }) {
   const [{ date }, { turno }] = await Promise.all([params, searchParams]);
-  const [{ supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const [{ supabase, profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
 
   if (!sede) {
     // No sede registered yet — surface a friendly 404 / empty state.
@@ -60,7 +62,7 @@ export default async function HoyDetailPage({
   }
 
   const shiftId = shiftRow.id as string;
-  const [view, novedadesRes, completionsRes, roster] = await Promise.all([
+  const [view, novedadesRes, completionsRes, roster, cierre] = await Promise.all([
     getShiftView(shiftId),
     supabase
       .from("novedades")
@@ -76,6 +78,8 @@ export default async function HoyDetailPage({
       )
       .eq("shift_instance_id", shiftId),
     listRoster(sede.id),
+    // Cash close of this turno (0037), if the team sent one.
+    profile.organization_id ? getCierreByInstance(supabase, profile.organization_id, shiftId) : Promise.resolve(null),
   ]);
 
   if (!view) notFound();
@@ -114,6 +118,10 @@ export default async function HoyDetailPage({
     reviewedAt: view.shift.reviewed_at ? formatTime(view.shift.reviewed_at, sede.tz) : null,
     reviewedBy: view.shift.reviewed_by ? roster.find((r) => r.id === view.shift.reviewed_by)?.name ?? null : null,
   };
+
+  // Cierre de caja: the card needs the window in the sede's clock.
+  const hasCajaTask = view.tasks.some((t) => /arqueo|cierre de caja/i.test(t.title));
+  const cajaWindow = cierre ? `${formatTime(cierre.ventana_desde, sede.tz)} – ${formatTime(cierre.ventana_hasta, sede.tz)}` : null;
 
   // Ad-hoc tasks (0015): drop cancelled, immediate (no due_time) first.
   const adHoc = view.adHocTasks
@@ -293,6 +301,16 @@ export default async function HoyDetailPage({
             })}
           </div>
         </div>
+
+        {/* cierre de caja */}
+        {(cierre || hasCajaTask) && (
+          <>
+            <HMLabel>Cierre de caja</HMLabel>
+            <div style={{ padding: "0 14px" }}>
+              <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} compact />
+            </div>
+          </>
+        )}
 
         {/* evidencia */}
         <HMLabel right={`${photos.length} fotos`}>Evidencia fotográfica</HMLabel>
@@ -625,6 +643,13 @@ export default async function HoyDetailPage({
               </div>
             );
           })}
+
+          {(cierre || hasCajaTask) && (
+            <div style={{ marginTop: 28 }}>
+              <SectionLabel>Cierre de caja</SectionLabel>
+              <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} />
+            </div>
+          )}
         </section>
 
         <section style={{ padding: "24px 32px" }}>
