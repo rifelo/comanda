@@ -20,23 +20,11 @@
 // the DB but not in this list are left alone unless --prune is passed.
 // Reads .env.local (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) like
 // the .e2e scripts.
-import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "fs";
-
-const env = Object.fromEntries(
-  readFileSync(".env.local", "utf8")
-    .split("\n")
-    .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
-    .map((l) => {
-      const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    }),
-);
-const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+import { PAYO, seedTurnos } from "./lib/seed-turnos.mjs";
 
 const args = process.argv.slice(2);
 const PRUNE = args.includes("--prune");
-const SEDE = args.find((a) => !a.startsWith("--")) ?? "21e07a47-4936-46d3-9ae5-b12c7219861d"; // PAYO
+const SEDE = args.find((a) => !a.startsWith("--")) ?? PAYO;
 
 const PUESTOS = [
   { name: "Barista", color: "green", position: 1 },
@@ -124,94 +112,4 @@ const TEMPLATES = [
   },
 ];
 
-const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-const die = (msg, err) => {
-  console.error(msg, err?.message ?? err ?? "");
-  process.exit(1);
-};
-
-// 1. puestos
-{
-  const { error } = await sb.from("puestos").upsert(PUESTOS.map((p) => ({ restaurant_id: SEDE, ...p })), { onConflict: "restaurant_id,name" });
-  if (error) die("puestos:", error);
-}
-const { data: puestoRows, error: pErr } = await sb.from("puestos").select("id, name").eq("restaurant_id", SEDE);
-if (pErr) die("puestos read:", pErr);
-const puestoId = Object.fromEntries(puestoRows.map((p) => [p.name, p.id]));
-for (const p of PUESTOS) if (!puestoId[p.name]) die(`puesto ${p.name} missing after upsert`);
-
-for (const T of TEMPLATES) {
-  for (const p of T.puestos) if (!puestoId[p]) die(`puesto ${p} missing`);
-
-  // 2. template — matched by name, hours/days refreshed
-  let templateId;
-  {
-    const { data: existing, error } = await sb.from("checklist_templates").select("id").eq("restaurant_id", SEDE).eq("name", T.name).maybeSingle();
-    if (error) die("template read:", error);
-    const fields = { inicio: T.inicio, fin: T.fin, dias: T.dias, active: true };
-    if (existing) {
-      templateId = existing.id;
-      const { error: uErr } = await sb.from("checklist_templates").update(fields).eq("id", templateId);
-      if (uErr) die("template update:", uErr);
-    } else {
-      const { data, error: iErr } = await sb.from("checklist_templates").insert({ restaurant_id: SEDE, name: T.name, ...fields }).select("id").single();
-      if (iErr) die("template insert:", iErr);
-      templateId = data.id;
-    }
-  }
-
-  // 3. tasks — match by title, update in place, insert the missing ones
-  const { data: taskRows, error: tErr } = await sb.from("template_tasks").select("id, title").eq("template_id", templateId);
-  if (tErr) die("tasks read:", tErr);
-  const byTitle = new Map(taskRows.map((t) => [norm(t.title), t]));
-  const seen = new Set();
-  const idByTitle = new Map();
-  let inserted = 0;
-  let updated = 0;
-  for (const [i, [puesto, title, due, photo, instructions]] of T.tasks.entries()) {
-    if (instructions && instructions.length > 1000) die(`instructions too long for "${title}" (${instructions.length} > 1000)`);
-    const row = { template_id: templateId, order_index: i, title, instructions, due_time: `${due}:00`, requires_photo: photo, puesto_id: puestoId[puesto] };
-    const found = byTitle.get(norm(title));
-    if (found) {
-      seen.add(found.id);
-      const { error } = await sb.from("template_tasks").update(row).eq("id", found.id);
-      if (error) die(`task update "${title}":`, error);
-      idByTitle.set(title, found.id);
-      updated++;
-    } else {
-      const { data, error } = await sb.from("template_tasks").insert(row).select("id").single();
-      if (error) die(`task insert "${title}":`, error);
-      idByTitle.set(title, data.id);
-      inserted++;
-    }
-  }
-  const leftovers = taskRows.filter((t) => !seen.has(t.id));
-  if (leftovers.length) {
-    if (PRUNE) {
-      const { error } = await sb.from("template_tasks").delete().in("id", leftovers.map((t) => t.id));
-      if (error) die("prune:", error);
-      console.log(`pruned ${leftovers.length} task(s) not in this list`);
-    } else {
-      console.warn(`⚠ ${leftovers.length} task(s) of "${T.name}" are not in this list (kept; pass --prune to delete):`, leftovers.map((t) => t.title));
-    }
-  }
-
-  // 4. template_puestos — in order; the gated puesto waits for its task
-  {
-    const gateId = T.gate ? idByTitle.get(T.gate.title) : null;
-    if (T.gate && !gateId) die(`gate task "${T.gate.title}" not found`);
-    const rows = T.puestos.map((name, position) => ({
-      template_id: templateId,
-      puesto_id: puestoId[name],
-      position,
-      waits_for_task_id: T.gate && T.gate.puesto === name ? gateId : null,
-    }));
-    const { error } = await sb.from("template_puestos").upsert(rows, { onConflict: "template_id,puesto_id" });
-    if (error) die("template_puestos:", error);
-  }
-
-  const dias = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"].filter((_, i) => T.dias[i]).join(", ");
-  console.log(`\nTurno "${T.name}" ${T.inicio.slice(0, 5)}–${T.fin.slice(0, 5)} (${dias}) · template ${templateId}`);
-  console.log(`tasks: ${inserted} inserted, ${updated} updated${T.gate ? ` · ${T.gate.puesto} espera a «${T.gate.title}»` : ""}`);
-  console.table(T.tasks.map(([puesto, title, due, photo]) => ({ puesto, title, due, foto: photo ? "sí" : "" })));
-}
+await seedTurnos({ sede: SEDE, puestos: PUESTOS, templates: TEMPLATES, prune: PRUNE });

@@ -45,11 +45,12 @@ Built with **Next.js 15 (App Router) · Supabase · Tailwind CSS · TypeScript**
 
    Open http://localhost:3000. Sign up — the DB trigger creates an organization automatically and gives the new user the `admin` role.
 
-### Turno "Noche" (PAYO)
+### Turnos de PAYO (seeds)
 
-The night closing checklist (Barista / Aseo / Cierre puestos, 17:00–21:00, Mon–Sat) is seeded with
-`node scripts/seed-turno-noche.mjs [restaurant_id]` — idempotent, updates tasks in place (pass `--prune`
-to delete tasks removed from the list). Its "Arqueo y cierre de caja" task points at the tablet's
+`node scripts/seed-turno-manana.mjs` (Mañana hábil, 06:00–12:00 lun–vie) and `node scripts/seed-turno-noche.mjs`
+(Noche 17:00–21:00 lun–sáb with Barista / Aseo / Cierre, plus the Saturday machine cleaning) seed PAYO's
+checklists through `scripts/lib/seed-turnos.mjs` — idempotent, tasks are matched by title (or by `was`
+for renames) and updated in place; pass `--prune` to delete tasks removed from the list. Its "Arqueo y cierre de caja" task points at the tablet's
 Turno → Caja screen (migration `0037_caja_cierres.sql`).
 
 ## End-to-end happy path
