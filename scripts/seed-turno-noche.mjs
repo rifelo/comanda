@@ -1,7 +1,8 @@
 // Closing turnos for a sede (PAYO by default):
 //
 //   "Noche" 17:00–21:00 lun–sáb — the closing checklist split in three
-//   puestos (Barista, Aseo, Cierre; Cierre gated on Aseo's last task) plus
+//   puestos (Barista, Aseo, Cierre; Cierre gated on Aseo's "Entrar el punto
+//   ecológico" — the floor is mopped last, after the doors and the till) plus
 //   the "Arqueo y cierre de caja" task that points at Turno → Caja. The
 //   Barista tasks carry the DAILY cleaning procedure of the espresso machine
 //   (Caravel by Fiamma, automatic CV model, §6.1) as instructions.
@@ -76,7 +77,7 @@ const TEMPLATES = [
     dias: [true, true, true, true, true, true, false],
     puestos: ["Barista", "Aseo", "Cierre"],
     /** Cierre waits for this Aseo task (soft handoff). */
-    gate: { puesto: "Cierre", title: "Barrer y trapear el área de trabajo" },
+    gate: { puesto: "Cierre", title: "Entrar el punto ecológico" },
     tasks: [
       ["Barista", "Lavar utensilios sucios", "20:15", false, null],
       ["Barista", "Lavar los grupos con el filtro ciego (limpieza diaria)", "20:30", true, PROC.gruposDiario],
@@ -94,13 +95,16 @@ const TEMPLATES = [
       ["Aseo", "Lavar los trapos y dejarlos ordenados en su sitio", "20:45", false, null],
       ["Aseo", "Entrar las sillas", "20:45", false, null],
       ["Aseo", "Entrar el punto ecológico", "20:45", false, null],
-      ["Aseo", "Barrer y trapear el área de trabajo", "20:50", true, "Piso limpio, sin agua encharcada."],
-      ["Cierre", "Arqueo y cierre de caja", "20:50", false, "Cuenta el efectivo por denominación en Turno → Caja (chip «Caja» arriba). Ahí queda registrado lo que hay en la caja y la base que se deja; el dueño lo revisa en el panel."],
-      ["Cierre", "Apagar el sistema POS", "20:55", false, null],
-      ["Cierre", "Apagar el SonoQR de Bold", "20:55", false, null],
-      ["Cierre", "Apagar la etiquetadora", "20:55", false, null],
-      ["Cierre", "Cerrar con llave la puerta de la calle", "21:00", true, null],
-      ["Cierre", "Apagar las luces y salir por la puerta de la carrera", "21:00", true, "Ajustar los pasadores de piso y cerrar con llave."],
+      ["Aseo", "Barrer y trapear el área de trabajo", "21:00", true, "Es lo último, con las puertas ya cerradas y la caja hecha. Piso limpio, sin agua encharcada."],
+      ["Cierre", "Apagar el sistema POS", "20:45", false, null],
+      ["Cierre", "Apagar el SonoQR de Bold", "20:45", false, null],
+      ["Cierre", "Apagar la etiquetadora", "20:45", false, null],
+      ["Cierre", "Cerrar la puerta de la calle", "20:50", false, "Después de entrar el punto ecológico."],
+      ["Cierre", "Colocar los pasadores a la puerta de la calle", "20:50", true, "Foto con los pasadores puestos."],
+      ["Cierre", "Echar llave a la chapa de la puerta de la calle", "20:50", true, "Foto de la chapa con llave echada."],
+      ["Cierre", "Cerrar las puertas de la carrera", "20:52", false, null],
+      ["Cierre", "Arqueo y cierre de caja", "20:55", false, "Con las puertas ya cerradas. Cuenta el efectivo por denominación en Turno → Caja (chip «Caja» arriba). Ahí queda registrado lo que hay en la caja y la base que se deja; el dueño lo revisa en el panel."],
+      ["Cierre", "Apagar las luces y salir por la puerta de la carrera", "21:00", true, "Cuando el piso esté trapeado. Al salir, ajustar los pasadores de piso y cerrar con llave."],
     ],
   },
   {
