@@ -44,7 +44,7 @@ const TEMPLATES = [
       [null, "Vaciar el garrafón del desagüe de la máquina", "06:45", true, "Vacíalo, enjuágalo y déjalo conectado con la manguera bien adentro. Foto del garrafón vacío y conectado."],
       [null, "Revisar que haya papel y jabón líquido en el baño", "06:50", true, "Papel higiénico suficiente y jabón líquido en el dispensador. Si falta, surte y foto del baño listo.", { was: "Revisar y surtir el baño" }],
       [null, "Purgar los grupos y alistar la estación de café", "06:50", false, "Purga cada grupo, limpia duchas y portafiltros y cambia el agua del rinser. Paños limpios: uno para la lanza de vapor y otro para la barra."],
-      [null, "Calibrar el espresso del día", "06:55", true, "Shots de prueba hasta que dosis, tiempo y peso queden en rango; los de prueba se botan. Molienda anotada en Novedades. Foto de la báscula con el shot final."],
+      [null, "Revisar que la máquina ya esté lista", "06:55", true, "La máquina llegó a temperatura y presión de trabajo y los grupos ya sacan café. Foto del manómetro o del primer shot.", { was: "Calibrar el espresso del día" }],
       [null, "Montar la barra: vasos, tapas, leches y siropes", "06:55", false, "Todo surtido y a la mano, por tamaño. Lo que no alcance para el día, repórtalo."],
       [null, "Abrir al público", "07:00", true, "Uniforme puesto, manos lavadas, música y luces encendidas, aviso de ABIERTO visible. Foto de la fachada."],
       [null, "Revisar insumos críticos y reportar faltantes", "09:00", false, "Café, leche, vasos, tapas, servilletas y pasteles. Lo que alcance para menos de un día, Novedad ya, no al final del turno."],
