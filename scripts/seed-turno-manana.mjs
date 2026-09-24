@@ -33,7 +33,6 @@ const TEMPLATES = [
       [null, "Encender POS, etiquetadora y SonoQR de Bold", "06:15", true, "POS en la pantalla de ventas, etiquetadora con rollo para el turno, SonoQR de Bold encendido y con señal. Foto del POS.", { was: "Encender POS, etiquetadora y datáfono" }],
       [null, "Contar la base de caja", "06:20", true, "Cuenta la base antes de la primera venta. Si falta o sobra plata, Novedad de una vez. Foto del conteo sobre la barra.", { was: "Contar la base de caja y abrir el arqueo" }],
       [null, "Revisar que la nevera esté encendida y en 6", "06:25", true, "La nevera no muestra temperatura y no hay vitrina refrigerada. Confirma que está encendida, enfriando, y que la perilla marca 6. Foto de la perilla.", { was: "Registrar temperatura de nevera y vitrina" }],
-      [null, "Rotar insumos: lo que vence primero, adelante", "06:30", false, "Leche, pulpas, pasteles y preparados. Retira lo vencido o en mal estado y anótalo en Novedades.", { was: "Revisar fechas y rotar insumos (lo que vence primero, adelante)" }],
       [null, "Sacar los pasteles y montar la vitrina", "06:35", true, "Sácalos con tiempo para que tomen temperatura ambiente. Pinzas o guantes, vitrina ordenada y precios visibles. Foto de la vitrina."],
       [null, "Limpiar y desinfectar el área de trabajo", "06:35", false, "Mesones, tablas, neveras por fuera y lavaplatos. Basura afuera y bolsa nueva."],
       [null, "Barrer y trapear la zona interior", "06:40", false, "Con desinfectante, del fondo hacia la puerta. Aviso de piso mojado mientras seca."],
