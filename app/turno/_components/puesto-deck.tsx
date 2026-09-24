@@ -32,11 +32,11 @@ export function PuestoDeck({ shift, group, assignedTo, started, onOpen, onClose,
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", marginBottom: 16 }}>
-        <span className="font-slab" style={{ fontSize: 28 }}>{shift.template.name}<span style={{ color: "var(--red)" }}>.</span></span>
-        <span className="cmd-num" style={{ fontSize: 12, color: "var(--muted)" }}>{shift.template.inicio} – {shift.template.fin}</span>
-        <span className="cmd-num" style={{ marginLeft: "auto", fontSize: 12 }}>{prog.done}/{prog.total} tareas · {prog.pct}%</span>
+        <span className="font-slab" style={{ fontSize: 32 }}>{shift.template.name}<span style={{ color: "var(--red)" }}>.</span></span>
+        <span className="cmd-num" style={{ fontSize: 14, color: "var(--muted)" }}>{shift.template.inicio.slice(0, 5)} – {shift.template.fin.slice(0, 5)}</span>
+        <span className="cmd-num" style={{ marginLeft: "auto", fontSize: 14 }}>{prog.done}/{prog.total} tareas · {prog.pct}%</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
         {group.groups.map((g) => {
           const st = puestoState({ tasks: g.tasks, completions: shift.completions, waitsForTaskId: g.waitsForTaskId, allTasks: shift.tasks, startedAnyway: started(g) });
           const ui = STATUS_UI[st.status];
@@ -45,16 +45,16 @@ export function PuestoDeck({ shift, group, assignedTo, started, onOpen, onClose,
           return (
             <div key={g.key} role="group" aria-label={`Puesto ${g.puesto?.name ?? shift.template.name}`} style={{ minHeight: 168, border: "1.5px solid var(--ink)", borderRadius: 8, background: "var(--paper-lt)", boxShadow: `inset 5px 0 0 ${color}`, padding: "14px 16px 14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="font-slab" style={{ fontSize: 22, lineHeight: 1 }}>{g.puesto?.name ?? "Checklist"}</span>
-                <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: ui.color, border: `1px solid ${ui.color}`, padding: "3px 7px", borderRadius: 3 }}>{ui.label}</span>
+                <span className="font-slab" style={{ fontSize: 24, lineHeight: 1 }}>{g.puesto?.name ?? "Checklist"}</span>
+                <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: ui.color, border: `1.5px solid ${ui.color}`, padding: "5px 9px", borderRadius: 4 }}>{ui.label}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 40 }}>
                 {person ? (
                   <>
                     <Avatar initials={person.initials} size={40} />
                     <span>
-                      <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{person.name}</span>
-                      <span style={{ display: "block", fontSize: 10, color: "var(--muted)" }}>asignado hoy</span>
+                      <span style={{ display: "block", fontSize: 17, fontWeight: 700 }}>{person.name}</span>
+                      <span style={{ display: "block", fontSize: 12, color: "var(--muted)" }}>asignado hoy</span>
                     </span>
                   </>
                 ) : (
@@ -63,14 +63,14 @@ export function PuestoDeck({ shift, group, assignedTo, started, onOpen, onClose,
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1 }}><CmdProgress done={st.done} total={st.total} color={color} /></div>
-                <span className="cmd-num" style={{ fontSize: 12 }}>{st.done}/{st.total}</span>
+                <span className="cmd-num" style={{ fontSize: 14, fontWeight: 700 }}>{st.done}/{st.total}</span>
               </div>
               {st.gate && (
-                <div style={{ fontSize: 11, color: st.gate.done ? "var(--muted)" : "var(--amber)" }}>
+                <div style={{ fontSize: 14, lineHeight: 1.4, color: st.gate.done ? "var(--muted)" : "var(--amber)" }}>
                   {st.gate.done ? "✓ " : "espera: "}{st.gate.title}
                 </div>
               )}
-              <button type="button" onClick={() => onOpen(g)} className="cmd-btn" style={{ marginTop: "auto", height: 44, fontSize: 12 }} disabled={closed}>
+              <button type="button" onClick={() => onOpen(g)} className="cmd-btn" style={{ marginTop: "auto", height: 52, fontSize: 13 }} disabled={closed}>
                 {st.status === "listo" ? "Ver lista" : "Abrir lista →"}
               </button>
             </div>
@@ -78,7 +78,7 @@ export function PuestoDeck({ shift, group, assignedTo, started, onOpen, onClose,
         })}
       </div>
       {group.shared.length > 0 && (
-        <div style={{ marginTop: 14, fontSize: 11, color: "var(--muted)" }}>
+        <div style={{ marginTop: 14, fontSize: 14, color: "var(--muted)" }}>
           {group.shared.length} tarea{group.shared.length === 1 ? "" : "s"} compartida{group.shared.length === 1 ? "" : "s"} aparecen en cada lista.
         </div>
       )}
