@@ -86,7 +86,7 @@ const TEMPLATES = [
       ["Barista", "Limpiar las juntas y guías de los grupos", "20:40", false, PROC.juntas],
       ["Barista", "Meter tortas a refrigerar", "20:40", false, null],
       ["Barista", "Asegurar que los envases de las tortas estén cerrados", "20:40", false, null],
-      ["Barista", "Frascos debidamente cerrados", "20:45", false, null],
+      ["Barista", "Frascos de comestibles en la barra debidamente cerrados", "20:45", false, null],
       ["Barista", "Asegurar que los recipientes estén cerrados", "20:45", false, null],
       ["Barista", "Desenchufar el microondas", "20:45", false, null],
       ["Aseo", "Limpiar el área de trabajo", "20:30", false, null],
