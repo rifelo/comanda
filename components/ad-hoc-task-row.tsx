@@ -88,7 +88,7 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
         <div
           className="text-ink"
           style={{
-            fontSize: 14.5,
+            fontSize: 17,
             fontWeight: 500,
             lineHeight: 1.25,
             textDecorationLine: isComplete ? "line-through" : "none",
@@ -98,7 +98,7 @@ export function AdHocTaskRow({ task, userId, disabled }: AdHocTaskRowProps) {
           {task.title}
         </div>
         {task.instructions ? (
-          <div className="text-muted" style={{ fontSize: 11.5, marginTop: 2, lineHeight: 1.35 }}>
+          <div className="text-ink-2" style={{ fontSize: 14.5, marginTop: 4, lineHeight: 1.45 }}>
             {task.instructions}
           </div>
         ) : null}
