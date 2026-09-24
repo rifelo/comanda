@@ -33,13 +33,16 @@ export default async function ShiftPage({
     // Phone-first, but the owner fills this from the tablet too: widen to the
     // available space above 768px (the same reading face as /turno).
     <div className="turno-ui mx-auto w-full max-w-md md:max-w-3xl lg:max-w-5xl">
-      <Link
-        href={profile.role === "admin" ? `/hoy/${view.shift.date}?turno=${view.shift.id}` : "/today"}
-        className="block px-4 pt-3 text-muted"
-        style={{ fontSize: 11, letterSpacing: "0.06em" }}
-      >
-        {profile.role === "admin" ? "← Panel · detalle del turno" : "← Hoy"}
-      </Link>
+      <div className="px-4 pt-3">
+        <Link
+          href={profile.role === "admin" ? `/hoy/${view.shift.date}?turno=${view.shift.id}` : "/today"}
+          className="cmd-btn ghost"
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 16px", fontSize: 13, textDecoration: "none" }}
+        >
+          <span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>←</span>
+          {profile.role === "admin" ? "Volver al panel" : "Volver a Hoy"}
+        </Link>
+      </div>
 
       {view.shift.status === "closed" ? (
         <div className="px-4 pt-3 flex justify-center">
