@@ -240,7 +240,14 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
       </div>
 
       {panel === "cerrar" && shift && (
-        <CloseConfirm shift={shift} now={now} busy={busy === "close"} onCancel={() => setPanel(null)} onConfirm={() => void confirmClose(shift)} />
+        <CloseConfirm
+          shift={shift}
+          now={now}
+          busy={busy === "close"}
+          cajaPending={!shift.cajaCierreId && shift.tasks.some((t) => /arqueo|cierre de caja/i.test(t.title))}
+          onCancel={() => setPanel(null)}
+          onConfirm={() => void confirmClose(shift)}
+        />
       )}
 
       {panel === "novedades" && shift && (

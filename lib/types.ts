@@ -339,6 +339,44 @@ export interface InventarioConteo {
   items: InventarioConteoItem[];
 }
 
+/** Cierre de caja (arqueo) al final del turno (0037). */
+export type CajaCierreStatus = ConteoStatus;
+export interface CajaDenominacion {
+  valor: number;
+  cantidad: number;
+}
+export interface CajaCierre {
+  id: string;
+  organization_id: string;
+  restaurant_id: string | null;
+  shift_instance_id: string | null;
+  status: CajaCierreStatus;
+  counted_by: string | null;
+  counted_by_name: string | null;
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  note: string | null;
+  review_note: string | null;
+  /** Sales window the expected cash was computed over (ISO instants). */
+  ventana_desde: string;
+  ventana_hasta: string;
+  base_inicial_cop: number;
+  efectivo_cop: number;
+  tarjeta_cop: number;
+  transferencia_cop: number;
+  pagos_count: number;
+  esperado_cop: number;
+  contado_cop: number;
+  /** contado - esperado; negative = missing. */
+  diferencia_cop: number;
+  base_dejada_cop: number;
+  denominaciones: CajaDenominacion[];
+  /** From the embedded shift instance, when linked. */
+  shift_date: string | null;
+  shift_name: string | null;
+}
+
 export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import";
 
 export interface IngredienteMovement {
