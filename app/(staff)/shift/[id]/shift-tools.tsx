@@ -14,24 +14,28 @@ const CAJA_STATUS: Record<CajaCierre["status"], { label: string; color: string }
  * turno and the quick inventory of the sede. Each tile shows its current
  * state so the screen doubles as the reminder.
  */
-export function ShiftTools({ shiftId, cierre, faltantes, hasCajaTask }: {
+export function ShiftTools({ shiftId, cierre, faltantes, hasCajaTask, basePorValidar }: {
   shiftId: string;
   cierre: CajaCierre | null;
   faltantes: { agotado: number; bajo: number };
   hasCajaTask: boolean;
+  /** The base the previous close left, not yet validated by this turno (0039). */
+  basePorValidar?: CajaCierre | null;
 }) {
-  const cajaTone = cierre ? CAJA_STATUS[cierre.status].color : hasCajaTask ? "var(--red)" : "var(--muted)";
-  const cajaState = cierre
-    ? `${CAJA_STATUS[cierre.status].label} · contado ${posMoney(cierre.contado_cop)}`
-    : hasCajaTask
-      ? "pendiente · se hace al cerrar"
-      : "sin cierre todavía";
+  const cajaTone = basePorValidar ? "var(--amber)" : cierre ? (cierre.base_confirmada_at ? CAJA_STATUS[cierre.status].color : "var(--amber)") : hasCajaTask ? "var(--red)" : "var(--muted)";
+  const cajaState = basePorValidar
+    ? `validar base de apertura: ${posMoney(basePorValidar.base_dejada_cop)}`
+    : cierre
+      ? `${CAJA_STATUS[cierre.status].label} · contado ${posMoney(cierre.contado_cop)}${cierre.base_confirmada_at ? "" : " · falta confirmar la base"}`
+      : hasCajaTask
+        ? "pendiente · se hace al cerrar"
+        : "sin cierre todavía";
   const faltan = fraseFaltantes(faltantes);
   return (
     <div className="px-4 py-3" style={{ borderBottom: "1px dashed var(--rule)" }}>
       <div className="text-muted mb-2" style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase" }}>Herramientas del turno</div>
       <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-        <Tile href={`/shift/${shiftId}/caja`} title="Caja · arqueo" state={cajaState} tone={cajaTone} hint="Cuenta el efectivo, deja la base de mañana." />
+        <Tile href={`/shift/${shiftId}/caja`} title="Caja · arqueo" state={cajaState} tone={cajaTone} hint={basePorValidar ? "Cuenta la base que dejaron y confirma que está correcta." : "Cuenta el efectivo, deja la base de mañana."} />
         <Tile
           href={`/shift/${shiftId}/inventario`}
           title="Faltantes · inventario rápido"

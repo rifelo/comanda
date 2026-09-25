@@ -12,18 +12,28 @@ import {
   ventanaTurno,
   type ResumenPagos,
 } from "./arqueo";
+import { planBase, type PlanBase } from "./base";
 
 // DB helpers for cash closes (caja_cierres, 0037). Same shape as
 // lib/inventario/conteos.ts: they take either the RLS client (admin panel)
 // or the service-role client (tablet).
 
 const SELECT =
-  "id, organization_id, restaurant_id, shift_instance_id, status, counted_by, submitted_at, reviewed_by, reviewed_at, note, review_note, ventana_desde, ventana_hasta, base_inicial_cop, efectivo_cop, tarjeta_cop, transferencia_cop, pagos_count, esperado_cop, contado_cop, diferencia_cop, base_dejada_cop, denominaciones, counter:profiles!caja_cierres_counted_by_fkey(full_name), shift:shift_instances(date, template:checklist_templates(name))";
+  "id, organization_id, restaurant_id, shift_instance_id, status, counted_by, submitted_at, reviewed_by, reviewed_at, note, review_note, ventana_desde, ventana_hasta, base_inicial_cop, efectivo_cop, tarjeta_cop, transferencia_cop, pagos_count, esperado_cop, contado_cop, diferencia_cop, base_dejada_cop, denominaciones, base_denominaciones, base_exacta, base_confirmada_at, base_validada_at, base_validada_ok, base_validada_nota, base_encontrada_cop, counter:profiles!caja_cierres_counted_by_fkey(full_name), confirmer:profiles!caja_cierres_base_confirmada_by_fkey(full_name), validator:profiles!caja_cierres_base_validada_by_fkey(full_name), shift:shift_instances(date, template:checklist_templates(name))";
+
+function mapLineas(v: unknown): CajaDenominacion[] {
+  const arr = (Array.isArray(v) ? v : []) as Array<Record<string, unknown>>;
+  return arr
+    .map((d): CajaDenominacion => ({ valor: Number(d.valor), cantidad: Number(d.cantidad) }))
+    .filter((d) => Number.isFinite(d.valor) && Number.isFinite(d.cantidad))
+    .sort((a, b) => b.valor - a.valor);
+}
 
 function mapCierre(row: Record<string, unknown>): CajaCierre {
   const counter = row.counter as { full_name: string | null } | null;
+  const confirmer = row.confirmer as { full_name: string | null } | null;
+  const validator = row.validator as { full_name: string | null } | null;
   const shift = row.shift as { date: string; template: { name: string } | null } | null;
-  const denominaciones = (Array.isArray(row.denominaciones) ? row.denominaciones : []) as Array<Record<string, unknown>>;
   return {
     id: row.id as string,
     organization_id: row.organization_id as string,
@@ -48,10 +58,16 @@ function mapCierre(row: Record<string, unknown>): CajaCierre {
     contado_cop: Number(row.contado_cop ?? 0),
     diferencia_cop: Number(row.diferencia_cop ?? 0),
     base_dejada_cop: Number(row.base_dejada_cop ?? 0),
-    denominaciones: denominaciones
-      .map((d): CajaDenominacion => ({ valor: Number(d.valor), cantidad: Number(d.cantidad) }))
-      .filter((d) => Number.isFinite(d.valor) && Number.isFinite(d.cantidad))
-      .sort((a, b) => b.valor - a.valor),
+    denominaciones: mapLineas(row.denominaciones),
+    base_denominaciones: mapLineas(row.base_denominaciones),
+    base_exacta: row.base_exacta !== false,
+    base_confirmada_at: (row.base_confirmada_at as string | null) ?? null,
+    base_confirmada_by_name: confirmer?.full_name ?? null,
+    base_validada_at: (row.base_validada_at as string | null) ?? null,
+    base_validada_by_name: validator?.full_name ?? null,
+    base_validada_ok: (row.base_validada_ok as boolean | null) ?? null,
+    base_validada_nota: (row.base_validada_nota as string | null) ?? null,
+    base_encontrada_cop: row.base_encontrada_cop == null ? null : Number(row.base_encontrada_cop),
     shift_date: shift?.date ?? null,
     shift_name: shift?.template?.name ?? null,
   };
@@ -99,6 +115,8 @@ export interface BaseSugerida {
   fecha: string | null;
   turno: string | null;
   counted_by_name: string | null;
+  /** The cierre itself (its plan de base, confirmation and validation), null when none. */
+  cierre: CajaCierre | null;
 }
 
 /**
@@ -109,21 +127,20 @@ export interface BaseSugerida {
 export async function baseSugerida(db: Db, restaurantId: string): Promise<BaseSugerida> {
   const { data } = await db
     .from("caja_cierres")
-    .select("base_dejada_cop, submitted_at, counter:profiles!caja_cierres_counted_by_fkey(full_name), shift:shift_instances(date, template:checklist_templates(name))")
+    .select(SELECT)
     .eq("restaurant_id", restaurantId)
     .neq("status", "rechazado")
     .order("submitted_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!data) return { monto: 0, fecha: null, turno: null, counted_by_name: null };
-  const row = data as unknown as Record<string, unknown>;
-  const counter = row.counter as { full_name: string | null } | null;
-  const shift = row.shift as { date: string; template: { name: string } | null } | null;
+  if (!data) return { monto: 0, fecha: null, turno: null, counted_by_name: null, cierre: null };
+  const c = mapCierre(data as unknown as Record<string, unknown>);
   return {
-    monto: Number(row.base_dejada_cop ?? 0),
-    fecha: shift?.date ?? (row.submitted_at as string).slice(0, 10),
-    turno: shift?.template?.name ?? null,
-    counted_by_name: counter?.full_name ?? null,
+    monto: c.base_dejada_cop,
+    fecha: c.shift_date ?? c.submitted_at.slice(0, 10),
+    turno: c.shift_name,
+    counted_by_name: c.counted_by_name,
+    cierre: c,
   };
 }
 
@@ -229,6 +246,8 @@ export type EnviarCierreResult =
       entrega: number;
       pagos: ResumenPagos;
       ventana: { desde: string; hasta: string };
+      /** Plan de base: which pieces stay in the drawer (lib/caja/base.ts). */
+      plan: PlanBase;
       /** YYYY-MM-DD of the turno, for revalidating /hoy/[date]. */
       shiftDate: string;
     }
@@ -291,6 +310,7 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
   const contado = totalContado(denominaciones);
   const esperado = esperadoCaja(data.baseInicial, pagos.efectivo);
   const diferencia = diferenciaCaja(contado, esperado);
+  const plan = planBase(denominaciones, data.baseDejada);
 
   const { data: row, error } = await db
     .from("caja_cierres")
@@ -312,6 +332,8 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
       diferencia_cop: diferencia,
       base_dejada_cop: data.baseDejada,
       denominaciones,
+      base_denominaciones: plan.lineas,
+      base_exacta: plan.exacto,
     })
     .select("id")
     .single();
@@ -332,6 +354,57 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
     entrega: entregaCaja(contado, data.baseDejada),
     pagos,
     ventana,
+    plan,
     shiftDate: inst.date as string,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Plan de base: confirmation (who closes) and validation (who opens next)
+// ---------------------------------------------------------------------------
+
+export type BaseActionResult = { ok: true } | { ok: false; error: string };
+
+/** Whoever closed confirms the planned pieces were set aside in the drawer. */
+export async function confirmarBase(db: Db, scope: { restaurantId: string; by: string }, cierreId: string): Promise<BaseActionResult> {
+  const { data, error } = await db
+    .from("caja_cierres")
+    .update({ base_confirmada_at: new Date().toISOString(), base_confirmada_by: scope.by })
+    .eq("id", cierreId)
+    .eq("restaurant_id", scope.restaurantId)
+    .neq("status", "rechazado")
+    .is("base_confirmada_at", null)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Esta base ya estaba confirmada." };
+  return { ok: true };
+}
+
+export interface ValidarBaseInput {
+  cierreId: string;
+  ok: boolean;
+  /** What was actually found when it does not match (COP). */
+  encontrado?: number;
+  nota?: string;
+}
+
+/** Whoever opens the next turno records whether the base was found as planned. */
+export async function validarBase(db: Db, scope: { restaurantId: string; by: string }, input: ValidarBaseInput): Promise<BaseActionResult> {
+  const { data, error } = await db
+    .from("caja_cierres")
+    .update({
+      base_validada_at: new Date().toISOString(),
+      base_validada_by: scope.by,
+      base_validada_ok: input.ok,
+      base_validada_nota: input.nota?.trim() || null,
+      base_encontrada_cop: input.ok ? null : (input.encontrado ?? null),
+    })
+    .eq("id", input.cierreId)
+    .eq("restaurant_id", scope.restaurantId)
+    .neq("status", "rechazado")
+    .is("base_validada_at", null)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Esta base ya fue validada." };
+  return { ok: true };
 }

@@ -62,6 +62,12 @@ same two tools, with one shared screen and one set of DB helpers each:
   blind count by denomination, base inicial pre-filled with the base the last cierre left (`baseSugerida`), base que
   queda for tomorrow, entrega = contado − base que queda, and the trail of the base (last cierres of the sede). The
   owner approves from `/hoy/[date]` or the new `/caja` page (Operación · 12: base en caja, por aprobar, historial).
+  **Plan de base** (migration `0039_caja_plan_base.sql`, `lib/caja/base.ts`): from the count by denomination the
+  system picks the pieces that stay as base — the smallest ones that sum the exact base (bounded knapsack) — previews
+  them live, stores them on the cierre (`base_denominaciones`, `base_exacta`), whoever closes ticks each line and
+  confirms (`base_confirmada_*`), and whoever opens the next turno sees "Base de apertura · por validar" on the caja
+  screen (and on the Caja tile of `/shift/[id]`) and records "Está correcta" or "No cuadra" + what was found
+  (`base_validada_*`, `base_encontrada_cop`). `/caja` and the `/hoy` card show the plan and both statuses.
 - **Faltantes · inventario rápido** (`/turno/inventario`, `/shift/[id]/inventario`;
   `components/inventario/rapido-screen.tsx`, `lib/inventario/faltantes*.ts`, migration `0038_inventario_faltantes.sql`):
   only the ingredients with `ingredientes.prioridad > 0` (1 crítico · 2 importante · 3 normal), one tap per item

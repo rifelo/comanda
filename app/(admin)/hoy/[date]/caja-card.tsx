@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { posMoney } from "@/lib/pos/types";
 import type { CajaCierre } from "@/lib/types";
 import { aprobarCierre, rechazarCierre } from "@/app/(admin)/caja/actions";
+import { baseEstado, describirLineas } from "@/lib/caja/base";
 
 const STATUS: Record<CajaCierre["status"], { label: string; color: string }> = {
   pendiente: { label: "Pendiente", color: "var(--amber)" },
@@ -92,6 +93,13 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
           ))}
         </div>
       )}
+      <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5 }}>
+        <span style={{ color: baseEstado(cierre).color, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", fontSize: 9.5 }}>Base {baseEstado(cierre).label}</span>
+        {cierre.base_denominaciones.length > 0 && <span className="text-muted"> · {describirLineas(cierre.base_denominaciones, posMoney)}</span>}
+        {cierre.base_validada_at && !cierre.base_validada_ok && (
+          <div style={{ color: "var(--red)" }}>Al abrir se encontró {cierre.base_encontrada_cop != null ? posMoney(cierre.base_encontrada_cop) : "otra cantidad"}{cierre.base_validada_nota ? ` · “${cierre.base_validada_nota}”` : ""}{cierre.base_validada_by_name ? ` · ${cierre.base_validada_by_name}` : ""}</div>
+        )}
+      </div>
       {cierre.note && (
         <p className="text-ink-2 whitespace-pre-wrap" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.45 }}>“{cierre.note}”</p>
       )}

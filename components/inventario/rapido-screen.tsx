@@ -72,14 +72,16 @@ export function RapidoScreen({ actor, sedeName, today, tz, view, scope, submit, 
     if (loaded.current) return;
     loaded.current = true;
     const d = readDraft(key);
-    if (d) {
-      // Drop taps for ingredients that left the list meanwhile.
-      const ids = new Set(view.groups.flatMap((g) => g.rows.map((r) => r.id)));
-      const s: Record<string, FaltanteEstado> = {};
-      for (const [id, e] of Object.entries(d.sel ?? {})) if (ids.has(id)) s[id] = e;
+    if (!d) return;
+    // Drop taps for ingredients that left the list meanwhile. Deferred so the
+    // hydration render is not followed by a synchronous cascade.
+    const ids = new Set(view.groups.flatMap((g) => g.rows.map((r) => r.id)));
+    const s: Record<string, FaltanteEstado> = {};
+    for (const [id, e] of Object.entries(d.sel ?? {})) if (ids.has(id)) s[id] = e;
+    queueMicrotask(() => {
       setSel(s);
       setNotes(d.notes ?? {});
-    }
+    });
   }, [key, view]);
   React.useEffect(() => {
     if (!loaded.current || done) return;

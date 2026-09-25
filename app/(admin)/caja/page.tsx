@@ -4,6 +4,7 @@ import { getActiveSede } from "@/lib/data/sede";
 import { baseSugerida, listCierres } from "@/lib/caja/cierres";
 import { posMoney } from "@/lib/pos/types";
 import { fechaCorta, formatTime, todayInTz } from "@/lib/utils";
+import { baseEstado, describirLineas } from "@/lib/caja/base";
 import { SectionCrumb } from "../_components/shared";
 import { CajaCard } from "../hoy/[date]/caja-card";
 
@@ -95,6 +96,7 @@ export default async function CajaAdminPage() {
                     <th style={{ padding: "6px 8px", fontWeight: 500, textAlign: "right" }}>Contado</th>
                     <th style={{ padding: "6px 8px", fontWeight: 500, textAlign: "right" }}>Diferencia</th>
                     <th style={{ padding: "6px 8px", fontWeight: 500, textAlign: "right" }}>Base que queda</th>
+                    <th style={{ padding: "6px 8px", fontWeight: 500 }}>Base armada</th>
                     <th style={{ padding: "6px 8px", fontWeight: 500, textAlign: "right" }}>Entrega</th>
                     <th style={{ padding: "6px 0 6px 8px", fontWeight: 500 }}>Estado</th>
                   </tr>
@@ -121,6 +123,13 @@ export default async function CajaAdminPage() {
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right" }}>{posMoney(c.contado_cop)}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: noPos ? "var(--muted)" : tone, fontWeight: 700 }}>{noPos ? "—" : money(c.diferencia_cop)}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", fontWeight: 700 }}>{posMoney(c.base_dejada_cop)}</td>
+                        <td style={{ padding: "8px", fontSize: 11, lineHeight: 1.4, minWidth: 180 }}>
+                          <span style={{ color: baseEstado(c).color, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontSize: 9.5 }}>{baseEstado(c).label}</span>
+                          {c.base_denominaciones.length > 0 && <div className="text-muted">{describirLineas(c.base_denominaciones, posMoney)}</div>}
+                          {c.base_validada_at && !c.base_validada_ok && (
+                            <div style={{ color: "var(--red)" }}>encontró {c.base_encontrada_cop != null ? posMoney(c.base_encontrada_cop) : "—"}{c.base_validada_nota ? ` · “${c.base_validada_nota}”` : ""}{c.base_validada_by_name ? ` · ${c.base_validada_by_name}` : ""}</div>
+                          )}
+                        </td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: entrega < 0 ? "var(--red)" : undefined }}>{money(entrega)}</td>
                         <td style={{ padding: "8px 0 8px 8px", whiteSpace: "nowrap" }}>
                           <span style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: st.color, fontWeight: 700 }}>{st.label}</span>
@@ -134,7 +143,7 @@ export default async function CajaAdminPage() {
             </div>
           )}
           <p className="text-muted" style={{ fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>
-            La base que queda de un cierre es la base inicial sugerida del siguiente. Entrega = contado − base que queda. Diferencia = contado − (base inicial + efectivo del POS en la ventana del turno); los cierres sin pagos en el POS no se comparan.
+            La base que queda de un cierre es la base inicial sugerida del siguiente; «base armada» dice qué piezas quedaron (las más pequeñas que suman la base), si quien cerró confirmó apartarlas y si quien abrió las encontró. Entrega = contado − base que queda. Diferencia = contado − (base inicial + efectivo del POS en la ventana del turno); los cierres sin pagos en el POS no se comparan.
           </p>
         </section>
       </div>
