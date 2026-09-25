@@ -9,7 +9,7 @@ import {
   Stamp,
 } from "@/components/comanda/primitives";
 import { formatTime, formatDateLabelEs } from "@/lib/utils";
-import { getCierreByInstance } from "@/lib/caja/cierres";
+import { baseSugerida, getCierreByInstance } from "@/lib/caja/cierres";
 import { countFaltantesAbiertos } from "@/lib/inventario/faltantes-db";
 import { ShiftBoard } from "./shift-board";
 import { ShiftTools } from "./shift-tools";
@@ -27,10 +27,13 @@ export default async function ShiftPage({
   const view = await getShiftView(id);
   if (!view) notFound();
   // Shift tools (arqueo + quick inventory) state, read with the person's own session.
-  const [cierre, faltantes] = await Promise.all([
+  const [cierre, faltantes, ultimaBase] = await Promise.all([
     getCierreByInstance(supabase, profile.organization_id, view.shift.id),
     countFaltantesAbiertos(supabase, profile.organization_id),
+    baseSugerida(supabase, view.shift.restaurant_id),
   ]);
+  // The previous close left a base this turno has not checked yet.
+  const basePorValidar = ultimaBase.cierre && !ultimaBase.cierre.base_validada_at && ultimaBase.cierre.shift_instance_id !== view.shift.id ? ultimaBase.cierre : null;
   const hasCajaTask = view.tasks.some((t) => /arqueo|cierre de caja/i.test(t.title));
 
   const completedCount = Object.keys(view.completions).length;
@@ -105,7 +108,7 @@ export default async function ShiftPage({
         <Folio n={`DR-${view.shift.id.slice(0, 4).toUpperCase()}`} />
       </div>
 
-      <ShiftTools shiftId={view.shift.id} cierre={cierre} faltantes={faltantes} hasCajaTask={hasCajaTask} />
+      <ShiftTools shiftId={view.shift.id} cierre={cierre} faltantes={faltantes} hasCajaTask={hasCajaTask} basePorValidar={basePorValidar} />
 
       <ShiftBoard view={view} userId={profile.id} cajaPending={hasCajaTask && !cierre} />
       <RealtimeAdHoc shiftId={view.shift.id} />

@@ -374,6 +374,19 @@ export interface CajaCierre {
   diferencia_cop: number;
   base_dejada_cop: number;
   denominaciones: CajaDenominacion[];
+  /** Plan de base (0039): the pieces that stay in the drawer, computed on submit. */
+  base_denominaciones: CajaDenominacion[];
+  /** false when the count could not form the exact base (it stayed short). */
+  base_exacta: boolean;
+  /** Whoever closed confirmed the base was set aside exactly as planned. */
+  base_confirmada_at: string | null;
+  base_confirmada_by_name: string | null;
+  /** Whoever opened the next turno checked the base. */
+  base_validada_at: string | null;
+  base_validada_by_name: string | null;
+  base_validada_ok: boolean | null;
+  base_validada_nota: string | null;
+  base_encontrada_cop: number | null;
   /** From the embedded shift instance, when linked. */
   shift_date: string | null;
   shift_name: string | null;

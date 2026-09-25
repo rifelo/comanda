@@ -5,16 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { posMoney } from "@/lib/pos/types";
 import { DENOMINACIONES_COP, parseCantidad, totalContado } from "@/lib/caja/arqueo";
-import type { BaseSugerida, CajaInstance, CierreInput, EnviarCierreResult } from "@/lib/caja/cierres";
-import type { CajaCierre, CajaCierreStatus } from "@/lib/types";
+import { baseEstado, describirLineas, planBase, type PlanBase } from "@/lib/caja/base";
+import type { BaseActionResult, BaseSugerida, CajaInstance, CierreInput, EnviarCierreResult, ValidarBaseInput } from "@/lib/caja/cierres";
+import type { CajaCierre, CajaCierreStatus, CajaDenominacion } from "@/lib/types";
 import { fechaCorta, formatTime } from "@/lib/utils";
-
-export interface CajaExisting {
-  status: CajaCierreStatus;
-  contado: number;
-  diferencia: number;
-  submitted_at: string;
-}
 
 type Step = { kind: "contar" } | { kind: "done"; result: Extract<EnviarCierreResult, { ok: true }> };
 type Draft = { cantidades: Record<string, string>; baseInicial: string; baseDejada: string; nota: string };
@@ -56,7 +50,7 @@ const sectionLabel: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16e
 const money = (n: number) => (n < 0 ? `-${posMoney(-n)}` : posMoney(n));
 
 /** Pick the turno most likely being closed: the open one that started latest. */
-function defaultInstance(instances: CajaInstance[], existing: Record<string, CajaExisting>): string | null {
+function defaultInstance(instances: CajaInstance[], existing: Record<string, CajaCierre>): string | null {
   const open = instances.filter((i) => i.status === "open" && (!existing[i.id] || existing[i.id].status === "rechazado"));
   const pool = open.length ? open : instances.filter((i) => !existing[i.id] || existing[i.id].status === "rechazado");
   return pool.length ? pool[pool.length - 1].id : instances[0]?.id ?? null;
@@ -67,20 +61,25 @@ function defaultInstance(instances: CajaInstance[], existing: Record<string, Caj
  * shift screen (/shift/[id]/caja). Blind count by denomination, the base
  * the drawer opened with (pre-filled with what the last cierre left) and the
  * base that stays for tomorrow; the comparison with the POS shows only after
- * sending, and the owner approves from the panel. `submit` is the server
- * action of whichever surface renders it.
+ * sending, and the owner approves from the panel. The plan de base (which
+ * pieces stay in the drawer) previews live, is confirmed by whoever closes
+ * and validated by whoever opens the next turno. `submit`, `confirmBase`
+ * and `validateBase` are the server actions of whichever surface renders it.
  */
-export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida, existing, historial, submit, backHref, backLabel, panelHref }: {
+export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida, existing, historial, submit, confirmBase, validateBase, backHref, backLabel, panelHref }: {
   actor: { name: string; isAdmin: boolean };
   sedeName: string;
   today: string;
   tz: string;
   instances: CajaInstance[];
   baseSugerida: BaseSugerida;
-  existing: Record<string, CajaExisting>;
+  /** The live (or latest rejected) cierre of each instance, by instance id. */
+  existing: Record<string, CajaCierre>;
   /** Recent cierres of the sede, newest first: the trail of the base. */
   historial: CajaCierre[];
   submit: (input: CierreInput) => Promise<EnviarCierreResult>;
+  confirmBase: (cierreId: string) => Promise<BaseActionResult>;
+  validateBase: (input: ValidarBaseInput) => Promise<BaseActionResult>;
   backHref: string;
   backLabel: string;
   panelHref?: string;
@@ -121,6 +120,9 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
   const basesOk = baseIni !== null && baseDej !== null;
   const current = instances.find((i) => i.id === instanceId) ?? null;
   const blocked = current ? existing[current.id] && existing[current.id].status !== "rechazado" : true;
+  const plan = React.useMemo(() => (baseDej !== null && contado > 0 ? planBase(lines, baseDej) : null), [lines, baseDej, contado]);
+  // The base the previous turno left, still to be checked by whoever opens this one.
+  const porValidar = baseSugerida.cierre && !baseSugerida.cierre.base_validada_at && baseSugerida.cierre.shift_instance_id !== instanceId ? baseSugerida.cierre : null;
   const baseHint = baseSugerida.fecha
     ? `Base que dejó ${baseSugerida.turno ?? "el cierre"} del ${fechaCorta(baseSugerida.fecha)}${baseSugerida.counted_by_name ? ` (${baseSugerida.counted_by_name})` : ""}: ${posMoney(sugerida)}.`
     : "Con lo que abrió la caja hoy. No hay un cierre anterior registrado.";
@@ -169,6 +171,8 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
       {step.kind === "contar" && (
         <>
           <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 130px", maxWidth: 760, width: "100%", margin: "0 auto" }}>
+            {porValidar && <BaseValidarCard cierre={porValidar} tz={tz} validate={validateBase} onDone={() => router.refresh()} />}
+
             {/* which turno */}
             <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>¿De qué turno es la caja?</div>
             {instances.length === 0 ? (
@@ -198,13 +202,17 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
               <div style={{ marginTop: 12, border: `1px solid ${blocked ? "var(--green)" : "var(--red)"}`, borderRadius: 6, padding: "10px 14px", fontSize: 12.5, lineHeight: 1.5 }}>
                 {blocked ? (
                   <>
-                    <b style={{ color: "var(--green)" }}>✓ Ya se envió el cierre de este turno</b> a las {formatTime(existing[current.id].submitted_at, tz)} · contado {posMoney(existing[current.id].contado)} · diferencia {money(existing[current.id].diferencia)}.
+                    <b style={{ color: "var(--green)" }}>✓ Ya se envió el cierre de este turno</b> a las {formatTime(existing[current.id].submitted_at, tz)} · contado {posMoney(existing[current.id].contado_cop)} · diferencia {existing[current.id].pagos_count === 0 ? "—" : money(existing[current.id].diferencia_cop)}.
                     {existing[current.id].status === "pendiente" ? " Está pendiente de revisión del dueño." : " Ya fue aprobado."}
                   </>
                 ) : (
                   <><b style={{ color: "var(--red)" }}>El cierre anterior fue rechazado.</b> Cuenta de nuevo y envíalo.</>
                 )}
               </div>
+            )}
+
+            {current && blocked && existing[current.id] && (
+              <BaseConfirmCard cierre={existing[current.id]} tz={tz} confirm={confirmBase} onDone={() => router.refresh()} />
             )}
 
             {current && !blocked && (
@@ -252,6 +260,8 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
                   suggestion={baseSugerida.fecha && baseDej !== sugerida ? { monto: sugerida, onUse: () => setBaseDejada(String(sugerida)) } : null}
                 />
 
+                {plan && <PlanPreview plan={plan} />}
+
                 <div style={sectionLabel}>Nota</div>
                 <textarea value={nota} onChange={(e) => setNota(e.target.value)} maxLength={300} rows={2} placeholder="Algo que el dueño deba saber (un gasto pagado de caja, un vuelto mal dado…)" aria-label="Nota del cierre" style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 13, outline: "none", resize: "vertical" }} />
 
@@ -286,7 +296,7 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
         </>
       )}
 
-      {step.kind === "done" && <CajaResult result={step.result} person={actor.name} tz={tz} turno={current?.template_name ?? ""} backHref={backHref} backLabel={backLabel} />}
+      {step.kind === "done" && <CajaResult result={step.result} person={actor.name} tz={tz} turno={current?.template_name ?? ""} backHref={backHref} backLabel={backLabel} confirm={confirmBase} />}
     </div>
   );
 }
@@ -353,7 +363,10 @@ export function HistorialBase({ rows, tz }: { rows: CajaCierre[]; tz: string }) 
               </div>
               <div className="cmd-num" style={{ padding: "7px 0", borderTop: "1px dashed var(--rule-soft, var(--rule))", textAlign: "right" }}>{posMoney(c.contado_cop)}</div>
               <div className="cmd-num" style={{ padding: "7px 0", borderTop: "1px dashed var(--rule-soft, var(--rule))", textAlign: "right", color: noPos ? "var(--muted)" : tone }}>{noPos ? "—" : money(c.diferencia_cop)}</div>
-              <div className="cmd-num" style={{ padding: "7px 0", borderTop: "1px dashed var(--rule-soft, var(--rule))", textAlign: "right", fontWeight: 700, color: c.status === "rechazado" ? "var(--muted)" : "var(--ink)" }}>{posMoney(c.base_dejada_cop)}</div>
+              <div className="cmd-num" style={{ padding: "7px 0", borderTop: "1px dashed var(--rule-soft, var(--rule))", textAlign: "right", fontWeight: 700, color: c.status === "rechazado" ? "var(--muted)" : "var(--ink)" }}>
+                {posMoney(c.base_dejada_cop)}
+                <div style={{ fontSize: 9.5, fontWeight: 400, letterSpacing: ".06em", color: baseEstado(c).color }}>{baseEstado(c).label}</div>
+              </div>
             </React.Fragment>
           );
         })}
@@ -362,7 +375,7 @@ export function HistorialBase({ rows, tz }: { rows: CajaCierre[]; tz: string }) 
   );
 }
 
-function CajaResult({ result, person, tz, turno, backHref, backLabel }: { result: Extract<EnviarCierreResult, { ok: true }>; person: string; tz: string; turno: string; backHref: string; backLabel: string }) {
+function CajaResult({ result, person, tz, turno, backHref, backLabel, confirm }: { result: Extract<EnviarCierreResult, { ok: true }>; person: string; tz: string; turno: string; backHref: string; backLabel: string; confirm: (cierreId: string) => Promise<BaseActionResult> }) {
   const r = result;
   const tone = r.diferencia < 0 ? "var(--red)" : r.diferencia > 0 ? "var(--amber)" : "var(--green)";
   const verdict = r.pagos.count === 0
@@ -385,10 +398,13 @@ function CajaResult({ result, person, tz, turno, backHref, backLabel }: { result
           <Stat k="Entrega" v={money(r.entrega)} color={r.entrega < 0 ? "var(--red)" : undefined} />
         </div>
         <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: r.pagos.count === 0 ? "var(--muted)" : tone }}>{verdict}</div>
-        <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-          Deja {posMoney(r.baseDejada)} en la caja como base de mañana y entrega {money(r.entrega)} al dueño. Mañana la base inicial aparecerá con ese valor.
-        </div>
       </div>
+      <BaseConfirmCard
+        cierre={{ id: r.cierreId, base_dejada_cop: r.baseDejada, base_denominaciones: r.plan.lineas, base_exacta: r.plan.exacto, base_confirmada_at: null, base_confirmada_by_name: null, denominaciones: r.plan.lineas.concat(r.plan.resto), contado_cop: r.contado }}
+        resto={r.plan.resto}
+        tz={tz}
+        confirm={confirm}
+      />
       <div>
         <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Ventas del POS en la ventana</div>
         <div style={{ fontSize: 12.5, lineHeight: 1.7, padding: "8px 0" }}>
@@ -408,5 +424,211 @@ function Stat({ k, v, color }: { k: string; v: string; color?: string }) {
       <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" }}>{k}</div>
       <div className="cmd-num font-slab" style={{ fontSize: 24, color: color ?? "var(--ink)" }}>{v}</div>
     </div>
+  );
+}
+
+const pieceRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px dashed var(--rule-soft, var(--rule))", fontSize: 14 };
+
+/** Live preview while counting: which pieces will stay as base. */
+function PlanPreview({ plan }: { plan: PlanBase }) {
+  return (
+    <div style={{ marginTop: 10, border: `1px solid ${plan.exacto ? "var(--rule)" : "var(--red)"}`, borderRadius: 6, padding: "10px 14px", background: "var(--paper-lt)" }}>
+      <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)" }}>Base sugerida · lo que queda en la caja</div>
+      {plan.lineas.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>Sin piezas para la base.</div>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {plan.lineas.map((l) => (
+            <span key={l.valor} className="cmd-num" style={{ fontSize: 12.5, border: "1px solid var(--ink)", padding: "4px 8px", borderRadius: 4, background: "var(--paper)" }}>
+              <b>{l.cantidad}</b> × {posMoney(l.valor)}
+            </span>
+          ))}
+          <span className="cmd-num" style={{ fontSize: 12.5, padding: "4px 0", fontWeight: 700 }}>= {posMoney(plan.total)}</span>
+        </div>
+      )}
+      <div style={{ fontSize: 11.5, color: plan.exacto ? "var(--muted)" : "var(--red)", marginTop: 6, lineHeight: 1.45 }}>
+        {plan.exacto
+          ? "Se dejan las piezas más pequeñas para tener cambio; el resto es la entrega. Al enviar, confirmas que las apartaste."
+          : `Con lo contado no se arma la base exacta: quedarían ${posMoney(plan.total)} (faltan ${posMoney(plan.faltante)}). Consigue cambio o anótalo en la nota.`}
+      </div>
+    </div>
+  );
+}
+
+type ConfirmCierre = Pick<CajaCierre, "id" | "base_dejada_cop" | "base_denominaciones" | "base_exacta" | "base_confirmada_at" | "base_confirmada_by_name" | "denominaciones" | "contado_cop">;
+
+/**
+ * After sending: the pieces to set aside, one tick each, then "Confirmo".
+ * `resto` (what leaves as entrega) is shown when known. Once confirmed the
+ * card just states it, so a reload keeps the record visible.
+ */
+function BaseConfirmCard({ cierre, resto, tz, confirm, onDone }: { cierre: ConfirmCierre; resto?: CajaDenominacion[]; tz: string; confirm: (cierreId: string) => Promise<BaseActionResult>; onDone?: () => void }) {
+  const [ticks, setTicks] = React.useState<Record<number, boolean>>({});
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [confirmedAt, setConfirmedAt] = React.useState<string | null>(cierre.base_confirmada_at);
+  const lineas = cierre.base_denominaciones;
+  const total = lineas.reduce((s, l) => s + l.valor * l.cantidad, 0);
+  const allTicked = lineas.length > 0 && lineas.every((l) => ticks[l.valor]);
+  const entrega = cierre.contado_cop - total;
+  const restoLines = resto ?? (() => {
+    const enBase = new Map(lineas.map((l) => [l.valor, l.cantidad]));
+    return cierre.denominaciones.map((d) => ({ valor: d.valor, cantidad: d.cantidad - (enBase.get(d.valor) ?? 0) })).filter((d) => d.cantidad > 0);
+  })();
+
+  async function doConfirm() {
+    if (busy || !allTicked) return;
+    setBusy(true);
+    setError(null);
+    const r = await confirm(cierre.id);
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setConfirmedAt(new Date().toISOString());
+    onDone?.();
+  }
+
+  return (
+    <section aria-label="Base para mañana" style={{ marginTop: 14, border: `1.5px solid ${confirmedAt ? "var(--green)" : "var(--ink)"}`, borderRadius: 8, padding: "14px 16px", background: "var(--paper-lt)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span className="font-slab" style={{ fontSize: 20 }}>Base para mañana</span>
+        <span className="cmd-num font-slab" style={{ fontSize: 20 }}>{posMoney(cierre.base_dejada_cop)}</span>
+        {!cierre.base_exacta && <span style={{ fontSize: 11, color: "var(--red)", fontWeight: 700 }}>base corta: solo se pudo armar {posMoney(total)}</span>}
+      </div>
+      {confirmedAt ? (
+        <div style={{ fontSize: 12.5, color: "var(--green)", marginTop: 6, fontWeight: 600 }}>
+          ✓ Base armada y confirmada{cierre.base_confirmada_by_name ? ` por ${cierre.base_confirmada_by_name}` : ""} a las {formatTime(confirmedAt, tz)} · {describirLineas(lineas, posMoney)}.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>Aparta estas piezas en la caja y marca cada una. Quien abra el siguiente turno va a validar exactamente esto.</div>
+          <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+            {lineas.map((l) => {
+              const on = !!ticks[l.valor];
+              return (
+                <li key={l.valor} style={pieceRow}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    aria-label={`${l.cantidad} de ${posMoney(l.valor)} apartados`}
+                    onClick={() => setTicks((t) => ({ ...t, [l.valor]: !on }))}
+                    style={{ width: 34, height: 34, borderRadius: 6, border: `2px solid ${on ? "var(--green)" : "var(--ink)"}`, background: on ? "var(--green)" : "transparent", color: "var(--paper-lt)", fontSize: 18, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                  >
+                    {on ? "✓" : ""}
+                  </button>
+                  <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, minWidth: 40 }}>{l.cantidad} ×</span>
+                  <span className="cmd-num" style={{ fontSize: 16, flex: 1 }}>{posMoney(l.valor)} <span style={{ fontSize: 11, color: "var(--muted)" }}>{l.valor >= 2000 ? "billete" : "moneda"}{l.cantidad === 1 ? "" : "s"}</span></span>
+                  <span className="cmd-num" style={{ fontSize: 13, color: "var(--muted)" }}>{posMoney(l.valor * l.cantidad)}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+            <button type="button" className="cmd-btn" disabled={!allTicked || busy} onClick={() => void doConfirm()} style={{ height: 48, padding: "0 18px", fontSize: 13 }}>
+              {busy ? "Guardando…" : "Confirmo: la base quedó armada"}
+            </button>
+            {!allTicked && lineas.length > 0 && <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Marca las {lineas.length} líneas para confirmar.</span>}
+            {error && <span role="alert" style={{ fontSize: 12, color: "var(--red)" }}>{error}</span>}
+          </div>
+        </>
+      )}
+      {restoLines.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--rule)", fontSize: 12.5, lineHeight: 1.6 }}>
+          <b>Entrega {money(entrega)}:</b> {describirLineas(restoLines, posMoney)} · sale de la caja para el dueño.
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * At the start of the next turno: the base the previous close left, piece
+ * by piece, with "Está correcta" / "No cuadra" (+ what was found).
+ */
+function BaseValidarCard({ cierre, tz, validate, onDone }: { cierre: CajaCierre; tz: string; validate: (input: ValidarBaseInput) => Promise<BaseActionResult>; onDone?: () => void }) {
+  const [mode, setMode] = React.useState<"idle" | "nocuadra">("idle");
+  const [encontrado, setEncontrado] = React.useState("");
+  const [nota, setNota] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<null | boolean>(null);
+  const lineas = cierre.base_denominaciones;
+  const fecha = cierre.shift_date ?? cierre.submitted_at.slice(0, 10);
+
+  async function send(ok: boolean) {
+    if (busy) return;
+    const n = ok ? undefined : parseCantidad(encontrado);
+    if (!ok && n === null) {
+      setError("Escribe cuánto encontraste.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const r = await validate({ cierreId: cierre.id, ok, encontrado: n ?? undefined, nota: nota.trim() || undefined });
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setResult(ok);
+    onDone?.();
+  }
+
+  const tone = result === null ? "var(--amber)" : result ? "var(--green)" : "var(--red)";
+  return (
+    <section aria-label="Base de apertura" style={{ marginBottom: 18, border: `1.5px solid ${tone}`, borderRadius: 8, padding: "14px 16px", background: "var(--paper-lt)" }}>
+      <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: tone, fontWeight: 700 }}>Base de apertura · {result === null ? "por validar" : result ? "validada" : "no cuadró"}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+        <span className="cmd-num font-slab" style={{ fontSize: 22 }}>{posMoney(cierre.base_dejada_cop)}</span>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>
+          dejada el {fechaCorta(fecha)}{cierre.shift_name ? ` · ${cierre.shift_name}` : ""}{cierre.counted_by_name ? ` · contó ${cierre.counted_by_name}` : ""}
+          {cierre.base_confirmada_at ? ` · armada y confirmada${cierre.base_confirmada_by_name ? ` por ${cierre.base_confirmada_by_name}` : ""} ${formatTime(cierre.base_confirmada_at, tz)}` : " · sin confirmar por quien cerró"}
+        </span>
+      </div>
+      {lineas.length > 0 ? (
+        <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+          {lineas.map((l) => (
+            <li key={l.valor} style={{ ...pieceRow, padding: "6px 0" }}>
+              <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, minWidth: 40 }}>{l.cantidad} ×</span>
+              <span className="cmd-num" style={{ fontSize: 16, flex: 1 }}>{posMoney(l.valor)}</span>
+              <span className="cmd-num" style={{ fontSize: 13, color: "var(--muted)" }}>{posMoney(l.valor * l.cantidad)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 6 }}>Ese cierre no registró la composición de la base; valida solo el monto.</div>
+      )}
+      {result === null ? (
+        <>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Cuenta lo que hay en la caja antes de vender. ¿Coincide con esto?</div>
+          {mode === "nocuadra" && (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+              <label style={{ fontSize: 12.5 }}>¿Cuánto encontraste?</label>
+              <input inputMode="numeric" value={encontrado} onChange={(e) => setEncontrado(e.target.value)} aria-label="Base encontrada" placeholder="0" style={numInput(encontrado.trim() !== "" && parseCantidad(encontrado) === null ? "bad" : "idle")} />
+              <input value={nota} onChange={(e) => setNota(e.target.value)} maxLength={300} aria-label="Nota de la validación" placeholder="Qué faltaba o sobraba" style={{ flex: 1, minWidth: 180, height: 48, padding: "0 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 13, outline: "none" }} />
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+            {mode === "idle" ? (
+              <>
+                <button type="button" className="cmd-btn" disabled={busy} onClick={() => void send(true)} style={{ height: 48, padding: "0 18px", fontSize: 13 }}>{busy ? "Guardando…" : "✓ Está correcta"}</button>
+                <button type="button" className="cmd-btn ghost" disabled={busy} onClick={() => setMode("nocuadra")} style={{ height: 48, padding: "0 18px", fontSize: 13 }}>No cuadra</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="cmd-btn red" disabled={busy} onClick={() => void send(false)} style={{ height: 48, padding: "0 18px", fontSize: 13 }}>{busy ? "Guardando…" : "Reportar que no cuadra"}</button>
+                <button type="button" className="cmd-btn ghost" disabled={busy} onClick={() => setMode("idle")} style={{ height: 48, padding: "0 18px", fontSize: 13 }}>Volver</button>
+              </>
+            )}
+            {error && <span role="alert" style={{ fontSize: 12, color: "var(--red)" }}>{error}</span>}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12.5, marginTop: 8, color: tone, fontWeight: 600 }}>{result ? "✓ Base validada. Ya puedes abrir." : "Reportado: la base no coincidía. El dueño lo ve en el panel."}</div>
+      )}
+    </section>
   );
 }

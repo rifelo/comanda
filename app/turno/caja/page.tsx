@@ -1,10 +1,11 @@
 import { loadTurnoGate } from "@/lib/turno/server";
 import { todayInTz } from "@/lib/utils";
 import { baseSugerida, getCierreByInstance, listCierresSede, listInstancesForCaja } from "@/lib/caja/cierres";
-import { CajaScreen, type CajaExisting } from "@/components/caja/caja-screen";
+import { CajaScreen } from "@/components/caja/caja-screen";
 import { TurnoLogin } from "../_components/turno-login";
 import { TurnoUnpaired } from "../unpaired";
-import { enviarCierreCaja } from "./actions";
+import type { CajaCierre } from "@/lib/types";
+import { confirmarBaseCaja, enviarCierreCaja, validarBaseCaja } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Cierre de caja · co-manda" };
@@ -28,11 +29,11 @@ export default async function CajaPage() {
     baseSugerida(admin, ctx.restaurantId),
     listCierresSede(admin, ctx.restaurantId, 10),
   ]);
-  const existing: Record<string, CajaExisting> = {};
+  const existing: Record<string, CajaCierre> = {};
   await Promise.all(
     instances.map(async (i) => {
       const c = await getCierreByInstance(admin, ctx.organizationId, i.id);
-      if (c) existing[i.id] = { status: c.status, contado: c.contado_cop, diferencia: c.diferencia_cop, submitted_at: c.submitted_at };
+      if (c) existing[i.id] = c;
     }),
   );
   return (
@@ -46,6 +47,8 @@ export default async function CajaPage() {
       existing={existing}
       historial={historial}
       submit={enviarCierreCaja}
+      confirmBase={confirmarBaseCaja}
+      validateBase={validarBaseCaja}
       backHref="/turno"
       backLabel="Turno"
       panelHref={`/hoy/${today}`}

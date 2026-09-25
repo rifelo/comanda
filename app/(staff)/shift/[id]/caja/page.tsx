@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { loadShiftToolContext } from "@/lib/shift/staff";
 import { todayInTz } from "@/lib/utils";
-import { baseSugerida, getCierreByInstance, listCierresSede, type CajaInstance } from "@/lib/caja/cierres";
-import { CajaScreen, type CajaExisting } from "@/components/caja/caja-screen";
-import { enviarCierreCajaShift } from "./actions";
+import { baseSugerida, getCierreByInstance, listCierresSede, type CajaInstance, type ValidarBaseInput } from "@/lib/caja/cierres";
+import type { CajaCierre } from "@/lib/types";
+import { CajaScreen } from "@/components/caja/caja-screen";
+import { confirmarBaseShift, enviarCierreCajaShift, validarBaseShift } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Cierre de caja · co-manda" };
@@ -33,8 +34,17 @@ export default async function ShiftCajaPage({ params }: { params: Promise<{ id: 
       fin: instance.fin,
     },
   ];
-  const existing: Record<string, CajaExisting> = {};
-  if (cierre) existing[instance.id] = { status: cierre.status, contado: cierre.contado_cop, diferencia: cierre.diferencia_cop, submitted_at: cierre.submitted_at };
+  const existing: Record<string, CajaCierre> = {};
+  if (cierre) existing[instance.id] = cierre;
+  const shiftId = instance.id;
+  async function confirmBase(cierreId: string) {
+    "use server";
+    return confirmarBaseShift({ shiftInstanceId: shiftId, cierreId });
+  }
+  async function validateBase(input: ValidarBaseInput) {
+    "use server";
+    return validarBaseShift({ shiftInstanceId: shiftId, ...input });
+  }
   return (
     <CajaScreen
       actor={{ name: ctx.actor.fullName, isAdmin: ctx.actor.role === "admin" }}
@@ -46,6 +56,8 @@ export default async function ShiftCajaPage({ params }: { params: Promise<{ id: 
       existing={existing}
       historial={historial}
       submit={enviarCierreCajaShift}
+      confirmBase={confirmBase}
+      validateBase={validateBase}
       backHref={`/shift/${instance.id}`}
       backLabel="Turno"
       panelHref={`/hoy/${instance.date}?turno=${instance.id}`}
