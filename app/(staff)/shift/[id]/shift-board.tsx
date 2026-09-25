@@ -11,9 +11,12 @@ import { closeShift } from "./actions";
 export function ShiftBoard({
   view,
   userId,
+  cajaPending = false,
 }: {
   view: ShiftView;
   userId: string;
+  /** The turno has an arqueo task and no cierre was sent yet (0037). */
+  cajaPending?: boolean;
 }) {
   const [closing, startClosing] = useTransition();
   const [closeError, setCloseError] = useState<string | null>(null);
@@ -173,6 +176,14 @@ export function ShiftBoard({
                     !allComplete &&
                     !confirm(
                       "Todavía hay tareas pendientes. ¿Cerrar el turno de todos modos?",
+                    )
+                  ) {
+                    return;
+                  }
+                  if (
+                    cajaPending &&
+                    !confirm(
+                      "Falta el cierre de caja de este turno (Caja · arqueo). ¿Cerrar el turno sin enviarlo?",
                     )
                   ) {
                     return;

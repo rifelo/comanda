@@ -80,3 +80,10 @@ export function formatDateLabelEs(
       : SHORT_WEEKDAYS[dt.getUTCDay()];
   return `${wk} ${d}·${SHORT_MONTHS[m - 1]}`;
 }
+
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+/** "24 sep" from YYYY-MM-DD — deterministic on server and client (no ICU). */
+export function fechaCorta(yyyyMMdd: string): string {
+  const [, m, d] = yyyyMMdd.split("-").map(Number);
+  return `${d} ${MESES_CORTOS[(m ?? 1) - 1]}`;
+}
