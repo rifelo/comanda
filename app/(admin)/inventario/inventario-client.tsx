@@ -1916,6 +1916,9 @@ export function InventarioClient({
             {!conteoMode && (
               <Link href="/inventario/conteos" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Conteos del equipo</Link>
             )}
+            {!conteoMode && (
+              <Link href="/inventario/faltantes" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Faltantes</Link>
+            )}
             {conteoMode ? (
               <button
                 type="button"
