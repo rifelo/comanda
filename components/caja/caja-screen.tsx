@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { posMoney } from "@/lib/pos/types";
 import { DENOMINACIONES_COP, parseCantidad, totalContado } from "@/lib/caja/arqueo";
-import { baseEstado, describirLineas, planBase, type PlanBase } from "@/lib/caja/base";
+import { baseEstado, describirLineas, planBase, sencilloDe, type PlanBase } from "@/lib/caja/base";
 import type { BaseActionResult, BaseSugerida, CajaInstance, CierreInput, EnviarCierreResult, ValidarBaseInput } from "@/lib/caja/cierres";
 import type { CajaCierre, CajaCierreStatus, CajaDenominacion } from "@/lib/types";
 import { fechaCorta, formatTime } from "@/lib/utils";
@@ -244,6 +244,8 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
                   );
                 })}
 
+                {plan && <PlanPreview plan={plan} />}
+
                 <div style={sectionLabel}>Base</div>
                 <BaseRow
                   label="Base inicial"
@@ -259,8 +261,6 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
                   onChange={setBaseDejada}
                   suggestion={baseSugerida.fecha && baseDej !== sugerida ? { monto: sugerida, onUse: () => setBaseDejada(String(sugerida)) } : null}
                 />
-
-                {plan && <PlanPreview plan={plan} />}
 
                 <div style={sectionLabel}>Nota</div>
                 <textarea value={nota} onChange={(e) => setNota(e.target.value)} maxLength={300} rows={2} placeholder="Algo que el dueño deba saber (un gasto pagado de caja, un vuelto mal dado…)" aria-label="Nota del cierre" style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 13, outline: "none", resize: "vertical" }} />
@@ -429,28 +429,57 @@ function Stat({ k, v, color }: { k: string; v: string; color?: string }) {
 
 const pieceRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px dashed var(--rule-soft, var(--rule))", fontSize: 14 };
 
-/** Live preview while counting: which pieces will stay as base. */
+/** Live preview while counting: which pieces will stay as base, and how much change that leaves. */
 function PlanPreview({ plan }: { plan: PlanBase }) {
+  const sen = sencilloDe(plan.lineas, plan.objetivo);
+  const tone = !plan.exacto ? "var(--red)" : sen.ok ? "var(--green)" : "var(--amber)";
   return (
-    <div style={{ marginTop: 10, border: `1px solid ${plan.exacto ? "var(--rule)" : "var(--red)"}`, borderRadius: 6, padding: "10px 14px", background: "var(--paper-lt)" }}>
-      <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)" }}>Base sugerida · lo que queda en la caja</div>
+    <div style={{ marginTop: 14, border: `1.5px solid ${tone}`, borderRadius: 8, padding: "12px 14px", background: "var(--paper-lt)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)" }}>Base para mañana · calculada con lo contado</span>
+        <span className="cmd-num font-slab" style={{ fontSize: 20 }}>{posMoney(plan.objetivo)}</span>
+      </div>
       {plan.lineas.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>Sin piezas para la base.</div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {plan.lineas.map((l) => (
-            <span key={l.valor} className="cmd-num" style={{ fontSize: 12.5, border: "1px solid var(--ink)", padding: "4px 8px", borderRadius: 4, background: "var(--paper)" }}>
+            <span key={l.valor} className="cmd-num" style={{ fontSize: 13, border: "1px solid var(--ink)", padding: "5px 9px", borderRadius: 4, background: "var(--paper)" }}>
               <b>{l.cantidad}</b> × {posMoney(l.valor)}
             </span>
           ))}
-          <span className="cmd-num" style={{ fontSize: 12.5, padding: "4px 0", fontWeight: 700 }}>= {posMoney(plan.total)}</span>
+          <span className="cmd-num" style={{ fontSize: 13, padding: "5px 0", fontWeight: 700 }}>= {posMoney(plan.total)}</span>
         </div>
       )}
+      <SencilloLine sen={sen} />
       <div style={{ fontSize: 11.5, color: plan.exacto ? "var(--muted)" : "var(--red)", marginTop: 6, lineHeight: 1.45 }}>
         {plan.exacto
-          ? "Se dejan las piezas más pequeñas para tener cambio; el resto es la entrega. Al enviar, confirmas que las apartaste."
+          ? "Mezcla pensada para dar cambio en el siguiente turno; el resto de lo contado es la entrega. Al enviar, confirmas que apartaste estas piezas."
           : `Con lo contado no se arma la base exacta: quedarían ${posMoney(plan.total)} (faltan ${posMoney(plan.faltante)}). Consigue cambio o anótalo en la nota.`}
       </div>
+    </div>
+  );
+}
+
+/** "Sencillo: monedas $6.000 · billetes de 1.000–5.000 $44.000 …" with a verdict. */
+function SencilloLine({ sen }: { sen: ReturnType<typeof sencilloDe> }) {
+  if (sen.total === 0) return null;
+  const parts = [
+    sen.monedas > 0 ? `monedas ${posMoney(sen.monedas)}` : null,
+    sen.pequenos > 0 ? `billetes de $1.000 a $5.000 ${posMoney(sen.pequenos)}` : null,
+    sen.medianos > 0 ? `de $10.000 ${posMoney(sen.medianos)}` : null,
+    sen.grandes > 0 ? `grandes ${posMoney(sen.grandes)}` : null,
+  ].filter(Boolean);
+  const verdict = sen.ok
+    ? "✓ Hay sencillo suficiente."
+    : sen.grandes > 0
+      ? `Queda con billetes grandes (${posMoney(sen.grandes)}): en la caja no hay suficiente sencillo. Consigue cambio antes de cerrar o anótalo.`
+      : "Poco sencillo: menos de la mitad de la base son monedas y billetes pequeños.";
+  return (
+    <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5 }}>
+      <span style={{ color: "var(--muted)" }}>Sencillo: {parts.join(" · ")}.</span>{" "}
+      <span style={{ color: sen.ok ? "var(--green)" : sen.grandes > 0 ? "var(--red)" : "var(--amber)", fontWeight: 600 }}>{verdict}</span>
+      {sen.escasea.length > 0 && <span style={{ color: "var(--muted)" }}> Escasean {sen.escasea.map((v) => posMoney(v)).join(", ")}.</span>}
     </div>
   );
 }
@@ -497,6 +526,7 @@ function BaseConfirmCard({ cierre, resto, tz, confirm, onDone }: { cierre: Confi
         <span className="cmd-num font-slab" style={{ fontSize: 20 }}>{posMoney(cierre.base_dejada_cop)}</span>
         {!cierre.base_exacta && <span style={{ fontSize: 11, color: "var(--red)", fontWeight: 700 }}>base corta: solo se pudo armar {posMoney(total)}</span>}
       </div>
+      <SencilloLine sen={sencilloDe(lineas, cierre.base_dejada_cop)} />
       {confirmedAt ? (
         <div style={{ fontSize: 12.5, color: "var(--green)", marginTop: 6, fontWeight: 600 }}>
           ✓ Base armada y confirmada{cierre.base_confirmada_by_name ? ` por ${cierre.base_confirmada_by_name}` : ""} a las {formatTime(confirmedAt, tz)} · {describirLineas(lineas, posMoney)}.
@@ -601,6 +631,7 @@ function BaseValidarCard({ cierre, tz, validate, onDone }: { cierre: CajaCierre;
       ) : (
         <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 6 }}>Ese cierre no registró la composición de la base; valida solo el monto.</div>
       )}
+      {lineas.length > 0 && <SencilloLine sen={sencilloDe(lineas, cierre.base_dejada_cop)} />}
       {result === null ? (
         <>
           <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Cuenta lo que hay en la caja antes de vender. ¿Coincide con esto?</div>
