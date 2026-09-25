@@ -42,9 +42,10 @@ export default async function ShiftPage({
   const dateLabel = formatDateLabelEs(view.shift.date);
 
   return (
-    // Phone-first (448 px), but on the tablet the task list takes the whole
-    // width: from 768 px there is no cap at all (the same reading face as /turno).
-    <div className="turno-ui mx-auto w-full max-w-md md:max-w-none">
+    // No width cap: on a phone the viewport is the cap, and on the tablet
+    // (portrait included, where the CSS width is below 768 px) the task list
+    // must take the whole screen, the same reading face as /turno.
+    <div className="turno-ui w-full">
       <div className="px-4 pt-3">
         <Link
           href={profile.role === "admin" ? `/hoy/${view.shift.date}?turno=${view.shift.id}` : "/today"}

@@ -39,7 +39,7 @@ export default async function TodayPage() {
     restaurantNames.length > 0 ? restaurantNames.join(" · ") : undefined;
 
   return (
-    <div className="mx-auto w-full max-w-md">
+    <div className="w-full">
       <ComandaPlate
         subtitle={`${profile.full_name} · Hoy`}
         restaurant={restaurantLabel}
