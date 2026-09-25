@@ -7,7 +7,7 @@ import { registrarEstados } from "@/lib/inventario/faltantes-db";
 import { todayInTz } from "@/lib/utils";
 import type { RapidoResult } from "@/components/inventario/rapido-screen";
 
-export const RapidoInputSchema = z.object({
+const RapidoInputSchema = z.object({
   items: z
     .array(z.object({ ingredienteId: z.string().uuid(), estado: z.enum(["ok", "bajo", "agotado"]), note: z.string().trim().max(120).optional() }))
     .min(1)
