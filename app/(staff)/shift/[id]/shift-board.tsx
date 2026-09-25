@@ -154,7 +154,7 @@ export function ShiftBoard({
       </div>
 
       {/* sticky footer */}
-      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md md:max-w-none">
+      <div className="fixed inset-x-0 bottom-0">
         <div
           className="px-4 pt-3 pb-4"
           style={{

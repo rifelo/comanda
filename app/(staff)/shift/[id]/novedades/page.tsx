@@ -41,7 +41,7 @@ export default async function NovedadesPage({
   if (!shift) notFound();
 
   return (
-    <div className="mx-auto w-full max-w-md">
+    <div className="w-full">
       <Link
         href={`/shift/${id}`}
         className="block px-4 pt-3 text-muted"
