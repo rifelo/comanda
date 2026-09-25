@@ -9,7 +9,10 @@ import {
   Stamp,
 } from "@/components/comanda/primitives";
 import { formatTime, formatDateLabelEs } from "@/lib/utils";
+import { getCierreByInstance } from "@/lib/caja/cierres";
+import { countFaltantesAbiertos } from "@/lib/inventario/faltantes-db";
 import { ShiftBoard } from "./shift-board";
+import { ShiftTools } from "./shift-tools";
 import { RealtimeAdHoc } from "./realtime-adhoc";
 
 export const dynamic = "force-dynamic";
@@ -20,9 +23,15 @@ export default async function ShiftPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { profile } = await requireUser();
+  const { profile, supabase } = await requireUser();
   const view = await getShiftView(id);
   if (!view) notFound();
+  // Shift tools (arqueo + quick inventory) state, read with the person's own session.
+  const [cierre, faltantes] = await Promise.all([
+    getCierreByInstance(supabase, profile.organization_id, view.shift.id),
+    countFaltantesAbiertos(supabase, profile.organization_id),
+  ]);
+  const hasCajaTask = view.tasks.some((t) => /arqueo|cierre de caja/i.test(t.title));
 
   const completedCount = Object.keys(view.completions).length;
   const total = view.tasks.length;
@@ -30,9 +39,9 @@ export default async function ShiftPage({
   const dateLabel = formatDateLabelEs(view.shift.date);
 
   return (
-    // Phone-first, but the owner fills this from the tablet too: widen to the
-    // available space above 768px (the same reading face as /turno).
-    <div className="turno-ui mx-auto w-full max-w-md md:max-w-3xl lg:max-w-5xl">
+    // Phone-first (448 px), but on the tablet the task list takes the whole
+    // width: from 768 px there is no cap at all (the same reading face as /turno).
+    <div className="turno-ui mx-auto w-full max-w-md md:max-w-none">
       <div className="px-4 pt-3">
         <Link
           href={profile.role === "admin" ? `/hoy/${view.shift.date}?turno=${view.shift.id}` : "/today"}
@@ -96,7 +105,9 @@ export default async function ShiftPage({
         <Folio n={`DR-${view.shift.id.slice(0, 4).toUpperCase()}`} />
       </div>
 
-      <ShiftBoard view={view} userId={profile.id} />
+      <ShiftTools shiftId={view.shift.id} cierre={cierre} faltantes={faltantes} hasCajaTask={hasCajaTask} />
+
+      <ShiftBoard view={view} userId={profile.id} cajaPending={hasCajaTask && !cierre} />
       <RealtimeAdHoc shiftId={view.shift.id} />
     </div>
   );

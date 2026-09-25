@@ -1,7 +1,17 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import type { CajaCierre, CajaDenominacion } from "@/lib/types";
-import { resumenPagos, type ResumenPagos } from "./arqueo";
+import {
+  DENOMINACIONES_COP,
+  diferenciaCaja,
+  entregaCaja,
+  esperadoCaja,
+  resumenPagos,
+  totalContado,
+  ventanaTurno,
+  type ResumenPagos,
+} from "./arqueo";
 
 // DB helpers for cash closes (caja_cierres, 0037). Same shape as
 // lib/inventario/conteos.ts: they take either the RLS client (admin panel)
@@ -82,17 +92,54 @@ export async function getCierreByInstance(db: Db, orgId: string, shiftInstanceId
   return rows.find((c) => c.status !== "rechazado") ?? rows[0] ?? null;
 }
 
-/** The float the last live cierre of this sede left for the next day (pre-fills "base inicial"). */
-export async function lastBaseDejada(db: Db, restaurantId: string): Promise<number> {
+export interface BaseSugerida {
+  /** What the last live cierre of the sede left for the next day (0 when none). */
+  monto: number;
+  /** Shift date of that cierre (YYYY-MM-DD), null when there is none. */
+  fecha: string | null;
+  turno: string | null;
+  counted_by_name: string | null;
+}
+
+/**
+ * The float the last live cierre of this sede left for the next day: it
+ * pre-fills "base inicial" so the chain base dejada → base inicial never
+ * depends on memory. Rejected closes do not count.
+ */
+export async function baseSugerida(db: Db, restaurantId: string): Promise<BaseSugerida> {
   const { data } = await db
     .from("caja_cierres")
-    .select("base_dejada_cop")
+    .select("base_dejada_cop, submitted_at, counter:profiles!caja_cierres_counted_by_fkey(full_name), shift:shift_instances(date, template:checklist_templates(name))")
     .eq("restaurant_id", restaurantId)
     .neq("status", "rechazado")
     .order("submitted_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return Number(data?.base_dejada_cop ?? 0);
+  if (!data) return { monto: 0, fecha: null, turno: null, counted_by_name: null };
+  const row = data as unknown as Record<string, unknown>;
+  const counter = row.counter as { full_name: string | null } | null;
+  const shift = row.shift as { date: string; template: { name: string } | null } | null;
+  return {
+    monto: Number(row.base_dejada_cop ?? 0),
+    fecha: shift?.date ?? (row.submitted_at as string).slice(0, 10),
+    turno: shift?.template?.name ?? null,
+    counted_by_name: counter?.full_name ?? null,
+  };
+}
+
+/** Recent cierres of one sede, newest first (the "historial de base" on the tablet). */
+export async function listCierresSede(db: Db, restaurantId: string, limit = 14): Promise<CajaCierre[]> {
+  const { data, error } = await db
+    .from("caja_cierres")
+    .select(SELECT)
+    .eq("restaurant_id", restaurantId)
+    .order("submitted_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("[listCierresSede]", error);
+    return [];
+  }
+  return (data ?? []).map((r) => mapCierre(r as unknown as Record<string, unknown>));
 }
 
 /**
@@ -150,4 +197,141 @@ export async function listInstancesForCaja(db: Db, restaurantId: string, date: s
       };
     })
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
+}
+
+// ---------------------------------------------------------------------------
+// Creating a cierre (shared by the tablet and the staff shift screen)
+// ---------------------------------------------------------------------------
+
+const VALID = new Set<number>(DENOMINACIONES_COP);
+
+export const CierreInputSchema = z.object({
+  shiftInstanceId: z.string().uuid(),
+  denominaciones: z
+    .array(z.object({ valor: z.number().int().positive(), cantidad: z.number().int().min(0).max(100_000) }))
+    .max(20)
+    .refine((list) => list.every((d) => VALID.has(d.valor)), "denominación desconocida"),
+  baseInicial: z.number().int().min(0).max(50_000_000),
+  baseDejada: z.number().int().min(0).max(50_000_000),
+  note: z.string().trim().max(300).optional(),
+});
+export type CierreInput = z.infer<typeof CierreInputSchema>;
+
+export type EnviarCierreResult =
+  | {
+      ok: true;
+      cierreId: string;
+      contado: number;
+      esperado: number;
+      diferencia: number;
+      baseInicial: number;
+      baseDejada: number;
+      entrega: number;
+      pagos: ResumenPagos;
+      ventana: { desde: string; hasta: string };
+      /** YYYY-MM-DD of the turno, for revalidating /hoy/[date]. */
+      shiftDate: string;
+    }
+  | { ok: false; error: string };
+
+export interface CierreActor {
+  orgId: string;
+  restaurantId: string;
+  tz: string;
+  /** profiles.id of whoever counted. */
+  countedBy: string;
+}
+
+/**
+ * Store a cash count, signed by `actor.countedBy`. Blind on screen: the
+ * expected cash is computed HERE, from the POS payments inside the turno's
+ * window, and stored on the row so the owner sees exactly which sales were
+ * compared. `db` is the service-role client (the tablet) or an RLS client
+ * that can already see the instance; the instance must belong to the sede.
+ *
+ * Window: the instance's `date` is a wall-clock day in the sede's timezone
+ * and `inicio` a time on that day. It runs from `opened_at` (the first tick)
+ * or the scheduled start when nobody ticked anything, until `closed_at` or
+ * now. The helper never inverts the window.
+ */
+export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput): Promise<EnviarCierreResult> {
+  const { data: inst } = await db
+    .from("shift_instances")
+    .select("id, date, opened_at, closed_at, template:checklist_templates!inner(inicio)")
+    .eq("id", data.shiftInstanceId)
+    .eq("restaurant_id", actor.restaurantId)
+    .maybeSingle();
+  if (!inst) return { ok: false, error: "Turno no encontrado." };
+
+  const { data: live } = await db
+    .from("caja_cierres")
+    .select("id")
+    .eq("shift_instance_id", inst.id)
+    .neq("status", "rechazado")
+    .limit(1)
+    .maybeSingle();
+  if (live) return { ok: false, error: "Ya hay un cierre de caja para este turno." };
+
+  const template = inst.template as unknown as { inicio: string };
+  const ventana = ventanaTurno({
+    date: inst.date as string,
+    inicio: template.inicio,
+    tz: actor.tz,
+    opened_at: (inst.opened_at as string | null) ?? null,
+    closed_at: (inst.closed_at as string | null) ?? null,
+  });
+  const pagos = await sumPagosVentana(db, {
+    orgId: actor.orgId,
+    restaurantId: actor.restaurantId,
+    desde: ventana.desde,
+    hasta: ventana.hasta,
+  });
+
+  const denominaciones = data.denominaciones.filter((d) => d.cantidad > 0).sort((a, b) => b.valor - a.valor);
+  const contado = totalContado(denominaciones);
+  const esperado = esperadoCaja(data.baseInicial, pagos.efectivo);
+  const diferencia = diferenciaCaja(contado, esperado);
+
+  const { data: row, error } = await db
+    .from("caja_cierres")
+    .insert({
+      organization_id: actor.orgId,
+      restaurant_id: actor.restaurantId,
+      shift_instance_id: inst.id,
+      counted_by: actor.countedBy,
+      note: data.note || null,
+      ventana_desde: ventana.desde,
+      ventana_hasta: ventana.hasta,
+      base_inicial_cop: data.baseInicial,
+      efectivo_cop: pagos.efectivo,
+      tarjeta_cop: pagos.tarjeta,
+      transferencia_cop: pagos.transferencia,
+      pagos_count: pagos.count,
+      esperado_cop: esperado,
+      contado_cop: contado,
+      diferencia_cop: diferencia,
+      base_dejada_cop: data.baseDejada,
+      denominaciones,
+    })
+    .select("id")
+    .single();
+  if (error || !row) {
+    // 23505 = the partial unique index: someone sent one a moment ago.
+    if (error?.code === "23505") return { ok: false, error: "Ya hay un cierre de caja para este turno." };
+    console.error("[crearCierre] insert:", error);
+    return { ok: false, error: "No se pudo guardar el cierre." };
+  }
+  return {
+    ok: true,
+    cierreId: row.id as string,
+    contado,
+    esperado,
+    diferencia,
+    baseInicial: data.baseInicial,
+    baseDejada: data.baseDejada,
+    entrega: entregaCaja(contado, data.baseDejada),
+    pagos,
+    ventana,
+    shiftDate: inst.date as string,
+  };
 }

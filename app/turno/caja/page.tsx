@@ -1,9 +1,10 @@
 import { loadTurnoGate } from "@/lib/turno/server";
 import { todayInTz } from "@/lib/utils";
-import { getCierreByInstance, lastBaseDejada, listInstancesForCaja } from "@/lib/caja/cierres";
+import { baseSugerida, getCierreByInstance, listCierresSede, listInstancesForCaja } from "@/lib/caja/cierres";
+import { CajaScreen, type CajaExisting } from "@/components/caja/caja-screen";
 import { TurnoLogin } from "../_components/turno-login";
 import { TurnoUnpaired } from "../unpaired";
-import { CajaScreen, type CajaExisting } from "./caja-screen";
+import { enviarCierreCaja } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Cierre de caja · co-manda" };
@@ -12,7 +13,8 @@ export const metadata = { title: "Cierre de caja · co-manda" };
  * End-of-shift cash close on the shared tablet, signed by whoever is logged
  * in. Blind: the person counts the drawer by denomination without seeing
  * what the POS expects; the comparison shows once the count is sent, and the
- * owner approves it from /hoy.
+ * owner approves it from /hoy. The screen itself is shared with
+ * /shift/[id]/caja (components/caja/caja-screen.tsx).
  */
 export default async function CajaPage() {
   const gate = await loadTurnoGate();
@@ -21,9 +23,10 @@ export default async function CajaPage() {
   const { ctx } = gate;
   const { admin } = ctx;
   const today = todayInTz(ctx.sede.tz);
-  const [instances, baseSugerida] = await Promise.all([
+  const [instances, sugerida, historial] = await Promise.all([
     listInstancesForCaja(admin, ctx.restaurantId, today),
-    lastBaseDejada(admin, ctx.restaurantId),
+    baseSugerida(admin, ctx.restaurantId),
+    listCierresSede(admin, ctx.restaurantId, 10),
   ]);
   const existing: Record<string, CajaExisting> = {};
   await Promise.all(
@@ -39,8 +42,13 @@ export default async function CajaPage() {
       today={today}
       tz={ctx.sede.tz}
       instances={instances}
-      baseSugerida={baseSugerida}
+      baseSugerida={sugerida}
       existing={existing}
+      historial={historial}
+      submit={enviarCierreCaja}
+      backHref="/turno"
+      backLabel="Turno"
+      panelHref={`/hoy/${today}`}
     />
   );
 }

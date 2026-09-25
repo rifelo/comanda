@@ -53,6 +53,24 @@ checklists through `scripts/lib/seed-turnos.mjs` — idempotent, tasks are match
 for renames) and updated in place; pass `--prune` to delete tasks removed from the list. Its "Arqueo y cierre de caja" task points at the tablet's
 Turno → Caja screen (migration `0037_caja_cierres.sql`).
 
+### Herramientas del turno (tablet)
+
+Both the shared tablet (`/turno`) and a person's own shift screen (`/shift/[id]`, full width on the tablet) open the
+same two tools, with one shared screen and one set of DB helpers each:
+
+- **Caja · arqueo** (`/turno/caja`, `/shift/[id]/caja`; `components/caja/caja-screen.tsx`, `lib/caja/cierres.ts`):
+  blind count by denomination, base inicial pre-filled with the base the last cierre left (`baseSugerida`), base que
+  queda for tomorrow, entrega = contado − base que queda, and the trail of the base (last cierres of the sede). The
+  owner approves from `/hoy/[date]` or the new `/caja` page (Operación · 12: base en caja, por aprobar, historial).
+- **Faltantes · inventario rápido** (`/turno/inventario`, `/shift/[id]/inventario`;
+  `components/inventario/rapido-screen.tsx`, `lib/inventario/faltantes*.ts`, migration `0038_inventario_faltantes.sql`):
+  only the ingredients with `ingredientes.prioridad > 0` (1 crítico · 2 importante · 3 normal), one tap per item
+  (hay / poco / se acabó) and one send; each tap is a row in `inventario_faltantes`, the open row is the item's
+  current state, and "hay" or the owner's **Repuesto** closes it. The owner sets the list and resolves reports in
+  `/inventario/faltantes`; open reports also show in `/notificaciones` and `/hoy/[date]`.
+  `node scripts/seed-prioridades-payo.mjs` seeds PAYO's list (only items still at 0; `--force` overwrites).
+  E2E: `node .e2e/shift-tools.mjs` (dev server on :3000).
+
 ## End-to-end happy path
 
 1. Sign up an admin → onboarded into a fresh organization.

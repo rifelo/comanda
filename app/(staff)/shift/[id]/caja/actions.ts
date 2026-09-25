@@ -1,22 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTurnoContext } from "@/lib/turno/server";
+import { requireShiftToolContext } from "@/lib/shift/staff";
 import { CierreInputSchema, crearCierre, type EnviarCierreResult } from "@/lib/caja/cierres";
 
 /**
- * Store the cash count from the shared tablet, signed by the person logged
- * in on it. The device cookie authorises the sede; the count itself is
- * `crearCierre` (shared with the staff shift screen).
+ * Store the cash count from the person's own shift screen. Access is the
+ * person's RLS session (they can see the instance); the count is
+ * `crearCierre`, shared with the tablet.
  */
-export async function enviarCierreCaja(input: unknown): Promise<EnviarCierreResult> {
+export async function enviarCierreCajaShift(input: unknown): Promise<EnviarCierreResult> {
   const parsed = CierreInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Cierre inválido." };
   let ctx;
   try {
-    ctx = await requireTurnoContext();
+    ctx = await requireShiftToolContext(parsed.data.shiftInstanceId);
   } catch {
-    return { ok: false, error: "Sin acceso. Inicia sesión otra vez en el tablet." };
+    return { ok: false, error: "Sin acceso a este turno." };
   }
   const res = await crearCierre(
     ctx.admin,
@@ -24,8 +24,9 @@ export async function enviarCierreCaja(input: unknown): Promise<EnviarCierreResu
     parsed.data,
   );
   if (res.ok) {
+    revalidatePath(`/shift/${ctx.instance.id}`);
+    revalidatePath(`/shift/${ctx.instance.id}/caja`);
     revalidatePath("/turno/caja");
-    revalidatePath("/turno");
     revalidatePath("/caja");
     revalidatePath(`/hoy/${res.shiftDate}`);
   }

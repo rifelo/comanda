@@ -112,7 +112,7 @@ function Kpi({ label, value, color }: { label: string; value: number; color: str
   );
 }
 
-export function NotificacionesClient({ view }: { view: AlertasView }) {
+export function NotificacionesClient({ view, reportados }: { view: AlertasView; reportados?: React.ReactNode }) {
   const { rows, counts } = view;
   const [onlyAlerts, setOnlyAlerts] = React.useState(false);
   const shown = onlyAlerts ? rows.filter((r) => r.level !== "ok") : rows;
@@ -133,6 +133,7 @@ export function NotificacionesClient({ view }: { view: AlertasView }) {
       />
 
       <div style={{ padding: "20px 28px" }}>
+        {reportados}
         <div className="flex" style={{ gap: 14, marginBottom: 18 }}>
           <Kpi label="Sin stock" value={counts.sin} color="var(--red)" />
           <Kpi label="Stock bajo" value={counts.bajo} color="var(--amber)" />

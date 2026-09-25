@@ -306,6 +306,8 @@ export interface Ingrediente {
   archived: boolean;
   /** Part of the short list counted at every shift close. */
   conteo_diario: boolean;
+  /** 0 = fuera de la lista rápida · 1 crítico · 2 importante · 3 normal (0038). */
+  prioridad: number;
 }
 
 // ── stock counts (end-of-shift, approved by the owner) ──────────
