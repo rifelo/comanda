@@ -50,7 +50,7 @@ Built with **Next.js 15 (App Router) · Supabase · Tailwind CSS · TypeScript**
 `node scripts/seed-turno-manana.mjs` (Mañana hábil, 06:00–12:00 lun–vie) and `node scripts/seed-turno-noche.mjs`
 (Noche 17:00–21:00 lun–sáb with Barista / Aseo / Cierre, plus the Saturday machine cleaning) seed PAYO's
 checklists through `scripts/lib/seed-turnos.mjs` — idempotent, tasks are matched by title (or by `was`
-for renames) and updated in place; pass `--prune` to delete tasks removed from the list. Its "Arqueo y cierre de caja" task points at the tablet's
+for renames) and updated in place; pass `--prune` to delete tasks removed from the list. Its "Reportar cuánto hay en la caja con la herramienta de arqueo" task points at the tablet's
 Turno → Caja screen (migration `0037_caja_cierres.sql`).
 
 ### Herramientas del turno (tablet)

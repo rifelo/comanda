@@ -3,7 +3,7 @@
 //   "Noche" 17:00–21:00 lun–sáb — the closing checklist split in three
 //   puestos (Barista, Aseo, Cierre; Cierre gated on Aseo's "Entrar el punto
 //   ecológico" — the floor is mopped last, after the doors and the till) plus
-//   the "Arqueo y cierre de caja" task that points at Turno → Caja. The
+//   the "Reportar cuánto hay en la caja con la herramienta de arqueo" task that points at Turno → Caja. The
 //   Barista tasks carry the DAILY cleaning procedure of the espresso machine
 //   (Caravel by Fiamma, automatic CV model, §6.1) as instructions.
 //
