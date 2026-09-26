@@ -71,6 +71,7 @@ const TEMPLATES = [
       ["Barista", "Lavar los grupos con el filtro ciego (limpieza diaria)", "20:30", true, PROC.gruposDiario],
       ["Barista", "Lavar filtros y portafiltros con agua caliente", "20:30", true, PROC.portafiltros],
       ["Barista", "Purgar y limpiar las lanzas de vapor", "20:30", true, PROC.lanzas],
+      ["Barista", "Apagar la máquina de café", "20:32", false, "Después de purgar y limpiar las lanzas: interruptor general en OFF. La bandeja y las juntas se limpian con la máquina ya apagada."],
       ["Barista", "Lavar la bandeja de la máquina de espresso", "20:35", false, null],
       ["Barista", "Limpiar las juntas y guías de los grupos", "20:40", false, PROC.juntas],
       ["Barista", "Meter tortas a refrigerar", "20:40", false, null],
