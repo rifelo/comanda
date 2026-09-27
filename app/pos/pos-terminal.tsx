@@ -450,7 +450,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
         {mode === "device" && <UnlinkButton station={station} />}
         <DesktopChips />
         {mode === "user" && (
-          <Link href="/" title="Panel" aria-label="Panel" style={{ ...iconBtnStyle, color: C.ink2, textDecoration: "none" }}>
+          <Link href="/" title="Inicio" aria-label="Inicio" style={{ ...iconBtnStyle, color: C.ink2, textDecoration: "none" }}>
             ←
           </Link>
         )}
