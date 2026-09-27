@@ -15,6 +15,9 @@ import { NextResponse } from "next/server";
  *  · `display_override: ["fullscreen", …]` is a no-op on Windows today (Chrome
  *    falls back to standalone) but costs nothing; real full screen comes from
  *    the chip in the top bar or the `--start-fullscreen` launch shortcut.
+ *  · `orientation: "any"`: the same app goes on the tablet the baristas carry
+ *    to the tables (Android), held upright or sideways; "landscape" would
+ *    lock it sideways there. It means nothing on the desktop.
  *  · `launch_handler.focus-existing`: the startup shortcut focuses the open
  *    register instead of opening a second one.
  *  · PNG icons are what Windows needs for the taskbar/shortcut; the SVGs in
@@ -29,7 +32,7 @@ const manifest = {
   scope: "/",
   display: "standalone",
   display_override: ["fullscreen", "standalone"],
-  orientation: "landscape",
+  orientation: "any",
   background_color: "#f4ecdc",
   theme_color: "#f4ecdc",
   lang: "es",
