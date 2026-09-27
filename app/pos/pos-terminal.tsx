@@ -3,7 +3,14 @@
 /**
  * Punto de venta — Square-style register for a coffee shop.
  *
- * One full-screen view, tablet-first (landscape ≥ 1024, degrades to 768):
+ * One full-screen view, tablet-first. Two layouts, picked by CSS alone (see
+ * POS_CSS) so the first paint is already the right one:
+ *
+ *   · wide (≥ 900 px — the register PC, a tablet in landscape): catalog and
+ *     ticket side by side, as drawn below.
+ *   · narrow (< 900 px — a tablet in portrait, carried around the tables):
+ *     the catalog takes the whole width and the ticket slides over it from a
+ *     bar at the bottom that always shows the count and the total.
  *
  *   ┌ top bar: station · search · assistant toggle · account/unlink ─────────┐
  *   │ catalog (tabs → tile grid, big touch targets)   │ ticket (lines, total,│
@@ -154,7 +161,6 @@ const F = {
 /** Category accent colours for tiles (Square colours its tiles per item). */
 const TILE_ACCENTS = [C.red, C.green, C.amber, "#4a6fa5", "#7a4fa0", "#b5651d", "#2f8f8f"];
 
-const TICKET_W = 400;
 const DRAWER_W = 400;
 
 // ── one-time CSS ────────────────────────────────────────────────
@@ -187,7 +193,135 @@ const POS_CSS = `
   .pos-scroll::-webkit-scrollbar{width:8px;height:8px} .pos-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.16);border-radius:8px}
   .pos-key:active{background:var(--paper-dk)}
   .pos-line:active{background:var(--paper-dk)}
-  @media (max-width: 900px) { .pos-ticket { width: 340px !important; } }
+
+  /* ── responsive layout ─────────────────────────────────────────
+     Every size that changes with the screen lives here and not inline: an
+     inline style beats a media query. Touch sizes are custom properties the
+     inline styles read (var(--pos-qty)…), so a finger gets bigger targets
+     and the mouse keeps the compact ones. */
+  html:has(.pos-root), html:has(.pos-root) body{overscroll-behavior:none} /* no pull-to-refresh: it would wipe the ticket */
+  .pos-scroll{overscroll-behavior:contain}
+  .pos-root{--pos-qty:34px;--pos-chip:34px;--pos-x:28px;--pos-close:36px}
+  @media (pointer:coarse){
+    .pos-root{--pos-qty:44px;--pos-chip:42px;--pos-x:40px;--pos-close:44px}
+  }
+  .pos-hdr{height:58px;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1.5px solid var(--ink);background:var(--paper-lt);flex-shrink:0}
+  .pos-root button.pos-textbtn{padding:4px 0}
+  .pos-root button.pos-textbtn.tight{padding:0}
+  .pos-linebadge{font-size:8.5px;padding:2px 5px}
+  @media (pointer:coarse){
+    .pos-root button.pos-textbtn,.pos-root button.pos-textbtn.tight{min-height:40px;padding:0 4px}
+    .pos-linebadge{font-size:10.5px;padding:6px 8px}
+  }
+
+  /* ticket */
+  .pos-ticket{width:400px}
+  .pos-ticket-head{padding:12px 14px 10px}
+  .pos-ticket-foot{padding:10px 14px 14px}
+  .pos-otypes{display:flex;gap:6px}
+  .pos-root button.pos-otype{flex:1;height:38px}
+  .pos-mesa{display:block;width:100%;height:36px;margin-top:8px;text-overflow:ellipsis}
+  .pos-sum-note{margin-bottom:4px}
+  .pos-total{margin:6px 0 10px}
+  .pos-total-amt{font-size:32px}
+  .pos-actions{display:flex;flex-direction:column;gap:8px}
+  .pos-root .pos-pay{width:100%;height:60px;font-size:15px}
+  .pos-root .pos-send{width:100%;height:48px;font-size:13px}
+  .pos-cartbar,.pos-scrim,.pos-tile-qty,.pos-ord-break{display:none}
+  .pos-root button.pos-ticket-close{display:none}
+  @keyframes pos-bump { 0%{transform:scale(1)} 40%{transform:scale(1.3)} 100%{transform:scale(1)} }
+  .pos-bump{animation:pos-bump .28s ease}
+
+  /* cobro */
+  .pos-tender-body{flex:1;display:flex;min-height:0}
+  .pos-tender-sum{width:360px;flex-shrink:0;display:flex;flex-direction:column;border-right:1.5px solid var(--ink);background:var(--paper-lt)}
+  .pos-tender-total{padding:22px 20px 16px;border-bottom:1px solid var(--rule)}
+  .pos-tender-amt{font-size:46px}
+  .pos-tender-pay{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;padding:20px 28px;overflow-y:auto}
+  .pos-cash{margin-top:18px;display:flex;gap:20px;flex:1;min-height:0}
+  .pos-keypad{width:240px;flex-shrink:0}
+  .pos-key{height:60px}
+
+  /* pedidos */
+  .pos-ord-tabs{display:flex;gap:6px;margin-left:10px}
+  .pos-ord-day{display:flex;align-items:center;gap:6px;margin-left:12px}
+  .pos-ord-hint{margin-left:12px}
+  .pos-ord-body{flex:1;display:flex;min-height:0;position:relative}
+  .pos-ord-detail{width:380px;flex-shrink:0;border-left:1.5px solid var(--ink);background:var(--paper-lt);display:flex;flex-direction:column}
+
+  /* Between the two layouts (small laptops, iPad in landscape). */
+  @media (min-width:900px) and (max-width:1099px){
+    .pos-ticket{width:360px}
+    .pos-tender-sum{width:320px}
+    .pos-ord-detail{width:340px}
+  }
+
+  /* Wide but short — a tablet in landscape (Galaxy Tab A8: 1280 × ~650 with
+     the browser bars). The two buttons share a row and the paddings tighten,
+     so the ticket shows about two more lines. */
+  @media (min-width:900px) and (max-height:760px){
+    .pos-ticket-head{padding:8px 14px 8px}
+    .pos-ticket-foot{padding:6px 14px 10px}
+    .pos-meta{display:flex;align-items:center;gap:8px}
+    .pos-root button.pos-otype{flex:none;padding:0 9px}
+    .pos-mesa{flex:1;min-width:0;width:auto;height:38px;margin-top:0}
+    .pos-sum{display:flex;flex-wrap:wrap;align-items:center;column-gap:12px;margin-bottom:8px}
+    .pos-sum-note{flex:1 1 auto;gap:10px;margin-bottom:0}
+    .pos-total{flex:1 1 auto;gap:10px;margin:0}
+    .pos-total-amt{font-size:28px}
+    .pos-actions{flex-direction:row-reverse}
+    .pos-root .pos-pay,.pos-root .pos-send{width:auto;min-width:0;height:58px;padding:0 8px}
+    .pos-root .pos-pay{flex:1.3;font-size:14px}
+    .pos-root .pos-send{flex:1;font-size:12px;line-height:1.2}
+    .pos-send-sep{display:none}
+    .pos-send-sub{display:block;font-size:9.5px;opacity:.75}
+    .pos-tender-total{padding:14px 20px 12px}
+    .pos-tender-amt{font-size:40px}
+    .pos-tender-pay{padding:14px 24px}
+    .pos-cash{margin-top:12px}
+    .pos-key{height:54px}
+  }
+
+  /* Narrow — a tablet in portrait (Galaxy Tab A8: 800 px), or a phone. The
+     catalog takes the whole width; the ticket slides over it from the bar
+     at the bottom. */
+  @media (max-width:899px){
+    .pos-ticket{position:absolute;top:0;right:0;bottom:0;z-index:26;width:min(480px,100%);
+      transform:translateX(100%);visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s;
+      box-shadow:-18px 0 40px -24px rgba(0,0,0,.6)}
+    .pos-ticket.open{transform:none;visibility:visible;transition:transform .2s ease}
+    .pos-scrim.open{display:block;position:absolute;inset:0;z-index:25;background:rgba(20,14,8,.45)}
+    .pos-root button.pos-ticket-close{display:inline-flex}
+    .pos-cartbar{display:block;flex-shrink:0}
+    .pos-tile-qty{display:inline-flex}
+    .pos-hdr{gap:10px;padding:0 12px}
+
+    .pos-tender-body{flex-direction:column}
+    .pos-tender-sum{width:auto;max-height:32dvh;border-right:none;border-bottom:1.5px solid var(--ink)}
+    .pos-tender-total{padding:14px 20px 12px}
+    .pos-tender-amt{font-size:40px}
+    .pos-tender-pay{padding:16px 20px 20px}
+
+    .pos-ord-hdr{height:auto;min-height:58px;flex-wrap:wrap;row-gap:8px;padding:9px 12px}
+    .pos-ord-right{order:1}
+    .pos-ord-break{display:block;order:2;flex-basis:100%;height:0}
+    .pos-ord-tabs{order:3;margin-left:0}
+    .pos-ord-day,.pos-ord-hint{order:4;margin-left:auto}
+    .pos-ord-detail{position:absolute;top:0;right:0;bottom:0;z-index:5;width:min(440px,100%);box-shadow:-18px 0 40px -24px rgba(0,0,0,.6)}
+  }
+
+  /* Phone width: the keypad goes under the amounts, the wordmark makes room for the search. */
+  @media (max-width:639px){
+    .pos-cash{flex-direction:column;flex:none}
+    .pos-keypad{width:100%}
+    .pos-wordmark{display:none}
+    .pos-ord-tabs{overflow-x:auto;max-width:100%}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    .pos-ticket,.pos-ticket.open{transition:none}
+    .pos-bump{animation:none}
+  }
 `;
 
 // ════════════════════════════════════════════════════════════════
@@ -268,6 +402,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
       else if (st.view === "tender") cancelTender();
       else if (st.view === "ordenes") closeOrdenes();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
+      else if (st.ticketOpen) posStore.set({ ticketOpen: false });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -279,6 +414,8 @@ function Register({ mode }: { mode: "device" | "user" }) {
       <TopBar mode={mode} />
       <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
         <Catalog />
+        {/* Narrow layout only: dims the catalog behind the open ticket; a tap closes it. */}
+        <div aria-hidden className={"pos-scrim" + (s.ticketOpen ? " open" : "")} onClick={() => posStore.set({ ticketOpen: false })} />
         <Ticket />
         {s.aiOpen && <AiDrawer />}
       </div>
@@ -299,8 +436,8 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
   const station = React.useContext(StationCtx);
 
   return (
-    <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
-      <span style={{ fontFamily: F.slab, fontSize: 20, lineHeight: 1, whiteSpace: "nowrap" }}>
+    <div className="pos-hdr">
+      <span className="pos-wordmark" style={{ fontFamily: F.slab, fontSize: 20, lineHeight: 1, whiteSpace: "nowrap" }}>
         comanda<span style={{ color: C.red }}>.</span>
       </span>
 
@@ -326,7 +463,7 @@ function SearchBox() {
   const s = usePos();
   const ref = React.useRef<HTMLInputElement>(null);
   return (
-    <div style={{ flex: 1, minWidth: 180, maxWidth: 520, position: "relative" }}>
+    <div style={{ flex: 1, minWidth: 120, maxWidth: 520, position: "relative" }}>
       <span aria-hidden style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.muted, fontSize: 14 }}>⌕</span>
       <input
         ref={ref}
@@ -337,7 +474,7 @@ function SearchBox() {
         style={{ width: "100%", height: 40, padding: "0 36px 0 32px", border: `1.5px solid ${s.search ? C.ink : C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 14, borderRadius: 3, outline: "none" }}
       />
       {s.search && (
-        <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
+        <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 0, top: 0, width: 40, height: 40, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
       )}
     </div>
   );
@@ -353,7 +490,7 @@ function PendientesChip() {
       onClick={() => (on ? closeOrdenes() : openOrdenes())}
       title="Pedidos: pendientes e historial"
       aria-pressed={on}
-      style={{ ...chipStyle, justifyContent: "center", minWidth: 150, padding: "0 24px", fontSize: 12, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
+      style={{ ...chipStyle, justifyContent: "center", minWidth: "min(150px, 22vw)", padding: "0 16px", fontSize: 12, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
     >
       Pedidos
       {n > 0 && (
@@ -534,6 +671,11 @@ function Catalog() {
 
   const topSuggestion = !s.aiOpen ? s.suggestions[0] : undefined;
 
+  // How many of each product are on the ticket — the tile badge of the narrow
+  // layout, where the ticket itself is out of sight.
+  const inTicket: Record<string, number> = {};
+  for (const l of s.order) inTicket[l.id] = (inTicket[l.id] ?? 0) + l.qty;
+
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: C.paper }}>
       {/* tabs */}
@@ -577,13 +719,56 @@ function Catalog() {
             {sec.label && <SubLabel>{sec.label}</SubLabel>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, alignContent: "start" }}>
               {sec.combos
-                ? sec.combos.map((c) => <ComboTile key={c.id} c={c} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
-                : sec.items!.map((p) => <ProductTile key={p.id} p={p} accent={accentFor(catalog, p.catId)} hl={s.highlightId === p.id} hlRef={s.highlightId === p.id ? hlRef : undefined} />)}
+                ? sec.combos.map((c) => <ComboTile key={c.id} c={c} qty={inTicket[c.id] ?? 0} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
+                : sec.items!.map((p) => <ProductTile key={p.id} p={p} qty={inTicket[p.id] ?? 0} accent={accentFor(catalog, p.catId)} hl={s.highlightId === p.id} hlRef={s.highlightId === p.id ? hlRef : undefined} />)}
             </div>
           </div>
         ))}
       </div>
+      <CartBar />
     </div>
+  );
+}
+
+/**
+ * Narrow layout only (hidden by CSS otherwise): the ticket in one line —
+ * how many items, what they are, the total — and the way into it.
+ */
+function CartBar() {
+  const s = usePos();
+  const catalog = useCatalog();
+  const total = orderTotal(s.order, catalog);
+  const count = s.order.reduce((n, l) => n + l.qty, 0);
+  const editing = s.pending?.mode === "edit" ? s.pending : null;
+  const title = editing ? `Editando ${editing.folio}` : s.customerName.trim() || "Pedido";
+  // Newest line first: the end of a long summary is what gets cut off.
+  const summary = [...s.order].reverse().map((l) => `${l.qty}× ${l.name}`).join(" · ");
+  return (
+    <div className="pos-cartbar">
+      <button
+        onClick={() => posStore.set({ ticketOpen: true })}
+        aria-label={`Ver pedido · ${count} ítem${count === 1 ? "" : "s"} · ${posMoney(total)}`}
+        style={{ width: "100%", height: 72, padding: "0 16px", display: "flex", alignItems: "center", gap: 14, textAlign: "left", cursor: "pointer", border: "none", borderTop: `1.5px solid ${C.ink}`, background: C.ink, color: C.paperLt, fontFamily: F.mono }}
+      >
+        <span key={count} className={"cmd-num" + (count ? " pos-bump" : "")} style={{ minWidth: 38, height: 38, padding: "0 8px", borderRadius: 19, background: count ? (editing ? C.red : C.paperLt) : "transparent", color: count ? (editing ? C.paperLt : C.ink) : C.paperLt, border: count ? "none" : "1.5px dashed rgba(244,236,220,.4)", fontSize: 16, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{count}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 12, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+          <span style={{ display: "block", fontSize: 12, marginTop: 3, color: "rgba(244,236,220,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {count ? summary : "Toca un producto para agregarlo · mantenlo presionado para ver su receta"}
+          </span>
+        </span>
+        {count > 0 && <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{posMoney(total)}</span>}
+        <span style={{ height: 44, padding: "0 14px", borderRadius: 4, background: count ? C.red : "transparent", border: count ? "none" : "1.5px solid rgba(244,236,220,.4)", color: C.paperLt, fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", flexShrink: 0 }}>Ver pedido ▸</span>
+      </button>
+    </div>
+  );
+}
+
+/** Narrow layout only: how many of this product are already on the ticket. */
+function TileQty({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span key={n} className="pos-tile-qty pos-bump cmd-num" aria-label={`${n} en el pedido`} style={{ position: "absolute", top: 6, right: 6, minWidth: 28, height: 28, padding: "0 7px", borderRadius: 14, background: C.ink, color: C.paperLt, fontSize: 13, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>×{n}</span>
   );
 }
 
@@ -642,7 +827,7 @@ function useLongPress(onLong: () => void) {
   };
 }
 
-function ProductTile({ p, accent, hl, hlRef }: { p: PosMenuItem; accent: string; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
+function ProductTile({ p, qty, accent, hl, hlRef }: { p: PosMenuItem; qty: number; accent: string; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
   const out = p.stock === "sin";
   const hold = useLongPress(() => showRecipe(p.id));
   return (
@@ -662,11 +847,12 @@ function ProductTile({ p, accent, hl, hlRef }: { p: PosMenuItem; accent: string;
           : p.stock === "bajo" ? <span style={{ fontSize: 9, letterSpacing: ".08em", color: C.amber }}>● bajo</span>
           : null}
       </div>
+      <TileQty n={qty} />
     </button>
   );
 }
 
-function ComboTile({ c, hl, hlRef }: { c: PosCombo; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
+function ComboTile({ c, qty, hl, hlRef }: { c: PosCombo; qty: number; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
   return (
     <button ref={hlRef} onClick={() => addCombo(c.id)} className={"pos-tile" + (hl ? " pos-hl" : "")} style={{
       textAlign: "left", padding: "12px 14px 10px", borderRadius: 6, cursor: "pointer", gridColumn: "span 2", minHeight: 112, position: "relative", overflow: "hidden",
@@ -684,6 +870,7 @@ function ComboTile({ c, hl, hlRef }: { c: PosCombo; hl: boolean; hlRef?: React.R
         <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{posMoney(c.price)}</span>
         {c.saving > 0 && <span style={{ fontSize: 10, color: C.green, letterSpacing: ".04em" }}>AHORRA {posMoney(c.saving)}</span>}
       </div>
+      <TileQty n={qty} />
     </button>
   );
 }
@@ -702,7 +889,7 @@ function SuggestionStrip({ g, more }: { g: SuggestionCardState; more: number }) 
       <button onClick={() => posStore.set({ aiOpen: true })} style={{ height: 32, padding: "0 10px", borderRadius: 3, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontFamily: F.mono, fontSize: 10.5, cursor: "pointer", flexShrink: 0 }}>
         {more > 0 ? `+${more} más` : "Ver"}
       </button>
-      <button onClick={() => dismissSuggestion(g.uid, false)} aria-label="Descartar" style={{ width: 28, height: 28, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer", flexShrink: 0 }}>×</button>
+      <button onClick={() => dismissSuggestion(g.uid, false)} aria-label="Descartar" style={{ width: "var(--pos-x)", height: "var(--pos-x)", border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer", flexShrink: 0 }}>×</button>
     </div>
   );
 }
@@ -716,7 +903,7 @@ const ORDER_TYPES = [
   { id: "domicilio", label: "Domicilio" },
 ] as const;
 
-const qtyBtn: React.CSSProperties = { width: 34, height: 34, border: `1.5px solid ${C.ink}`, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 18, lineHeight: 1, cursor: "pointer", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
+const qtyBtn: React.CSSProperties = { width: "var(--pos-qty)", height: "var(--pos-qty)", border: `1.5px solid ${C.ink}`, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 18, lineHeight: 1, cursor: "pointer", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 
 function Ticket() {
   const s = usePos();
@@ -738,39 +925,45 @@ function Ticket() {
   }, [s.order.length]);
 
   return (
-    <div className="pos-ticket" style={{ width: TICKET_W, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1.5px solid ${C.ink}`, background: C.paperLt }}>
+    <div className={"pos-ticket" + (s.ticketOpen ? " open" : "")} style={{ flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1.5px solid ${C.ink}`, background: C.paperLt }}>
       {/* header */}
-      <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.rule}` }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: editing ? C.red : C.ink }}>
+      <div className="pos-ticket-head" style={{ borderBottom: `1px solid ${C.rule}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          {/* Narrow layout only: back to the catalog. */}
+          <button className="pos-ticket-close" onClick={() => posStore.set({ ticketOpen: false })} aria-label="Cerrar pedido" style={{ width: 44, height: 44, marginLeft: -4, borderRadius: 4, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontSize: 20, cursor: "pointer", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>×</button>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: editing ? C.red : C.ink, marginRight: "auto" }}>
             {editing ? <>EDITANDO <span className="cmd-num">{editing.folio}</span></> : "PEDIDO"}
             {count > 0 && <span className="cmd-num" style={{ color: C.muted, fontWeight: 400 }}> · {count} ítem{count === 1 ? "" : "s"}</span>}
           </span>
           {editing ? (
-            <button onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido ${editing.folio}?`)) discardPendingEdit(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", padding: "4px 0" }}>Descartar</button>
+            <button className="pos-textbtn" onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido ${editing.folio}?`)) discardPendingEdit(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Descartar</button>
           ) : s.order.length > 0 && (
-            <button onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", padding: "4px 0" }}>Vaciar</button>
+            <button className="pos-textbtn" onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }} style={{ background: "none", border: "none", color: C.muted, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Vaciar</button>
           )}
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {ORDER_TYPES.map((t) => {
-            const on = s.orderType === t.id;
-            return (
-              <button key={t.id} onClick={() => posStore.set({ orderType: t.id })} style={{
-                flex: 1, height: 38, fontFamily: F.mono, fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: 4,
-                border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2,
-              }}>{t.label}</button>
-            );
-          })}
+        {/* Stacked, or on one row on a short screen (POS_CSS). */}
+        <div className="pos-meta">
+          <div className="pos-otypes">
+            {ORDER_TYPES.map((t) => {
+              const on = s.orderType === t.id;
+              return (
+                <button key={t.id} className="pos-otype" aria-pressed={on} onClick={() => posStore.set({ orderType: t.id })} style={{
+                  fontFamily: F.mono, fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: 4,
+                  border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2,
+                }}>{t.label}</button>
+              );
+            })}
+          </div>
+          <input
+            className="pos-mesa"
+            value={s.customerName}
+            onChange={(e) => posStore.set({ customerName: e.target.value })}
+            placeholder="Mesa / grupo (opcional)"
+            aria-label="Mesa o grupo"
+            maxLength={80}
+            style={{ padding: "0 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 13, borderRadius: 4, outline: "none" }}
+          />
         </div>
-        <input
-          value={s.customerName}
-          onChange={(e) => posStore.set({ customerName: e.target.value })}
-          placeholder="Mesa / grupo (opcional)"
-          aria-label="Mesa o grupo"
-          maxLength={80}
-          style={{ marginTop: 8, width: "100%", height: 36, padding: "0 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 13, borderRadius: 4, outline: "none" }}
-        />
         {/* People at the table. Inline styles only on these nodes (no responsive Tailwind). */}
         <div style={{ marginTop: 8 }}>
           <PersonPicker
@@ -798,7 +991,7 @@ function Ticket() {
       {personSheet && <PersonSheet state={personSheet} onClose={() => setPersonSheet(null)} />}
 
       {/* footer */}
-      <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "10px 14px 14px", background: C.paperLt }}>
+      <div className="pos-ticket-foot" style={{ borderTop: `1.5px solid ${C.ink}`, background: C.paperLt }}>
         {s.noteSinGluten && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, fontSize: 10.5, color: C.green, border: `1px solid ${C.green}`, padding: "5px 8px", letterSpacing: ".04em", borderRadius: 3 }}>
             <span>✓ PEDIDO «SIN GLUTEN»</span>
@@ -816,15 +1009,18 @@ function Ticket() {
             style={{ width: "100%", marginBottom: 8, padding: "8px 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 12.5, borderRadius: 4, outline: "none", resize: "none" }}
           />
         ) : null}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.muted, marginBottom: 4 }}>
-          <button onClick={() => setNoteOpen((v) => !v)} style={{ background: "none", border: "none", color: C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer", padding: 0 }}>
+        {/* Two rows, or one on a short screen (POS_CSS). */}
+        <div className="pos-sum">
+        <div className="pos-sum-note" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.muted }}>
+          <button className="pos-textbtn tight" onClick={() => setNoteOpen((v) => !v)} style={{ background: "none", border: "none", color: C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}>
             {noteOpen || s.note ? "− Nota" : "+ Nota"}
           </button>
           {comboSaved > 0 && <span style={{ color: C.green }}>Ahorro en combos <span className="cmd-num">−{posMoney(comboSaved)}</span></span>}
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "6px 0 10px" }}>
+        <div className="pos-total" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <span style={{ fontSize: 12, letterSpacing: ".12em", color: C.ink2 }}>TOTAL</span>
-          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 32, color: C.ink, lineHeight: 1 }}>{posMoney(total)}</span>
+          <span className="cmd-num pos-total-amt" style={{ fontFamily: F.slab, color: C.ink, lineHeight: 1 }}>{posMoney(total)}</span>
+        </div>
         </div>
         {hasMissing && (
           <div style={{ fontSize: 10.5, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>Quita el producto no disponible para continuar.</div>
@@ -832,22 +1028,27 @@ function Ticket() {
         {s.sendError && s.view === "sale" && (
           <div role="alert" style={{ fontSize: 11, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>{s.sendError}</div>
         )}
-        <button
-          className="cmd-btn red"
-          disabled={!canSend}
-          onClick={startTender}
-          style={{ width: "100%", height: 60, fontSize: 15, fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
-        >
-          Cobrar {s.order.length ? posMoney(total) : ""}
-        </button>
-        <button
-          className="cmd-btn"
-          disabled={!canSend}
-          onClick={() => void savePending()}
-          style={{ width: "100%", height: 48, marginTop: 8, fontSize: 13, fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
-        >
-          {s.sending ? "Guardando…" : editing ? "Guardar cambios" : "Enviar · pagar después"}
-        </button>
+        {/* Stacked, or side by side on a short screen (POS_CSS). */}
+        <div className="pos-actions">
+          <button
+            className="cmd-btn red pos-pay"
+            disabled={!canSend}
+            onClick={startTender}
+            style={{ fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
+          >
+            Cobrar {s.order.length ? posMoney(total) : ""}
+          </button>
+          <button
+            className="cmd-btn pos-send"
+            disabled={!canSend}
+            onClick={() => void savePending()}
+            style={{ fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
+          >
+            {s.sending ? "Guardando…" : editing ? "Guardar cambios" : (
+              <span>Enviar<span className="pos-send-sep"> · </span><span className="pos-send-sub">pagar después</span></span>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -886,15 +1087,17 @@ function OrdenesScreen() {
   return (
     <Overlay align="fill">
       <div role="region" aria-label="Pedidos" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
-          <button onClick={closeOrdenes} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>← Volver</button>
+        {/* One row; on a narrow screen the tabs and the day drop to a second one (POS_CSS). */}
+        <div className="pos-hdr pos-ord-hdr">
+          <button onClick={closeOrdenes} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Pedidos<span style={{ color: C.amber }}>.</span></span>
-          <div role="tablist" style={{ display: "flex", gap: 6, marginLeft: 10 }}>
+          <span aria-hidden className="pos-ord-break" />
+          <div role="tablist" className="pos-ord-tabs">
             {ORDER_TABS.map((t) => {
               const on = s.ordenesTab === t.id;
               const n = t.id === "pendiente" ? s.pendientes.length : 0;
               return (
-                <button key={t.id} role="tab" aria-selected={on} onClick={() => setOrdenesTab(t.id)} style={{ height: 36, padding: "0 12px", borderRadius: 3, cursor: "pointer", border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <button key={t.id} role="tab" aria-selected={on} onClick={() => setOrdenesTab(t.id)} style={{ height: "max(36px, var(--pos-x))", padding: "0 12px", borderRadius: 3, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   {t.label}
                   {n > 0 && <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.amber, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{n}</span>}
                 </button>
@@ -902,7 +1105,7 @@ function OrdenesScreen() {
             })}
           </div>
           {!isQueue && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 12 }}>
+            <div className="pos-ord-day">
               <button onClick={() => setOrdenesDay(shiftDay(s.ordenesDay, -1))} aria-label="Día anterior" style={dayBtn}>◀</button>
               <span style={{ fontSize: 12, fontWeight: 600, minWidth: 150, textAlign: "center" }}>{dayLabel(s.ordenesDay, today)}</span>
               <button onClick={() => setOrdenesDay(shiftDay(s.ordenesDay, 1))} disabled={s.ordenesDay >= today} aria-label="Día siguiente" style={{ ...dayBtn, opacity: s.ordenesDay >= today ? 0.35 : 1 }}>▶</button>
@@ -910,9 +1113,9 @@ function OrdenesScreen() {
             </div>
           )}
           {isQueue && s.merge.on && (
-            <span style={{ marginLeft: 12, fontSize: 11, color: C.ink, letterSpacing: ".06em" }}>Elige dos o más pedidos para combinarlos.</span>
+            <span className="pos-ord-hint" style={{ fontSize: 11, color: C.ink, letterSpacing: ".06em" }}>Elige dos o más pedidos para combinarlos.</span>
           )}
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+          <div className="pos-ord-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
             {isQueue && !s.merge.on && s.ordenes.length >= 2 && (
               <button onClick={startMerge} style={{ height: 36, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.ink}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Combinar</button>
             )}
@@ -925,8 +1128,8 @@ function OrdenesScreen() {
           </div>
         </div>
 
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-          <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+        <div className="pos-ord-body">
+          <div className="pos-scroll" style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 16 }}>
             {s.ordenesError && <div role="alert" style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{s.ordenesError}</div>}
             {!s.ordenes.length && !s.ordenesError && (
               <div style={{ padding: "64px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
@@ -1030,7 +1233,7 @@ function MergeConfirm() {
   );
 }
 
-const dayBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" };
+const dayBtn: React.CSSProperties = { width: "max(36px, var(--pos-x))", height: "max(36px, var(--pos-x))", flexShrink: 0, borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" };
 
 function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosOrder; selected: boolean; merging?: boolean; isTarget?: boolean }) {
   const st = o.mergedInto ? { label: "Combinado", color: C.muted } : STATUS_UI[o.status];
@@ -1047,7 +1250,7 @@ function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosO
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           {merging && <span aria-hidden style={{ width: 20, height: 20, borderRadius: 4, border: `1.5px solid ${C.ink}`, background: selected ? C.ink : "transparent", color: C.paperLt, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{selected ? "✓" : ""}</span>}
-          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1 }}>{o.folio}</span>
+          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1, whiteSpace: "nowrap" }}>{o.folio}</span>
         </span>
         {isTarget
           ? <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: C.paperLt, background: C.red, padding: "2px 6px", borderRadius: 3 }}>Destino</span>
@@ -1085,12 +1288,12 @@ function OrdenDetail({ o }: { o: PosOrder }) {
     </div>
   );
   return (
-    <div role="complementary" aria-label={`Detalle ${o.folio}`} style={{ width: 380, flexShrink: 0, borderLeft: `1.5px solid ${C.ink}`, background: C.paperLt, display: "flex", flexDirection: "column" }}>
+    <div role="complementary" aria-label={`Detalle ${o.folio}`} className="pos-ord-detail">
       <div style={{ padding: "18px 20px 12px", borderBottom: `1px solid ${C.rule}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, lineHeight: 1 }}>{o.folio}</span>
+          <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 34, lineHeight: 1, whiteSpace: "nowrap" }}>{o.folio}</span>
           <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "3px 7px", borderRadius: 3 }}>{st.label}</span>
-          <button onClick={() => selectOrden(null)} aria-label="Cerrar detalle" style={{ marginLeft: "auto", width: 32, height: 32, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontSize: 16, cursor: "pointer" }}>×</button>
+          <button onClick={() => selectOrden(null)} aria-label="Cerrar detalle" style={{ marginLeft: "auto", width: "max(32px, var(--pos-x))", height: "max(32px, var(--pos-x))", border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontSize: 16, cursor: "pointer" }}>×</button>
         </div>
         <div style={{ fontSize: 15, fontWeight: 600, marginTop: 8 }}>{o.customerName || (o.customerNames.length ? "Mesa" : "Sin nombre")}</div>
         {o.customerNames.length > 0 && (
@@ -1158,7 +1361,7 @@ function OrdenDetail({ o }: { o: PosOrder }) {
 // People at the table — chips, sheet, per-line badge
 // ════════════════════════════════════════════════════════════════
 const personChip = (on: boolean, dashed = false): React.CSSProperties => ({
-  height: 34, padding: "0 10px", borderRadius: 4, cursor: "pointer", maxWidth: 190,
+  height: "var(--pos-chip)", padding: "0 10px", borderRadius: 4, cursor: "pointer", maxWidth: 190,
   border: `1.5px ${dashed ? "dashed" : "solid"} ${on ? C.ink : C.rule}`,
   background: on ? C.ink : C.paper, color: on ? C.paperLt : C.ink2,
   fontFamily: F.mono, fontSize: 12.5, fontWeight: 600,
@@ -1217,7 +1420,7 @@ function PersonPicker({ value, onPick, onAdd, onEdit, counts }: {
         <button type="button" onClick={onAdd} style={personChip(false, true)}>+ persona</button>
       ) : adding ? (
         <form onSubmit={(e) => { e.preventDefault(); addInline(); }} style={{ display: "inline-flex", gap: 6 }}>
-          <input ref={ref} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }} maxLength={40} placeholder="Nombre" aria-label="Nombre de la persona" style={{ ...personInput, height: 34, width: 150, fontSize: 12.5 }} />
+          <input ref={ref} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }} maxLength={40} placeholder="Nombre" aria-label="Nombre de la persona" style={{ ...personInput, height: "var(--pos-chip)", width: 150, fontSize: 12.5 }} />
           <button type="submit" style={personChip(true)}>OK</button>
         </form>
       ) : (
@@ -1280,7 +1483,7 @@ function PersonSheet({ state, onClose }: { state: PersonSheetState; onClose: () 
             <div style={{ fontFamily: F.slab, fontSize: 22, lineHeight: 1.1, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
             <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>{hint}</div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+          <button onClick={onClose} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
         </div>
 
         <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 20px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1326,9 +1529,10 @@ function TicketLine({ idx, line, onPerson }: { idx: number; line: OrderLine; onP
         <div style={{ marginBottom: 4 }}>
           <button
             type="button"
+            className="pos-linebadge"
             onClick={onPerson}
             aria-label={line.customer ? `Persona: ${line.customer}. Cambiar` : "Asignar persona"}
-            style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", padding: "2px 5px", borderRadius: 2, cursor: "pointer", fontFamily: F.mono, background: "transparent", border: `1px solid ${line.customer ? C.red : C.rule}`, color: line.customer ? C.red : C.muted, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            style={{ fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", borderRadius: 2, cursor: "pointer", fontFamily: F.mono, background: "transparent", border: `1px solid ${line.customer ? C.red : C.rule}`, color: line.customer ? C.red : C.muted, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
             {line.customer ? `Pa' ${line.customer}` : "+ nombre"}
           </button>
@@ -1401,7 +1605,7 @@ function ItemSheet() {
             <div style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1.1, color: C.ink }}>{p.name}</div>
             {p.desc && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4, lineHeight: 1.4 }}>{p.desc}</div>}
           </div>
-          <button onClick={close} aria-label="Cerrar" style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+          <button onClick={close} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
         </div>
 
         <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px 12px" }}>
@@ -1515,7 +1719,7 @@ function RecetaSheet({ productId }: { productId: string }) {
               </div>
             )}
           </div>
-          <button onClick={close} aria-label="Cerrar" style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+          <button onClick={close} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
         </div>
         <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "6px 20px 14px" }}>
           {p.recipe.length === 0 ? (
@@ -1585,9 +1789,14 @@ function OutboxChip() {
   );
 }
 
+/**
+ * Fixed, not absolute: the person sheet opens from inside the ticket, which
+ * on a narrow screen is itself a positioned panel — the sheet has to cover
+ * the screen, not the panel.
+ */
 function Overlay({ children, onClose, align }: { children: React.ReactNode; onClose?: () => void; align: "center" | "fill" }) {
   return (
-    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} style={{ position: "absolute", inset: 0, zIndex: 40, background: align === "fill" ? C.paper : "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: align === "fill" ? 0 : 16 }}>
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} style={{ position: "fixed", inset: 0, zIndex: 40, background: align === "fill" ? C.paper : "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: align === "fill" ? 0 : 16 }}>
       {children}
     </div>
   );
@@ -1647,7 +1856,7 @@ function TenderScreen() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const hdrBtn: React.CSSProperties = { height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" };
+  const hdrBtn: React.CSSProperties = { height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 };
   const confirmLabel = s.sending
     ? "Registrando…"
     : split
@@ -1663,14 +1872,14 @@ function TenderScreen() {
   return (
     <Overlay align="fill">
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 58, display: "flex", alignItems: "center", gap: 14, padding: "0 16px", borderBottom: `1.5px solid ${C.ink}`, background: C.paperLt, flexShrink: 0 }}>
+        <div className="pos-hdr">
           <button onClick={cancelTender} style={hdrBtn}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Cobrar<span style={{ color: C.red }}>.</span></span>
-          <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase" }}>
+          <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {s.pending ? <>Pedido <span className="cmd-num" style={{ color: C.ink }}>{s.pending.folio}</span> · </> : null}
             {ORDER_TYPES.find((t) => t.id === s.orderType)?.label}{s.customerName ? ` · ${s.customerName}` : ""}
           </span>
-          <div style={{ marginLeft: "auto" }}>
+          <div style={{ marginLeft: "auto", flexShrink: 0 }}>
             {split ? (
               <button onClick={stopSplit} style={hdrBtn}>Cobrar todo junto</button>
             ) : shares.length >= 2 ? (
@@ -1679,17 +1888,18 @@ function TenderScreen() {
           </div>
         </div>
 
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {/* Side by side; stacked on a narrow screen (POS_CSS). */}
+        <div className="pos-tender-body">
           {/* summary */}
-          <div style={{ width: 360, flexShrink: 0, borderRight: `1.5px solid ${C.ink}`, background: C.paperLt, display: "flex", flexDirection: "column" }}>
+          <div className="pos-tender-sum">
             {split ? (
               <>
-                <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.rule}` }}>
+                <div className="pos-tender-total">
                   <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase" }}>Falta por cobrar</div>
-                  <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(remaining)}</div>
+                  <div className="cmd-num pos-tender-amt" style={{ fontFamily: F.slab, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(remaining)}</div>
                   <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>de <span className="cmd-num">{posMoney(s.pending!.total)}</span>{paidSoFar > 0 ? <> · pagado <span className="cmd-num" style={{ color: C.green }}>{posMoney(paidSoFar)}</span></> : null}</div>
                 </div>
-                <div className="pos-scroll" aria-label="Partes de la cuenta" style={{ flex: 1, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className="pos-scroll" aria-label="Partes de la cuenta" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
                   {shares.map((sh) => {
                     const st = shareStatus(sh, s.pending?.pagos ?? [], false);
                     const on = target?.kind === "share" && target.customer === sh.customer;
@@ -1726,12 +1936,12 @@ function TenderScreen() {
               </>
             ) : (
               <>
-                <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.rule}` }}>
+                <div className="pos-tender-total">
                   <div style={{ fontSize: 11, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase" }}>{charging && paidSoFar > 0 ? "Falta por cobrar" : "Total a cobrar"}</div>
-                  <div className="cmd-num" style={{ fontFamily: F.slab, fontSize: 46, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(total)}</div>
+                  <div className="cmd-num pos-tender-amt" style={{ fontFamily: F.slab, lineHeight: 1.05, color: C.ink, marginTop: 4 }}>{posMoney(total)}</div>
                   {charging && paidSoFar > 0 && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>de <span className="cmd-num">{posMoney(s.pending!.total)}</span> · pagado <span className="cmd-num" style={{ color: C.green }}>{posMoney(paidSoFar)}</span></div>}
                 </div>
-                <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px" }}>
+                <div className="pos-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 20px" }}>
                   {s.order.map((l, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${C.ruleSoft}`, fontSize: 12.5 }}>
                       <span style={{ color: C.ink2, minWidth: 0 }}><span className="cmd-num" style={{ color: C.muted }}>{l.qty}×</span> {l.name}{l.customer ? <span style={{ color: C.red, fontSize: 10, marginLeft: 6 }}>{l.customer}</span> : null}</span>
@@ -1744,7 +1954,7 @@ function TenderScreen() {
           </div>
 
           {/* tender */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 28px", overflowY: "auto" }} className="pos-scroll">
+          <div className="pos-scroll pos-tender-pay">
             {split && (
               <div style={{ fontSize: 11, letterSpacing: ".14em", color: target ? C.ink : C.muted, textTransform: "uppercase", marginBottom: 10 }}>
                 {target ? <>Cobrando a <b>{targetLabel}</b> · <span className="cmd-num">{posMoney(total)}</span></> : "Elige a quién cobrar en la lista"}
@@ -1771,8 +1981,8 @@ function TenderScreen() {
                 Toca una persona en la lista de la izquierda para cobrarle su parte, o <b>Cobrar el resto</b> para cerrar la cuenta de una vez.
               </div>
             ) : isCash ? (
-              <div style={{ marginTop: 18, display: "flex", gap: 20, flex: 1, minHeight: 0 }}>
-                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <div className="pos-cash">
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
                   <div style={{ fontSize: 10.5, letterSpacing: ".14em", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>Recibido</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                     {quickAmounts(total).map((a, i) => {
@@ -1824,10 +2034,10 @@ function TenderScreen() {
 function Keypad({ onKey }: { onKey: (k: string) => void }) {
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"];
   return (
-    <div style={{ width: 240, flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, alignContent: "start" }}>
+    <div className="pos-keypad" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, alignContent: "start" }}>
       {keys.map((k) => (
         <button key={k} className="pos-key" onClick={() => onKey(k)} aria-label={k === "⌫" ? "Borrar" : k === "C" ? "Limpiar" : k} style={{
-          height: 60, borderRadius: 6, cursor: "pointer", fontFamily: F.mono, fontSize: k === "⌫" ? 20 : 22, fontWeight: 600,
+          borderRadius: 6, cursor: "pointer", fontFamily: F.mono, fontSize: k === "⌫" ? 20 : 22, fontWeight: 600,
           border: `1.5px solid ${C.rule}`, background: C.paperLt, color: k === "C" ? C.red : C.ink,
         }}>{k}</button>
       ))}

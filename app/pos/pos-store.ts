@@ -118,6 +118,12 @@ export interface PosState {
   search: string;
   /** Assistant drawer open? */
   aiOpen: boolean;
+  /**
+   * Narrow screens only (tablet in portrait): the ticket is a panel that
+   * slides over the catalog from the bar at the bottom. Ignored when the
+   * ticket has its own column.
+   */
+  ticketOpen: boolean;
   /** Table / group label ("Mesa 3"); the people are in `people`. */
   customerName: string;
   /** The table's roster, in chip order. May hold someone with no line yet. */
@@ -213,6 +219,7 @@ export const POS_INITIAL: PosState = {
   sheet: null,
   search: "",
   aiOpen: false,
+  ticketOpen: false,
   customerName: "",
   people: [],
   activePerson: null,
@@ -445,7 +452,7 @@ export function removeLine(idx: number) {
   posStore.set((s) => ({ ...s, order: s.order.filter((_, k) => k !== idx), sent: false, sheet: null }));
 }
 export function clearTicket() {
-  posStore.set((s) => ({ ...s, order: [], customerName: "", people: [], activePerson: null, note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null }));
+  posStore.set((s) => ({ ...s, order: [], customerName: "", people: [], activePerson: null, note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null, ticketOpen: false }));
 }
 
 // ── people at the table ─────────────────────────────────────────
@@ -1234,7 +1241,9 @@ function loadPending(o: PendingOrder, mode: "edit" | "charge") {
 /** Open a pending order in the ticket to change it. */
 export function editPending(o: PendingOrder) {
   loadPending(o, "edit");
-  posStore.set({ view: "sale" });
+  // Land on the catalog (the bar at the bottom says which order is loaded):
+  // the usual reason to edit is to add something to it.
+  posStore.set({ view: "sale", ticketOpen: false });
 }
 /** Take payment for a pending order (stored total). */
 export function chargePending(o: PendingOrder) {
