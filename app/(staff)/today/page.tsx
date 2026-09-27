@@ -40,6 +40,16 @@ export default async function TodayPage() {
 
   return (
     <div className="w-full">
+      <div className="px-4 pt-3">
+        <Link
+          href="/"
+          className="cmd-btn ghost"
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 16px", fontSize: 13, textDecoration: "none" }}
+        >
+          <span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>←</span>
+          {profile.role === "admin" ? "Volver al panel" : "Inicio"}
+        </Link>
+      </div>
       <ComandaPlate
         subtitle={`${profile.full_name} · Hoy`}
         restaurant={restaurantLabel}

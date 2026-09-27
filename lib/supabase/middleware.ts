@@ -63,12 +63,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Role gate: staff may only reach the staff routes (`/today`, `/shift`).
-  // Every other authenticated app route is admin-only, so a staff user who
-  // lands on one is bounced to `/today`. The role-aware `/` landing page and
-  // the `requireAdmin` layout guard still apply — this just makes the
-  // boundary explicit and central, and turns the old `/ → /today` double
-  // bounce into a single redirect.
+  // Role gate: staff may only reach the staff routes (`/home`, `/today`,
+  // `/shift`) — and the register, which is public here and resolves its own
+  // context. Every other authenticated app route is admin-only, so a staff
+  // user who lands on one is bounced to their home. The role-aware `/`
+  // landing page and the `requireAdmin` layout guard still apply — this just
+  // makes the boundary explicit and central.
   if (user && !isPublic && !isStaffPath(path)) {
     // Skip the lookup on prefetch requests — they never render, and the real
     // navigation (plus the layout guard) still enforces the boundary.
@@ -83,7 +83,7 @@ export async function updateSession(request: NextRequest) {
         .single<{ role: string }>();
       if (profile?.role === "staff") {
         const url = request.nextUrl.clone();
-        url.pathname = "/today";
+        url.pathname = "/home";
         url.search = "";
         return NextResponse.redirect(url);
       }
@@ -95,7 +95,7 @@ export async function updateSession(request: NextRequest) {
 
 /**
  * The routes a staff member is allowed to reach. `/` is included because it's
- * the role-aware landing page that immediately bounces them to `/today`.
+ * the role-aware landing page that immediately bounces them to `/home`.
  */
 function isStaffPath(path: string): boolean {
   return (
@@ -104,6 +104,7 @@ function isStaffPath(path: string): boolean {
     // user defaults to role 'staff', which would otherwise bounce them off the
     // selector and loop /organizaciones → /today → …
     path === "/organizaciones" ||
+    path === "/home" ||
     path === "/today" ||
     path.startsWith("/today/") ||
     path === "/shift" ||
