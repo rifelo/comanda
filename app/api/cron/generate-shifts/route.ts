@@ -1,13 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { todayInTz } from "@/lib/utils";
+import { todayIdxOf } from "@/lib/turno/state";
 
 /**
  * Nightly cron entrypoint. Vercel Cron sends a Bearer token; we verify it
  * against CRON_SECRET so external callers can't trigger this.
  *
  * Generates one shift_instance per active template per restaurant for
- * "today" in each restaurant's local timezone. Idempotent (uniq key).
+ * "today" in each restaurant's local timezone — only for the templates that
+ * run that weekday (`dias`, Monday first; a template without the mask runs
+ * every day). Idempotent (uniq key).
  */
 export async function GET(req: NextRequest) {
   // Vercel Cron auth — see https://vercel.com/docs/cron-jobs/manage-cron-jobs#secure-cron-jobs
@@ -31,7 +34,7 @@ export async function GET(req: NextRequest) {
     { data: templates, error: tErr },
   ] = await Promise.all([
     supa.from("restaurants").select("id, timezone"),
-    supa.from("checklist_templates").select("id, restaurant_id").eq("active", true),
+    supa.from("checklist_templates").select("id, restaurant_id, dias").eq("active", true),
   ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
@@ -40,12 +43,14 @@ export async function GET(req: NextRequest) {
   const tzByRestaurant = new Map<string, string>();
   for (const r of restaurants ?? []) tzByRestaurant.set(r.id, r.timezone);
 
-  const rows = (templates ?? []).map((t) => ({
-    restaurant_id: t.restaurant_id,
-    template_id: t.id,
-    date: todayInTz(tzByRestaurant.get(t.restaurant_id) ?? "America/Bogota"),
-    status: "open" as const,
-  }));
+  // A weekly turno (say, Saturdays) used to be created every night and sat
+  // there as "not done" six days a week.
+  const rows = (templates ?? []).flatMap((t) => {
+    const date = todayInTz(tzByRestaurant.get(t.restaurant_id) ?? "America/Bogota");
+    const dias = t.dias as boolean[] | null;
+    if (Array.isArray(dias) && dias[todayIdxOf(date)] === false) return [];
+    return [{ restaurant_id: t.restaurant_id as string, template_id: t.id as string, date, status: "open" as const }];
+  });
 
   if (rows.length === 0) return NextResponse.json({ inserted: 0 });
 
