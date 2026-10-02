@@ -11,7 +11,7 @@ import { ComandaModuleNav, activeModuleFor } from "./comanda-module-nav";
  * Module-aware sidebar: top pills (`Hoy / Turnos / Operación`) + a contextual
  * `Secciones` list whose entries change based on the active module.
  *
- *   - Hoy → Dashboard + Detalle de hoy
+ *   - Hoy → Dashboard + Números + Detalle de hoy
  *   - Turnos → 5 entries from `TURNOS_SECTIONS`
  *   - Operación → existing `PROD_SECTIONS` (catálogo, ingredientes, …)
  *
@@ -48,13 +48,15 @@ function HoySecciones({ pathname, sedeTz }: { pathname: string; sedeTz?: string 
   const today = todayInTz(sedeTz ?? "America/Bogota");
   const items = [
     { id: "dashboard", n: "01", label: "Dashboard", href: "/hoy" },
-    { id: "drilldown", n: "02", label: "Detalle de hoy", href: `/hoy/${today}` },
+    { id: "numeros", n: "02", label: "Números", href: "/numeros" },
+    { id: "drilldown", n: "03", label: "Detalle de hoy", href: `/hoy/${today}` },
   ];
   return (
     <>
       {items.map((s) => {
         const active =
           (s.id === "dashboard" && pathname === "/hoy") ||
+          (s.id === "numeros" && (pathname === "/numeros" || pathname.startsWith("/numeros/"))) ||
           (s.id === "drilldown" && pathname.startsWith("/hoy/"));
         return <SectionLink key={s.id} {...s} active={active} />;
       })}

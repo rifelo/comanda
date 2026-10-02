@@ -9,7 +9,7 @@ import { PROD_SECTIONS } from "@/lib/mock/productos";
  *
  * Mirrors the design's `ComandaModuleNav` (`comanda-admin.jsx:8-33`). Active
  * state is derived from `usePathname()`:
- *   - Hoy: pathname starts with `/hoy`
+ *   - Hoy: pathname starts with `/hoy` or `/numeros` (the owner's numbers)
  *   - Turnos: pathname starts with `/turnos`
  *   - Operación (id "productos"): pathname matches any href in `PROD_SECTIONS`
  *
@@ -36,6 +36,7 @@ export type ActiveModule =
 
 export function activeModuleFor(pathname: string): ActiveModule {
   if (pathname === "/hoy" || pathname.startsWith("/hoy/")) return "hoy";
+  if (pathname === "/numeros" || pathname.startsWith("/numeros/")) return "hoy";
   if (pathname === "/turnos" || pathname.startsWith("/turnos/")) return "turnos";
   if (
     pathname === "/configuracion" ||
