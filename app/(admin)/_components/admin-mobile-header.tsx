@@ -30,6 +30,7 @@ function sectionsFor(mod: ActiveModule, today: string): Section[] {
   if (mod === "hoy")
     return [
       { label: "Dashboard", href: "/hoy" },
+      { label: "Números", href: "/numeros" },
       { label: "Detalle de hoy", href: `/hoy/${today}` },
     ];
   if (mod === "turnos") return TURNOS_SECTIONS.map((s) => ({ label: s.label, href: s.href }));
