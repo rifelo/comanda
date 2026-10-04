@@ -54,6 +54,15 @@ const frase = localFont({
   style: "normal",
 });
 
+// The customer's name on the 50 × 50 mm cup label ("PA' Andrés"): the
+// heaviest Delight, the closest cut to the brand template's lettering.
+const nombre = localFont({
+  src: "./fonts/delight-black.otf",
+  variable: "--font-nombre",
+  weight: "900",
+  style: "normal",
+});
+
 export const metadata: Metadata = {
   title: "co-manda",
   description:
@@ -95,7 +104,7 @@ export default async function RootLayout({
     <html
       lang="es"
       data-theme={theme}
-      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} h-full antialiased`}
+      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} ${nombre.variable} h-full antialiased`}
     >
       <body className="bg-paper text-ink min-h-full flex flex-col">
         {children}

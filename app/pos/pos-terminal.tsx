@@ -43,11 +43,13 @@ import {
   type PosCombo,
   type PosModGroup,
   type PosSuggestKind,
+  type LabelSize,
 } from "@/lib/pos/types";
-import { desvincularPos, generarFrase } from "./actions";
-import { usePosLive } from "./pos-live";
+import { desvincularPos, generarFrase, guardarTamanoEtiqueta } from "./actions";
+import { usePosLive, nudge } from "./pos-live";
 import { FRASE_TONOS, FRASE_MAX, type FraseTono } from "@/lib/pos/frase";
-import { renderOrderLabel, renderMessageLabel, ensureLabelFonts } from "@/lib/printer/label";
+import { ensureLabelFonts } from "@/lib/printer/label";
+import type { LabelSpec } from "@/lib/printer/spec";
 import { shareStatus } from "@/lib/pos/pagos";
 import { mergePreview } from "@/lib/pos/combinar";
 import {
@@ -104,6 +106,7 @@ import {
   orderShares,
   reprintLabel,
   printFrase,
+  printPhraseLabel,
   savePending,
   openOrdenes,
   closeOrdenes,
@@ -141,7 +144,8 @@ import {
   printStickerLabel,
   printOrderLabel,
   printDrinkLabel,
-  printMessageLabel,
+  printCupNameLabel,
+  rasterForSpec,
   setLabelDefaults,
   relaysLabels,
   type PrinterStatus,
@@ -312,6 +316,7 @@ const POS_CSS = `
      at the bottom. */
   @media (max-width:899px){
     .pos-etq-grid{grid-template-columns:1fr}
+    .pos-etq-rollo{display:none}
     .pos-ticket{position:absolute;top:0;right:0;bottom:0;z-index:26;width:min(480px,100%);
       transform:translateX(100%);visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s;
       box-shadow:-18px 0 40px -24px rgba(0,0,0,.6)}
@@ -407,7 +412,10 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
   // follow the USB cable (connect / disconnect events).
   usePrinterAutoConnect();
   // Labels relayed to / claimed from the other stations, and their order nudges.
-  usePosLive(organizationId, reloadOrders);
+  // A station switched the label stock: reload the catalog (it carries the setting).
+  const router = useRouter();
+  const reloadConfig = React.useCallback(() => router.refresh(), [router]);
+  usePosLive(organizationId, reloadOrders, reloadConfig);
   // Install prompt / display mode / full screen for the desktop-app chips.
   useDesktopAppEvents();
 
@@ -1906,33 +1914,42 @@ const etqBtn = (primary: boolean, off: boolean): React.CSSProperties => ({
   border: `1.5px solid ${C.ink}`, background: primary ? C.ink : "transparent", color: primary ? C.paperLt : C.ink,
   fontFamily: F.mono, fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 });
+const LABEL_SIZES: Array<{ id: LabelSize; label: string; title: string }> = [
+  { id: "50x30", label: "50 × 30", title: "Rollo de 50 × 30 mm: nombre, vaso, QR y frase por separado" },
+  { id: "50x50", label: "50 × 50", title: "Rollo de 50 × 50 mm: dos etiquetas por vaso (nombre + bebida, y QR + frase)" },
+];
 const etqTitle: React.CSSProperties = { fontFamily: F.slab, fontSize: 20, lineHeight: 1.1, color: C.ink };
 const etqHint: React.CSSProperties = { fontSize: 11.5, color: C.muted, margin: "4px 0 12px", lineHeight: 1.45 };
 const etqLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted, margin: "14px 0 6px" };
 
 /** The label exactly as the printer will draw it (same renderer, 1 bit). */
-function LabelPreview({ kind, text, extra }: { kind: "nombre" | "frase"; text: string; extra: string }) {
+function LabelPreview({ spec }: { spec: LabelSpec }) {
   const ref = React.useRef<HTMLCanvasElement>(null);
+  const key = JSON.stringify(spec);
   React.useEffect(() => {
     let off = false;
     void (async () => {
-      await ensureLabelFonts();
-      const c = ref.current;
-      if (off || !c) return;
-      const r = kind === "frase" ? renderMessageLabel({ text, handle: extra }) : renderOrderLabel({ name: text, folio: extra });
-      c.width = r.width;
-      c.height = r.height;
-      const ctx = c.getContext("2d");
-      if (!ctx) return;
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, c.width, c.height);
-      ctx.fillStyle = "#000";
-      r.rows.forEach((row, y) => {
-        for (let x = 0; x < r.width; x++) if (row[x >> 3] & (0x80 >> (x & 7))) ctx.fillRect(x, y, 1, 1);
-      });
+      try {
+        await ensureLabelFonts();
+        const r = await rasterForSpec(JSON.parse(key) as LabelSpec);
+        const c = ref.current;
+        if (off || !c) return;
+        c.width = r.width;
+        c.height = r.height;
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.fillStyle = "#000";
+        r.rows.forEach((row, y) => {
+          for (let x = 0; x < r.width; x++) if (row[x >> 3] & (0x80 >> (x & 7))) ctx.fillRect(x, y, 1, 1);
+        });
+      } catch {
+        // A missing image only costs the preview.
+      }
     })();
     return () => { off = true; };
-  }, [kind, text, extra]);
+  }, [key]);
   return <canvas ref={ref} className="pos-etq-prev" aria-label="Vista previa de la etiqueta" />;
 }
 
@@ -1954,6 +1971,29 @@ function EtiquetasScreen() {
   const [frase, setFrase] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Label stock: an org-wide setting, switched here when the roll changes.
+  const router = useRouter();
+  const [sizeOverride, setSizeOverride] = React.useState<LabelSize | null>(null);
+  const [sizeError, setSizeError] = React.useState<string | null>(null);
+  const size: LabelSize = sizeOverride ?? catalog.labelSize;
+  const square = size === "50x50";
+  const pickSize = async (next: LabelSize) => {
+    if (next === size) return;
+    setSizeOverride(next);
+    setSizeError(null);
+    // Imperative printing reads the store's catalog: switch it at once.
+    posStore.set((st) => ({ ...st, catalog: { ...st.catalog, labelSize: next } }));
+    const res = await guardarTamanoEtiqueta(next).catch(() => ({ ok: false as const, error: "Sin conexión con el servidor." }));
+    if (!res.ok) {
+      setSizeOverride(null);
+      setSizeError(res.error);
+      posStore.set((st) => ({ ...st, catalog: { ...st.catalog, labelSize: catalog.labelSize } }));
+      return;
+    }
+    nudge("config");
+    router.refresh();
+  };
 
   // Who is around right now: the ticket's people, then the open orders'.
   const picks = React.useMemo(() => {
@@ -2011,6 +2051,15 @@ function EtiquetasScreen() {
         <div className="pos-hdr pos-ord-hdr">
           <button onClick={closeEtiquetas} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Etiquetas<span style={{ color: C.red }}>.</span></span>
+          <div role="group" aria-label="Tamaño de etiqueta" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <span className="pos-etq-rollo" style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted }}>Rollo</span>
+            {LABEL_SIZES.map((o) => {
+              const on = size === o.id;
+              return (
+                <button key={o.id} type="button" aria-pressed={on} onClick={() => void pickSize(o.id)} title={o.title} style={{ height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer", whiteSpace: "nowrap", border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 12, fontWeight: 600 }}>{o.label}</button>
+              );
+            })}
+          </div>
           <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <span role="status" style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
             {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
@@ -2020,11 +2069,14 @@ function EtiquetasScreen() {
         </div>
 
         <div className="pos-etq pos-scroll">
+          {sizeError && <div role="alert" style={{ maxWidth: 1120, margin: "0 auto 12px", fontSize: 12, color: C.red }}>{sizeError}</div>}
           <div className="pos-etq-grid">
             {/* ── name ── */}
             <section className="pos-etq-card" aria-label="Etiqueta de nombre">
               <div style={etqTitle}>Nombre</div>
-              <div style={etqHint}>Escribe el nombre como lo quiere el cliente (apodo, pronombre, lo que sea) e imprime una etiqueta nueva.</div>
+              <div style={etqHint}>{square
+                ? "Escribe el nombre como lo quiere el cliente, elige la bebida e imprime la etiqueta del vaso."
+                : "Escribe el nombre como lo quiere el cliente (apodo, pronombre, lo que sea) e imprime una etiqueta nueva."}</div>
               <input
                 className="pos-nombre"
                 value={name}
@@ -2052,31 +2104,47 @@ function EtiquetasScreen() {
                   </div>
                 </>
               )}
-              {folio && (
+              {folio && !square && (
                 <div style={{ fontSize: 11.5, color: C.ink2, marginTop: 10 }}>
                   Pedido <span className="cmd-num" style={{ fontWeight: 700 }}>{folio}</span> en la etiqueta ·{" "}
                   <button type="button" className="pos-textbtn tight" onClick={() => setFolio("")} style={{ background: "none", border: "none", color: C.red, fontFamily: F.mono, fontSize: 11.5, cursor: "pointer" }}>quitar</button>
                 </div>
               )}
-              {who && <LabelPreview kind="nombre" text={who} extra={folio} />}
-              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button type="button" disabled={!who || !canPrint} onClick={() => printOrderLabel({ name: who, folio, orgName: catalog.orgName })} style={etqBtn(true, !who || !canPrint)}>Imprimir nombre</button>
-              </div>
+              {square ? (
+                <>
+                  <div style={etqLabel}>Bebida</div>
+                  <select className="pos-etq-select" value={drinkId} onChange={(e) => setDrinkId(e.target.value)} aria-label="Bebida" style={{ fontFamily: F.mono }}>
+                    <option value="">Elige la bebida…</option>
+                    {drinks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  {drink && <LabelPreview spec={{ kind: "cup50", customer: who || undefined, drink: drink.name, cupSrc: catalog.cupArt, artSrc: catalog.labelArt }} />}
+                  <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                    <button type="button" disabled={!drink || !canPrint} onClick={() => drink && printCupNameLabel({ customer: who || undefined, drink: drink.name, cupSrc: catalog.cupArt, artSrc: catalog.labelArt })} style={etqBtn(true, !drink || !canPrint)}>Imprimir etiqueta</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {who && <LabelPreview spec={{ kind: "order", input: { name: who, folio } }} />}
+                  <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                    <button type="button" disabled={!who || !canPrint} onClick={() => printOrderLabel({ name: who, folio, orgName: catalog.orgName })} style={etqBtn(true, !who || !canPrint)}>Imprimir nombre</button>
+                  </div>
 
-              <div style={etqLabel}>Etiqueta del vaso (con ese nombre)</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <select className="pos-etq-select" value={drinkId} onChange={(e) => setDrinkId(e.target.value)} aria-label="Bebida" style={{ fontFamily: F.mono, flex: "1 1 200px", width: "auto" }}>
-                  <option value="">Elige la bebida…</option>
-                  {drinks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-                <button type="button" disabled={!drink || !canPrint} onClick={() => drink && printDrinkLabel({ name: drink.name, spec: drink.spec, desc: drink.desc, customer: who || undefined, brand: catalog.orgName })} style={{ ...etqBtn(false, !drink || !canPrint), flex: "1 1 160px" }}>Imprimir vaso</button>
-              </div>
+                  <div style={etqLabel}>Etiqueta del vaso (con ese nombre)</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <select className="pos-etq-select" value={drinkId} onChange={(e) => setDrinkId(e.target.value)} aria-label="Bebida" style={{ fontFamily: F.mono, flex: "1 1 200px", width: "auto" }}>
+                      <option value="">Elige la bebida…</option>
+                      {drinks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                    <button type="button" disabled={!drink || !canPrint} onClick={() => drink && printDrinkLabel({ name: drink.name, spec: drink.spec, desc: drink.desc, customer: who || undefined, brand: catalog.orgName })} style={{ ...etqBtn(false, !drink || !canPrint), flex: "1 1 160px" }}>Imprimir vaso</button>
+                  </div>
+                </>
+              )}
             </section>
 
             {/* ── phrase ── */}
             <section className="pos-etq-card" aria-label="Etiqueta de frase">
               <div style={etqTitle}>Frase</div>
-              <div style={etqHint}>Elige el sentimiento y la IA escribe una frase nueva. Puedes corregirla antes de imprimir.</div>
+              <div style={etqHint}>Elige el sentimiento y la IA escribe una frase nueva. Puedes corregirla antes de imprimir.{square ? " Sale con el QR de Instagram." : ""}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {FRASE_TONOS.map((t) => (
                   <button type="button" key={t.id} disabled={loading} onClick={() => void generate(t.id)} aria-pressed={tono === t.id && !!frase} style={tonoChip(tono === t.id && (!!frase || loading))}>{t.label}</button>
@@ -2095,10 +2163,10 @@ function EtiquetasScreen() {
                 maxLength={FRASE_MAX}
                 style={{ fontFamily: F.mono }}
               />
-              {text && <LabelPreview kind="frase" text={text} extra={catalog.instagram ?? ""} />}
+              {text && <LabelPreview spec={square ? { kind: "frase50", text, handle: catalog.instagram, cupSrc: catalog.cupArt } : { kind: "message", text, handle: catalog.instagram }} />}
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button type="button" disabled={loading || (!frase && !tono)} onClick={() => void generate(tono)} style={etqBtn(false, loading || (!frase && !tono))}>{loading ? "Pensando…" : "Otra frase"}</button>
-                <button type="button" disabled={!text || !canPrint} onClick={() => printMessageLabel(text, catalog.instagram)} style={etqBtn(true, !text || !canPrint)}>Imprimir frase</button>
+                <button type="button" disabled={!text || !canPrint} onClick={() => printPhraseLabel(text)} style={etqBtn(true, !text || !canPrint)}>Imprimir frase</button>
               </div>
             </section>
           </div>
@@ -2464,7 +2532,7 @@ function ReceiptPrinterLine() {
       >
         {canPrint ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
       </button>
-      {catalog.instagram && canPrint && (
+      {catalog.instagram && canPrint && catalog.labelSize !== "50x50" && (
         <button
           onClick={() => printInstagramLabel(catalog.instagram!, catalog.cupArt)}
           disabled={busy}

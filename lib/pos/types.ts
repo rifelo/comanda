@@ -100,7 +100,12 @@ export interface PosCatalog {
   sticker: string | null;
   /** Brand line art for the "síguenos" QR label (organizations.cup_url), null = none. */
   cupArt: string | null;
+  /** Label stock in the printer (organizations.label_size). */
+  labelSize: LabelSize;
+  /** Brand illustration at the foot of the 50 × 50 name label (organizations.label_art_url). */
+  labelArt: string | null;
 }
+export type LabelSize = "50x30" | "50x50";
 
 /** Catalog narrowed by the assistant to what the customer asked for. */
 export interface PosCatalogFilter {

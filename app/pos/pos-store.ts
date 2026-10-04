@@ -37,7 +37,7 @@ import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@
 import { defaultMergeTarget } from "@/lib/pos/combinar";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
-import { planSaleLabels } from "@/lib/pos/drink-label";
+import { planSaleLabels, planDrinkLabels } from "@/lib/pos/drink-label";
 import {
   cancelarPendiente,
   cobrarPendiente,
@@ -52,7 +52,7 @@ import {
   transcribeAudio,
 } from "./actions";
 import { nudge } from "./pos-live";
-import { printOrderLabel, printMessageLabel, printDrinkLabel, printInstagramLabel } from "@/lib/printer/serial";
+import { printOrderLabel, printMessageLabel, printDrinkLabel, printInstagramLabel, printCupNameLabel, printPhraseQrLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
 export const EMPTY_CATALOG: PosCatalog = {
@@ -67,6 +67,8 @@ export const EMPTY_CATALOG: PosCatalog = {
   instagram: null,
   sticker: null,
   cupArt: null,
+  labelSize: "50x30",
+  labelArt: null,
 };
 export const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
 export const StationCtx = React.createContext<string>("Caja 01");
@@ -1243,6 +1245,11 @@ export async function confirmMerge() {
 /** Reprint the kitchen label of any stored order. */
 export function printLabelFor(o: PosOrder) {
   const s = posStore.get();
+  if (s.catalog.labelSize === "50x50") {
+    const lines = o.items.filter((it) => it.kind === "item" && it.productoId).map((it) => ({ kind: "item" as const, id: it.productoId!, qty: it.qty, ...(it.customer ? { customer: it.customer } : {}) }));
+    printCupLabels50(lines, rebuildPeople(o), s.catalog);
+    return;
+  }
   printNameLabels(rebuildPeople(o), o.customerName, o.folio, s.catalog.orgName);
 }
 
@@ -1326,6 +1333,12 @@ export function discardPendingEdit() {
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
 function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog }, folio: string) {
+  if (s.catalog.labelSize === "50x50") {
+    // Square stock: two labels per cup — the name label now, the phrase label when the AI answers.
+    const cups = printCupLabels50(s.order, s.people, s.catalog);
+    if (cups > 0) void printFrases(cups);
+    return;
+  }
   const orgName = s.catalog.orgName;
   const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim(), instagram: !!s.catalog.instagram });
   let cups = 0;
@@ -1340,6 +1353,27 @@ function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName
   if (cups > 0) void printFrases(cups);
 }
 
+/**
+ * 50 × 50 stock: one name label per cup ("PA' Andrés · Latte frío"), grouped
+ * by person like the 30 mm run. Returns how many cups there were.
+ */
+function printCupLabels50(
+  order: ReadonlyArray<Pick<OrderLine, "kind" | "id" | "qty" | "customer">>,
+  people: ReadonlyArray<string>,
+  catalog: PosCatalog,
+): number {
+  const cups = planDrinkLabels(order as ReadonlyArray<OrderLine>, people, catalog.byId);
+  for (const c of cups) printCupNameLabel({ customer: c.customer, drink: c.name, cupSrc: catalog.cupArt, artSrc: catalog.labelArt });
+  return cups.length;
+}
+
+/** The phrase label for whatever stock is loaded. */
+export function printPhraseLabel(text: string) {
+  const c = posStore.get().catalog;
+  if (c.labelSize === "50x50") printPhraseQrLabel({ text, handle: c.instagram, cupSrc: c.cupArt });
+  else printMessageLabel(text, c.instagram);
+}
+
 /** The "Pa' <nombre>" labels of a stored order (one per person, else the order label). */
 function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio: string, orgName: string) {
   if (names.length === 0) printOrderLabel({ name: tableName, folio, orgName });
@@ -1351,6 +1385,7 @@ function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio:
  * answers every request; if some fail (rate limit), the successful ones are
  * reused so every cup still gets a message. None answered → nothing prints.
  */
+const FRASE_FALLBACK = "Gracias por venir. Que lo disfrutes.";
 let fraseBatches = 0;
 export async function printFrases(n: number) {
   const s = posStore.get();
@@ -1369,9 +1404,11 @@ export async function printFrases(n: number) {
     }
     if (!ok.length) {
       posStore.set({ fraseError: err ?? "No se pudo generar la frase." });
+      // Square stock: the second label also carries the QR, so it still goes out.
+      if (s.catalog.labelSize === "50x50") for (let i = 0; i < n; i++) printPhraseLabel(FRASE_FALLBACK);
       return;
     }
-    for (let i = 0; i < n; i++) printMessageLabel(ok[i % ok.length], s.catalog.instagram);
+    for (let i = 0; i < n; i++) printPhraseLabel(ok[i % ok.length]);
     posStore.set({ frase: ok[0] });
   } catch {
     posStore.set({ fraseError: "No se pudo generar la frase." });
@@ -1393,7 +1430,7 @@ export async function printFrase() {
     const res = await generarFrase();
     if (res.ok) {
       posStore.set({ frase: res.texto, fraseLoading: false });
-      printMessageLabel(res.texto, s.catalog.instagram);
+      printPhraseLabel(res.texto);
     } else posStore.set({ fraseLoading: false, fraseError: res.error });
   } catch {
     posStore.set({ fraseLoading: false, fraseError: "No se pudo generar la frase." });
@@ -1404,6 +1441,10 @@ export async function printFrase() {
 export function reprintLabel() {
   const s = posStore.get();
   if (!s.sent) return;
+  if (s.catalog.labelSize === "50x50") {
+    printCupLabels50(s.order, s.people, s.catalog);
+    return;
+  }
   printNameLabels(s.people, s.customerName.trim(), s.orderNo, s.catalog.orgName);
 }
 
