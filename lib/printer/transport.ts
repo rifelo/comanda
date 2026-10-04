@@ -16,6 +16,7 @@
 
 import {
   Cmd,
+  HEAD_WIDTH_BYTES,
   HEAD_WIDTH_PX,
   LINE_BUFFER_ROWS,
   RESP_REJECTED,
@@ -241,6 +242,7 @@ export class NiimbotClient {
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
+    if (raster.continuous) return this.printContinuous(raster, raster.continuous.leadRows, density, pollMs);
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(1));
     await this.cmd(req.startPrint());
@@ -259,6 +261,34 @@ export class NiimbotClient {
 
     await this.cmd(req.endPagePrint());
     await this.waitDrain(baseline, pollMs);
+    await this.cmd(req.endPrint());
+  }
+
+  /**
+   * The 50 × 50 recipe (bench-tested, see SQUARE_FEED in label.ts): position
+   * the label, then print on continuous mode with blank rows in front. A roll
+   * whose chip can't be written makes the printer retry for about 5 s after
+   * END_PAGE before it burns the page, so the drain wait tolerates a long
+   * stall — ending the print during that pause throws the page away.
+   */
+  private async printContinuous(raster: LabelRaster, leadRows: number, density: number, pollMs: number) {
+    await this.cmd(req.positionLabel());
+    await sleep(pollMs * 10);
+    await this.cmd(req.setDensity(density));
+    await this.cmd(req.setLabelType(3));
+    await this.cmd(req.startPrint());
+    await this.cmd(req.allowPrintClear());
+    await this.cmd(req.startPagePrint());
+    await this.cmd(req.setDimension(leadRows + raster.rows.length, raster.width));
+    await this.cmd(req.setQuantity(1));
+
+    const baseline = (await this.freeRows()) ?? LINE_BUFFER_ROWS;
+    const blank = new Uint8Array(HEAD_WIDTH_BYTES);
+    for (let y = 0; y < leadRows; y++) await this.t.write(rowPacket(y, blank));
+    for (let y = 0; y < raster.rows.length; y++) await this.t.write(rowPacket(leadRows + y, raster.rows[y]));
+
+    await this.cmd(req.endPagePrint());
+    await this.waitDrain(baseline, pollMs, 60_000, pollMs * 60);
     await this.cmd(req.endPrint());
   }
 

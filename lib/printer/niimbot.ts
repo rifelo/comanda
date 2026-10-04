@@ -52,6 +52,8 @@ export const Cmd = {
   SET_QUANTITY: 0x15,
   GET_PRINT_STATUS: 0xa3,
   IMAGE_ROW: 0x85,
+  /** Feed to the label position (answers 0x8f). */
+  LABEL_POSITION: 0x8e,
 } as const;
 export type CmdType = (typeof Cmd)[keyof typeof Cmd];
 
@@ -151,8 +153,9 @@ const u16 = (n: number): number[] => [(n >> 8) & 0xff, n & 0xff];
 
 export const req = {
   setDensity: (n: number) => encodePacket(Cmd.SET_LABEL_DENSITY, [clamp(n, 1, 5)]),
-  /** 1 = gap labels (die-cut on a liner), which is what the B21S ships with. */
+  /** 1 = gap labels (die-cut on a liner), which is what the B21S ships with; 3 = continuous. */
   setLabelType: (n = 1) => encodePacket(Cmd.SET_LABEL_TYPE, [clamp(n, 1, 3)]),
+  positionLabel: () => encodePacket(Cmd.LABEL_POSITION, [1]),
   startPrint: () => encodePacket(Cmd.START_PRINT, [1]),
   allowPrintClear: () => encodePacket(Cmd.ALLOW_PRINT_CLEAR, [1]),
   startPagePrint: () => encodePacket(Cmd.START_PAGE_PRINT, [1]),
