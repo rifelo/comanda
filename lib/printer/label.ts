@@ -63,6 +63,8 @@ function cssFamily(varName: string, fallback: string): string {
 /** Brand display face. Single weight — never ask for bold (faux bold smears at 1 bit). */
 const displayFont = () => cssFamily("--font-slab", FALLBACK_SANS);
 const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
+/** Phrase face (Delight Bold). Loaded as weight 700 — always ask for bold. */
+const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
 
 /**
  * Canvas draws with whatever is loaded at that instant, so a cold label
@@ -75,6 +77,7 @@ export async function ensureLabelFonts(): Promise<void> {
     await Promise.all([
       document.fonts.load(`96px ${displayFont()}`),
       document.fonts.load(`bold 30px ${monoFont()}`),
+      document.fonts.load(`bold 30px ${fraseFont()}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -303,14 +306,14 @@ export interface MessageLabelInput {
 
 // The phrase label is the designer's sheet: landscape 50 × 30 mm, header
 // (cup · CAFÉ PA'YO · @handle) over a rule, then the phrase filling the rest
-// in mono bold, shrinking as it gets longer. Laid out in the sheet's own
+// in Delight Bold, shrinking as it gets longer. Laid out in the sheet's own
 // points and scaled into the 45 × 28 mm ink area.
 const SHEET_PT = 2.535; // px per pt (8 px/mm, scaled to the ink width)
 const pt = (v: number) => Math.round(v * SHEET_PT);
 
 /**
  * "Frase del día" label: what the customer reads on the cup. The phrase is
- * left-aligned and autofits — three lines at 11 pt for a short one, six at
+ * left-aligned and autofits — three lines at 13 pt for a short one, down to
  * 8 pt for the longest the generator can produce.
  */
 export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
@@ -367,11 +370,11 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   const areaBottom = y0 + pt(77);
   const areaH = areaBottom - areaTop;
   const text = input.text.replace(/\s+/g, " ").trim();
-  let size = pt(11.3);
+  let size = pt(13);
   let lines: string[] = [];
   const floor = pt(8);
   for (; size >= floor; size -= 1) {
-    ctx.font = `bold ${size}px ${monoFont()}`;
+    ctx.font = `bold ${size}px ${fraseFont()}`;
     const candidate = wrap(ctx, text, innerW);
     if (candidate.length <= 6 && candidate.length * Math.round(size * 1.2) <= areaH) {
       lines = candidate;
@@ -380,10 +383,10 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   }
   if (!lines.length) {
     size = floor;
-    ctx.font = `bold ${size}px ${monoFont()}`;
+    ctx.font = `bold ${size}px ${fraseFont()}`;
     lines = wrap(ctx, text, innerW).slice(0, 6);
   }
-  ctx.font = `bold ${size}px ${monoFont()}`;
+  ctx.font = `bold ${size}px ${fraseFont()}`;
   const lh = Math.round(size * 1.2);
   let ty = areaTop + Math.max(0, Math.round((areaH - lines.length * lh) / 2));
   for (const l of lines) {
