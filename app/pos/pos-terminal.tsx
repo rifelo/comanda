@@ -44,7 +44,9 @@ import {
   type PosModGroup,
   type PosSuggestKind,
 } from "@/lib/pos/types";
-import { desvincularPos } from "./actions";
+import { desvincularPos, generarFrase } from "./actions";
+import { FRASE_TONOS, FRASE_MAX, type FraseTono } from "@/lib/pos/frase";
+import { renderOrderLabel, renderMessageLabel, ensureLabelFonts } from "@/lib/printer/label";
 import { shareStatus } from "@/lib/pos/pagos";
 import { mergePreview } from "@/lib/pos/combinar";
 import {
@@ -104,6 +106,8 @@ import {
   savePending,
   openOrdenes,
   closeOrdenes,
+  openEtiquetas,
+  closeEtiquetas,
   setOrdenesTab,
   setOrdenesDay,
   refreshOrdenes,
@@ -121,7 +125,7 @@ import {
   type SuggestionCardState,
   type PayMethod,
 } from "./pos-store";
-import { timeAgo, bogotaDay, shiftDay, dayLabel, bogotaTime } from "@/lib/pos/pending";
+import { timeAgo, bogotaDay, shiftDay, dayLabel, bogotaTime, rebuildPeople } from "@/lib/pos/pending";
 import type { PosOrder, OrdersTab } from "@/lib/pos/types";
 import {
   usePrinter,
@@ -134,6 +138,9 @@ import {
   FRASE_FOLIO,
   STICKER_FOLIO,
   printStickerLabel,
+  printOrderLabel,
+  printDrinkLabel,
+  printMessageLabel,
   setLabelDefaults,
   type PrinterStatus,
 } from "@/lib/printer/serial";
@@ -230,6 +237,15 @@ const POS_CSS = `
   .pos-nombre.ask::placeholder{color:var(--red)}
   .pos-nombre:focus{animation:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(0,0,0,.12)}
   .pos-sum-note{margin-bottom:4px}
+
+  /* Etiquetas — print / reprint labels on demand */
+  .pos-etq{flex:1;overflow-y:auto;padding:18px 16px 28px}
+  .pos-etq-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1120px;margin:0 auto;align-items:start}
+  .pos-etq-card{border:1.5px solid var(--ink);border-radius:8px;background:var(--paper-lt);padding:16px 16px 18px;min-width:0}
+  .pos-etq-card .pos-nombre{margin-top:0}
+  .pos-etq-prev{display:block;width:100%;max-width:360px;height:auto;margin:14px auto 0;border:1px solid var(--rule);border-radius:4px;background:#fff;image-rendering:pixelated}
+  .pos-etq-text{display:block;width:100%;padding:10px 12px;border:1.5px solid var(--ink);border-radius:6px;background:var(--paper);color:var(--ink);font-size:16px;line-height:1.4;outline:none;resize:none}
+  .pos-etq-select{display:block;width:100%;height:46px;padding:0 10px;border:1.5px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);font-size:14px;outline:none}
   .pos-total{margin:6px 0 10px}
   .pos-total-amt{font-size:32px}
   .pos-actions{display:flex;flex-direction:column;gap:8px}
@@ -293,6 +309,7 @@ const POS_CSS = `
      catalog takes the whole width; the ticket slides over it from the bar
      at the bottom. */
   @media (max-width:899px){
+    .pos-etq-grid{grid-template-columns:1fr}
     .pos-ticket{position:absolute;top:0;right:0;bottom:0;z-index:26;width:min(480px,100%);
       transform:translateX(100%);visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s;
       box-shadow:-18px 0 40px -24px rgba(0,0,0,.6)}
@@ -409,6 +426,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
       if (st.sheet) posStore.set({ sheet: null });
       else if (st.view === "tender") cancelTender();
       else if (st.view === "ordenes") closeOrdenes();
+      else if (st.view === "etiquetas") closeEtiquetas();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
       else if (st.ticketOpen) posStore.set({ ticketOpen: false });
     };
@@ -431,6 +449,7 @@ function Register({ mode }: { mode: "device" | "user" }) {
         ? <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />
         : <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />)}
       {s.view === "ordenes" && <OrdenesScreen />}
+      {s.view === "etiquetas" && <EtiquetasScreen />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
     </div>
@@ -454,6 +473,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         <OutboxChip />
         <PendientesChip />
+        <EtiquetasChip />
         <PrinterChip />
         {mode === "device" && <UnlinkButton station={station} />}
         <DesktopChips />
@@ -506,6 +526,22 @@ function PendientesChip() {
           {n}
         </span>
       )}
+    </button>
+  );
+}
+
+/** "Etiquetas" — opens the screen to print or reprint a label on demand. */
+function EtiquetasChip() {
+  const s = usePos();
+  const on = s.view === "etiquetas";
+  return (
+    <button
+      onClick={() => (on ? closeEtiquetas() : openEtiquetas())}
+      title="Etiquetas: imprimir o reimprimir un nombre, un vaso o una frase"
+      aria-pressed={on}
+      style={{ ...chipStyle, justifyContent: "center", padding: "0 14px", fontSize: 12, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink }}
+    >
+      Etiquetas
     </button>
   );
 }
@@ -1849,6 +1885,213 @@ function OutboxChip() {
  * on a narrow screen is itself a positioned panel — the sheet has to cover
  * the screen, not the panel.
  */
+// ════════════════════════════════════════════════════════════════
+// Etiquetas — print or reprint a label on demand
+// ════════════════════════════════════════════════════════════════
+const etqBtn = (primary: boolean, off: boolean): React.CSSProperties => ({
+  height: 48, padding: "0 16px", borderRadius: 4, cursor: off ? "default" : "pointer", opacity: off ? 0.45 : 1, flex: 1, minWidth: 0,
+  border: `1.5px solid ${C.ink}`, background: primary ? C.ink : "transparent", color: primary ? C.paperLt : C.ink,
+  fontFamily: F.mono, fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+});
+const etqTitle: React.CSSProperties = { fontFamily: F.slab, fontSize: 20, lineHeight: 1.1, color: C.ink };
+const etqHint: React.CSSProperties = { fontSize: 11.5, color: C.muted, margin: "4px 0 12px", lineHeight: 1.45 };
+const etqLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted, margin: "14px 0 6px" };
+
+/** The label exactly as the printer will draw it (same renderer, 1 bit). */
+function LabelPreview({ kind, text, extra }: { kind: "nombre" | "frase"; text: string; extra: string }) {
+  const ref = React.useRef<HTMLCanvasElement>(null);
+  React.useEffect(() => {
+    let off = false;
+    void (async () => {
+      await ensureLabelFonts();
+      const c = ref.current;
+      if (off || !c) return;
+      const r = kind === "frase" ? renderMessageLabel({ text, handle: extra }) : renderOrderLabel({ name: text, folio: extra });
+      c.width = r.width;
+      c.height = r.height;
+      const ctx = c.getContext("2d");
+      if (!ctx) return;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = "#000";
+      r.rows.forEach((row, y) => {
+        for (let x = 0; x < r.width; x++) if (row[x >> 3] & (0x80 >> (x & 7))) ctx.fillRect(x, y, 1, 1);
+      });
+    })();
+    return () => { off = true; };
+  }, [kind, text, extra]);
+  return <canvas ref={ref} className="pos-etq-prev" aria-label="Vista previa de la etiqueta" />;
+}
+
+/**
+ * Labels on demand, away from any sale: the customer wants another name on
+ * the cup, or a different phrase. Left: the name (typed, or picked from the
+ * ticket / the open orders) as a name label or on a cup label. Right: a
+ * phrase in the feeling they ask for — read it, tweak it, then print.
+ */
+function EtiquetasScreen() {
+  const s = usePos();
+  const p = usePrinter();
+  const catalog = useCatalog();
+
+  const [name, setName] = React.useState("");
+  const [folio, setFolio] = React.useState("");
+  const [drinkId, setDrinkId] = React.useState("");
+  const [tono, setTono] = React.useState<FraseTono | null>(null);
+  const [frase, setFrase] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Who is around right now: the ticket's people, then the open orders'.
+  const picks = React.useMemo(() => {
+    const out: Array<{ name: string; folio: string }> = [];
+    const editingFolio = s.pending?.folio ?? "";
+    for (const n of s.people) out.push({ name: n, folio: editingFolio });
+    for (const o of s.pendientes) {
+      if (o.folio === editingFolio) continue;
+      const names = rebuildPeople(o);
+      for (const n of names.length ? names : o.customerName ? [o.customerName] : []) out.push({ name: n, folio: o.folio });
+    }
+    return out.slice(0, 14);
+  }, [s.people, s.pendientes, s.pending]);
+  const drinks = React.useMemo(() => catalog.menu.filter((m) => m.printsLabel).sort((a, b) => a.name.localeCompare(b.name, "es")), [catalog.menu]);
+
+  const canPrint = p.status === "ready" || p.status === "printing";
+  const who = name.replace(/\s+/g, " ").trim();
+  const drink = drinkId ? catalog.byId[drinkId] : undefined;
+  const text = frase.replace(/\s+/g, " ").trim();
+
+  const generate = async (t: FraseTono | null) => {
+    if (loading) return;
+    setTono(t);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await generarFrase(t ?? undefined);
+      if (res.ok) setFrase(res.texto);
+      else setError(res.error);
+    } catch {
+      setError("No se pudo generar la frase.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const busy = p.status === "printing" || p.status === "connecting";
+  const status = p.status === "unsupported"
+    ? "Este dispositivo no puede imprimir etiquetas. Usa la caja conectada a la impresora."
+    : busy
+      ? "Imprimiendo…"
+      : p.note && p.status !== "ready"
+        ? p.note
+        : p.status === "ready"
+          ? p.lastPrinted ? `Impresa: ${p.lastPrinted.name || p.lastPrinted.folio}` : "Impresora lista"
+          : "Impresora sin conectar";
+  const tonoChip = (on: boolean): React.CSSProperties => ({ ...personChip(on), height: "max(40px, var(--pos-chip))", padding: "0 14px", fontSize: 13, opacity: loading ? 0.6 : 1 });
+
+  return (
+    <Overlay align="fill">
+      <div role="region" aria-label="Etiquetas" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+        <div className="pos-hdr pos-ord-hdr">
+          <button onClick={closeEtiquetas} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
+          <span style={{ fontFamily: F.slab, fontSize: 22 }}>Etiquetas<span style={{ color: C.red }}>.</span></span>
+          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
+            {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
+              <button onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} style={{ ...chipStyle, flexShrink: 0 }}>{p.status === "off" ? "Reintentar" : "Conectar impresora"}</button>
+            )}
+          </span>
+        </div>
+
+        <div className="pos-etq pos-scroll">
+          <div className="pos-etq-grid">
+            {/* ── name ── */}
+            <section className="pos-etq-card" aria-label="Etiqueta de nombre">
+              <div style={etqTitle}>Nombre</div>
+              <div style={etqHint}>Escribe el nombre como lo quiere el cliente (apodo, pronombre, lo que sea) e imprime una etiqueta nueva.</div>
+              <input
+                className="pos-nombre"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nombre para la etiqueta"
+                aria-label="Nombre para la etiqueta"
+                autoComplete="off"
+                autoCapitalize="words"
+                maxLength={40}
+                style={{ fontFamily: F.mono }}
+              />
+              {picks.length > 0 && (
+                <>
+                  <div style={etqLabel}>Del pedido · toca para usarlo</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {picks.map((k, i) => {
+                      const on = k.name === name && k.folio === folio;
+                      return (
+                        <button type="button" key={`${k.folio}:${k.name}:${i}`} onClick={() => { setName(k.name); setFolio(k.folio); }} aria-pressed={on} style={personChip(on)}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.name}</span>
+                          {k.folio && <span className="cmd-num" style={{ fontSize: 10.5, fontWeight: 400, opacity: 0.7 }}>{k.folio}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              {folio && (
+                <div style={{ fontSize: 11.5, color: C.ink2, marginTop: 10 }}>
+                  Pedido <span className="cmd-num" style={{ fontWeight: 700 }}>{folio}</span> en la etiqueta ·{" "}
+                  <button type="button" className="pos-textbtn tight" onClick={() => setFolio("")} style={{ background: "none", border: "none", color: C.red, fontFamily: F.mono, fontSize: 11.5, cursor: "pointer" }}>quitar</button>
+                </div>
+              )}
+              {who && <LabelPreview kind="nombre" text={who} extra={folio} />}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button type="button" disabled={!who || !canPrint} onClick={() => printOrderLabel({ name: who, folio, orgName: catalog.orgName })} style={etqBtn(true, !who || !canPrint)}>Imprimir nombre</button>
+              </div>
+
+              <div style={etqLabel}>Etiqueta del vaso (con ese nombre)</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <select className="pos-etq-select" value={drinkId} onChange={(e) => setDrinkId(e.target.value)} aria-label="Bebida" style={{ fontFamily: F.mono, flex: "1 1 200px", width: "auto" }}>
+                  <option value="">Elige la bebida…</option>
+                  {drinks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <button type="button" disabled={!drink || !canPrint} onClick={() => drink && printDrinkLabel({ name: drink.name, spec: drink.spec, desc: drink.desc, customer: who || undefined, brand: catalog.orgName })} style={{ ...etqBtn(false, !drink || !canPrint), flex: "1 1 160px" }}>Imprimir vaso</button>
+              </div>
+            </section>
+
+            {/* ── phrase ── */}
+            <section className="pos-etq-card" aria-label="Etiqueta de frase">
+              <div style={etqTitle}>Frase</div>
+              <div style={etqHint}>Elige el sentimiento y la IA escribe una frase nueva. Puedes corregirla antes de imprimir.</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {FRASE_TONOS.map((t) => (
+                  <button type="button" key={t.id} disabled={loading} onClick={() => void generate(t.id)} aria-pressed={tono === t.id && !!frase} style={tonoChip(tono === t.id && (!!frase || loading))}>{t.label}</button>
+                ))}
+                <button type="button" disabled={loading} onClick={() => void generate(null)} style={{ ...tonoChip(false), borderStyle: "dashed" }}>Sorpréndeme</button>
+              </div>
+              {error && <div role="alert" style={{ marginTop: 12, fontSize: 12, color: C.red }}>{error}</div>}
+              <div style={etqLabel}>{loading ? "Pensando…" : "La frase"}</div>
+              <textarea
+                className="pos-etq-text"
+                value={frase}
+                onChange={(e) => setFrase(e.target.value)}
+                placeholder="Toca un sentimiento, o escribe aquí tu propia frase."
+                aria-label="Frase"
+                rows={3}
+                maxLength={FRASE_MAX}
+                style={{ fontFamily: F.mono }}
+              />
+              {text && <LabelPreview kind="frase" text={text} extra={catalog.instagram ?? ""} />}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button type="button" disabled={loading || (!frase && !tono)} onClick={() => void generate(tono)} style={etqBtn(false, loading || (!frase && !tono))}>{loading ? "Pensando…" : "Otra frase"}</button>
+                <button type="button" disabled={!text || !canPrint} onClick={() => printMessageLabel(text, catalog.instagram)} style={etqBtn(true, !text || !canPrint)}>Imprimir frase</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 function Overlay({ children, onClose, align }: { children: React.ReactNode; onClose?: () => void; align: "center" | "fill" }) {
   return (
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} style={{ position: "fixed", inset: 0, zIndex: 40, background: align === "fill" ? C.paper : "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: align === "fill" ? 0 : 16 }}>

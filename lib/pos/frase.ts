@@ -13,6 +13,22 @@ export function pickCategoria(rand: number = Math.random()): FraseCategoria {
   return "noticia";
 }
 
+/**
+ * Feelings the barista can pick for a phrase in the Etiquetas screen (the
+ * customer asks for "algo más alegre"). Order = chip order.
+ */
+export const FRASE_TONOS = [
+  { id: "feliz", label: "Feliz" },
+  { id: "entusiasta", label: "Entusiasta" },
+  { id: "esperanza", label: "Esperanza" },
+  { id: "gracioso", label: "Gracioso" },
+  { id: "motivador", label: "Motivador" },
+  { id: "tierno", label: "Tierno" },
+  { id: "calma", label: "Calma" },
+] as const;
+export type FraseTono = (typeof FRASE_TONOS)[number]["id"];
+export const FRASE_TONO_IDS = FRASE_TONOS.map((t) => t.id) as [FraseTono, ...FraseTono[]];
+
 export const FRASE_MAX = 140;
 
 /**
