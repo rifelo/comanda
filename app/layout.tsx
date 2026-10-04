@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Dela_Gothic_One, Caveat, Atkinson_Hyperlegible } from "next/font/google";
+import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import "./globals.css";
 import type { ThemeName } from "@/lib/types";
@@ -43,6 +44,16 @@ const script = Caveat({
   weight: ["500", "600"],
 });
 
+// Phrase face for the cup label: the "frase del día" is a sentence the
+// customer reads off a curved cup, and the mono made it cramped. Delight
+// Bold is proportional and sturdy enough to survive the 1-bit thermal print.
+const frase = localFont({
+  src: "./fonts/delight-bold.otf",
+  variable: "--font-frase",
+  weight: "700",
+  style: "normal",
+});
+
 export const metadata: Metadata = {
   title: "co-manda",
   description:
@@ -84,7 +95,7 @@ export default async function RootLayout({
     <html
       lang="es"
       data-theme={theme}
-      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} h-full antialiased`}
+      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} h-full antialiased`}
     >
       <body className="bg-paper text-ink min-h-full flex flex-col">
         {children}
