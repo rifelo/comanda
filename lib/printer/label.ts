@@ -297,24 +297,20 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
 export interface MessageLabelInput {
   /** The phrase (≤ 140 chars, plain text). */
   text: string;
-  orgName?: string;
-  /** Instagram handle for the header, without "@". */
+  /** Instagram handle printed under the phrase, without "@". */
   handle?: string | null;
-  /** Brand line art for the header (optional). */
-  cup?: (CanvasImageSource & { width: number; height: number }) | null;
 }
 
-// The phrase label is the designer's sheet: landscape 50 × 30 mm, header
-// (cup · CAFÉ PA'YO · @handle) over a rule, then the phrase filling the rest
-// in Delight Bold, shrinking as it gets longer. Laid out in the sheet's own
-// points and scaled into the 45 × 28 mm ink area.
+// The phrase label is landscape 50 × 30 mm: just the phrase, centred, in
+// Delight Bold (shrinking as it gets longer) and the @handle underneath.
+// Laid out in the sheet's own points and scaled into the 45 × 28 mm ink area.
 const SHEET_PT = 2.535; // px per pt (8 px/mm, scaled to the ink width)
 const pt = (v: number) => Math.round(v * SHEET_PT);
 
 /**
  * "Frase del día" label: what the customer reads on the cup. The phrase is
- * left-aligned and autofits — three lines at 13 pt for a short one, down to
- * 8 pt for the longest the generator can produce.
+ * centred both ways and autofits — three lines at 15 pt for a short one, down
+ * to 8 pt for the longest the generator can produce.
  */
 export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -328,7 +324,7 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#000";
   ctx.textBaseline = "top";
-  ctx.textAlign = "left";
+  ctx.textAlign = "center";
 
   // Sheet origin: the 85 pt tall design centred in the 28 mm ink strip.
   const x0 = INK_LEFT;
@@ -336,41 +332,23 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   const left = x0 + pt(8);
   const right = x0 + pt(134);
   const innerW = right - left;
+  const cx = Math.round((left + right) / 2);
+  const top = y0 + pt(8);
+  const bottom = y0 + pt(77);
 
-  // header — cup · business · handle
-  const headTop = y0 + pt(5.6);
-  const headSize = pt(6.4);
-  let textLeft = left;
-  if (input.cup && input.cup.width > 0) {
-    const h = pt(9);
-    const w = Math.round((input.cup.width / input.cup.height) * h);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(input.cup, left, headTop - pt(1.5), w, h);
-    textLeft = left + w + pt(4);
-  }
-  ctx.font = `bold ${headSize}px ${monoFont()}`;
-  setTracking(ctx, "1.2px");
-  ctx.fillText(fitOneLine(ctx, (input.orgName ?? "").toUpperCase(), right - textLeft), textLeft, headTop);
-  setTracking(ctx, "0px");
+  // handle — the only thing besides the phrase, pinned to the bottom
   const handle = (input.handle ?? "").trim().replace(/^@/, "");
+  const handleSize = pt(6.4);
   if (handle) {
-    ctx.font = `${headSize}px ${monoFont()}`;
-    ctx.textAlign = "right";
-    ctx.fillText(`@${handle}`, right, headTop);
-    ctx.textAlign = "left";
+    ctx.font = `${handleSize}px ${monoFont()}`;
+    ctx.fillText(fitOneLine(ctx, `@${handle}`, innerW), cx, bottom - handleSize);
   }
 
-  // rule
-  const ruleTop = y0 + pt(17.5);
-  ctx.fillRect(left, ruleTop, innerW, Math.max(3, pt(1.75)));
-
-  // phrase — biggest size whose wrap fits the space under the rule
-  const areaTop = ruleTop + pt(4);
-  const areaBottom = y0 + pt(77);
-  const areaH = areaBottom - areaTop;
+  // phrase — biggest size whose wrap fits the space above the handle
+  const areaBottom = handle ? bottom - handleSize - pt(5) : bottom;
+  const areaH = areaBottom - top;
   const text = input.text.replace(/\s+/g, " ").trim();
-  let size = pt(13);
+  let size = pt(15);
   let lines: string[] = [];
   const floor = pt(8);
   for (; size >= floor; size -= 1) {
@@ -388,11 +366,12 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   }
   ctx.font = `bold ${size}px ${fraseFont()}`;
   const lh = Math.round(size * 1.2);
-  let ty = areaTop + Math.max(0, Math.round((areaH - lines.length * lh) / 2));
+  let ty = top + Math.max(0, Math.round((areaH - lines.length * lh) / 2));
   for (const l of lines) {
-    ctx.fillText(l, left, ty);
+    ctx.fillText(l, cx, ty);
     ty += lh;
   }
+  ctx.textAlign = "left";
 
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 96);
 }
