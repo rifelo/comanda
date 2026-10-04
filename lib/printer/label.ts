@@ -65,7 +65,7 @@ const displayFont = () => cssFamily("--font-slab", FALLBACK_SANS);
 const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
 /** Phrase face (Delight Bold). Loaded as weight 700 — always ask for bold. */
 const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
-/** Name face of the 50 × 50 label (Delight Black). Loaded as weight 900 — always ask for it. */
+/** Name face of the 50 × 50 label (Nority Display, the brand wordmark). Single weight — never ask for bold. */
 const nombreFont = () => cssFamily("--font-nombre", FALLBACK_SANS);
 
 /**
@@ -80,7 +80,7 @@ export async function ensureLabelFonts(): Promise<void> {
       document.fonts.load(`96px ${displayFont()}`),
       document.fonts.load(`bold 30px ${monoFont()}`),
       document.fonts.load(`bold 30px ${fraseFont()}`),
-      document.fonts.load(`900 60px ${nombreFont()}`),
+      document.fonts.load(`60px ${nombreFont()}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -427,7 +427,7 @@ export interface CupNameLabelInput {
 
 /**
  * 50 × 50 name label, after the brand template: "PA'" and the name in
- * Delight Black, the drink under it in Delight Bold, the hand reaching up
+ * Nority Display, the drink under it in Delight Bold, the hand reaching up
  * from the bottom edge. A long name shrinks, then takes a second line; the
  * text never runs into the illustration.
  */
@@ -454,7 +454,7 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   // "PA'" sits where the template has it; without a name the hero moves up a little.
   let top = 62;
   if (who) {
-    ctx.font = `900 32px ${nombreFont()}`;
+    ctx.font = `32px ${nombreFont()}`;
     ctx.fillText("PA’", cx, 86);
     top = 96;
   }
@@ -464,8 +464,8 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   // Biggest hero that leaves room for the drink line(s) above the hand.
   const areaH = textBottom - top;
   let chosen: { hs: number; hl: string[]; ss: number; sl: string[] } | null = null;
-  for (let hs = 60; hs >= 28 && !chosen; hs -= 2) {
-    ctx.font = `900 ${hs}px ${nombreFont()}`;
+  for (let hs = 64; hs >= 24 && !chosen; hs -= 2) {
+    ctx.font = `${hs}px ${nombreFont()}`;
     const hl = wrap(ctx, hero, maxW);
     if (hl.length > 2 || Math.max(...hl.map((l) => ctx.measureText(l).width)) > maxW) continue;
     if (!sub) {
@@ -483,7 +483,7 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
     }
   }
   if (!chosen) {
-    ctx.font = `900 28px ${nombreFont()}`;
+    ctx.font = `28px ${nombreFont()}`;
     const hl = [fitOneLine(ctx, hero, maxW)];
     ctx.font = `bold 20px ${fraseFont()}`;
     chosen = { hs: 28, hl, ss: sub ? 20 : 0, sl: sub ? [fitOneLine(ctx, sub, maxW)] : [] };
@@ -492,7 +492,7 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   const hLH = Math.round(chosen.hs * 0.98);
   // With a name the block hangs from "PA'" as on the template; a lone drink sits centred.
   let y = top + Math.round(chosen.hs * 0.82) + (sub ? 0 : Math.max(0, Math.round((areaH - chosen.hl.length * hLH) / 2) - 6));
-  ctx.font = `900 ${chosen.hs}px ${nombreFont()}`;
+  ctx.font = `${chosen.hs}px ${nombreFont()}`;
   for (const l of chosen.hl) {
     ctx.fillText(l, cx, y);
     y += hLH;

@@ -54,12 +54,12 @@ const frase = localFont({
   style: "normal",
 });
 
-// The customer's name on the 50 × 50 mm cup label ("PA' Andrés"): the
-// heaviest Delight, the closest cut to the brand template's lettering.
+// The customer's name on the 50 × 50 mm cup label ("PA' Andrés"): Nority
+// Display, the brand's own wordmark face (the owner supplied the font).
 const nombre = localFont({
-  src: "./fonts/delight-black.otf",
+  src: "./fonts/nority-display.otf",
   variable: "--font-nombre",
-  weight: "900",
+  weight: "400",
   style: "normal",
 });
 
