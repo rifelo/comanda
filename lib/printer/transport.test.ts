@@ -169,17 +169,17 @@ describe("NiimbotClient.printRaster", () => {
     await t.close();
   });
 
-  it("prints a continuous raster (50 × 50): positions the label, type 3, lead-in rows first", async () => {
+  it("prints an unlock raster (50 × 50): session opened as continuous, switched to gap before the page", async () => {
     const port = new FakePort();
     const { t, c } = await connect(port);
-    await c.printRaster({ ...raster(400), continuous: { leadRows: 52 } }, 3, 1);
+    await c.printRaster({ ...raster(400), unlock: true }, 3, 1);
     const types = port.sent.map((p) => p.type);
     const cmds = types.filter((x) => x !== Cmd.IMAGE_ROW && x !== Cmd.GET_PRINT_STATUS);
     expect(cmds).toEqual([
-      Cmd.LABEL_POSITION,
       Cmd.SET_LABEL_DENSITY,
       Cmd.SET_LABEL_TYPE,
       Cmd.START_PRINT,
+      Cmd.SET_LABEL_TYPE,
       Cmd.ALLOW_PRINT_CLEAR,
       Cmd.START_PAGE_PRINT,
       Cmd.SET_DIMENSION,
@@ -187,10 +187,23 @@ describe("NiimbotClient.printRaster", () => {
       Cmd.END_PAGE_PRINT,
       Cmd.END_PRINT,
     ]);
-    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_LABEL_TYPE)!.data)).toEqual([3]);
-    expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(452);
-    // dimension = (lead + rows, 384)
-    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([1, 196, 1, 128]);
+    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
+    expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(400);
+    // dimension = (rows, 384): no lead-in, the printer finds the gap itself
+    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([1, 144, 1, 128]);
+    await t.close();
+  });
+
+  it("reports an unlock job whose rows never burn as rejected, after closing the session", async () => {
+    // A printer that takes the page but never drains it (the chip stall).
+    const port = new FakePort((p, self) => {
+      if (p.type === Cmd.IMAGE_ROW) { self.free -= 1; return null; }
+      if (p.type === Cmd.GET_PRINT_STATUS) return encodePacket(responseType(p.type), [0, 8, 100, 100, self.free >> 8, self.free & 0xff, 0x14, 1]);
+      return encodePacket(responseType(p.type), [1]);
+    });
+    const { t, c } = await connect(port);
+    await expect(c.printRaster({ ...raster(400), unlock: true }, 3, 1)).rejects.toBeInstanceOf(PrinterRejectedError);
+    expect(port.sent[port.sent.length - 1].type).toBe(Cmd.END_PRINT);
     await t.close();
   });
 

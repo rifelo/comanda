@@ -2010,7 +2010,8 @@ function EtiquetasScreen() {
   const drinks = React.useMemo(() => catalog.menu.filter((m) => m.printsLabel).sort((a, b) => a.name.localeCompare(b.name, "es")), [catalog.menu]);
 
   const remote = relaysLabels(p);
-  const canPrint = p.status === "ready" || p.status === "printing" || remote;
+  // While a label is printing here, the buttons wait: a second tap would queue a second label.
+  const canPrint = p.status === "ready" || remote;
   const who = name.replace(/\s+/g, " ").trim();
   const drink = drinkId ? catalog.byId[drinkId] : undefined;
   const text = frase.replace(/\s+/g, " ").trim();
