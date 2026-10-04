@@ -8,6 +8,7 @@ import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
 import { MissingGroqKeyError, GroqRateLimitError } from "@/lib/ai/groq";
 import { FRASE_TONO_IDS, type FraseCategoria, type FraseTono } from "@/lib/pos/frase";
+import { LabelSpecSchema, RELAY_BATCH_MAX, RELAY_TTL_MS, type LabelSpec } from "@/lib/printer/spec";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
   PosCatalog,
@@ -658,6 +659,62 @@ export async function generarFrase(tono?: FraseTono): Promise<GenerarFraseResult
     console.error("[generarFrase] failed:", err);
     return { ok: false, error: err instanceof Error ? err.message : "No se pudo generar la frase." };
   }
+}
+
+// ── labels relayed to the station with the printer ───────────────────────────
+/** A station without a printer asks for these labels to be printed elsewhere. */
+export async function encolarEtiquetas(
+  specs: LabelSpec[],
+): Promise<{ ok: true; n: number } | { ok: false; error: string }> {
+  const { supabase, organizationId, station } = await requirePosAuth();
+  const parsed = z.array(LabelSpecSchema).min(1).max(RELAY_BATCH_MAX).safeParse(specs);
+  if (!parsed.success) return { ok: false, error: "Etiqueta no válida." };
+  const { error } = await supabase.from("pos_print_jobs").insert(
+    parsed.data.map((payload, seq) => ({ organization_id: organizationId, seq, payload, source: station })),
+  );
+  if (error) {
+    console.error("[encolarEtiquetas] failed:", error.message);
+    return { ok: false, error: "No se pudo enviar la etiqueta." };
+  }
+  return { ok: true, n: parsed.data.length };
+}
+
+/**
+ * The station with the printer takes the waiting labels. One UPDATE claims
+ * them, so two printing stations never print the same label; anything older
+ * than the TTL stays behind and is swept a day later.
+ */
+export async function reclamarEtiquetas(): Promise<{ ok: true; jobs: LabelSpec[] } | { ok: false }> {
+  const { supabase, organizationId, station } = await requirePosAuth();
+  const now = Date.now();
+  const { data, error } = await supabase
+    .from("pos_print_jobs")
+    .update({ status: "reclamada", claimed_by: station, claimed_at: new Date(now).toISOString() })
+    .eq("organization_id", organizationId)
+    .eq("status", "pendiente")
+    .gt("created_at", new Date(now - RELAY_TTL_MS).toISOString())
+    .select("payload, created_at, seq");
+  if (error) {
+    console.error("[reclamarEtiquetas] failed:", error.message);
+    return { ok: false };
+  }
+  const rows = ((data ?? []) as Array<{ payload: unknown; created_at: string; seq: number }>).sort(
+    (a, b) => a.created_at.localeCompare(b.created_at) || a.seq - b.seq,
+  );
+  const jobs: LabelSpec[] = [];
+  for (const r of rows) {
+    const ok = LabelSpecSchema.safeParse(r.payload);
+    if (ok.success) jobs.push(ok.data);
+  }
+  if (jobs.length) {
+    // Housekeeping rides on real traffic: yesterday's rows are of no use.
+    await supabase
+      .from("pos_print_jobs")
+      .delete()
+      .eq("organization_id", organizationId)
+      .lt("created_at", new Date(now - 24 * 3600_000).toISOString());
+  }
+  return { ok: true, jobs };
 }
 
 // ── live AI suggestions ──────────────────────────────────────────────────────

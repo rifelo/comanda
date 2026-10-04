@@ -33,6 +33,7 @@ import {
   SerialTransport,
   type SerialPortLike,
 } from "./transport";
+import type { LabelSpec } from "./spec";
 import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
@@ -54,6 +55,10 @@ export interface PrinterState {
   /** Labels waiting behind the one printing. */
   queued: number;
   lastPrinted: { folio: string; name: string } | null;
+  /** Another station can print for this one (see {@link setPrintRelay}). */
+  relay: boolean;
+  /** What happened to the last relayed labels (kept apart from the local printer's `note`). */
+  relayNote: string | null;
 }
 
 export const PRINTER_INITIAL: PrinterState = {
@@ -61,6 +66,8 @@ export const PRINTER_INITIAL: PrinterState = {
   note: null,
   queued: 0,
   lastPrinted: null,
+  relay: false,
+  relayNote: null,
 };
 
 type Updater = Partial<PrinterState> | ((s: PrinterState) => PrinterState);
@@ -389,61 +396,114 @@ export function setLabelDefaults(d: Pick<OrderLabelInput, "station" | "orgName">
   labelDefaults = { ...labelDefaults, ...d };
 }
 
+// ── relay: no printer here → ask the station that has one ───────
+/**
+ * A tablet has no label printer (no Web Serial, or nothing plugged in). When
+ * a relay is registered, its labels are handed over as specs and the station
+ * with the printer prints them. Specs are batched for a moment so the labels
+ * of one sale travel together and keep their order.
+ */
+type PrintRelay = (specs: LabelSpec[]) => Promise<boolean>;
+let relay: PrintRelay | null = null;
+export function setPrintRelay(fn: PrintRelay | null) {
+  relay = fn;
+  printerStore.set({ relay: !!fn });
+}
+/** True when this station's labels go to another one instead of a local printer. */
+export function relaysLabels(p: Pick<PrinterState, "relay" | "status">): boolean {
+  return p.relay && (p.status === "unsupported" || p.status === "disconnected" || p.status === "connecting");
+}
+
+const RELAY_FLUSH_MS = 60;
+let relayBuf: LabelSpec[] = [];
+let relayTimer: ReturnType<typeof setTimeout> | null = null;
+async function flushRelay() {
+  relayTimer = null;
+  const batch = relayBuf;
+  relayBuf = [];
+  if (!batch.length || !relay) return;
+  let ok = false;
+  try {
+    ok = await relay(batch);
+  } catch (err) {
+    console.warn("[printer] relay failed:", err);
+  }
+  const n = batch.length;
+  printerStore.set({
+    relayNote: ok
+      ? `${n === 1 ? "Etiqueta enviada" : `${n} etiquetas enviadas`} a la caja con impresora.`
+      : "No se pudo enviar la etiqueta a la caja con impresora.",
+  });
+}
+
+function jobFor(spec: LabelSpec): Job {
+  switch (spec.kind) {
+    case "order":
+      return { raster: () => renderOrderLabel(spec.input), folio: spec.input.folio, name: spec.input.name.trim() };
+    case "instagram":
+      return {
+        raster: async () => renderInstagramLabel({ handle: spec.handle, orgName: spec.orgName, cup: spec.cupSrc ? await loadImage(spec.cupSrc) : null }),
+        folio: INSTAGRAM_FOLIO,
+        name: `@${spec.handle.replace(/^@/, "")}`,
+      };
+    case "message":
+      return { raster: async () => renderMessageLabel({ text: spec.text, handle: spec.handle }), folio: FRASE_FOLIO, name: spec.text };
+    case "sticker":
+      return { raster: async () => renderImageLabel(await loadImage(spec.src)), folio: STICKER_FOLIO, name: "Sticker" };
+    case "drink":
+      return {
+        raster: () => renderDrinkLabel(spec.input),
+        folio: DRINK_FOLIO,
+        // The "last printed" chip names whose cup it was.
+        name: spec.input.customer ? `${spec.input.customer} · ${spec.input.name}` : spec.input.name,
+      };
+  }
+}
+
+/** Print here, or hand the label to the station that can. */
+function submit(spec: LabelSpec) {
+  if (relaysLabels(printerStore.get())) {
+    relayBuf.push(spec);
+    if (!relayTimer) relayTimer = setTimeout(() => void flushRelay(), RELAY_FLUSH_MS);
+    return;
+  }
+  enqueue(jobFor(spec));
+}
+
+/** A label another station asked for: straight to this printer, never relayed again. */
+export function printRelayedLabel(spec: LabelSpec): void {
+  enqueue(jobFor(spec));
+}
+
 /**
  * Fire-and-forget: called from completeSale on success. Never throws, never
  * blocks the receipt; failures show on the printer chip.
  */
 export function printOrderLabel(input: OrderLabelInput): void {
-  const full = { ...labelDefaults, ...input };
-  enqueue({
-    raster: () => renderOrderLabel(full),
-    folio: full.folio,
-    name: full.name.trim(),
-  });
+  submit({ kind: "order", input: { ...labelDefaults, ...input } });
 }
 
 /** "Síguenos" QR label; `cupSrc` is the brand art drawn above the code. */
 export function printInstagramLabel(handle: string, cupSrc?: string | null): void {
-  enqueue({
-    raster: async () => renderInstagramLabel({
-      handle,
-      orgName: labelDefaults.orgName,
-      cup: cupSrc ? await loadImage(cupSrc) : null,
-    }),
-    folio: INSTAGRAM_FOLIO,
-    name: `@${handle.replace(/^@/, "")}`,
-  });
+  submit({ kind: "instagram", handle, orgName: labelDefaults.orgName, cupSrc: cupSrc ?? null });
 }
 export const INSTAGRAM_FOLIO = "INSTAGRAM";
 
 /** AI "frase del día" label for the cup. */
 export function printMessageLabel(text: string, handle?: string | null): void {
-  enqueue({
-    raster: async () => renderMessageLabel({ text, handle }),
-    folio: FRASE_FOLIO,
-    name: text,
-  });
+  submit({ kind: "message", text, handle: handle ?? null });
 }
 export const FRASE_FOLIO = "FRASE";
 
 /** Brand sticker (e.g. /labels/payo-sticker.png) — image loaded when the job runs. */
 export function printStickerLabel(src: string): void {
-  enqueue({
-    raster: async () => renderImageLabel(await loadImage(src)),
-    folio: STICKER_FOLIO,
-    name: "Sticker",
-  });
+  submit({ kind: "sticker", src });
 }
 export const STICKER_FOLIO = "STICKER";
 
 /** Menu label for one drink (name, shots and descriptor) — one per cup. */
 export function printDrinkLabel(input: DrinkLabelInput): void {
-  enqueue({
-    raster: () => renderDrinkLabel({ brand: labelDefaults.orgName, ...input }),
-    folio: DRINK_FOLIO,
-    // The "last printed" chip names whose cup it was.
-    name: input.customer ? `${input.customer} · ${input.name}` : input.name,
-  });
+  submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input } });
 }
 export const DRINK_FOLIO = "BEBIDA";
 

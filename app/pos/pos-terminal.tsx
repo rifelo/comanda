@@ -45,6 +45,7 @@ import {
   type PosSuggestKind,
 } from "@/lib/pos/types";
 import { desvincularPos, generarFrase } from "./actions";
+import { usePosLive } from "./pos-live";
 import { FRASE_TONOS, FRASE_MAX, type FraseTono } from "@/lib/pos/frase";
 import { renderOrderLabel, renderMessageLabel, ensureLabelFonts } from "@/lib/printer/label";
 import { shareStatus } from "@/lib/pos/pagos";
@@ -142,6 +143,7 @@ import {
   printDrinkLabel,
   printMessageLabel,
   setLabelDefaults,
+  relaysLabels,
   type PrinterStatus,
 } from "@/lib/printer/serial";
 import { useDesktopApp, useDesktopAppEvents, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
@@ -356,8 +358,11 @@ export function PosTerminal({
   catalog,
   station = "Caja 01",
   mode = "user",
+  organizationId,
 }: {
   catalog: PosCatalog;
+  /** Scopes the live channel the stations of one business share. */
+  organizationId: string;
   /** Header label for this register ("Caja 2"). */
   station?: string;
   /** `device` = paired tablet (no account); `user` = signed-in org member. */
@@ -383,18 +388,26 @@ export function PosTerminal({
   return (
     <CatalogCtx.Provider value={catalog}>
       <StationCtx.Provider value={station}>
-        <Register mode={mode} />
+        <Register mode={mode} organizationId={organizationId} />
       </StationCtx.Provider>
     </CatalogCtx.Provider>
   );
 }
 
-function Register({ mode }: { mode: "device" | "user" }) {
+/** Another station wrote an order: reload what this one shows. */
+function reloadOrders() {
+  void refreshPendientes();
+  if (posStore.get().view === "ordenes") void refreshOrdenes();
+}
+
+function Register({ mode, organizationId }: { mode: "device" | "user"; organizationId: string }) {
   const s = usePos();
   useMicTranscribe(s.listening);
   // Reopen the label printer if this browser was already paired with it, and
   // follow the USB cable (connect / disconnect events).
   usePrinterAutoConnect();
+  // Labels relayed to / claimed from the other stations, and their order nudges.
+  usePosLive(organizationId, reloadOrders);
   // Install prompt / display mode / full screen for the desktop-app chips.
   useDesktopAppEvents();
 
@@ -1402,8 +1415,8 @@ function OrdenDetail({ o }: { o: PosOrder }) {
             </div>
           </>
         )}
-        {p.status !== "unsupported" && (
-          <button onClick={() => printLabelFor(o)} disabled={p.status !== "ready"} style={{ width: "100%", height: 40, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", cursor: p.status === "ready" ? "pointer" : "default", opacity: p.status === "ready" ? 1 : 0.5 }}>
+        {(p.status !== "unsupported" || relaysLabels(p)) && (
+          <button onClick={() => printLabelFor(o)} disabled={p.status !== "ready" && !relaysLabels(p)} style={{ width: "100%", height: 40, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", cursor: p.status === "ready" || relaysLabels(p) ? "pointer" : "default", opacity: p.status === "ready" || relaysLabels(p) ? 1 : 0.5 }}>
             Reimprimir etiqueta
           </button>
         )}
@@ -1956,7 +1969,8 @@ function EtiquetasScreen() {
   }, [s.people, s.pendientes, s.pending]);
   const drinks = React.useMemo(() => catalog.menu.filter((m) => m.printsLabel).sort((a, b) => a.name.localeCompare(b.name, "es")), [catalog.menu]);
 
-  const canPrint = p.status === "ready" || p.status === "printing";
+  const remote = relaysLabels(p);
+  const canPrint = p.status === "ready" || p.status === "printing" || remote;
   const who = name.replace(/\s+/g, " ").trim();
   const drink = drinkId ? catalog.byId[drinkId] : undefined;
   const text = frase.replace(/\s+/g, " ").trim();
@@ -1978,7 +1992,9 @@ function EtiquetasScreen() {
   };
 
   const busy = p.status === "printing" || p.status === "connecting";
-  const status = p.status === "unsupported"
+  const status = remote
+    ? p.relayNote ?? "Las etiquetas salen en la caja con impresora"
+    : p.status === "unsupported"
     ? "Este dispositivo no puede imprimir etiquetas. Usa la caja conectada a la impresora."
     : busy
       ? "Imprimiendo…"
@@ -1996,7 +2012,7 @@ function EtiquetasScreen() {
           <button onClick={closeEtiquetas} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Etiquetas<span style={{ color: C.red }}>.</span></span>
           <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
+            <span role="status" style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
             {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
               <button onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} style={{ ...chipStyle, flexShrink: 0 }}>{p.status === "off" ? "Reintentar" : "Conectar impresora"}</button>
             )}
@@ -2405,13 +2421,17 @@ function ReceiptPrinterLine() {
   const p = usePrinter();
   const s = usePos();
   const catalog = useCatalog();
-  if (p.status === "unsupported") return null;
+  const remote = relaysLabels(p);
+  if (p.status === "unsupported" && !remote) return null;
+  const canPrint = p.status === "ready" || remote;
   const printed = p.lastPrinted?.folio === s.orderNo;
   const igPrinted = p.lastPrinted?.folio === INSTAGRAM_FOLIO;
   const frasePrinted = p.lastPrinted?.folio === FRASE_FOLIO;
   const stickerPrinted = p.lastPrinted?.folio === STICKER_FOLIO;
   const busy = p.status === "printing" || p.status === "connecting";
-  const text = busy
+  const text = remote
+    ? p.relayNote ?? "Las etiquetas salen en la caja con impresora"
+    : busy
     ? "Imprimiendo etiqueta…"
     : p.note && (p.status === "error" || p.status === "disconnected" || p.status === "off")
       ? p.note
@@ -2438,13 +2458,13 @@ function ReceiptPrinterLine() {
         </span>
       )}
       <button
-        onClick={() => (p.status === "ready" ? reprintLabel() : p.status === "off" ? void checkPrinter() : void connectPrinter())}
-        disabled={busy}
+        onClick={() => (canPrint ? reprintLabel() : p.status === "off" ? void checkPrinter() : void connectPrinter())}
+        disabled={busy && !remote}
         style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
       >
-        {p.status === "ready" ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
+        {canPrint ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
       </button>
-      {catalog.instagram && p.status === "ready" && (
+      {catalog.instagram && canPrint && (
         <button
           onClick={() => printInstagramLabel(catalog.instagram!, catalog.cupArt)}
           disabled={busy}
@@ -2454,7 +2474,7 @@ function ReceiptPrinterLine() {
           QR Instagram
         </button>
       )}
-      {catalog.sticker && p.status === "ready" && (
+      {catalog.sticker && canPrint && (
         <button
           onClick={() => printStickerLabel(catalog.sticker!)}
           disabled={busy}
@@ -2464,7 +2484,7 @@ function ReceiptPrinterLine() {
           Sticker PA&apos;YO
         </button>
       )}
-      {p.status === "ready" && (
+      {canPrint && (
         <button
           onClick={() => void printFrase()}
           disabled={busy || s.fraseLoading}

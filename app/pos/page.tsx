@@ -29,6 +29,7 @@ export default async function PosPage() {
     <PosTerminal
       catalog={ctx.catalog}
       station={ctx.station}
+      organizationId={ctx.organizationId}
       mode={ctx.actor.kind}
     />
   );
