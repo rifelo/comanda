@@ -161,7 +161,9 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
 
   // Footer: folio (+ the roster), or nothing if the folio is already the hero.
   const ROSTER_LH = 18;
-  const footerH = roster ? 44 + 4 + ROSTER_LH * 2 : name ? 44 : 0;
+  // A reprinted name (Etiquetas screen) may have no order behind it.
+  const hasFolio = input.folio.trim().length > 0;
+  const footerH = roster ? 44 + 4 + ROSTER_LH * 2 : name && hasFolio ? 44 : 0;
   const heroTop = y;
   const heroBottom = H - footerH - 6;
 
@@ -176,7 +178,7 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
     ty += lineH;
   }
 
-  if (name || roster) {
+  if ((name && hasFolio) || roster) {
     const ry = H - footerH;
     ctx.fillRect(INK_LEFT, ry, inkW, 2);
     ctx.font = `bold 30px ${monoFont()}`;

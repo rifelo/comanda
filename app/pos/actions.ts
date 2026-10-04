@@ -7,7 +7,7 @@ import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
 import { MissingGroqKeyError, GroqRateLimitError } from "@/lib/ai/groq";
-import type { FraseCategoria } from "@/lib/pos/frase";
+import { FRASE_TONO_IDS, type FraseCategoria, type FraseTono } from "@/lib/pos/frase";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
   PosCatalog,
@@ -643,11 +643,13 @@ export type GenerarFraseResult =
   | { ok: true; texto: string; categoria: FraseCategoria }
   | { ok: false; error: string };
 
-/** One short coffee phrase (random category) for the cup label. */
-export async function generarFrase(): Promise<GenerarFraseResult> {
+/** One short coffee phrase for the cup label: a random category, or the feeling asked for. */
+export async function generarFrase(tono?: FraseTono): Promise<GenerarFraseResult> {
   const { catalog } = await requirePosContext();
+  const parsedTono = z.enum(FRASE_TONO_IDS).optional().safeParse(tono);
+  if (!parsedTono.success) return { ok: false, error: "Tono no válido." };
   try {
-    const r = await generarFraseCafe({ orgName: catalog.orgName });
+    const r = await generarFraseCafe({ orgName: catalog.orgName, tono: parsedTono.data });
     return { ok: true, ...r };
   } catch (err) {
     if (err instanceof MissingGroqKeyError || err instanceof GroqRateLimitError) {
