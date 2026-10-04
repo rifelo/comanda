@@ -169,6 +169,31 @@ describe("NiimbotClient.printRaster", () => {
     await t.close();
   });
 
+  it("prints a continuous raster (50 × 50): positions the label, type 3, lead-in rows first", async () => {
+    const port = new FakePort();
+    const { t, c } = await connect(port);
+    await c.printRaster({ ...raster(400), continuous: { leadRows: 52 } }, 3, 1);
+    const types = port.sent.map((p) => p.type);
+    const cmds = types.filter((x) => x !== Cmd.IMAGE_ROW && x !== Cmd.GET_PRINT_STATUS);
+    expect(cmds).toEqual([
+      Cmd.LABEL_POSITION,
+      Cmd.SET_LABEL_DENSITY,
+      Cmd.SET_LABEL_TYPE,
+      Cmd.START_PRINT,
+      Cmd.ALLOW_PRINT_CLEAR,
+      Cmd.START_PAGE_PRINT,
+      Cmd.SET_DIMENSION,
+      Cmd.SET_QUANTITY,
+      Cmd.END_PAGE_PRINT,
+      Cmd.END_PRINT,
+    ]);
+    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_LABEL_TYPE)!.data)).toEqual([3]);
+    expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(452);
+    // dimension = (lead + rows, 384)
+    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([1, 196, 1, 128]);
+    await t.close();
+  });
+
   it("surfaces a page rejection (printer still busy) as PrinterRejectedError", async () => {
     const port = new FakePort((p, self) => (p.type === Cmd.START_PAGE_PRINT ? encodePacket(219, []) : defaultReply(p, self)));
     const { t, c } = await connect(port);
