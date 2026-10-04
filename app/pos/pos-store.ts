@@ -51,6 +51,7 @@ import {
   posSuggest,
   transcribeAudio,
 } from "./actions";
+import { nudge } from "./pos-live";
 import { printOrderLabel, printMessageLabel, printDrinkLabel, printInstagramLabel } from "@/lib/printer/serial";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
@@ -781,6 +782,7 @@ export async function runOutbox() {
         }));
         printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio);
         void refreshPendientes();
+        nudge("ordenes");
       } else {
         const error = res.error;
         posStore.set((st) => ({ ...st, outbox: st.outbox.map((j) => (j.id === job.id ? { ...j, status: "failed", error } : j)) }));
@@ -939,6 +941,7 @@ export async function paySplit() {
     }));
   }
   void refreshPendientes();
+  nudge("ordenes");
 }
 
 /**
@@ -1017,6 +1020,7 @@ export async function completeSale() {
     });
     // A pending order already got its labels when it was sent.
     void refreshPendientes();
+    nudge("ordenes");
   } else posStore.set({ sending: false, sendError: res.error });
 }
 
@@ -1090,6 +1094,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
   posStore.set({ sending: false });
   if (!s.pending) printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio);
   void refreshPendientes();
+  nudge("ordenes");
   return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total };
 }
 
@@ -1304,6 +1309,7 @@ export async function cancelPending(id: string) {
   }
   if (!res.ok) posStore.set({ pendientesError: res.error });
   void refreshPendientes();
+  nudge("ordenes");
   if (posStore.get().view === "ordenes") void refreshOrdenes();
 }
 /** Drop the loaded pending order from the ticket without saving. */
