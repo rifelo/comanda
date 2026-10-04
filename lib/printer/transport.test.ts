@@ -172,7 +172,7 @@ describe("NiimbotClient.printRaster", () => {
   it("prints a continuous raster (50 × 50): positions the label, type 3, lead-in rows first", async () => {
     const port = new FakePort();
     const { t, c } = await connect(port);
-    await c.printRaster({ ...raster(400), continuous: { leadRows: 52 } }, 3, 1);
+    await c.printRaster({ ...raster(400), continuous: { leadRows: 52, chainRows: 24 } }, 3, 1);
     const types = port.sent.map((p) => p.type);
     const cmds = types.filter((x) => x !== Cmd.IMAGE_ROW && x !== Cmd.GET_PRINT_STATUS);
     expect(cmds).toEqual([
@@ -191,6 +191,23 @@ describe("NiimbotClient.printRaster", () => {
     expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(452);
     // dimension = (lead + rows, 384)
     expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([1, 196, 1, 128]);
+    await t.close();
+  });
+
+  it("chains continuous labels: only the first is positioned, the rest feed one gap", async () => {
+    const port = new FakePort();
+    const { t, c } = await connect(port);
+    const sq = { ...raster(400), continuous: { leadRows: 52, chainRows: 24 } };
+    await c.printRaster(sq, 3, 1);
+    await c.printRaster(sq, 3, 1);
+    await c.printRaster(sq, 3, 1);
+    expect(port.sent.filter((p) => p.type === Cmd.LABEL_POSITION)).toHaveLength(1);
+    const dims = port.sent.filter((p) => p.type === Cmd.SET_DIMENSION).map((p) => (p.data[0] << 8) | p.data[1]);
+    expect(dims).toEqual([452, 424, 424]); // 424 rows = 53 mm, the roll's pitch
+    // After a realign the next one positions itself again.
+    c.realign();
+    await c.printRaster(sq, 3, 1);
+    expect(port.sent.filter((p) => p.type === Cmd.LABEL_POSITION)).toHaveLength(2);
     await t.close();
   });
 

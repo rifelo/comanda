@@ -242,7 +242,9 @@ export class NiimbotClient {
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
-    if (raster.continuous) return this.printContinuous(raster, raster.continuous.leadRows, density, pollMs);
+    if (raster.continuous) return this.printContinuous(raster, raster.continuous, density, pollMs);
+    // Gap mode moves the paper on its own terms: a continuous label after it starts over.
+    this.aligned = false;
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(1));
     await this.cmd(req.startPrint());
@@ -270,10 +272,25 @@ export class NiimbotClient {
    * whose chip can't be written makes the printer retry for about 5 s after
    * END_PAGE before it burns the page, so the drain wait tolerates a long
    * stall — ending the print during that pause throws the page away.
+   *
+   * Only the first label is positioned. A page ends at the foot of its
+   * label, so the paper is already one gap away from the next one;
+   * positioning again would run on to the label after that and waste one.
    */
-  private async printContinuous(raster: LabelRaster, leadRows: number, density: number, pollMs: number) {
-    await this.cmd(req.positionLabel());
-    await sleep(pollMs * 10);
+  private aligned = false;
+  /** Forget where the paper is: the next continuous label positions itself first. */
+  realign() {
+    this.aligned = false;
+  }
+  private async printContinuous(raster: LabelRaster, feed: { leadRows: number; chainRows: number }, density: number, pollMs: number) {
+    const chained = this.aligned;
+    const leadRows = chained ? feed.chainRows : feed.leadRows;
+    // Anything that fails from here on leaves the paper somewhere unknown.
+    this.aligned = false;
+    if (!chained) {
+      await this.cmd(req.positionLabel());
+      await sleep(pollMs * 10);
+    }
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(3));
     await this.cmd(req.startPrint());
@@ -290,6 +307,7 @@ export class NiimbotClient {
     await this.cmd(req.endPagePrint());
     await this.waitDrain(baseline, pollMs, 60_000, pollMs * 60);
     await this.cmd(req.endPrint());
+    this.aligned = true;
   }
 
   /** Wait for the line buffer to climb back to `target`; give up on a stall. */

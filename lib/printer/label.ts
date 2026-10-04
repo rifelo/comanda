@@ -23,11 +23,13 @@ export interface LabelRaster {
   rows: Uint8Array[];
   /**
    * Print on continuous-paper mode instead of letting the printer seek the
-   * gap: the label is positioned first and `leadRows` blank rows carry the
-   * paper from where that leaves it to the top of the label. Only the
-   * 50 × 50 mm labels set it (see SQUARE_FEED); absent = gap mode, as always.
+   * gap. The first label is positioned and `leadRows` blank rows carry the
+   * paper from where that leaves it to the top of the label; the labels
+   * after it follow on with `chainRows` (the gap between two labels) and no
+   * positioning. Only the 50 × 50 mm labels set it (see SQUARE_FEED);
+   * absent = gap mode, as always.
    */
-  continuous?: { leadRows: number };
+  continuous?: { leadRows: number; chainRows: number };
 }
 
 export interface OrderLabelInput {
@@ -399,9 +401,12 @@ const SQ_H = 48 * PX_PER_MM;
  * can't be written (the printer answers 0x14 "write RFID fail") and gap mode
  * refuses the job, while continuous mode prints. After the position command
  * the head sits 6.5 mm before the label's top edge, every time, so that much
- * blank feed lands the 50 mm design exactly on the label.
+ * blank feed lands the 50 mm design exactly on the label. Positioning again
+ * before the next label skips a whole label (the paper already stands at
+ * the next gap), so the following ones just feed the 3 mm gap: one page is
+ * then exactly the 53 mm pitch of the roll.
  */
-const SQUARE_FEED = { leadRows: 52 } as const;
+const SQUARE_FEED = { leadRows: 52, chainRows: 24 } as const;
 type LabelImage = CanvasImageSource & { width: number; height: number };
 
 function squareCanvas(): { ctx: CanvasRenderingContext2D; W: number; H: number; cx: number; inkW: number } {

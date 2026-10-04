@@ -146,6 +146,7 @@ import {
   printDrinkLabel,
   printCupNameLabel,
   rasterForSpec,
+  realignLabels,
   setLabelDefaults,
   relaysLabels,
   type PrinterStatus,
@@ -2010,7 +2011,8 @@ function EtiquetasScreen() {
   const drinks = React.useMemo(() => catalog.menu.filter((m) => m.printsLabel).sort((a, b) => a.name.localeCompare(b.name, "es")), [catalog.menu]);
 
   const remote = relaysLabels(p);
-  const canPrint = p.status === "ready" || p.status === "printing" || remote;
+  // While a label is printing here, the buttons wait: a second tap would queue a second label.
+  const canPrint = p.status === "ready" || remote;
   const who = name.replace(/\s+/g, " ").trim();
   const drink = drinkId ? catalog.byId[drinkId] : undefined;
   const text = frase.replace(/\s+/g, " ").trim();
@@ -2064,6 +2066,9 @@ function EtiquetasScreen() {
             <span role="status" style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
             {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
               <button onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} style={{ ...chipStyle, flexShrink: 0 }}>{p.status === "off" ? "Reintentar" : "Conectar impresora"}</button>
+            )}
+            {square && p.status === "ready" && (
+              <button onClick={realignLabels} title="Si abriste la tapa o moviste el papel: la próxima etiqueta busca su posición (gasta una etiqueta en blanco)" style={{ ...chipStyle, flexShrink: 0 }}>Alinear rollo</button>
             )}
           </span>
         </div>
