@@ -69,6 +69,7 @@ import {
   clearTicket,
   setActivePerson,
   addPerson,
+  nameTicket,
   renamePerson,
   removePerson,
   setLinePerson,
@@ -220,7 +221,14 @@ const POS_CSS = `
   .pos-ticket-foot{padding:10px 14px 14px}
   .pos-otypes{display:flex;gap:6px}
   .pos-root button.pos-otype{flex:1;height:38px}
-  .pos-mesa{display:block;width:100%;height:36px;margin-top:8px;text-overflow:ellipsis}
+  /* The name for the cup: big, and it pulses until the ticket has one, so
+     the barista never forgets to ask. */
+  @keyframes pos-ask { 0%,100%{box-shadow:0 0 0 0 rgba(176,58,46,.45)} 50%{box-shadow:0 0 0 7px rgba(176,58,46,0)} }
+  .pos-nombre{display:block;width:100%;height:56px;margin-top:10px;padding:0 14px;font-size:19px;font-weight:700;text-overflow:ellipsis;border:2px solid var(--ink);border-radius:6px;background:var(--paper);color:var(--ink);outline:none}
+  .pos-nombre::placeholder{color:var(--muted);font-weight:600}
+  .pos-nombre.ask{border-color:var(--red);animation:pos-ask 1.4s ease-out infinite}
+  .pos-nombre.ask::placeholder{color:var(--red)}
+  .pos-nombre:focus{animation:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(0,0,0,.12)}
   .pos-sum-note{margin-bottom:4px}
   .pos-total{margin:6px 0 10px}
   .pos-total-amt{font-size:32px}
@@ -262,9 +270,8 @@ const POS_CSS = `
   @media (min-width:900px) and (max-height:760px){
     .pos-ticket-head{padding:8px 14px 8px}
     .pos-ticket-foot{padding:6px 14px 10px}
-    .pos-meta{display:flex;align-items:center;gap:8px}
-    .pos-root button.pos-otype{flex:none;padding:0 9px}
-    .pos-mesa{flex:1;min-width:0;width:auto;height:38px;margin-top:0}
+    .pos-root button.pos-otype{height:34px}
+    .pos-nombre{height:46px;margin-top:6px;font-size:17px}
     .pos-sum{display:flex;flex-wrap:wrap;align-items:center;column-gap:12px;margin-bottom:8px}
     .pos-sum-note{flex:1 1 auto;gap:10px;margin-bottom:0}
     .pos-total{flex:1 1 auto;gap:10px;margin:0}
@@ -321,6 +328,7 @@ const POS_CSS = `
   @media (prefers-reduced-motion:reduce){
     .pos-ticket,.pos-ticket.open{transition:none}
     .pos-bump{animation:none}
+    .pos-nombre.ask{animation:none;box-shadow:0 0 0 3px rgba(176,58,46,.3)}
   }
 `;
 
@@ -740,7 +748,7 @@ function CartBar() {
   const total = orderTotal(s.order, catalog);
   const count = s.order.reduce((n, l) => n + l.qty, 0);
   const editing = s.pending?.mode === "edit" ? s.pending : null;
-  const title = editing ? `Editando ${editing.folio}` : s.customerName.trim() || "Pedido";
+  const title = editing ? `Editando ${editing.folio}` : s.customerName.trim() || s.people.join(" · ") || "Pedido";
   // Newest line first: the end of a long summary is what gets cut off.
   const summary = [...s.order].reverse().map((l) => `${l.qty}× ${l.name}`).join(" · ");
   return (
@@ -973,22 +981,14 @@ function Ticket() {
               );
             })}
           </div>
-          <input
-            className="pos-mesa"
-            value={s.customerName}
-            onChange={(e) => posStore.set({ customerName: e.target.value })}
-            placeholder="Mesa / grupo (opcional)"
-            aria-label="Mesa o grupo"
-            maxLength={80}
-            style={{ padding: "0 10px", border: `1px solid ${C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 13, borderRadius: 4, outline: "none" }}
-          />
+          <NameField />
         </div>
         {/* People at the table. Inline styles only on these nodes (no responsive Tailwind). */}
         <div style={{ marginTop: 8 }}>
           <PersonPicker
             value={s.activePerson}
             onPick={setActivePerson}
-            onAdd={() => setPersonSheet({ mode: "add" })}
+            noAdd
             onEdit={(name) => setPersonSheet({ mode: "edit", name })}
             counts
           />
@@ -1396,15 +1396,17 @@ function Count({ n, on }: { n: number; on: boolean }) {
 
 /**
  * Chip row for the table's people. Used by the ticket header (with counts,
- * tapping the active chip edits it, "+ persona" opens the bulk sheet), by
- * the item sheet and by the line picker (no counts; "+ persona" adds inline).
+ * tapping the active chip edits it; names are added in the big field above,
+ * so no "+ persona" there), by the item sheet and by the line picker (no
+ * counts; "+ persona" adds inline).
  */
-function PersonPicker({ value, onPick, onAdd, onEdit, counts }: {
+function PersonPicker({ value, onPick, onAdd, onEdit, counts, noAdd }: {
   value: string | null;
   onPick: (name: string | null) => void;
   onAdd?: () => void;
   onEdit?: (name: string) => void;
   counts?: boolean;
+  noAdd?: boolean;
 }) {
   const s = usePos();
   const [adding, setAdding] = React.useState(false);
@@ -1435,7 +1437,7 @@ function PersonPicker({ value, onPick, onAdd, onEdit, counts }: {
           </button>
         );
       })}
-      {onAdd ? (
+      {noAdd ? null : onAdd ? (
         <button type="button" onClick={onAdd} style={personChip(false, true)}>+ persona</button>
       ) : adding ? (
         <form onSubmit={(e) => { e.preventDefault(); addInline(); }} style={{ display: "inline-flex", gap: 6 }}>
@@ -1446,6 +1448,40 @@ function PersonPicker({ value, onPick, onAdd, onEdit, counts }: {
         <button type="button" onClick={() => setAdding(true)} style={personChip(false, true)}>+ persona</button>
       )}
     </div>
+  );
+}
+
+/**
+ * The name that goes on the cup. One big field instead of a "mesa / grupo"
+ * box: Enter (or leaving the field) adds the name as a chip and makes it the
+ * active person. Free text on purpose — customers give nicknames and
+ * pronouns, and that is exactly what gets printed. It pulses while the
+ * ticket has no name.
+ */
+function NameField() {
+  const s = usePos();
+  const [text, setText] = React.useState("");
+  const commit = () => {
+    if (!text.trim()) return;
+    nameTicket(text);
+    setText("");
+  };
+  const ask = s.people.length === 0 && !text;
+  return (
+    <input
+      className={"pos-nombre" + (ask ? " ask" : "")}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+      onBlur={commit}
+      placeholder={s.people.length === 0 ? "¿A nombre de quién?" : "Otro nombre…"}
+      aria-label="Nombre del cliente"
+      enterKeyHint="done"
+      autoComplete="off"
+      autoCapitalize="words"
+      maxLength={40}
+      style={{ fontFamily: F.mono }}
+    />
   );
 }
 
