@@ -154,8 +154,6 @@ async function probe(): Promise<boolean> {
 }
 
 function applyProbe(alive: boolean) {
-  // Back from being switched off: the paper may have been moved meanwhile.
-  if (alive && printerStore.get().status === "off") client?.realign();
   printerStore.set((s) => {
     if (alive) return s.status === "ready" ? s : { ...s, status: "ready", note: null };
     return s.status === "off" ? s : { ...s, status: "off", note: OFF_NOTE };
@@ -179,15 +177,6 @@ function startMonitor() {
 function stopMonitor() {
   if (monitor) clearInterval(monitor);
   monitor = null;
-}
-
-/**
- * The roll was touched (lid opened, paper pulled, feed button): make the next
- * 50 × 50 label find its position again. Costs one blank label at most.
- */
-export function realignLabels(): void {
-  client?.realign();
-  printerStore.set({ note: "La próxima etiqueta 50 × 50 se alinea de nuevo." });
 }
 
 /** Manual "is it back?" check from the chip, without waiting for the next tick. */

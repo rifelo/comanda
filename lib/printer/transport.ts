@@ -16,7 +16,6 @@
 
 import {
   Cmd,
-  HEAD_WIDTH_BYTES,
   HEAD_WIDTH_PX,
   LINE_BUFFER_ROWS,
   RESP_REJECTED,
@@ -242,9 +241,7 @@ export class NiimbotClient {
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
-    if (raster.continuous) return this.printContinuous(raster, raster.continuous, density, pollMs);
-    // Gap mode moves the paper on its own terms: a continuous label after it starts over.
-    this.aligned = false;
+    if (raster.unlock) return this.printUnlocked(raster, density, pollMs);
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(1));
     await this.cmd(req.startPrint());
@@ -267,47 +264,36 @@ export class NiimbotClient {
   }
 
   /**
-   * The 50 × 50 recipe (bench-tested, see SQUARE_FEED in label.ts): position
-   * the label, then print on continuous mode with blank rows in front. A roll
-   * whose chip can't be written makes the printer retry for about 5 s after
-   * END_PAGE before it burns the page, so the drain wait tolerates a long
-   * stall — ending the print during that pause throws the page away.
+   * The 50 × 50 sequence (bench, 2026-10-04). The 50 × 50 roll's chip can't
+   * be written, and a session opened as gap labels is refused outright
+   * (0x14, "write RFID fail"). Opened as continuous paper it is accepted,
+   * and switching to gap labels inside the session makes the printer seek
+   * the gap as usual — the page lands exactly on its label, nothing is fed
+   * in between, and nothing has to be positioned by hand.
    *
-   * Only the first label is positioned. A page ends at the foot of its
-   * label, so the paper is already one gap away from the next one;
-   * positioning again would run on to the label after that and waste one.
+   * Now and then the printer still trips on the chip after END_PAGE: the
+   * page counter runs and the rows never burn. The session is closed and
+   * the job reported as rejected, so the queue sends it again (the next
+   * session's PRINT_CLEAR drops the stuck rows).
    */
-  private aligned = false;
-  /** Forget where the paper is: the next continuous label positions itself first. */
-  realign() {
-    this.aligned = false;
-  }
-  private async printContinuous(raster: LabelRaster, feed: { leadRows: number; chainRows: number }, density: number, pollMs: number) {
-    const chained = this.aligned;
-    const leadRows = chained ? feed.chainRows : feed.leadRows;
-    // Anything that fails from here on leaves the paper somewhere unknown.
-    this.aligned = false;
-    if (!chained) {
-      await this.cmd(req.positionLabel());
-      await sleep(pollMs * 10);
-    }
+  private async printUnlocked(raster: LabelRaster, density: number, pollMs: number) {
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(3));
     await this.cmd(req.startPrint());
+    await this.cmd(req.setLabelType(1));
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
-    await this.cmd(req.setDimension(leadRows + raster.rows.length, raster.width));
+    await this.cmd(req.setDimension(raster.height, raster.width));
     await this.cmd(req.setQuantity(1));
 
-    const baseline = (await this.freeRows()) ?? LINE_BUFFER_ROWS;
-    const blank = new Uint8Array(HEAD_WIDTH_BYTES);
-    for (let y = 0; y < leadRows; y++) await this.t.write(rowPacket(y, blank));
-    for (let y = 0; y < raster.rows.length; y++) await this.t.write(rowPacket(leadRows + y, raster.rows[y]));
+    for (let y = 0; y < raster.rows.length; y++) await this.t.write(rowPacket(y, raster.rows[y]));
 
     await this.cmd(req.endPagePrint());
-    await this.waitDrain(baseline, pollMs, 60_000, pollMs * 60);
+    // Idle reads 798 or 799 after these jobs: aim just under, not at the baseline.
+    await this.waitDrain(LINE_BUFFER_ROWS - 4, pollMs, 60_000, pollMs * 40);
+    const free = await this.freeRows();
     await this.cmd(req.endPrint());
-    this.aligned = true;
+    if (free !== null && free < LINE_BUFFER_ROWS - 10) throw new PrinterRejectedError(Cmd.END_PAGE_PRINT);
   }
 
   /** Wait for the line buffer to climb back to `target`; give up on a stall. */

@@ -22,14 +22,11 @@ export interface LabelRaster {
   /** One entry per row along the feed; each HEAD_WIDTH_BYTES, bit set = black. */
   rows: Uint8Array[];
   /**
-   * Print on continuous-paper mode instead of letting the printer seek the
-   * gap. The first label is positioned and `leadRows` blank rows carry the
-   * paper from where that leaves it to the top of the label; the labels
-   * after it follow on with `chainRows` (the gap between two labels) and no
-   * positioning. Only the 50 × 50 mm labels set it (see SQUARE_FEED);
-   * absent = gap mode, as always.
+   * Open the print session as continuous paper and switch to gap labels
+   * before the page (see NiimbotClient.printUnlocked). Only the 50 × 50 mm
+   * labels set it; absent = the plain gap sequence, as always.
    */
-  continuous?: { leadRows: number; chainRows: number };
+  unlock?: boolean;
 }
 
 export interface OrderLabelInput {
@@ -396,17 +393,6 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
 // (Instagram QR, cup icon, the phrase). Same head, so the ink is still
 // 45 mm wide; the design is 48 mm tall, 2 mm down like the 30 mm ones.
 const SQ_H = 48 * PX_PER_MM;
-/**
- * How the square labels are fed. Bench, 2026-10-04: the 50 × 50 roll's chip
- * can't be written (the printer answers 0x14 "write RFID fail") and gap mode
- * refuses the job, while continuous mode prints. After the position command
- * the head sits 6.5 mm before the label's top edge, every time, so that much
- * blank feed lands the 50 mm design exactly on the label. Positioning again
- * before the next label skips a whole label (the paper already stands at
- * the next gap), so the following ones just feed the 3 mm gap: one page is
- * then exactly the 53 mm pitch of the roll.
- */
-const SQUARE_FEED = { leadRows: 52, chainRows: 24 } as const;
 type LabelImage = CanvasImageSource & { width: number; height: number };
 
 function squareCanvas(): { ctx: CanvasRenderingContext2D; W: number; H: number; cx: number; inkW: number } {
@@ -528,7 +514,7 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   }
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  return { ...rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 110), continuous: SQUARE_FEED };
+  return { ...rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 110), unlock: true };
 }
 
 export interface PhraseQrLabelInput {
@@ -627,7 +613,7 @@ export function renderPhraseQrLabel(input: PhraseQrLabelInput): LabelRaster {
   }
   ctx.textAlign = "left";
   void inkW;
-  return { ...rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 110), continuous: SQUARE_FEED };
+  return { ...rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 110), unlock: true };
 }
 
 export interface DrinkLabelInput {
