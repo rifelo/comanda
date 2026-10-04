@@ -716,7 +716,7 @@ function Catalog() {
         ) : null}
         {sections.map((sec, si) => (
           <div key={si} style={{ marginTop: si === 0 ? 0 : 18 }}>
-            {sec.label && <SubLabel>{sec.label}</SubLabel>}
+            {sec.label && <SubLabel icon={isColdLabel(sec.label) ? <SnowflakeIcon /> : null}>{sec.label}</SubLabel>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, alignContent: "start" }}>
               {sec.combos
                 ? sec.combos.map((c) => <ComboTile key={c.id} c={c} qty={inTicket[c.id] ?? 0} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
@@ -776,9 +776,28 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: "48px 20px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>{children}</div>;
 }
 
-function SubLabel({ children }: { children: React.ReactNode }) {
+/** A cold section ("Frío", "Fríos") gets the snowflake so it reads at a glance. */
+const isColdLabel = (label: string) => /^fr[ií]os?$/i.test(label.trim());
+
+/** Snowflake on an ink chip — the pale blue needs the dark ground to read on paper. */
+function SnowflakeIcon() {
+  const arm = "M256 176V50M190 80l66 45 66-45";
+  return (
+    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 5, background: "#000", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <svg viewBox="0 0 512 512" width={20} height={20} fill="none" strokeWidth={30} strokeLinecap="round" strokeLinejoin="round">
+        <g stroke="#7DBDFF">
+          {[0, 60, 120, 180, 240, 300].map((deg) => <path key={deg} d={arm} transform={`rotate(${deg} 256 256)`} />)}
+        </g>
+        <path d="M256 196l52 30v60l-52 30-52-30v-60z" stroke="#6685A6" strokeWidth={34} />
+      </svg>
+    </span>
+  );
+}
+
+function SubLabel({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted }}>
+      {icon}
       <span>{children}</span>
       <span style={{ flex: 1, borderTop: `1px dashed ${C.rule}` }} />
     </div>
