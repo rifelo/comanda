@@ -11,14 +11,16 @@ import { encolarEtiquetas, reclamarEtiquetas } from "./actions";
  *     through the server) and the register with the printer claims and
  *     prints them;
  *   · orders — when a station saves, pays or cancels an order the others
- *     reload their open-orders list at once instead of on the next poll.
+ *     reload their open-orders list at once instead of on the next poll;
+ *   · config — a station changed an org-wide setting (the label stock), so
+ *     the others reload their catalog.
  *
  * Realtime carries only a nudge ("look now") on a broadcast channel, with no
  * data in it: a paired device has no user session, so it can't read rows
  * over the socket. The data always goes through the authenticated server
  * actions, and a slow poll covers a missed nudge.
  */
-export type LiveEvent = "print" | "ordenes";
+export type LiveEvent = "print" | "ordenes" | "config";
 
 let channel: RealtimeChannel | null = null;
 
@@ -53,11 +55,12 @@ export async function claimLabels() {
 
 const POLL_MS = 15_000;
 
-export function usePosLive(organizationId: string, onOrders: () => void) {
+export function usePosLive(organizationId: string, onOrders: () => void, onConfig: () => void) {
   const printer = usePrinter();
   const ready = printer.status === "ready" || printer.status === "printing";
   const onOrdersRef = React.useRef(onOrders);
-  React.useEffect(() => { onOrdersRef.current = onOrders; }, [onOrders]);
+  const onConfigRef = React.useRef(onConfig);
+  React.useEffect(() => { onOrdersRef.current = onOrders; onConfigRef.current = onConfig; }, [onOrders, onConfig]);
 
   React.useEffect(() => {
     setPrintRelay(async (specs) => {
@@ -73,6 +76,7 @@ export function usePosLive(organizationId: string, onOrders: () => void) {
       .channel(`pos:${organizationId}`)
       .on("broadcast", { event: "print" }, () => void claimLabels())
       .on("broadcast", { event: "ordenes" }, () => onOrdersRef.current())
+      .on("broadcast", { event: "config" }, () => onConfigRef.current())
       .subscribe();
     channel = ch;
     return () => {

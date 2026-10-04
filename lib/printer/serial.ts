@@ -34,7 +34,7 @@ import {
   type SerialPortLike,
 } from "./transport";
 import type { LabelSpec } from "./spec";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, renderCupNameLabel, renderPhraseQrLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -450,6 +450,23 @@ function jobFor(spec: LabelSpec): Job {
       return { raster: async () => renderMessageLabel({ text: spec.text, handle: spec.handle }), folio: FRASE_FOLIO, name: spec.text };
     case "sticker":
       return { raster: async () => renderImageLabel(await loadImage(spec.src)), folio: STICKER_FOLIO, name: "Sticker" };
+    case "cup50":
+      return {
+        raster: async () => renderCupNameLabel({
+          customer: spec.customer,
+          drink: spec.drink,
+          cup: spec.cupSrc ? await loadImage(spec.cupSrc) : null,
+          art: spec.artSrc ? await loadImage(spec.artSrc) : null,
+        }),
+        folio: DRINK_FOLIO,
+        name: spec.customer ? `${spec.customer} · ${spec.drink}` : spec.drink,
+      };
+    case "frase50":
+      return {
+        raster: async () => renderPhraseQrLabel({ text: spec.text, handle: spec.handle, cup: spec.cupSrc ? await loadImage(spec.cupSrc) : null }),
+        folio: FRASE_FOLIO,
+        name: spec.text,
+      };
     case "drink":
       return {
         raster: () => renderDrinkLabel(spec.input),
@@ -468,6 +485,11 @@ function submit(spec: LabelSpec) {
     return;
   }
   enqueue(jobFor(spec));
+}
+
+/** The label a spec draws — what the Etiquetas preview shows. */
+export function rasterForSpec(spec: LabelSpec): LabelRaster | Promise<LabelRaster> {
+  return jobFor(spec).raster();
 }
 
 /** A label another station asked for: straight to this printer, never relayed again. */
@@ -506,6 +528,15 @@ export function printDrinkLabel(input: DrinkLabelInput): void {
   submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input } });
 }
 export const DRINK_FOLIO = "BEBIDA";
+
+/** 50 × 50 stock: the cup's name label (name + drink over the brand art). */
+export function printCupNameLabel(input: { customer?: string; drink: string; cupSrc?: string | null; artSrc?: string | null }): void {
+  submit({ kind: "cup50", customer: input.customer || undefined, drink: input.drink, cupSrc: input.cupSrc ?? null, artSrc: input.artSrc ?? null });
+}
+/** 50 × 50 stock: Instagram QR + brand cup + the phrase. */
+export function printPhraseQrLabel(input: { text: string; handle?: string | null; cupSrc?: string | null }): void {
+  submit({ kind: "frase50", text: input.text, handle: input.handle ?? null, cupSrc: input.cupSrc ?? null });
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
