@@ -1341,7 +1341,7 @@ export async function printFrases(n: number) {
       posStore.set({ fraseError: err ?? "No se pudo generar la frase." });
       return;
     }
-    for (let i = 0; i < n; i++) printMessageLabel(ok[i % ok.length], s.catalog.instagram, s.catalog.cupArt);
+    for (let i = 0; i < n; i++) printMessageLabel(ok[i % ok.length], s.catalog.instagram);
     posStore.set({ frase: ok[0] });
   } catch {
     posStore.set({ fraseError: "No se pudo generar la frase." });
@@ -1363,7 +1363,7 @@ export async function printFrase() {
     const res = await generarFrase();
     if (res.ok) {
       posStore.set({ frase: res.texto, fraseLoading: false });
-      printMessageLabel(res.texto, s.catalog.instagram, s.catalog.cupArt);
+      printMessageLabel(res.texto, s.catalog.instagram);
     } else posStore.set({ fraseLoading: false, fraseError: res.error });
   } catch {
     posStore.set({ fraseLoading: false, fraseError: "No se pudo generar la frase." });

@@ -417,14 +417,9 @@ export function printInstagramLabel(handle: string, cupSrc?: string | null): voi
 export const INSTAGRAM_FOLIO = "INSTAGRAM";
 
 /** AI "frase del día" label for the cup. */
-export function printMessageLabel(text: string, handle?: string | null, cupSrc?: string | null): void {
+export function printMessageLabel(text: string, handle?: string | null): void {
   enqueue({
-    raster: async () => renderMessageLabel({
-      text,
-      orgName: labelDefaults.orgName,
-      handle,
-      cup: cupSrc ? await loadImage(cupSrc) : null,
-    }),
+    raster: async () => renderMessageLabel({ text, handle }),
     folio: FRASE_FOLIO,
     name: text,
   });
