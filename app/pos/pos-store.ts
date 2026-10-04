@@ -479,6 +479,23 @@ export function addPerson(raw: string, opts: { activate?: boolean } = {}): strin
   return out;
 }
 /**
+ * The ticket's big name field: add the person and make them active. When
+ * they're the first name on the ticket, whatever was already rung up without
+ * a name becomes theirs — the barista often asks the name after the drinks.
+ */
+export function nameTicket(raw: string): string | null {
+  const first = posStore.get().people.length === 0;
+  const name = addPerson(raw);
+  if (name && first) {
+    posStore.set((s) => ({
+      ...s,
+      order: s.order.map((l) => (l.customer ? l : { ...l, customer: name })),
+      sent: s.order.some((l) => !l.customer) ? false : s.sent,
+    }));
+  }
+  return name;
+}
+/**
  * Rename a person everywhere (roster + their lines). Renaming onto another
  * roster entry merges the two — the intuitive fix for a typo.
  */
