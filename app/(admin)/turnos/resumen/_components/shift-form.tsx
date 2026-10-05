@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import * as React from "react";
-import { createPuesto, createShift, deleteShift, updateShift } from "../_actions";
+import { createShift, deleteShift, updateShift } from "../_actions";
 import { Chip } from "@/app/(admin)/_components/chip";
 import type { Puesto } from "@/lib/types";
 import { puestoColor } from "@/lib/turno/colors";
@@ -214,14 +214,14 @@ export function ShiftForm({
   puestoOptions: Puesto[];
 }) {
   const editing = !!initial;
-  const [options, setOptions] = React.useState<Puesto[]>(puestoOptions);
-  const [tplPuestos, setTplPuestos] = React.useState<TplPuestoDraft[]>(() =>
+  // Puestos are no longer offered (2026-10-04): a turno is one list. What is
+  // left only keeps an old turno that still has them rendering as before.
+  const [options] = React.useState<Puesto[]>(puestoOptions);
+  const [tplPuestos] = React.useState<TplPuestoDraft[]>(() =>
     [...(initial?.puestos ?? [])]
       .sort((a, b) => a.position - b.position)
       .map((p) => ({ puesto_id: p.puesto_id, waits_for_key: p.waits_for_task_id })),
   );
-  const [newPuestoName, setNewPuestoName] = React.useState<string | null>(null);
-  const [puestoBusy, setPuestoBusy] = React.useState(false);
   const [name, setName] = React.useState(initial?.name ?? "");
   const [inicio, setInicio] = React.useState(initial?.inicio ?? "14:30");
   const [fin, setFin] = React.useState(initial?.fin ?? "18:30");
@@ -265,38 +265,6 @@ export function ShiftForm({
     .filter((p): p is Puesto => !!p);
   const activeIds = new Set(tplPuestos.map((tp) => tp.puesto_id));
 
-  function togglePuesto(id: string) {
-    setTplPuestos((prev) => {
-      if (prev.some((tp) => tp.puesto_id === id)) {
-        // Removing a puesto: its tasks become compartidas; gates pointing at
-        // its tasks are cleared.
-        const dropped = new Set(tasks.filter((t) => t.puesto_id === id).map((t) => t.key));
-        setTasks((ts) => ts.map((t) => (t.puesto_id === id ? { ...t, puesto_id: null } : t)));
-        return prev
-          .filter((tp) => tp.puesto_id !== id)
-          .map((tp) => (tp.waits_for_key && dropped.has(tp.waits_for_key) ? { ...tp, waits_for_key: null } : tp));
-      }
-      return [...prev, { puesto_id: id, waits_for_key: null }];
-    });
-  }
-  function setGate(puesto_id: string, key: string | null) {
-    setTplPuestos((prev) => prev.map((tp) => (tp.puesto_id === puesto_id ? { ...tp, waits_for_key: key } : tp)));
-  }
-  async function submitNewPuesto() {
-    const name = (newPuestoName ?? "").trim();
-    if (!name || puestoBusy) return;
-    setPuestoBusy(true);
-    const palette = ["red", "green", "indigo", "amber", "ink"] as const;
-    const r = await createPuesto({ name, color: palette[options.length % palette.length] });
-    setPuestoBusy(false);
-    if ("error" in r) {
-      setError(r.error ?? "No se pudo crear el puesto.");
-      return;
-    }
-    setOptions((o) => [...o, r.puesto]);
-    setTplPuestos((prev) => [...prev, { puesto_id: r.puesto.id, waits_for_key: null }]);
-    setNewPuestoName(null);
-  }
   function delTask(i: number) {
     setTasks((p) => p.filter((_, j) => j !== i));
   }
@@ -812,81 +780,6 @@ export function ShiftForm({
             <div className="text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
               Lo que el empleado debe completar durante este turno. Marca{" "}
               <strong>FOTO</strong> cuando se requiere evidencia.
-            </div>
-
-            {/* puestos of this turno */}
-            <div style={{ border: "1px solid var(--rule)", borderRadius: 3, padding: "12px 14px", marginBottom: 16, background: "var(--paper-lt)" }}>
-              <div className="flex items-baseline justify-between" style={{ marginBottom: 8 }}>
-                <span className="text-muted" style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase" }}>
-                  Puestos del turno
-                </span>
-                <span className="cmd-num text-muted" style={{ fontSize: 11 }}>
-                  {activePuestos.length ? `${activePuestos.length} puestos` : "sin puestos · una sola lista"}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center" style={{ gap: 6 }}>
-                {options.map((p) => (
-                  <Chip key={p.id} active={activeIds.has(p.id)} onClick={() => togglePuesto(p.id)}>
-                    <span aria-hidden style={{ display: "inline-block", width: 7, height: 7, borderRadius: 7, background: puestoColor(p.color), marginRight: 6, verticalAlign: "middle" }} />
-                    {p.name}
-                  </Chip>
-                ))}
-                {newPuestoName === null ? (
-                  <Chip onClick={() => setNewPuestoName("")}>+ puesto</Chip>
-                ) : (
-                  <span className="flex items-center" style={{ gap: 6 }}>
-                    <input
-                      autoFocus
-                      value={newPuestoName}
-                      onChange={(e) => setNewPuestoName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") { e.preventDefault(); void submitNewPuesto(); }
-                        if (e.key === "Escape") setNewPuestoName(null);
-                      }}
-                      placeholder="Nombre del puesto"
-                      aria-label="Nombre del puesto"
-                      style={{ fontSize: 12, border: "1px solid var(--ink)", background: "var(--paper)", padding: "5px 8px", borderRadius: 2, color: "var(--ink)", outline: "none", width: 150 }}
-                    />
-                    <button type="button" onClick={() => void submitNewPuesto()} disabled={puestoBusy} className="cmd-btn sm">Crear</button>
-                    <button type="button" onClick={() => setNewPuestoName(null)} className="cmd-btn ghost sm">×</button>
-                  </span>
-                )}
-              </div>
-              <div className="text-muted" style={{ fontSize: 11, marginTop: 8 }}>
-                Cada puesto lo hace una persona distinta (Apertura, Barista, Aseo…). Sin puestos, el turno es una sola lista.
-              </div>
-
-              {activePuestos.length >= 2 && (
-                <div style={{ marginTop: 12, borderTop: "1px dashed var(--rule)", paddingTop: 10 }}>
-                  <div className="text-muted" style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 6 }}>
-                    Entrega entre puestos
-                  </div>
-                  {tplPuestos.map((tp) => {
-                    const me = puestoById.get(tp.puesto_id);
-                    if (!me) return null;
-                    const candidates = tasks.filter((t) => t.puesto_id && t.puesto_id !== tp.puesto_id && t.title.trim());
-                    return (
-                      <label key={tp.puesto_id} className="flex flex-wrap items-center" style={{ gap: 8, fontSize: 12, marginBottom: 6 }}>
-                        <span style={{ minWidth: 90, fontWeight: 600 }}>{me.name}</span>
-                        <span className="text-muted">arranca cuando se complete</span>
-                        <select
-                          value={tp.waits_for_key ?? ""}
-                          onChange={(e) => setGate(tp.puesto_id, e.target.value || null)}
-                          aria-label={`${me.name} espera a`}
-                          style={{ fontSize: 12, border: "1px solid var(--rule)", background: "var(--paper)", padding: "5px 8px", borderRadius: 2, color: "var(--ink)", maxWidth: 320 }}
-                        >
-                          <option value="">— sin espera —</option>
-                          {candidates.map((t) => (
-                            <option key={t.key} value={t.key}>
-                              {puestoById.get(t.puesto_id!)?.name} · {t.title.trim()}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             {tasks.length === 0 ? (
