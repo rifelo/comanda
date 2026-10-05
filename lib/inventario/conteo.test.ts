@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conteoSummary, fullCountDue, lineDiff, parseCount, pickCountList } from "./conteo";
+import { conteoSummary, fullCountDue, groupForCount, lineDiff, parseCount, pickCountList } from "./conteo";
 
 const items = [
   { id: "a", name: "Café", unit: "g", category_id: null, conteo_diario: true },
@@ -50,5 +50,23 @@ describe("fullCountDue", () => {
     expect(fullCountDue(null, now)).toEqual({ due: true, days: null });
     expect(fullCountDue("2026-09-12T11:00:00Z", now)).toEqual({ due: true, days: 7 });
     expect(fullCountDue("2026-09-15T11:00:00Z", now)).toEqual({ due: false, days: 4 });
+  });
+});
+
+describe("groupForCount", () => {
+  const cats = [{ id: "c1", label: "Bebidas" }, { id: "c2", label: "Empaques" }];
+  const row = (name: string, category_id: string | null, ubicacion: string | null) => ({ name, category_id, ubicacion });
+  it("groups by category while no item has a zone", () => {
+    const g = groupForCount([row("Leche", "c1", null), row("Vasos", "c2", null), row("Hielo", null, null)], cats, ["Barra", "Nevera"]);
+    expect(g.map((x) => x.label)).toEqual(["Bebidas", "Empaques", "Sin categoría"]);
+  });
+  it("walks zones in the given order, unknown zones after, items with no zone last", () => {
+    const g = groupForCount(
+      [row("Vasos", "c2", "Bodega"), row("Leche", "c1", "nevera"), row("Café", "c1", "Barra"), row("Jabón", null, "Patio"), row("Hielo", null, null)],
+      cats,
+      ["Barra", "Nevera", "Bodega"],
+    );
+    expect(g.map((x) => x.label)).toEqual(["Barra", "nevera", "Bodega", "Patio", "Sin zona"]);
+    expect(g[4].items.map((x) => x.name)).toEqual(["Hielo"]);
   });
 });

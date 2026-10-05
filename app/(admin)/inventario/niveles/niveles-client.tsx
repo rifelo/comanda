@@ -4,6 +4,9 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Ingrediente, IngredienteCategoria, Proveedor } from "@/lib/types";
 import { NIVELES, ZONAS, aEntrada, deEntrada, nivelDe, nombrePaquete, usaPaquete, validarNiveles, cantidadLegible } from "@/lib/inventario/niveles";
+
+/** The item with the piece size as currently typed, so levels follow it live. */
+const conPieza = (i: Ingrediente, pieza: string) => ({ unit: i.unit, pack_qty: i.pack_qty, pieza_qty: num(pieza) > 0 ? num(pieza) : null });
 import { archivarProveedor, guardarNiveles, guardarProveedor } from "./actions";
 
 /** One row as it is being edited: levels as typed (packs when the item has one). */
@@ -13,6 +16,8 @@ interface Draft {
   objetivo: string;
   ubicacion: string;
   pack_label: string;
+  /** Size of one countable piece, in the stock unit ("900"). */
+  pieza: string;
   proveedor_id: string;
   conteo_diario: boolean;
   controla_vencimiento: boolean;
@@ -29,6 +34,7 @@ const draftOf = (i: Ingrediente): Draft => ({
   objetivo: str(i.stock_objetivo == null ? null : aEntrada(i.stock_objetivo, i)),
   ubicacion: i.ubicacion ?? "",
   pack_label: i.pack_label ?? "",
+  pieza: str(i.pieza_qty ?? null),
   proveedor_id: i.proveedor_id ?? "",
   conteo_diario: !!i.conteo_diario,
   controla_vencimiento: !!i.controla_vencimiento,
@@ -60,12 +66,26 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
     setMsg(null);
   };
 
+  /**
+   * Changing the piece size keeps the levels where they were on the shelf:
+   * what was typed is re-expressed in the new piece instead of being
+   * silently multiplied by it.
+   */
+  const repieza = (i: Ingrediente, pieza: string) => {
+    const d = drafts[i.id];
+    const antes = conPieza(i, d.pieza);
+    const despues = conPieza(i, pieza);
+    const conv = (v: string) => (v.trim() === "" || num(v) === 0 ? "" : str(aEntrada(deEntrada(num(v), antes), despues)));
+    patch(i.id, { pieza, critico: conv(d.critico), minimo: conv(d.minimo), objetivo: conv(d.objetivo) });
+  };
+
   /** A draft's levels in stock units, plus what is wrong with them (if anything). */
   const leer = (i: Ingrediente) => {
     const d = drafts[i.id];
-    const critico = deEntrada(num(d.critico), i);
-    const minimo = deEntrada(num(d.minimo), i);
-    const objetivo = d.objetivo.trim() === "" || num(d.objetivo) === 0 ? null : deEntrada(num(d.objetivo), i);
+    const it = conPieza(i, d.pieza);
+    const critico = deEntrada(num(d.critico), it);
+    const minimo = deEntrada(num(d.minimo), it);
+    const objetivo = d.objetivo.trim() === "" || num(d.objetivo) === 0 ? null : deEntrada(num(d.objetivo), it);
     return { critico, minimo, objetivo, error: validarNiveles(critico, minimo, objetivo) };
   };
 
@@ -85,6 +105,7 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
           stock_objetivo: v.objetivo,
           ubicacion: d.ubicacion.trim() || null,
           pack_label: d.pack_label.trim() || null,
+          pieza_qty: num(d.pieza) > 0 ? num(d.pieza) : null,
           proveedor_id: d.proveedor_id || null,
           conteo_diario: d.conteo_diario,
           controla_vencimiento: d.controla_vencimiento,
@@ -128,7 +149,7 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
   return (
     <div style={{ padding: "16px 16px 120px", fontFamily: "var(--font-mono)" }} className="md:!px-8">
       <p style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 820, margin: "0 0 14px" }}>
-        Cada ítem tiene tres niveles, escritos en lo que se compra (bolsas, cajas): <b style={{ color: NIVELES.rojo.color }}>Se acabó</b> (no alcanza para un día),{" "}
+        Cada ítem tiene una presentación (la pieza que se cuenta: bolsa de 900 ml) y tres niveles escritos en esa pieza: <b style={{ color: NIVELES.rojo.color }}>Se acabó</b> (no alcanza para un día),{" "}
         <b style={{ color: NIVELES.amarillo.color }}>Poco</b> (hora de pedir) y <b>Pedir hasta</b> (cuánto debe quedar después de comprar). Con eso se colorea el conteo del barista y se arma la lista de compras.
       </p>
 
@@ -147,13 +168,13 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
       </div>
 
       <div style={{ overflowX: "auto", border: "1px solid var(--rule)", background: "var(--paper-lt)", borderRadius: 4 }}>
-        <table style={{ width: "100%", minWidth: 1040, borderCollapse: "collapse", fontSize: 12.5 }}>
+        <table style={{ width: "100%", minWidth: 1130, borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--muted)" }}>
               <th style={{ ...th, paddingLeft: 12, position: "sticky", left: 0, background: "var(--paper-lt)", zIndex: 1, minWidth: 210 }}>Ítem</th>
               <th style={th}>Stock hoy</th>
               <th style={{ ...th, width: 120 }}>Zona</th>
-              <th style={{ ...th, width: 100 }}>Presentación</th>
+              <th style={{ ...th, width: 190 }} title="La pieza que se cuenta en el estante y cuánto trae">Presentación</th>
               <th style={{ ...th, width: 92, color: NIVELES.rojo.color }}>Se acabó</th>
               <th style={{ ...th, width: 92, color: NIVELES.amarillo.color }}>Poco</th>
               <th style={{ ...th, width: 92 }}>Pedir hasta</th>
@@ -173,7 +194,8 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
                   const v = leer(i);
                   const stock = Number(i.stock_current);
                   const nivel = NIVELES[nivelDe(stock, v.critico, v.minimo)];
-                  const pack = usaPaquete(i);
+                  const it = conPieza(i, d.pieza);
+                  const pack = usaPaquete(it);
                   const unidad = pack ? nombrePaquete({ pack_label: d.pack_label }, 2) : i.unit;
                   const lvl = (key: "critico" | "minimo" | "objetivo", name: string) => (
                     <input
@@ -195,17 +217,17 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
                       </td>
                       <td style={{ ...cell, whiteSpace: "nowrap" }}>
                         <span aria-hidden style={{ display: "inline-block", width: 9, height: 9, borderRadius: 9, background: stock < 0 ? "var(--muted)" : nivel.color, marginRight: 6 }} />
-                        <span className="cmd-num" style={{ color: stock < 0 ? "var(--muted)" : "var(--ink)" }}>{stock < 0 ? "sin contar" : cantidadLegible(stock, { unit: i.unit, pack_qty: i.pack_qty, pack_label: d.pack_label })}</span>
+                        <span className="cmd-num" style={{ color: stock < 0 ? "var(--muted)" : "var(--ink)" }}>{stock < 0 ? "sin contar" : cantidadLegible(stock, { ...it, pack_label: d.pack_label })}</span>
                       </td>
                       <td style={cell}>
                         <input value={d.ubicacion} onChange={(e) => patch(i.id, { ubicacion: e.target.value })} list="niveles-zonas" placeholder="—" aria-label={`Zona de ${i.name}`} maxLength={40} style={input} />
                       </td>
                       <td style={cell}>
-                        {(i.pack_qty ?? 0) > 1 ? (
-                          <input value={d.pack_label} onChange={(e) => patch(i.id, { pack_label: e.target.value })} placeholder="paquete" aria-label={`Presentación de ${i.name}`} title={`1 = ${i.pack_qty} ${i.unit}`} maxLength={24} style={input} />
-                        ) : (
-                          <span className="text-muted" style={{ fontSize: 11.5 }}>por {i.unit}</span>
-                        )}
+                        <div className="flex items-center" style={{ gap: 4 }}>
+                          <input value={d.pack_label} onChange={(e) => patch(i.id, { pack_label: e.target.value })} placeholder="bolsa" aria-label={`Presentación de ${i.name}`} maxLength={24} style={{ ...input, flex: "1 1 60px", minWidth: 0 }} />
+                          <input value={d.pieza} onChange={(e) => repieza(i, e.target.value)} inputMode="decimal" placeholder="—" aria-label={`Tamaño de la presentación de ${i.name} (${i.unit})`} title={`Cuánto trae una, en ${i.unit}`} style={{ ...input, flex: "0 0 58px", textAlign: "right", padding: "0 6px" }} />
+                          <span className="text-muted" style={{ fontSize: 10.5, flex: "0 0 auto" }}>{i.unit}</span>
+                        </div>
                       </td>
                       <td style={cell}>{lvl("critico", "Se acabó")}</td>
                       <td style={cell}>{lvl("minimo", "Poco")}</td>

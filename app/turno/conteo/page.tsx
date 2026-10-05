@@ -13,7 +13,9 @@ export const metadata = { title: "Conteo de inventario · co-manda" };
  * End-of-shift stock count on the shared tablet, signed by whoever is logged
  * in. Blind: the person types what is on the shelf without seeing what the
  * system expects; the comparison shows once the count is sent, and the owner
- * approves it from the panel.
+ * approves it from the panel. Each item is counted the way it sits on the
+ * shelf (packs + loose) and shows its level (hay / poco / se acabó) as soon
+ * as it is counted, from the item's own thresholds.
  */
 export default async function ConteoPage() {
   const gate = await loadTurnoGate();
@@ -24,7 +26,7 @@ export default async function ConteoPage() {
   const [{ data: ings }, { data: cats }, lastCompleto, recent] = await Promise.all([
     admin
       .from("ingredientes")
-      .select("id, name, unit, category_id, conteo_diario, archived")
+      .select("id, name, unit, category_id, conteo_diario, archived, pack_qty, pack_label, pieza_qty, stock_critico, stock_min, stock_objetivo, ubicacion")
       .eq("organization_id", organizationId)
       .eq("archived", false)
       .order("name"),

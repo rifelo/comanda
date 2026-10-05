@@ -8,9 +8,11 @@
  *   verde    · hay      — above it
  * `stock_objetivo` ("pedir hasta") is how much there should be after buying.
  *
- * People think in what they buy (bags, boxes), not in grams, so everything
- * shown or typed goes through the item's pack (`pack_qty` stock units per
- * pack, `pack_label` its name) when it has one.
+ * People think in what sits on the shelf (bags, bottles), not in grams, so
+ * everything shown or typed goes through the item's piece when it has one:
+ * `pieza_qty` stock units per piece (a 900 ml bag), `pack_label` its name.
+ * `pack_qty` is something else — the purchase lot (the bale of 12 bags) —
+ * and only matters for cost and for rounding what is ordered.
  */
 
 export type Nivel = "verde" | "amarillo" | "rojo";
@@ -31,6 +33,8 @@ export interface NivelItem {
   stock_objetivo: number | null;
   pack_qty: number | null;
   pack_label: string | null;
+  /** Stock units in one countable piece; null = counted in the unit itself. */
+  pieza_qty?: number | null;
 }
 
 /** Where `stock` falls. A level of 0 is "not set": red is then only "nothing left". */
@@ -40,14 +44,26 @@ export function nivelDe(stock: number, critico: number, minimo: number): Nivel {
   return "verde";
 }
 
+type Pieza = Pick<NivelItem, "unit" | "pack_qty" | "pieza_qty">;
+const esMedida = (unit: string) => /^(g|gr|kg|ml|l|lt|cc|oz)$/i.test(unit.trim());
+
 /**
- * True when the item's levels read better in packs: it is bought by pack and
- * kept in a measure (g, ml). Nobody thinks "1.800 ml de leche", they think
- * "2 bolsas"; but things kept by the piece (botellas, vasos, porciones) are
- * already counted the way they are said, so those stay in units.
+ * Size of the piece an item is counted and talked about in, in stock units;
+ * null when it is counted in the unit itself. The owner sets it per item
+ * (bolsa = 900 ml). Things kept by the piece and bought in packs (vasos ×50)
+ * fall back to the pack, so closed packs can be counted whole; a measure
+ * with no piece (café en g) stays in its unit — "0,2 pacas" helps nobody.
  */
-export function usaPaquete(it: Pick<NivelItem, "pack_qty" | "unit">): boolean {
-  return (it.pack_qty ?? 0) > 1 && /^(g|gr|kg|ml|l|lt|cc|oz)$/i.test(it.unit.trim());
+export function piezaDe(it: Pieza): number | null {
+  const p = Number(it.pieza_qty ?? 0);
+  if (p > 0) return p === 1 ? null : p;
+  const pack = Number(it.pack_qty ?? 0);
+  return pack > 1 && !esMedida(it.unit) ? pack : null;
+}
+
+/** True when the item's levels are typed and read in pieces (measures with a piece set). */
+export function usaPaquete(it: Pieza): boolean {
+  return Number(it.pieza_qty ?? 0) > 1;
 }
 
 /** Name of one pack / several packs ("bolsa" → "bolsas"); "paq." when it has none. */
@@ -64,23 +80,23 @@ const trim = (n: number, decimals = 2) => {
 };
 
 /** Stock units → what is typed in the levels table (packs when the item has one). */
-export function aEntrada(qty: number, it: Pick<NivelItem, "pack_qty" | "unit">): number {
-  return usaPaquete(it) ? Math.round((qty / it.pack_qty!) * 100) / 100 : qty;
+export function aEntrada(qty: number, it: Pieza): number {
+  return usaPaquete(it) ? Math.round((qty / Number(it.pieza_qty)) * 100) / 100 : qty;
 }
 /** What was typed → stock units. */
-export function deEntrada(value: number, it: Pick<NivelItem, "pack_qty" | "unit">): number {
-  return usaPaquete(it) ? Math.round(value * it.pack_qty! * 1000) / 1000 : value;
+export function deEntrada(value: number, it: Pieza): number {
+  return usaPaquete(it) ? Math.round(value * Number(it.pieza_qty) * 1000) / 1000 : value;
 }
 
 /** "2 bolsas", "½ caja", "350 g" — a quantity the way it is said at the bar. */
-export function cantidadLegible(qty: number, it: Pick<NivelItem, "unit" | "pack_qty" | "pack_label">): string {
+export function cantidadLegible(qty: number, it: Pieza & Pick<NivelItem, "pack_label">): string {
   if (!usaPaquete(it)) return `${trim(qty)} ${it.unit}`;
-  const packs = qty / it.pack_qty!;
+  const packs = qty / Number(it.pieza_qty);
   if (Math.abs(packs - 0.5) < 0.005) return `½ ${nombrePaquete(it, 1)}`;
   return `${trim(packs, 1)} ${nombrePaquete(it, packs)}`;
 }
 
-/** Whole packs plus loose units: how a shelf is counted ("2 bolsas + 300 ml"). */
+/** Whole pieces plus loose units: how a shelf is counted ("2 bolsas + 300 ml"). `packQty` = piezaDe(item). */
 export function enPaquetes(qty: number, packQty: number | null): { packs: number; sueltos: number } {
   if (!packQty || packQty <= 1 || qty <= 0) return { packs: 0, sueltos: Math.max(0, qty) };
   const packs = Math.floor(qty / packQty + 1e-9);

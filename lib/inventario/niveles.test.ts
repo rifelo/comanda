@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { nivelDe, aEntrada, deEntrada, cantidadLegible, enPaquetes, dePaquetes, guiaNivel, sugerido, validarNiveles, nombrePaquete } from "./niveles";
+import { nivelDe, aEntrada, deEntrada, cantidadLegible, enPaquetes, dePaquetes, guiaNivel, sugerido, validarNiveles, nombrePaquete, piezaDe } from "./niveles";
 
-const leche = { unit: "ml", stock_critico: 900, stock_min: 1800, stock_objetivo: 10800, pack_qty: 900, pack_label: "bolsa" };
+// Leche: se cuenta por bolsa de 900 ml y se compra por paca de 12 (10.800 ml).
+const leche = { unit: "ml", stock_critico: 900, stock_min: 1800, stock_objetivo: 10800, pack_qty: 10800, pieza_qty: 900, pack_label: "bolsa" };
 const azucar = { unit: "g", stock_critico: 0, stock_min: 500, stock_objetivo: null, pack_qty: null, pack_label: null };
 
 describe("nivelDe", () => {
@@ -26,6 +27,12 @@ describe("packs", () => {
     expect(deEntrada(2.5, leche)).toBe(2250);
     expect(aEntrada(500, azucar)).toBe(500);
     expect(deEntrada(500, azucar)).toBe(500);
+  });
+  it("counts in the piece the owner set, in the pack for pieces bought by pack, else in the unit", () => {
+    expect(piezaDe(leche)).toBe(900);
+    expect(piezaDe({ unit: "und", pack_qty: 50, pieza_qty: null })).toBe(50); // vasos: paquetes cerrados + sueltos
+    expect(piezaDe({ unit: "g", pack_qty: 2500, pieza_qty: null })).toBeNull(); // café sin pieza: en gramos
+    expect(piezaDe({ unit: "und", pack_qty: null, pieza_qty: null })).toBeNull();
   });
   it("keeps things counted by the piece in units, even when bought by pack", () => {
     const agua = { unit: "und", pack_qty: 12, pack_label: "paca" };
@@ -63,11 +70,11 @@ describe("sugerido", () => {
     expect(sugerido(5000, leche)).toEqual({ qty: 0, packs: 0 });
   });
   it("orders up to the target in whole packs", () => {
-    expect(sugerido(1800, leche)).toEqual({ qty: 9000, packs: 10 });
-    expect(sugerido(1000, leche)).toEqual({ qty: 9900, packs: 11 }); // 9800 needed → 10 bolsas no alcanzan
+    expect(sugerido(1800, leche)).toEqual({ qty: 10800, packs: 1 }); // 9.000 ml hacen falta → 1 paca
+    expect(sugerido(1800, { ...leche, stock_objetivo: 21600 })).toEqual({ qty: 21600, packs: 2 });
   });
   it("ignores a negative stock (never recorded purchases) instead of over-ordering", () => {
-    expect(sugerido(-12000, leche)).toEqual({ qty: 10800, packs: 12 });
+    expect(sugerido(-12000, leche)).toEqual({ qty: 10800, packs: 1 });
   });
   it("falls back to twice the reorder point when there is no target", () => {
     expect(sugerido(200, azucar)).toEqual({ qty: 800, packs: null });

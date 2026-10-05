@@ -315,8 +315,10 @@ export interface Ingrediente {
   stock_objetivo: number | null;
   /** Zone where it is counted ("Barra", "Nevera"…). */
   ubicacion: string | null;
-  /** What one pack is called ("bolsa", "caja"). */
+  /** What one countable piece is called ("bolsa", "botella"). */
   pack_label: string | null;
+  /** Stock units in one countable piece (bolsa = 900 ml); null = counted in the unit (0044). */
+  pieza_qty: number | null;
   proveedor_id: string | null;
   /** Its expiry date is written down when it is received. */
   controla_vencimiento: boolean;
