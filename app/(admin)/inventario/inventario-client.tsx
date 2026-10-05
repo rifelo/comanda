@@ -1919,6 +1919,9 @@ export function InventarioClient({
             {!conteoMode && (
               <Link href="/inventario/faltantes" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Faltantes</Link>
             )}
+            {!conteoMode && (
+              <Link href="/inventario/niveles" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Niveles</Link>
+            )}
             {conteoMode ? (
               <button
                 type="button"
