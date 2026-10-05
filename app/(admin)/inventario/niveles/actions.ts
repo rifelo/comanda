@@ -16,6 +16,7 @@ const NivelesSchema = z.object({
         stock_objetivo: qty.nullable(),
         ubicacion: z.string().trim().max(40).nullable(),
         pack_label: z.string().trim().max(24).nullable(),
+        pieza_qty: z.number().finite().positive().max(9_999_999).nullable(),
         proveedor_id: z.string().uuid().nullable(),
         conteo_diario: z.boolean(),
         controla_vencimiento: z.boolean(),

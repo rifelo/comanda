@@ -68,3 +68,35 @@ export function fullCountDue(lastCompletoAt: string | null, now: Date = new Date
   const days = Math.floor((now.getTime() - new Date(lastCompletoAt).getTime()) / 86_400_000);
   return { due: days >= 7, days };
 }
+
+/**
+ * The order a count is walked in: by zone (where things physically are) when
+ * the items have one, in the order given, with whatever has no zone at the
+ * end; by category when no item has a zone yet. Counting shelf by shelf is
+ * what keeps a full count under half an hour.
+ */
+export function groupForCount<T extends { category_id: string | null; ubicacion?: string | null }>(
+  items: ReadonlyArray<T>,
+  categorias: ReadonlyArray<{ id: string; label: string }>,
+  zonas: ReadonlyArray<string>,
+): { label: string; items: T[] }[] {
+  const zoneOf = (i: T) => (i.ubicacion ?? "").trim();
+  const groups: { label: string; items: T[] }[] = [];
+  if (items.some((i) => zoneOf(i))) {
+    const known = zonas.map((z) => z.toLowerCase());
+    const seen = [...new Set(items.map(zoneOf).filter(Boolean))].sort((a, b) => {
+      const ia = known.indexOf(a.toLowerCase()), ib = known.indexOf(b.toLowerCase());
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "es");
+    });
+    for (const z of seen) groups.push({ label: z, items: items.filter((i) => zoneOf(i) === z) });
+    const rest = items.filter((i) => !zoneOf(i));
+    if (rest.length) groups.push({ label: "Sin zona", items: rest });
+    return groups;
+  }
+  const label = new Map(categorias.map((c) => [c.id, c.label]));
+  for (const cid of [...categorias.map((c) => c.id), null]) {
+    const group = items.filter((i) => (i.category_id ?? null) === cid);
+    if (group.length) groups.push({ label: cid ? label.get(cid) ?? "Otros" : "Sin categoría", items: group });
+  }
+  return groups;
+}

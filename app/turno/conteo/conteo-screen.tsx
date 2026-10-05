@@ -4,7 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { posMoney } from "@/lib/pos/types";
-import { fullCountDue, parseCount, pickCountList, type ConteoKind } from "@/lib/inventario/conteo";
+import { fullCountDue, groupForCount, parseCount, pickCountList, type ConteoKind } from "@/lib/inventario/conteo";
+import { NIVELES, ZONAS, cantidadLegible, dePaquetes, guiaNivel, nivelDe, nombrePaquete, piezaDe, type Nivel } from "@/lib/inventario/niveles";
 import { enviarConteo, type EnviarConteoResult } from "./actions";
 
 export interface ConteoIngrediente {
@@ -14,7 +15,22 @@ export interface ConteoIngrediente {
   category_id: string | null;
   conteo_diario: boolean;
   archived: boolean;
+  pack_qty: number | null;
+  pack_label: string | null;
+  pieza_qty: number | null;
+  stock_critico: number;
+  stock_min: number;
+  stock_objetivo: number | null;
+  ubicacion: string | null;
 }
+
+/** Size of the piece the item is counted in (bolsa = 900 ml), or null: counted in its unit. */
+const pieza = (i: ConteoIngrediente) => piezaDe({ unit: i.unit, pack_qty: i.pack_qty === null ? null : Number(i.pack_qty), pieza_qty: i.pieza_qty === null ? null : Number(i.pieza_qty) });
+/** Counted in whole pieces plus loose units when the item has a piece. */
+const porPaquete = (i: ConteoIngrediente) => pieza(i) !== null;
+/** Draft key of the packs box (the loose box keeps the bare id). */
+const pk = (id: string) => `${id}:p`;
+const nivelItem = (i: ConteoIngrediente) => ({ unit: i.unit, stock_critico: Number(i.stock_critico ?? 0), stock_min: Number(i.stock_min ?? 0), stock_objetivo: i.stock_objetivo === null ? null : Number(i.stock_objetivo), pack_qty: i.pack_qty === null ? null : Number(i.pack_qty), pieza_qty: i.pieza_qty === null ? null : Number(i.pieza_qty), pack_label: i.pack_label });
 
 type Step = { kind: "setup" } | { kind: "count"; countKind: ConteoKind } | { kind: "done"; result: Extract<EnviarConteoResult, { ok: true }> };
 type Draft = { values: Record<string, string>; notes: Record<string, string> };
@@ -55,6 +71,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
   const [noteOpen, setNoteOpen] = React.useState<string | null>(null);
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [bajos, setBajos] = React.useState<BajoLine[]>([]);
 
   const daily = pickCountList(ingredientes, "diario");
   const full = pickCountList(ingredientes, "completo");
@@ -81,14 +98,28 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
     () => (step.kind === "count" ? pickCountList(ingredientes, step.countKind) : []),
     [step, ingredientes],
   );
-  const filled = list.filter((i) => parseCount(values[i.id] ?? "") !== null).length;
-  const invalid = list.filter((i) => (values[i.id] ?? "").trim() !== "" && parseCount(values[i.id]) === null).length;
+  /**
+   * What was counted for an item, in stock units: packs × pack size + loose.
+   * `null` = not counted yet, `"bad"` = something typed that isn't a number.
+   */
+  const countedOf = React.useCallback((i: ConteoIngrediente): number | null | "bad" => {
+    const loose = (values[i.id] ?? "").trim();
+    if (!porPaquete(i)) return loose === "" ? null : parseCount(loose) ?? "bad";
+    const packs = (values[pk(i.id)] ?? "").trim();
+    if (loose === "" && packs === "") return null;
+    const l = loose === "" ? 0 : parseCount(loose);
+    const p = packs === "" ? 0 : parseCount(packs);
+    if (l === null || p === null) return "bad";
+    return dePaquetes(p, l, pieza(i));
+  }, [values]);
+  const filled = list.filter((i) => typeof countedOf(i) === "number").length;
+  const invalid = list.filter((i) => countedOf(i) === "bad").length;
 
   async function submit() {
     if (step.kind !== "count" || sending) return;
     const items = list
-      .map((i) => ({ ingredienteId: i.id, counted: parseCount(values[i.id] ?? ""), note: (notes[i.id] ?? "").trim() || undefined }))
-      .filter((x): x is { ingredienteId: string; counted: number; note: string | undefined } => x.counted !== null);
+      .map((i) => ({ ingredienteId: i.id, counted: countedOf(i), note: (notes[i.id] ?? "").trim() || undefined }))
+      .filter((x): x is { ingredienteId: string; counted: number; note: string | undefined } => typeof x.counted === "number");
     if (!items.length) {
       setError("Cuenta al menos un ítem.");
       return;
@@ -104,20 +135,22 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
       return;
     }
     writeDraft(draftKey(today, step.countKind), null);
+    // What came out red or amber, for the "para pedir" list on the receipt.
+    const counted = new Map(items.map((x) => [x.ingredienteId, x.counted]));
+    setBajos(
+      list
+        .filter((i) => counted.has(i.id))
+        .map((i) => ({ i, nivel: nivelDe(counted.get(i.id)!, Number(i.stock_critico ?? 0), Number(i.stock_min ?? 0)), counted: counted.get(i.id)! }))
+        .filter((x) => x.nivel !== "verde")
+        .sort((a, b) => (a.nivel === "rojo" ? 0 : 1) - (b.nivel === "rojo" ? 0 : 1) || a.i.name.localeCompare(b.i.name, "es"))
+        .map((x) => ({ id: x.i.id, name: x.i.name, nivel: x.nivel, quedan: cantidadLegible(x.counted, nivelItem(x.i)) })),
+    );
     setStep({ kind: "done", result: res });
     router.refresh();
   }
 
-  const byCat = React.useMemo(() => {
-    const groups: { label: string; items: ConteoIngrediente[] }[] = [];
-    const catLabel = new Map(categorias.map((c) => [c.id, c.label]));
-    const order = [...categorias.map((c) => c.id), null];
-    for (const cid of order) {
-      const items = list.filter((i) => (i.category_id ?? null) === cid);
-      if (items.length) groups.push({ label: cid ? catLabel.get(cid) ?? "Otros" : "Sin categoría", items });
-    }
-    return groups;
-  }, [list, categorias]);
+  // Walked zone by zone when the items have one, else by category.
+  const byCat = React.useMemo(() => groupForCount(list, categorias, ZONAS), [list, categorias]);
 
   return (
     <div className="cmd-paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
@@ -141,9 +174,9 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
             <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>¿Qué se cuenta?</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               <KindCard
-                title="Conteo diario"
+                title="Conteo rápido"
                 count={daily.length}
-                hint={daily.length ? "Los ítems de más valor y rotación. Cinco minutos al cierre." : "Marca en el panel qué ingredientes entran en la lista diaria."}
+                hint={daily.length ? "Lo crítico: lo que frena la venta si se acaba. Cinco minutos al cierre." : "Marca en el panel (Inventario → Niveles) qué ítems entran en el conteo rápido."}
                 done={todayKinds.includes("diario")}
                 disabled={daily.length === 0}
                 onStart={() => start("diario")}
@@ -161,7 +194,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
           </section>
 
           <section style={{ border: "1px dashed var(--rule)", borderRadius: 6, padding: "12px 14px", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-2, var(--ink))" }}>
-            <b>Cómo contar bien.</b> Cuenta lo que hay en estante y nevera, no lo que crees que debería haber. Los gramos se pesan con la bolsa abierta; las unidades se cuentan una a una. Si algo se rompió o se botó, anótalo en el ítem. El sistema compara al final y el dueño aprueba.
+            <b>Cómo contar bien.</b> Cuenta lo que hay en estante y nevera, no lo que crees que debería haber. Lo que viene en paquete se cuenta en paquetes cerrados más lo suelto; lo abierto se pesa o se cuenta. Al escribir, cada ítem muestra su color: <b style={{ color: "var(--green)" }}>hay</b>, <b style={{ color: "var(--amber)" }}>poco</b> o <b style={{ color: "var(--red)" }}>se acabó</b>. Si algo se rompió o se botó, anótalo en el ítem. El dueño aprueba al final.
           </section>
         </div>
       )}
@@ -170,20 +203,33 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
         <>
           <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 120px", maxWidth: 900, width: "100%", margin: "0 auto" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, fontSize: 12, color: "var(--muted)" }}>
-              <span>Cuenta <b style={{ color: "var(--ink)" }}>{actor.name}</b> · {step.countKind === "diario" ? "lista diaria" : "inventario completo"}</span>
+              <span>Cuenta <b style={{ color: "var(--ink)" }}>{actor.name}</b> · {step.countKind === "diario" ? "conteo rápido" : "inventario completo"}</span>
               <button type="button" onClick={() => setStep({ kind: "setup" })} style={{ ...chip, marginLeft: "auto", height: 30 }}>Cambiar</button>
             </div>
             {byCat.map((g) => (
               <div key={g.label} style={{ marginBottom: 18 }}>
                 <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--rule)", marginBottom: 6 }}>{g.label}</div>
                 {g.items.map((i) => {
-                  const raw = values[i.id] ?? "";
-                  const bad = raw.trim() !== "" && parseCount(raw) === null;
-                  const ok = parseCount(raw) !== null;
+                  const c = countedOf(i);
+                  const bad = c === "bad";
+                  const ok = typeof c === "number";
+                  const nivel: Nivel | null = ok ? nivelDe(c, Number(i.stock_critico ?? 0), Number(i.stock_min ?? 0)) : null;
+                  const guia = guiaNivel(nivelItem(i));
+                  const box = (key: string, label: string, width: number): React.ReactNode => (
+                    <input
+                      inputMode="decimal"
+                      value={values[key] ?? ""}
+                      onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                      aria-label={label}
+                      placeholder="—"
+                      style={{ width, height: 48, padding: "0 10px", textAlign: "right", border: `1.5px solid ${bad ? "var(--red)" : nivel ? NIVELES[nivel].color : "var(--rule)"}`, borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, outline: "none" }}
+                    />
+                  );
                   return (
-                    <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px dashed var(--rule-soft, var(--rule))" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                    <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px dashed var(--rule-soft, var(--rule))", flexWrap: "wrap" }}>
+                      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</div>
+                        {guia && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 1 }}>{guia}</div>}
                         {noteOpen === i.id ? (
                           <input value={notes[i.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [i.id]: e.target.value }))} onBlur={() => setNoteOpen(null)} maxLength={120} placeholder="Nota (se rompió, se botó…)" aria-label={`Nota de ${i.name}`} style={{ marginTop: 4, width: "100%", height: 32, padding: "0 8px", border: "1px solid var(--rule)", borderRadius: 3, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none" }} />
                         ) : (
@@ -192,14 +238,17 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
                           </button>
                         )}
                       </div>
-                      <input
-                        inputMode="decimal"
-                        value={raw}
-                        onChange={(e) => setValues((v) => ({ ...v, [i.id]: e.target.value }))}
-                        aria-label={`Cantidad de ${i.name}`}
-                        placeholder="—"
-                        style={{ width: 118, height: 48, padding: "0 10px", textAlign: "right", border: `1.5px solid ${bad ? "var(--red)" : ok ? "var(--green)" : "var(--rule)"}`, borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, outline: "none" }}
-                      />
+                      <span role="status" aria-label={`Nivel de ${i.name}`} style={{ width: 74, fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", textAlign: "right", color: nivel ? NIVELES[nivel].color : "transparent" }}>
+                        {nivel ? NIVELES[nivel].short : "·"}
+                      </span>
+                      {porPaquete(i) && (
+                        <>
+                          {box(pk(i.id), `${nombrePaquete(i, 2)} cerrados de ${i.name}`, 84)}
+                          <span style={{ width: 62, fontSize: 11, color: "var(--muted)", lineHeight: 1.2 }}>{nombrePaquete(i, 2)}<br />×{pieza(i)}</span>
+                          <span aria-hidden style={{ fontSize: 14, color: "var(--muted)" }}>+</span>
+                        </>
+                      )}
+                      {box(i.id, porPaquete(i) ? `Sueltos de ${i.name}` : `Cantidad de ${i.name}`, porPaquete(i) ? 96 : 118)}
                       <span style={{ width: 34, fontSize: 11, color: "var(--muted)" }}>{i.unit}</span>
                     </div>
                   );
@@ -219,7 +268,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
         </>
       )}
 
-      {step.kind === "done" && <ConteoResult result={step.result} person={actor.name} />}
+      {step.kind === "done" && <ConteoResult result={step.result} person={actor.name} bajos={bajos} />}
     </div>
   );
 }
@@ -240,7 +289,10 @@ function KindCard({ title, count, hint, accent, done, disabled, onStart }: { tit
   );
 }
 
-function ConteoResult({ result, person }: { result: Extract<EnviarConteoResult, { ok: true }>; person: string }) {
+/** An item that came out red or amber in the count just sent. */
+interface BajoLine { id: string; name: string; nivel: Nivel; quedan: string }
+
+function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoResult, { ok: true }>; person: string; bajos: BajoLine[] }) {
   const s = result.summary;
   const diffs = result.lines.filter((l) => l.diff !== 0);
   return (
@@ -254,6 +306,18 @@ function ConteoResult({ result, person }: { result: Extract<EnviarConteoResult, 
           <Stat k="Sobrante" v={posMoney(s.overValue)} color={s.overValue ? "var(--amber)" : undefined} />
         </div>
       </div>
+      {bajos.length > 0 && (
+        <div aria-label="Para pedir">
+          <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Para pedir · {bajos.length}</div>
+          {bajos.map((b) => (
+            <div key={b.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "9px 0", borderBottom: "1px dashed var(--rule)", fontSize: 13 }}>
+              <span style={{ width: 78, fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: NIVELES[b.nivel].color }}>{NIVELES[b.nivel].short}</span>
+              <span style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>{b.name}</span>
+              <span className="cmd-num" style={{ color: "var(--muted)", fontSize: 12 }}>quedan {b.quedan}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {diffs.length > 0 ? (
         <div>
           <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Diferencias</div>
