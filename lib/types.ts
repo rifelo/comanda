@@ -308,6 +308,30 @@ export interface Ingrediente {
   conteo_diario: boolean;
   /** 0 = fuera de la lista rápida · 1 crítico · 2 importante · 3 normal (0038). */
   prioridad: number;
+  // ── niveles (0043): see lib/inventario/niveles.ts ──
+  /** Red level: at or under this there isn't enough for a day. 0 = not set. */
+  stock_critico: number;
+  /** "Pedir hasta": how much there should be after buying. Null = not set. */
+  stock_objetivo: number | null;
+  /** Zone where it is counted ("Barra", "Nevera"…). */
+  ubicacion: string | null;
+  /** What one pack is called ("bolsa", "caja"). */
+  pack_label: string | null;
+  proveedor_id: string | null;
+  /** Its expiry date is written down when it is received. */
+  controla_vencimiento: boolean;
+}
+
+/** Who an item is ordered from (pedidos por WhatsApp). */
+export interface Proveedor {
+  id: string;
+  organization_id: string;
+  name: string;
+  /** Digits only, with country code — what wa.me expects. */
+  whatsapp: string | null;
+  dias_pedido: string | null;
+  notas: string | null;
+  archived: boolean;
 }
 
 // ── stock counts (end-of-shift, approved by the owner) ──────────
