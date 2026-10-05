@@ -18,7 +18,7 @@ const fecha = (iso: string) => {
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`;
 };
 
-export function ConteosClient({ conteos, ingredientes, categorias }: { conteos: InventarioConteo[]; ingredientes: Ingrediente[]; categorias: IngredienteCategoria[] }) {
+export function ConteosClient({ conteos, propuestas, ingredientes, categorias }: { conteos: InventarioConteo[]; /** Open proposed items per count id. */ propuestas: Record<string, number>; ingredientes: Ingrediente[]; categorias: IngredienteCategoria[] }) {
   const router = useRouter();
   const [daily, setDaily] = React.useState<Set<string>>(() => new Set(ingredientes.filter((i) => i.conteo_diario).map((i) => i.id)));
   const [dirty, setDirty] = React.useState(false);
@@ -67,7 +67,7 @@ export function ConteosClient({ conteos, ingredientes, categorias }: { conteos: 
                 <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "3px 7px", borderRadius: 3 }}>{st.label}</span>
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>{c.kind === "diario" ? "Conteo diario" : "Conteo completo"} · {fecha(c.submitted_at)}</span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{c.counted_by_name ?? "—"} · {s.lines} ítems · {s.withDiff} con diferencia</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{c.counted_by_name ?? "—"} · {s.lines} ítems · {s.withDiff} con diferencia{propuestas[c.id] ? <b style={{ color: "var(--amber)" }}> · {propuestas[c.id]} ítem{propuestas[c.id] === 1 ? "" : "s"} nuevo{propuestas[c.id] === 1 ? "" : "s"} por resolver</b> : null}</span>
                 </span>
                 <span className="cmd-num" style={{ textAlign: "right", fontSize: 13, fontWeight: 700, color: s.shortValue ? "var(--red)" : "var(--green)" }}>
                   {s.shortValue ? `−${posMoney(s.shortValue)}` : "cuadra"}
