@@ -5,6 +5,7 @@ import {
   HEAD_WIDTH_PX,
   LINE_BUFFER_ROWS,
   NIIMBOT_USB,
+  RESP_REJECTED,
   decodePackets,
   encodePacket,
   responseType,
@@ -208,6 +209,40 @@ describe("NiimbotClient.printRaster", () => {
     // the queue only retries rejections: a stall must not look like one
     expect(new PrinterStalledError()).not.toBeInstanceOf(PrinterRejectedError);
     await t.close();
+  });
+
+  it("a refused gap START switches the client to the unlock sequence, for this page and the next", async () => {
+    // A printer whose roll chip reads as spent: START_PRINT under gap labels is refused with 0x14.
+    let labelType = 1;
+    const port = new FakePort((p, self) => {
+      if (p.type === Cmd.SET_LABEL_TYPE) { labelType = p.data[0]; return encodePacket(responseType(p.type), [1]); }
+      if (p.type === Cmd.START_PRINT && labelType === 1) return encodePacket(RESP_REJECTED, [0x14]);
+      return defaultReply(p, self);
+    });
+    const { t, c } = await connect(port);
+    await c.printRaster(raster(240), 3, 1);
+    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([1, 3, 1]);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240);
+    expect(c.unlockAll).toBe(true);
+    port.sent.length = 0;
+    await c.printRaster(raster(240), 3, 1);
+    // never tries gap first again
+    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
+    expect(port.free).toBe(LINE_BUFFER_ROWS);
+    await t.close();
+  });
+
+  it("reads the roll chip", async () => {
+    const hex = "881dbf708e1d10800831313236323131311050433049353231333934303034343430011401150100e6881dbf708e1d1080";
+    const data = Uint8Array.from(hex.match(/../g)!.map((h) => parseInt(h, 16)));
+    const port = new FakePort((p, self) => (p.type === Cmd.GET_RFID ? encodePacket(responseType(p.type), data) : defaultReply(p, self)));
+    const { t, c } = await connect(port);
+    expect(await c.readRoll()).toEqual({ barcode: "11262111", serial: "PC0I521394004440", total: 276, used: 277 });
+    await t.close();
+    const none = new FakePort((p, self) => (p.type === Cmd.GET_RFID ? encodePacket(responseType(p.type), [0]) : defaultReply(p, self)));
+    const { t: t2, c: c2 } = await connect(none);
+    expect(await c2.readRoll()).toBeNull();
+    await t2.close();
   });
 
   it("surfaces a page rejection (printer still busy) as PrinterRejectedError", async () => {

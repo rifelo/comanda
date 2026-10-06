@@ -17,6 +17,8 @@
 import {
   Cmd,
   HEAD_WIDTH_PX,
+  parseRfid,
+  type RollChip,
   LINE_BUFFER_ROWS,
   RESP_REJECTED,
   RESP_UNSUPPORTED,
@@ -55,7 +57,7 @@ declare global {
 
 // ── errors ──────────────────────────────────────────────────────
 export class PrinterRejectedError extends Error {
-  constructor(cmd: number) {
+  constructor(public readonly cmd: number) {
     super(`La impresora rechazó el comando 0x${cmd.toString(16)}.`);
     this.name = "PrinterRejectedError";
   }
@@ -253,10 +255,20 @@ export class NiimbotClient {
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
-    if (raster.unlock) return this.printUnlocked(raster, density, pollMs);
+    if (raster.unlock || this.unlockAll) return this.printUnlocked(raster, density, pollMs);
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(1));
-    await this.cmd(req.startPrint());
+    try {
+      await this.cmd(req.startPrint());
+    } catch (err) {
+      // Refused to even start under gap labels: the roll's chip. Nothing is
+      // queued yet, so this page goes the unlock way and so does every one
+      // after it — a refused gap START is what leaves the printer feeding
+      // blank labels on the next job, so it must not be tried again.
+      if (!(err instanceof PrinterRejectedError) || err.cmd !== Cmd.START_PRINT) throw err;
+      this.unlockAll = true;
+      return this.printUnlocked(raster, density, pollMs);
+    }
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
     await this.cmd(req.setDimension(raster.height, raster.width));
@@ -290,6 +302,24 @@ export class NiimbotClient {
    * resent — resending is how one label became five. The next session's
    * PRINT_CLEAR drops whatever stayed queued.
    */
+  /**
+   * Every page goes through {@link printUnlocked}: the roll's chip reads as
+   * used up, so the plain gap sequence would be refused — and trying it is
+   * what makes the printer feed a run of blank labels on the next page.
+   * Set from the chip at connect time, or the first time a START is refused.
+   */
+  unlockAll = false;
+
+  /** The roll's chip, or null when the printer sees none. */
+  async readRoll(): Promise<RollChip | null> {
+    try {
+      const p = await this.t.transceive(req.getRfid(), responseType(Cmd.GET_RFID), 1500);
+      return parseRfid(p.data);
+    } catch {
+      return null;
+    }
+  }
+
   private async printUnlocked(raster: LabelRaster, density: number, pollMs: number) {
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(3));

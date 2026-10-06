@@ -60,6 +60,8 @@ export interface PrinterState {
   relay: boolean;
   /** What happened to the last relayed labels (kept apart from the local printer's `note`). */
   relayNote: string | null;
+  /** The roll's chip, when it changes how labels are printed (see adoptRoll). */
+  rollNote: string | null;
 }
 
 export const PRINTER_INITIAL: PrinterState = {
@@ -69,6 +71,7 @@ export const PRINTER_INITIAL: PrinterState = {
   lastPrinted: null,
   relay: false,
   relayNote: null,
+  rollNote: null,
 };
 
 type Updater = Partial<PrinterState> | ((s: PrinterState) => PrinterState);
@@ -141,8 +144,24 @@ async function attach(port: SerialPortLike) {
   client = new NiimbotClient(t);
   // An open port only proves the USB interface is there. Ask the printer
   // something before calling it ready — switched off, it never answers.
-  applyProbe(await probe());
+  const alive = await probe();
+  if (alive) await adoptRoll(client);
+  applyProbe(alive);
   startMonitor();
+}
+
+/**
+ * Read the roll's chip and pick the print sequence for it. A chip the printer
+ * has counted to the end (used ≥ total) makes it refuse gap-mode jobs, and
+ * merely attempting one sets off a run of blank labels on the next page, so
+ * the decision is made here, before the first label, instead of by trial.
+ */
+async function adoptRoll(c: NiimbotClient): Promise<void> {
+  const chip = await c.readRoll();
+  const spent = !!chip && chip.total > 0 && chip.used >= chip.total;
+  c.unlockAll = spent;
+  if (process.env.NODE_ENV !== "production") console.warn("[printer] roll chip:", chip, spent ? "→ unlock sequence for every label" : "→ normal sequence");
+  printerStore.set({ rollNote: spent ? `El chip del rollo marca ${chip!.used} de ${chip!.total} etiquetas: la impresora lo da por terminado. Se imprime con la secuencia alterna.` : null });
 }
 
 const OFF_NOTE = "La impresora está apagada. Enciéndela con el botón; se reconecta sola.";
