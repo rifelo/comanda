@@ -322,12 +322,13 @@ export class NiimbotClient {
   }
 
   /**
-   * Blank rows fed after the design on the unlock sequence. Opened as
-   * continuous, the printer skips the tear-off feed it does after a plain
-   * gap job, so the label stops short of the bar; 3 mm more puts the gap
-   * where it can be torn.
+   * Blank rows fed after the design on the unlock sequence. Tried at 24
+   * (3 mm) to bring the gap to the tear bar: the page then ran into the gap
+   * and the printer skipped to the following label, losing one blank label
+   * per print (owner, 2026-10-06). Kept at 0 — the printer parks where it
+   * parks on this sequence.
    */
-  static UNLOCK_TAIL_ROWS = 24;
+  static UNLOCK_TAIL_ROWS = 0;
 
   private async printUnlocked(raster: LabelRaster, density: number, pollMs: number) {
     const tail = NiimbotClient.UNLOCK_TAIL_ROWS;
