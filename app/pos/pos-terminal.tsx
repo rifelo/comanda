@@ -560,14 +560,11 @@ function PendientesChip() {
  */
 function RolloChip() {
   const catalog = useCatalog();
-  const p = usePrinter();
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const size = catalog.labelSize;
   const next: LabelSize = size === "50x50" ? "50x30" : "50x50";
   const label = (v: LabelSize) => (v === "50x50" ? "50 × 50" : "50 × 30");
-  // The spent chip we know is on the 50 × 30 roll: a 50 × 50 setting with it is almost surely wrong.
-  const mismatch = size === "50x50" && !!p.rollNote;
   async function toggle() {
     if (busy) return;
     if (!window.confirm(`El rollo cargado es de ${label(size)}. ¿Cambiar a ${label(next)}?\n\nLas etiquetas se imprimen con el diseño de ${label(next)} a partir de ahora, en todas las cajas.`)) return;
@@ -587,9 +584,9 @@ function RolloChip() {
     <button
       onClick={() => void toggle()}
       disabled={busy}
-      title={mismatch ? "El chip del rollo cargado es el de 50 × 30, pero el POS está en 50 × 50. Toca para cambiar." : `Rollo cargado: ${label(size)}. Toca para cambiar a ${label(next)}.`}
+      title={`Rollo cargado: ${label(size)}. Toca para cambiar a ${label(next)}.`}
       aria-label={`Rollo de etiquetas: ${label(size)}`}
-      style={{ ...chipStyle, padding: "0 10px", fontSize: 11, border: `1.5px solid ${mismatch ? C.amber : C.rule}`, color: mismatch ? C.amber : C.ink }}
+      style={{ ...chipStyle, padding: "0 10px", fontSize: 11 }}
     >
       <span aria-hidden style={{ display: "inline-block", width: 12, height: size === "50x50" ? 12 : 8, border: `1.5px solid currentColor`, borderRadius: 2 }} />
       {label(size)}
@@ -2121,7 +2118,7 @@ function EtiquetasScreen() {
             })}
           </div>
           <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span role="status" title={p.rollNote ?? undefined} style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.rollNote && p.status === "ready" ? `${status} · rollo con chip agotado` : status}</span>
+            <span role="status" style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
             {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
               <button onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} style={{ ...chipStyle, flexShrink: 0 }}>{p.status === "off" ? "Reintentar" : "Conectar impresora"}</button>
             )}

@@ -84,10 +84,13 @@ function defaultReply(p: Packet, port: FakePort): Uint8Array | null {
   }
 }
 
-async function connect(port: FakePort) {
+async function connect(port: FakePort, unlockAll = false) {
   const t = new SerialTransport(port);
   await t.open();
-  return { t, c: new NiimbotClient(t) };
+  const c = new NiimbotClient(t);
+  // The app defaults to the unlock sequence; most tests exercise the plain one.
+  c.unlockAll = unlockAll;
+  return { t, c };
 }
 
 const raster = (rows: number) => ({
@@ -231,6 +234,17 @@ describe("NiimbotClient.printRaster", () => {
     // never tries gap first again
     expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
     expect(port.free).toBe(LINE_BUFFER_ROWS);
+    await t.close();
+  });
+
+  it("defaults to the unlock sequence for every page", async () => {
+    const port = new FakePort();
+    const t = new SerialTransport(port);
+    await t.open();
+    const c = new NiimbotClient(t);
+    await c.printRaster(raster(240), 3, 1);
+    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
+    expect(port.sent.filter((p) => p.type === Cmd.GET_RFID)).toHaveLength(0);
     await t.close();
   });
 

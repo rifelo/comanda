@@ -304,14 +304,21 @@ export class NiimbotClient {
    * PRINT_CLEAR drops whatever stayed queued.
    */
   /**
-   * Every page goes through {@link printUnlocked}: the roll's chip reads as
-   * used up, so the plain gap sequence would be refused — and trying it is
-   * what makes the printer feed a run of blank labels on the next page.
-   * Set from the chip at connect time, or the first time a START is refused.
+   * Every page goes through {@link printUnlocked}. Bench, 2026-10-06, on the
+   * B21S with a roll whose chip reads as used up: the plain gap sequence is
+   * refused, and both a gap-mode attempt AND a GET_RFID read make the next
+   * page come out behind ~10 blank labels, while the unlock sequence sent
+   * cold prints clean every time (also after minutes idle). So there is no
+   * safe way to ask the printer which sequence to use: the unlock one is
+   * simply the sequence now. Left as a flag so a healthy roll can be put
+   * back on the plain path if it ever misbehaves on this one.
    */
-  unlockAll = false;
+  unlockAll = true;
 
-  /** The roll's chip, or null when the printer sees none. */
+  /**
+   * The roll's chip, or null when the printer sees none. NOT called by the
+   * app: on a spent roll the read itself sets off the blank-label run.
+   */
   async readRoll(): Promise<RollChip | null> {
     try {
       const p = await this.t.transceive(req.getRfid(), responseType(Cmd.GET_RFID), 1500);
