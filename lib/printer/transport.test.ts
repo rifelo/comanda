@@ -13,6 +13,7 @@ import {
 import {
   NiimbotClient,
   PrinterRejectedError,
+  PrinterStalledError,
   PrinterTimeoutError,
   SerialTransport,
   type SerialPortLike,
@@ -194,7 +195,7 @@ describe("NiimbotClient.printRaster", () => {
     await t.close();
   });
 
-  it("reports an unlock job whose rows never burn as rejected, after closing the session", async () => {
+  it("reports an unlock job whose rows never burn as stalled (never resent), after closing the session", async () => {
     // A printer that takes the page but never drains it (the chip stall).
     const port = new FakePort((p, self) => {
       if (p.type === Cmd.IMAGE_ROW) { self.free -= 1; return null; }
@@ -202,8 +203,10 @@ describe("NiimbotClient.printRaster", () => {
       return encodePacket(responseType(p.type), [1]);
     });
     const { t, c } = await connect(port);
-    await expect(c.printRaster({ ...raster(400), unlock: true }, 3, 1)).rejects.toBeInstanceOf(PrinterRejectedError);
+    await expect(c.printRaster({ ...raster(400), unlock: true }, 3, 1)).rejects.toBeInstanceOf(PrinterStalledError);
     expect(port.sent[port.sent.length - 1].type).toBe(Cmd.END_PRINT);
+    // the queue only retries rejections: a stall must not look like one
+    expect(new PrinterStalledError()).not.toBeInstanceOf(PrinterRejectedError);
     await t.close();
   });
 

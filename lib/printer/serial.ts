@@ -29,6 +29,7 @@ import { NIIMBOT_USB } from "./niimbot";
 import {
   NiimbotClient,
   PrinterRejectedError,
+  PrinterStalledError,
   PrinterTimeoutError,
   SerialTransport,
   type SerialPortLike,
@@ -377,9 +378,11 @@ async function drain() {
           note:
             err instanceof PrinterRejectedError
               ? `La impresora rechazó la etiqueta tras ${MAX_REJECT_RETRIES} reintentos (${err.message}). Espera a que termine y reimprime.`
-              : err instanceof PrinterTimeoutError
-                ? "La impresora no responde. Revisa el cable y que esté encendida."
-                : "No se pudo imprimir la etiqueta.",
+              : err instanceof PrinterStalledError
+                ? err.message
+                : err instanceof PrinterTimeoutError
+                  ? "La impresora no responde. Revisa el cable y que esté encendida."
+                  : "No se pudo imprimir la etiqueta.",
         });
       }
       queue.shift();

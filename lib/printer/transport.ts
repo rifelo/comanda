@@ -60,6 +60,18 @@ export class PrinterRejectedError extends Error {
     this.name = "PrinterRejectedError";
   }
 }
+/**
+ * The printer took the whole page and never burned it (the 50 × 50 roll's
+ * chip error). Deliberately NOT a PrinterRejectedError: sending the page
+ * again is what turns one label into five, because the rows of every
+ * attempt stay queued and come out together once the printer gives in.
+ */
+export class PrinterStalledError extends Error {
+  constructor() {
+    super("La impresora recibió la etiqueta pero no la imprimió (error del chip del rollo). Apágala, enciéndela y vuelve a imprimir.");
+    this.name = "PrinterStalledError";
+  }
+}
 export class PrinterTimeoutError extends Error {
   constructor(cmd: number) {
     super(`La impresora no respondió al comando 0x${cmd.toString(16)}.`);
@@ -272,9 +284,11 @@ export class NiimbotClient {
    * in between, and nothing has to be positioned by hand.
    *
    * Now and then the printer still trips on the chip after END_PAGE: the
-   * page counter runs and the rows never burn. The session is closed and
-   * the job reported as rejected, so the queue sends it again (the next
-   * session's PRINT_CLEAR drops the stuck rows).
+   * page counter runs, blank labels may feed, and the rows burn late or
+   * never. The wait is long (the bench saw the page come out 5–7 s late)
+   * and a page that still hasn't burned is reported as stalled, never
+   * resent — resending is how one label became five. The next session's
+   * PRINT_CLEAR drops whatever stayed queued.
    */
   private async printUnlocked(raster: LabelRaster, density: number, pollMs: number) {
     await this.cmd(req.setDensity(density));
@@ -290,10 +304,11 @@ export class NiimbotClient {
 
     await this.cmd(req.endPagePrint());
     // Idle reads 798 or 799 after these jobs: aim just under, not at the baseline.
-    await this.waitDrain(LINE_BUFFER_ROWS - 4, pollMs, 60_000, pollMs * 40);
+    // Stall tolerance ≈ 24 s at the production poll rate (160 × 150 ms).
+    await this.waitDrain(LINE_BUFFER_ROWS - 4, pollMs, 90_000, pollMs * 160);
     const free = await this.freeRows();
     await this.cmd(req.endPrint());
-    if (free !== null && free < LINE_BUFFER_ROWS - 10) throw new PrinterRejectedError(Cmd.END_PAGE_PRINT);
+    if (free !== null && free < LINE_BUFFER_ROWS - 10) throw new PrinterStalledError();
   }
 
   /** Wait for the line buffer to climb back to `target`; give up on a stall. */
