@@ -198,6 +198,16 @@ export async function getPosCatalog({
     };
   });
 
+  // Sections of a tab appear in the order the subcategories were given
+  // (Caliente, Frío, Kombucha, Envasadas…), not in the order of the first
+  // product name that happens to fall in each; within a section, by name.
+  const subPos = new Map<string, number>();
+  for (const p of productos ?? []) {
+    const own = p.category_id ? catById.get(p.category_id) : null;
+    subPos.set(p.id, own && own.parent_id ? own.position : -1);
+  }
+  menu.sort((a, b) => (subPos.get(a.id) ?? -1) - (subPos.get(b.id) ?? -1) || a.name.localeCompare(b.name, "es"));
+
   // ── combos → UI shape (regular total/saving precomputed by getCombosView) ──
   const combos: PosCombo[] = combosView.combos
     .filter((c) => c.active)

@@ -781,7 +781,7 @@ function Catalog() {
         ) : null}
         {sections.map((sec, si) => (
           <div key={si} style={{ marginTop: si === 0 ? 0 : 18 }}>
-            {sec.label && <SubLabel icon={isColdLabel(sec.label) ? <SnowflakeIcon /> : null}>{sec.label}</SubLabel>}
+            {sec.label && <SubLabel icon={isColdLabel(sec.label) ? <SnowflakeIcon /> : isHotLabel(sec.label) ? <FlameIcon /> : null}>{sec.label}</SubLabel>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, alignContent: "start" }}>
               {sec.combos
                 ? sec.combos.map((c) => <ComboTile key={c.id} c={c} qty={inTicket[c.id] ?? 0} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
@@ -841,8 +841,21 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: "48px 20px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>{children}</div>;
 }
 
-/** A cold section ("Frío", "Fríos") gets the snowflake so it reads at a glance. */
+/** A cold section ("Frío", "Fríos") gets the snowflake so it reads at a glance; a hot one ("Caliente") the flame. */
 const isColdLabel = (label: string) => /^fr[ií]os?$/i.test(label.trim());
+const isHotLabel = (label: string) => /^calientes?$/i.test(label.trim());
+
+/** Flame on the same ink chip as the snowflake, so the two sections pair up. */
+function FlameIcon() {
+  return (
+    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 5, background: "#000", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <svg viewBox="0 0 24 24" width={18} height={18} fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2.5c.6 3.2 3.4 4.6 4.9 7.1A7 7 0 1 1 5.6 11c.4 1.4 1.3 2.4 2.5 2.9C7.4 10.3 9 6.4 12 2.5Z" fill="#FF8A3D" stroke="#FF8A3D" strokeWidth={1.2} />
+        <path d="M12 21a3.4 3.4 0 0 1-3.4-3.4c0-2 1.9-3 3.4-5.6 1.5 2.6 3.4 3.6 3.4 5.6A3.4 3.4 0 0 1 12 21Z" fill="#FFD166" />
+      </svg>
+    </span>
+  );
+}
 
 /** Snowflake on an ink chip — the pale blue needs the dark ground to read on paper. */
 function SnowflakeIcon() {
