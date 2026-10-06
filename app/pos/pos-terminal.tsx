@@ -2075,7 +2075,7 @@ function EtiquetasScreen() {
             })}
           </div>
           <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span role="status" style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
+            <span role="status" title={p.rollNote ?? undefined} style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.rollNote && p.status === "ready" ? `${status} · rollo con chip agotado` : status}</span>
             {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
               <button onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} style={{ ...chipStyle, flexShrink: 0 }}>{p.status === "off" ? "Reintentar" : "Conectar impresora"}</button>
             )}
