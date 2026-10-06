@@ -47,6 +47,7 @@ import {
 } from "@/lib/pos/types";
 import { desvincularPos, generarFrase, guardarTamanoEtiqueta } from "./actions";
 import { usePosLive, nudge } from "./pos-live";
+import { usePosWindowLease } from "./pos-window";
 import { FRASE_TONOS, FRASE_MAX, type FraseTono } from "@/lib/pos/frase";
 import { ensureLabelFonts } from "@/lib/printer/label";
 import type { LabelSpec } from "@/lib/printer/spec";
@@ -148,6 +149,7 @@ import {
   rasterForSpec,
   setLabelDefaults,
   relaysLabels,
+  printerStore,
   type PrinterStatus,
 } from "@/lib/printer/serial";
 import { useDesktopApp, useDesktopAppEvents, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
@@ -408,9 +410,11 @@ function reloadOrders() {
 function Register({ mode, organizationId }: { mode: "device" | "user"; organizationId: string }) {
   const s = usePos();
   useMicTranscribe(s.listening);
+  // One POS window per PC: a second one stands aside and lets go of the printer.
+  const ventana = usePosWindowLease();
   // Reopen the label printer if this browser was already paired with it, and
   // follow the USB cable (connect / disconnect events).
-  usePrinterAutoConnect();
+  usePrinterAutoConnect(ventana.role !== "secondary");
   // Labels relayed to / claimed from the other stations, and their order nudges.
   // A station switched the label stock: reload the catalog (it carries the setting).
   const router = useRouter();
@@ -471,8 +475,31 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
         : <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />)}
       {s.view === "ordenes" && <OrdenesScreen />}
       {s.view === "etiquetas" && <EtiquetasScreen />}
+      {ventana.role === "secondary" && <OtraVentana onTakeOver={ventana.takeOver} />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
+    </div>
+  );
+}
+
+/**
+ * Shown over everything when another POS window is already open in this
+ * browser. Nothing here can be tapped by accident; the person either goes
+ * to the other window or makes this one the register.
+ */
+function OtraVentana({ onTakeOver }: { onTakeOver: () => void }) {
+  return (
+    <div role="alertdialog" aria-modal aria-label="Otra ventana del POS" style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(20,14,8,.78)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ width: "min(520px, 94vw)", background: C.paperLt, border: `2px solid ${C.red}`, borderRadius: 10, padding: "24px 26px", fontFamily: F.mono, color: C.ink }}>
+        <div style={{ fontFamily: F.slab, fontSize: 26, lineHeight: 1.1 }}>Ya hay otra ventana del POS abierta<span style={{ color: C.red }}>.</span></div>
+        <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: "12px 0 18px", color: C.ink2 }}>
+          En este PC solo una ventana puede cobrar y manejar la etiquetadora. Usa la otra ventana, o cierra esta. Si la otra ya no sirve, puedes seguir en esta: la otra quedará bloqueada.
+        </p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" className="cmd-btn ghost" onClick={() => window.close()} style={{ height: 46 }}>Cerrar esta ventana</button>
+          <button type="button" className="cmd-btn red" onClick={() => { if (window.confirm("La otra ventana quedará bloqueada y la etiquetadora pasará a esta. ¿Seguir aquí?")) onTakeOver(); }} style={{ height: 46 }}>Seguir en esta ventana</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1160,12 +1187,13 @@ function Ticket() {
         {s.sendError && s.view === "sale" && (
           <div role="alert" style={{ fontSize: 11, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>{s.sendError}</div>
         )}
+        <SinImpresora />
         {/* Stacked, or side by side on a short screen (POS_CSS). */}
         <div className="pos-actions">
           <button
             className="cmd-btn red pos-pay"
             disabled={!canSend}
-            onClick={startTender}
+            onClick={() => { if (confirmarSinImpresora()) startTender(); }}
             style={{ fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
           >
             Cobrar {s.order.length ? posMoney(total) : ""}
@@ -1173,7 +1201,7 @@ function Ticket() {
           <button
             className="cmd-btn pos-send"
             disabled={!canSend}
-            onClick={() => void savePending()}
+            onClick={() => { if (confirmarSinImpresora()) void savePending(); }}
             style={{ fontWeight: 600, letterSpacing: ".06em", opacity: canSend ? 1 : 0.4, cursor: canSend ? "pointer" : "not-allowed" }}
           >
             {s.sending ? "Guardando…" : editing ? "Guardar cambios" : (
@@ -1513,6 +1541,35 @@ function Count({ n, on }: { n: number; on: boolean }) {
  * so no "+ persona" there), by the item sheet and by the line picker (no
  * counts; "+ persona" adds inline).
  */
+/**
+ * A PC without its printer connected cannot print labels — and nothing
+ * relays them for it. The ticket says so in red until it is connected, and
+ * charging asks first, so a sale never goes out expecting labels that will
+ * not come.
+ */
+const sinImpresora = (p: { status: PrinterStatus; relay: boolean }) =>
+  !relaysLabels(p) && (p.status === "disconnected" || p.status === "off" || p.status === "error");
+
+function confirmarSinImpresora(): boolean {
+  const p = printerStore.get();
+  if (!sinImpresora(p)) return true;
+  return window.confirm("La impresora no está conectada: la venta se registra pero no van a salir etiquetas. ¿Continuar?");
+}
+
+function SinImpresora() {
+  const p = usePrinter();
+  if (!sinImpresora(p)) return null;
+  const busy = p.status === "connecting";
+  return (
+    <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "8px 10px", border: `1.5px solid ${C.red}`, borderRadius: 4, background: C.paperLt }}>
+      <span style={{ flex: 1, fontSize: 11.5, lineHeight: 1.4, color: C.red, fontWeight: 600 }}>Sin impresora: las etiquetas no van a salir.</span>
+      <button type="button" onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} disabled={busy} style={{ height: 32, padding: "0 10px", borderRadius: 3, border: `1.5px solid ${C.red}`, background: C.red, color: C.paperLt, fontFamily: F.mono, fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", flexShrink: 0 }}>
+        {p.status === "off" ? "Reintentar" : "Conectar"}
+      </button>
+    </div>
+  );
+}
+
 function PersonPicker({ value, onPick, onAdd, onEdit, counts, noAdd }: {
   value: string | null;
   onPick: (name: string | null) => void;
