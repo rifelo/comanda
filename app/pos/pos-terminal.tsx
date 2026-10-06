@@ -104,6 +104,7 @@ import {
   ticketShares,
   tenderAmount,
   orderShares,
+  reprintLabel,
   printFrase,
   printPhraseLabel,
   savePending,
@@ -2581,16 +2582,13 @@ function ReceiptPrinterLine() {
           {text}
         </span>
       )}
-      {/* No reprint here (owner, 2026-10-06): reprints live in Etiquetas, where each label is chosen on purpose. */}
-      {!canPrint && (
-        <button
-          onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())}
-          disabled={busy}
-          style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
-        >
-          {p.status === "off" ? "Reintentar" : "Conectar impresora"}
-        </button>
-      )}
+      <button
+        onClick={() => (canPrint ? reprintLabel() : p.status === "off" ? void checkPrinter() : void connectPrinter())}
+        disabled={busy && !remote}
+        style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+      >
+        {canPrint ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
+      </button>
       {catalog.instagram && canPrint && catalog.labelSize !== "50x50" && (
         <button
           onClick={() => printInstagramLabel(catalog.instagram!, catalog.cupArt)}
