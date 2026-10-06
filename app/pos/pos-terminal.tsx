@@ -495,6 +495,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
         <OutboxChip />
         <PendientesChip />
         <EtiquetasChip />
+        <RolloChip />
         <PrinterChip />
         {mode === "device" && <UnlinkButton station={station} />}
         <DesktopChips />
@@ -547,6 +548,51 @@ function PendientesChip() {
           {n}
         </span>
       )}
+    </button>
+  );
+}
+
+/**
+ * Which roll is in the printer, always in sight next to the printer chip: a
+ * 50 × 50 design sent to 50 × 30 labels prints across two of them and the
+ * printer keeps feeding, so changing the roll must be one deliberate tap
+ * here, not a setting buried in a screen.
+ */
+function RolloChip() {
+  const catalog = useCatalog();
+  const p = usePrinter();
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const size = catalog.labelSize;
+  const next: LabelSize = size === "50x50" ? "50x30" : "50x50";
+  const label = (v: LabelSize) => (v === "50x50" ? "50 × 50" : "50 × 30");
+  // The spent chip we know is on the 50 × 30 roll: a 50 × 50 setting with it is almost surely wrong.
+  const mismatch = size === "50x50" && !!p.rollNote;
+  async function toggle() {
+    if (busy) return;
+    if (!window.confirm(`El rollo cargado es de ${label(size)}. ¿Cambiar a ${label(next)}?\n\nLas etiquetas se imprimen con el diseño de ${label(next)} a partir de ahora, en todas las cajas.`)) return;
+    setBusy(true);
+    posStore.set((st) => ({ ...st, catalog: { ...st.catalog, labelSize: next } }));
+    const res = await guardarTamanoEtiqueta(next).catch(() => ({ ok: false as const, error: "Sin conexión con el servidor." }));
+    setBusy(false);
+    if (!res.ok) {
+      posStore.set((st) => ({ ...st, catalog: { ...st.catalog, labelSize: size } }));
+      window.alert(res.error);
+      return;
+    }
+    nudge("config");
+    router.refresh();
+  }
+  return (
+    <button
+      onClick={() => void toggle()}
+      disabled={busy}
+      title={mismatch ? "El chip del rollo cargado es el de 50 × 30, pero el POS está en 50 × 50. Toca para cambiar." : `Rollo cargado: ${label(size)}. Toca para cambiar a ${label(next)}.`}
+      aria-label={`Rollo de etiquetas: ${label(size)}`}
+      style={{ ...chipStyle, padding: "0 10px", fontSize: 11, border: `1.5px solid ${mismatch ? C.amber : C.rule}`, color: mismatch ? C.amber : C.ink }}
+    >
+      <span aria-hidden style={{ display: "inline-block", width: 12, height: size === "50x50" ? 12 : 8, border: `1.5px solid currentColor`, borderRadius: 2 }} />
+      {label(size)}
     </button>
   );
 }
