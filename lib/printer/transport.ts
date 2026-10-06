@@ -16,6 +16,7 @@
 
 import {
   Cmd,
+  HEAD_WIDTH_BYTES,
   HEAD_WIDTH_PX,
   parseRfid,
   type RollChip,
@@ -320,17 +321,28 @@ export class NiimbotClient {
     }
   }
 
+  /**
+   * Blank rows fed after the design on the unlock sequence. Opened as
+   * continuous, the printer skips the tear-off feed it does after a plain
+   * gap job, so the label stops short of the bar; 3 mm more puts the gap
+   * where it can be torn.
+   */
+  static UNLOCK_TAIL_ROWS = 24;
+
   private async printUnlocked(raster: LabelRaster, density: number, pollMs: number) {
+    const tail = NiimbotClient.UNLOCK_TAIL_ROWS;
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(3));
     await this.cmd(req.startPrint());
     await this.cmd(req.setLabelType(1));
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
-    await this.cmd(req.setDimension(raster.height, raster.width));
+    await this.cmd(req.setDimension(raster.height + tail, raster.width));
     await this.cmd(req.setQuantity(1));
 
     for (let y = 0; y < raster.rows.length; y++) await this.t.write(rowPacket(y, raster.rows[y]));
+    const blank = new Uint8Array(HEAD_WIDTH_BYTES);
+    for (let y = 0; y < tail; y++) await this.t.write(rowPacket(raster.rows.length + y, blank));
 
     await this.cmd(req.endPagePrint());
     // Idle reads 798 or 799 after these jobs: aim just under, not at the baseline.

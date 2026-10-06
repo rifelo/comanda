@@ -190,9 +190,11 @@ describe("NiimbotClient.printRaster", () => {
       Cmd.END_PRINT,
     ]);
     expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
-    expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(400);
-    // dimension = (rows, 384): no lead-in, the printer finds the gap itself
-    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([1, 144, 1, 128]);
+    // the design, then the tear-off tail of blank rows
+    expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(400 + NiimbotClient.UNLOCK_TAIL_ROWS);
+    // dimension = (rows + tail, 384): no lead-in, the printer finds the gap itself
+    const dim = 400 + NiimbotClient.UNLOCK_TAIL_ROWS;
+    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([dim >> 8, dim & 0xff, 1, 128]);
     await t.close();
   });
 
@@ -222,7 +224,7 @@ describe("NiimbotClient.printRaster", () => {
     const { t, c } = await connect(port);
     await c.printRaster(raster(240), 3, 1);
     expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([1, 3, 1]);
-    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240 + NiimbotClient.UNLOCK_TAIL_ROWS);
     expect(c.unlockAll).toBe(true);
     port.sent.length = 0;
     await c.printRaster(raster(240), 3, 1);
