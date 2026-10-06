@@ -412,9 +412,17 @@ export function setPrintRelay(fn: PrintRelay | null) {
   relay = fn;
   printerStore.set({ relay: !!fn });
 }
-/** True when this station's labels go to another one instead of a local printer. */
+/**
+ * True when this station's labels go to another one instead of a local
+ * printer: only a station that cannot have one (no Web Serial — the tablet).
+ * A PC whose printer is merely disconnected does not relay: on 2026-10-06
+ * the register itself had been quietly queueing every label of the day
+ * for "the station with the printer" (184 jobs, none ever claimed) while a
+ * second POS window held the port. A disconnected printer on a PC is
+ * something to fix at that PC, and the chip says so.
+ */
 export function relaysLabels(p: Pick<PrinterState, "relay" | "status">): boolean {
-  return p.relay && (p.status === "unsupported" || p.status === "disconnected" || p.status === "connecting");
+  return p.relay && p.status === "unsupported";
 }
 
 const RELAY_FLUSH_MS = 60;
