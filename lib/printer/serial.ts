@@ -245,10 +245,15 @@ export async function disconnectPrinter(): Promise<void> {
  * `connect`/`disconnect` fire on navigator.serial for ports this origin has
  * been granted, which is exactly the "is the printer plugged in" signal.
  */
-export function usePrinterAutoConnect() {
+export function usePrinterAutoConnect(enabled: boolean = true) {
   React.useEffect(() => {
     if (!isSerialSupported()) {
       printerStore.set({ status: "unsupported", note: unsupportedNote() });
+      return;
+    }
+    // A window standing aside (another POS window owns this PC) must not hold the port.
+    if (!enabled) {
+      void disconnectPrinter();
       return;
     }
     void autoConnect();
@@ -263,7 +268,7 @@ export function usePrinterAutoConnect() {
       serial.removeEventListener("connect", onConnect);
       serial.removeEventListener("disconnect", onDisconnect);
     };
-  }, []);
+  }, [enabled]);
 }
 
 // ── print queue ─────────────────────────────────────────────────
