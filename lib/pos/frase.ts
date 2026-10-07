@@ -14,6 +14,31 @@ export function pickCategoria(rand: number = Math.random()): FraseCategoria {
 }
 
 /**
+ * A phrase about the customer's own drink never takes the news path: the
+ * web search answers about the headline, not about the cup.
+ */
+export function pickCategoriaBebida(rand: number = Math.random()): Exclude<FraseCategoria, "noticia"> {
+  return rand < 0.55 ? "gracioso" : "motivador";
+}
+
+/** What the phrase generator needs to know about the drink in the cup. */
+export interface FraseBebida {
+  nombre: string;
+  /** The menu's own one-liner, when the product has one. */
+  descripcion?: string;
+  /** No coffee in the recipe (Milo, chai, smoothies): the phrase must not talk about coffee. */
+  sinCafe: boolean;
+}
+
+/** From a catalog product to what the generator is told. The cup label's spec box says when there is no coffee. */
+export function fraseBebida(item: { name: string; desc?: string; spec?: ReadonlyArray<string> }): FraseBebida {
+  const nombre = item.name.replace(/\s+/g, " ").trim().slice(0, 60);
+  const descripcion = item.desc?.replace(/\s+/g, " ").trim().slice(0, 140) || undefined;
+  const sinCafe = (item.spec ?? []).some((l) => /sin\s+caf[eé]/i.test(l));
+  return { nombre, descripcion, sinCafe };
+}
+
+/**
  * Feelings the barista can pick for a phrase in the Etiquetas screen (the
  * customer asks for "algo más alegre"). Order = chip order.
  */
