@@ -150,6 +150,7 @@ describe("NiimbotClient.printRaster", () => {
       Cmd.SET_LABEL_DENSITY,
       Cmd.SET_LABEL_TYPE,
       Cmd.START_PRINT,
+      Cmd.SET_LABEL_TYPE,
       Cmd.ALLOW_PRINT_CLEAR,
       Cmd.START_PAGE_PRINT,
       Cmd.SET_DIMENSION,
@@ -158,6 +159,9 @@ describe("NiimbotClient.printRaster", () => {
       Cmd.END_PRINT,
     ]);
     expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(240);
+    // continuous (3) to open the session, gap (1) once START_PRINT is accepted
+    const labelTypes = port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0]);
+    expect(labelTypes).toEqual([3, 1]);
     // dimension = (rows, 384)
     const dim = port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!;
     expect(Array.from(dim.data)).toEqual([0, 240, 1, 128]);
