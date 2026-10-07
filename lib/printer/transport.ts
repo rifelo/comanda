@@ -238,12 +238,22 @@ export class NiimbotClient {
    * The exact sequence that prints a complete label on B21S. Order matters:
    * ALLOW_PRINT_CLEAR before the page, SET_QUANTITY after the dimension, and
    * END_PRINT only once the buffer has drained.
+   *
+   * The session opens as continuous (label type 3) and switches to gap
+   * (type 1) once START_PRINT is accepted. A START_PRINT sent under type 1
+   * is refused (219, error 0x14) by a roll whose chip count is spent — the
+   * owner's 50 × 30 roll reads 277 of 276 — and every such refusal makes the
+   * next page come out after a run of blank labels. Opened this way the
+   * printer accepts the job and seeks the gap itself (bench 2026-10-06; the
+   * same sequence prints on a healthy chip). No chip read, no lead-in rows,
+   * no tail: each of those cost labels.
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
     await this.cmd(req.setDensity(density));
-    await this.cmd(req.setLabelType(1));
+    await this.cmd(req.setLabelType(3));
     await this.cmd(req.startPrint());
+    await this.cmd(req.setLabelType(1));
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
     await this.cmd(req.setDimension(raster.height, raster.width));
