@@ -7,7 +7,7 @@ import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
 import { MissingGroqKeyError, GroqRateLimitError } from "@/lib/ai/groq";
-import { FRASE_TONO_IDS, type FraseCategoria, type FraseTono } from "@/lib/pos/frase";
+import { FRASE_TONO_IDS, fraseBebida, type FraseCategoria, type FraseTono } from "@/lib/pos/frase";
 import { LabelSpecSchema, RELAY_BATCH_MAX, RELAY_TTL_MS, type LabelSpec } from "@/lib/printer/spec";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
@@ -644,13 +644,25 @@ export type GenerarFraseResult =
   | { ok: true; texto: string; categoria: FraseCategoria }
   | { ok: false; error: string };
 
-/** One short coffee phrase for the cup label: a random category, or the feeling asked for. */
-export async function generarFrase(tono?: FraseTono): Promise<GenerarFraseResult> {
+/**
+ * One short phrase for the cup label: a random category, or the feeling
+ * asked for. With `productoId` the phrase is about that drink (a Milo frío
+ * gets a phrase about the Milo); the name is read from the catalog here, so
+ * nothing the client types reaches the prompt. An unknown id falls back to
+ * the coffee phrase.
+ */
+export async function generarFrase(tono?: FraseTono, productoId?: string): Promise<GenerarFraseResult> {
   const { catalog } = await requirePosContext();
   const parsedTono = z.enum(FRASE_TONO_IDS).optional().safeParse(tono);
   if (!parsedTono.success) return { ok: false, error: "Tono no válido." };
+  const parsedId = z.string().max(64).optional().safeParse(productoId);
+  const producto = parsedId.success && parsedId.data ? catalog.byId[parsedId.data] : undefined;
   try {
-    const r = await generarFraseCafe({ orgName: catalog.orgName, tono: parsedTono.data });
+    const r = await generarFraseCafe({
+      orgName: catalog.orgName,
+      tono: parsedTono.data,
+      bebida: producto ? fraseBebida(producto) : undefined,
+    });
     return { ok: true, ...r };
   } catch (err) {
     if (err instanceof MissingGroqKeyError || err instanceof GroqRateLimitError) {

@@ -2051,7 +2051,8 @@ function EtiquetasScreen() {
     setLoading(true);
     setError(null);
     try {
-      const res = await generarFrase(t ?? undefined);
+      // With a drink chosen above, the phrase is about that drink.
+      const res = await generarFrase(t ?? undefined, drinkId || undefined);
       if (res.ok) setFrase(res.texto);
       else setError(res.error);
     } catch {

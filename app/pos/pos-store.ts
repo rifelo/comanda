@@ -1328,17 +1328,23 @@ export function discardPendingEdit() {
 function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog }, folio: string) {
   const orgName = s.catalog.orgName;
   const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim(), instagram: !!s.catalog.instagram });
-  let cups = 0;
+  const cups: string[] = [];
   for (const j of jobs) {
     if (j.kind === "name") printOrderLabel({ name: j.name, folio, orgName });
     else if (j.kind === "instagram") printInstagramLabel(s.catalog.instagram!, s.catalog.cupArt);
     else {
-      cups += 1;
+      cups.push(j.item.productId);
       printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
     }
   }
-  if (cups > 0) void printFrases(cups);
+  if (cups.length > 0) {
+    lastCups = cups;
+    void printFrases(cups);
+  }
 }
+
+/** The cups of the last sale, so «Frase IA» on the receipt writes about one of them. */
+let lastCups: string[] = [];
 
 /** The "Pa' <nombre>" labels of a stored order (one per person, else the order label). */
 function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio: string, orgName: string) {
@@ -1347,31 +1353,42 @@ function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio:
 }
 
 /**
- * One phrase label per cup. Each cup gets its own phrase when the AI
- * answers every request; if some fail (rate limit), the successful ones are
- * reused so every cup still gets a message. None answered → nothing prints.
+ * One phrase label per cup, about the drink in that cup (product ids, in
+ * print order). Each cup gets its own phrase when the AI answers every
+ * request; if some fail (rate limit), a phrase written for the same drink
+ * is reused, else any that arrived, so every cup still gets a message.
+ * None answered → nothing prints.
  */
 let fraseBatches = 0;
-export async function printFrases(n: number) {
+export async function printFrases(cups: ReadonlyArray<string>) {
   const s = posStore.get();
+  const n = cups.length;
   if (n <= 0) return;
   // Batches run side by side: an order that lands while the previous one is
   // still waiting on the AI must not lose its phrases.
   fraseBatches += 1;
   posStore.set({ fraseLoading: true, fraseError: null });
   try {
-    const results = await Promise.allSettled(Array.from({ length: n }, () => generarFrase()));
-    const ok: string[] = [];
+    const results = await Promise.allSettled(cups.map((id) => generarFrase(undefined, id)));
+    const texts: Array<string | null> = [];
     let err: string | null = null;
     for (const r of results) {
-      if (r.status === "fulfilled" && r.value.ok) ok.push(r.value.texto);
-      else if (r.status === "fulfilled" && !r.value.ok) err = r.value.error;
+      if (r.status === "fulfilled" && r.value.ok) texts.push(r.value.texto);
+      else {
+        texts.push(null);
+        if (r.status === "fulfilled" && !r.value.ok) err = r.value.error;
+      }
     }
+    const ok = texts.filter((t): t is string => t !== null);
     if (!ok.length) {
       posStore.set({ fraseError: err ?? "No se pudo generar la frase." });
       return;
     }
-    for (let i = 0; i < n; i++) printMessageLabel(ok[i % ok.length], s.catalog.instagram);
+    for (let i = 0; i < n; i++) {
+      // A failed cup borrows the phrase of another cup of the same drink first.
+      const same = texts.find((t, k) => t !== null && cups[k] === cups[i]);
+      printMessageLabel(texts[i] ?? same ?? ok[i % ok.length], s.catalog.instagram);
+    }
     posStore.set({ frase: ok[0] });
   } catch {
     posStore.set({ fraseError: "No se pudo generar la frase." });
@@ -1382,15 +1399,17 @@ export async function printFrases(n: number) {
 }
 
 /**
- * Ask the AI for a short coffee phrase (funny / motivational / a nod to
- * today's Colombian news) and print it as a second label for the cup.
+ * Ask the AI for one more phrase and print it: about one of the cups of the
+ * sale on screen when there was one, a coffee phrase (funny / motivational /
+ * a nod to today's Colombian news) otherwise.
  */
 export async function printFrase() {
   const s = posStore.get();
   if (s.fraseLoading) return;
   posStore.set({ fraseLoading: true, fraseError: null });
   try {
-    const res = await generarFrase();
+    const cup = lastCups.length ? lastCups[Math.floor(Math.random() * lastCups.length)] : undefined;
+    const res = await generarFrase(undefined, cup);
     if (res.ok) {
       posStore.set({ frase: res.texto, fraseLoading: false });
       printMessageLabel(res.texto, s.catalog.instagram);
