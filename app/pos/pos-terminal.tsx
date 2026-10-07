@@ -2140,7 +2140,7 @@ function EtiquetasScreen() {
                   <option value="">Elige la bebida…</option>
                   {drinks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
-                <button type="button" disabled={!drink || !canPrint} onClick={() => drink && printDrinkLabel({ name: drink.name, spec: drink.spec, desc: drink.desc, customer: who || undefined, brand: catalog.orgName })} style={{ ...etqBtn(false, !drink || !canPrint), flex: "1 1 160px" }}>Imprimir vaso</button>
+                <button type="button" disabled={!drink || !canPrint} onClick={() => drink && printDrinkLabel({ name: drink.name, spec: drink.spec, desc: drink.desc, customer: who || undefined, brand: catalog.orgName }, catalog.cupArt)} style={{ ...etqBtn(false, !drink || !canPrint), flex: "1 1 160px" }}>Imprimir vaso</button>
               </div>
             </section>
 

@@ -65,6 +65,8 @@ const displayFont = () => cssFamily("--font-slab", FALLBACK_SANS);
 const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
 /** Phrase face (Delight Bold). Loaded as weight 700 — always ask for bold. */
 const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
+/** Nority Display, the brand wordmark face: the drink's name on the cup label. Single weight — never ask for bold. */
+const norityFont = () => cssFamily("--font-nority", `${displayFont()}`);
 
 /**
  * Canvas draws with whatever is loaded at that instant, so a cold label
@@ -78,6 +80,7 @@ export async function ensureLabelFonts(): Promise<void> {
       document.fonts.load(`96px ${displayFont()}`),
       document.fonts.load(`bold 30px ${monoFont()}`),
       document.fonts.load(`bold 30px ${fraseFont()}`),
+      document.fonts.load(`54px ${norityFont()}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -200,6 +203,10 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
 // width along the feed. Ink area: 45 × 28 mm.
 const DRINK_W = 28 * PX_PER_MM; // design width  → along the feed
 const DRINK_H = 45 * PX_PER_MM; // design height → across the head
+/** Height of the brand mark on the cup label: the small cut of the QR label's drawing (86 px there). */
+const DRINK_ICON_H = 56;
+/** Only clearly dark pixels of the mark burn, so the lines inside the drawing survive the scale-down. */
+const ICON_THRESHOLD = 96;
 
 export interface InstagramLabelInput {
   /** Handle with or without "@" ("cafepayo"). */
@@ -381,10 +388,12 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
 export interface DrinkLabelInput {
   /** Product name; uppercased and broken with the brand's apostrophe. */
   name: string;
-  /** Spec box lines, e.g. ["2 SHOTS · 18 G"]. Empty = no box. */
+  /** Shots and grams of the recipe. Not drawn any more (the brand mark took the box's place); still travels with the label. */
   spec?: string[];
-  /** Short descriptor under the box ("suave, pa' quedarse un rato"). */
+  /** Short descriptor under the mark ("suave, pa' quedarse un rato"). */
   desc?: string;
+  /** Brand mark (the cup drawing of the QR label), drawn small where the spec box was. */
+  icon?: (CanvasImageSource & { width: number; height: number }) | null;
   /** Kicker on top, e.g. "CAFÉ PA'YO". */
   brand?: string;
   /** Whose cup it is; replaces the brand kicker with "PA' <NOMBRE>". */
@@ -450,9 +459,9 @@ export function breakDrinkName(
 }
 
 /**
- * The menu label for one drink: brand kicker, rule, the name big, the spec
- * box ("2 SHOTS · 18 G") and a one-liner. Drawn in portrait design
- * coordinates and rotated onto the landscape stock.
+ * The menu label for one drink: brand kicker, rule, the name big in the
+ * brand's wordmark face, the brand mark small and a one-liner. Drawn in
+ * portrait design coordinates and rotated onto the landscape stock.
  */
 export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -532,22 +541,39 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
     descLines.forEach((l, i) => ctx.fillText(l, M, descTop + i * descLH));
   }
 
-  // spec box, above the description
-  const spec = (input.spec ?? []).filter((l) => l.trim());
+  // brand mark, above the description — where the spec box used to sit
   let boxTop = descTop - 14;
-  if (spec.length) {
-    ctx.font = `bold 13px ${monoFont()}`;
-    const specLH = 16;
-    const padX = 9;
-    const padY = 7;
-    const boxH = padY * 2 + spec.length * specLH - 2;
-    const textW = Math.max(...spec.map((l) => ctx.measureText(l).width));
-    const boxW = Math.min(innerW, textW + padX * 2);
-    boxTop = descTop - 14 - boxH;
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(M + 1, boxTop + 1, boxW, boxH);
-    spec.forEach((l, i) => ctx.fillText(l, M + 1 + padX, boxTop + padY + i * specLH));
+  const icon = input.icon && input.icon.width > 0 && input.icon.height > 0 ? input.icon : null;
+  if (icon) {
+    const scale = Math.min(DRINK_ICON_H / icon.height, innerW / icon.width);
+    const w = Math.round(icon.width * scale);
+    const h = Math.round(icon.height * scale);
+    boxTop = descTop - 12 - h;
+    // The label burns at the text threshold, which floods the drawing's thin
+    // white lines. So the mark is turned to pure black and white on its own
+    // first, at the lower threshold the QR label uses, and stamped as is.
+    const stamp = document.createElement("canvas");
+    stamp.width = w;
+    stamp.height = h;
+    const sx = stamp.getContext("2d", { willReadFrequently: true });
+    if (sx) {
+      sx.fillStyle = "#fff";
+      sx.fillRect(0, 0, w, h);
+      sx.imageSmoothingEnabled = true;
+      sx.imageSmoothingQuality = "high";
+      sx.drawImage(icon, 0, 0, w, h);
+      const px = sx.getImageData(0, 0, w, h);
+      for (let i = 0; i < px.data.length; i += 4) {
+        const lum = 0.299 * px.data[i] + 0.587 * px.data[i + 1] + 0.114 * px.data[i + 2];
+        const v = lum < ICON_THRESHOLD ? 0 : 255;
+        px.data[i] = px.data[i + 1] = px.data[i + 2] = v;
+        px.data[i + 3] = 255;
+      }
+      sx.putImageData(px, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(stamp, M, boxTop);
+      ctx.imageSmoothingEnabled = true;
+    }
   }
 
   // Name: the biggest size that still fits. The menu keeps names on two
@@ -558,7 +584,7 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   let lines: string[] | null = null;
   for (const maxLines of [2, 3]) {
     for (size = 54; size >= 18; size -= 2) {
-      ctx.font = `${size}px ${displayFont()}`;
+      ctx.font = `${size}px ${norityFont()}`;
       const candidate = breakDrinkName(input.name, maxLines, innerW, (t) => ctx.measureText(t).width);
       if (candidate && candidate.length * Math.round(size * 0.88) <= nameH) {
         lines = candidate;
@@ -569,10 +595,10 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   }
   if (!lines) {
     size = 18;
-    ctx.font = `${size}px ${displayFont()}`;
+    ctx.font = `${size}px ${norityFont()}`;
     lines = [fitOneLine(ctx, input.name.toUpperCase(), innerW)];
   }
-  ctx.font = `${size}px ${displayFont()}`;
+  ctx.font = `${size}px ${norityFont()}`;
   const lh = Math.round(size * 0.88);
   // The display face carries deep internal leading; nudge the block up so it
   // reads centred in the space the menu leaves between rule and box.

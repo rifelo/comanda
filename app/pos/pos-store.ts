@@ -1334,7 +1334,7 @@ function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName
     else if (j.kind === "instagram") printInstagramLabel(s.catalog.instagram!, s.catalog.cupArt);
     else {
       cups.push(j.item.productId);
-      printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
+      printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName }, s.catalog.cupArt);
     }
   }
   if (cups.length > 0) {

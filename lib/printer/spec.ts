@@ -28,6 +28,8 @@ export const LabelSpecSchema = z.discriminatedUnion("kind", [
       brand: text(120).optional(),
       customer: text(60).optional(),
     }),
+    /** Brand mark drawn small on the label; loaded when the job runs. */
+    cupSrc: text(800).nullable().optional(),
   }),
   z.object({ kind: z.literal("message"), text: text(300), handle: text(80).nullable().optional() }),
   z.object({ kind: z.literal("instagram"), handle: text(80), orgName: text(120).optional(), cupSrc: text(800).nullable().optional() }),
