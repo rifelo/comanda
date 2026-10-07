@@ -207,7 +207,7 @@ export class SerialTransport {
   }
 }
 
-/** Hard cap on the blank tail of a page (2 mm): 3 mm is known to skip a label. */
+/** Hard cap, either way, on how far a page's end may be moved (2 mm): +3 mm is known to skip a label. */
 export const MAX_TAIL_ROWS = 16;
 
 // ── protocol client ─────────────────────────────────────────────
@@ -252,34 +252,40 @@ export class NiimbotClient {
    * same sequence prints on a healthy chip). No chip read and no lead-in
    * rows: each of those cost labels.
    *
-   * `tailRows` are blank rows fed after the design (8 = 1 mm), declared as
-   * part of the page. On this sequence the printer stops where the page
-   * ends, so a short tail pushes the strip that much further out. Keep it
-   * short: at 24 rows (3 mm) the page ran into the gap and the printer
-   * skipped a whole label on the next print (owner, 2026-10-06).
+   * `tailRows` moves where the strip stops (8 rows = 1 mm). On this
+   * sequence the printer stops where the page ends: a positive value feeds
+   * that many blank rows after the design (the strip comes further out), a
+   * negative one drops that many rows from the end of the page (it stops
+   * short; the last rows of every design are margin). The page size is
+   * declared to match. Keep it small: at +24 rows (3 mm) the page ran into
+   * the gap and the printer skipped a whole label on the next print (owner,
+   * 2026-10-06).
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150, tailRows = 0) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
-    const tail = Math.max(0, Math.min(MAX_TAIL_ROWS, Math.floor(tailRows)));
+    const shift = Math.max(-MAX_TAIL_ROWS, Math.min(MAX_TAIL_ROWS, Math.trunc(tailRows)));
+    const tail = Math.max(0, shift);
+    // Never trim a page down to nothing.
+    const sendRows = shift < 0 ? Math.max(1, raster.rows.length + shift) : raster.rows.length;
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(3));
     await this.cmd(req.startPrint());
     await this.cmd(req.setLabelType(1));
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
-    await this.cmd(req.setDimension(raster.height + tail, raster.width));
+    await this.cmd(req.setDimension(sendRows + tail, raster.width));
     await this.cmd(req.setQuantity(1));
 
     const baseline = (await this.freeRows()) ?? LINE_BUFFER_ROWS;
     // Only pace when a job could outrun the ~800-row buffer.
     const pace = raster.height > LINE_BUFFER_ROWS - 64;
-    for (let y = 0; y < raster.rows.length; y++) {
+    for (let y = 0; y < sendRows; y++) {
       await this.t.write(rowPacket(y, raster.rows[y]));
       if (pace && (y + 1) % 16 === 0) await sleep(50);
     }
     if (tail) {
       const blank = new Uint8Array(HEAD_WIDTH_BYTES);
-      for (let y = 0; y < tail; y++) await this.t.write(rowPacket(raster.rows.length + y, blank));
+      for (let y = 0; y < tail; y++) await this.t.write(rowPacket(sendRows + y, blank));
     }
 
     await this.cmd(req.endPagePrint());

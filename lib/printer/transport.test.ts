@@ -193,6 +193,20 @@ describe("NiimbotClient.printRaster", () => {
     await t.close();
   });
 
+  it("stops the page short with a negative tail, declared in the page size and capped at 2 mm", async () => {
+    const port = new FakePort();
+    const { t, c } = await connect(port);
+    await c.printRaster(raster(240), 3, 1, -8);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(232);
+    const dim = port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!;
+    expect((dim.data[0] << 8) | dim.data[1]).toBe(232);
+
+    port.sent.length = 0;
+    await c.printRaster(raster(240), 3, 1, -999);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240 - MAX_TAIL_ROWS);
+    await t.close();
+  });
+
   it("surfaces a page rejection (printer still busy) as PrinterRejectedError", async () => {
     const port = new FakePort((p, self) => (p.type === Cmd.START_PAGE_PRINT ? encodePacket(219, []) : defaultReply(p, self)));
     const { t, c } = await connect(port);
