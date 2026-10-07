@@ -404,9 +404,9 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
 export interface DrinkLabelInput {
   /** Product name; uppercased and broken with the brand's apostrophe. */
   name: string;
-  /** Shots and grams of the recipe. Not drawn any more; still travels with the label. */
+  /** Lines of the outlined box, e.g. ["+7 DE ENERGÍA"]. Empty = no box. */
   spec?: string[];
-  /** Short descriptor at the foot ("suave, pa' quedarse un rato"). */
+  /** Short descriptor under the box ("suave, pa' quedarse un rato"). */
   desc?: string;
   /** Kicker on top, e.g. "CAFÉ PA'YO". */
   brand?: string;
@@ -473,9 +473,9 @@ export function breakDrinkName(
 }
 
 /**
- * The menu label for one drink: brand kicker, rule, the name big and a
- * one-liner. Drawn in portrait design coordinates and rotated onto the
- * landscape stock.
+ * The menu label for one drink: brand kicker, rule, the name big, the
+ * outlined box ("+7 DE ENERGÍA") and a one-liner. Drawn in portrait design
+ * coordinates and rotated onto the landscape stock.
  */
 export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -555,9 +555,23 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
     descLines.forEach((l, i) => ctx.fillText(l, M, descTop + i * descLH));
   }
 
-  // Nothing sits between the name and the description any more (the spec
-  // box, then the brand mark, were both dropped): the name takes the room.
-  const boxTop = descTop - 14;
+  // box, above the description ("+7 DE ENERGÍA")
+  const spec = (input.spec ?? []).filter((l) => l.trim());
+  let boxTop = descTop - 14;
+  if (spec.length) {
+    ctx.font = `bold 13px ${monoFont()}`;
+    const specLH = 16;
+    const padX = 9;
+    const padY = 7;
+    const boxH = padY * 2 + spec.length * specLH - 2;
+    const textW = Math.max(...spec.map((l) => ctx.measureText(l).width));
+    const boxW = Math.min(innerW, textW + padX * 2);
+    boxTop = descTop - 14 - boxH;
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(M + 1, boxTop + 1, boxW, boxH);
+    spec.forEach((l, i) => ctx.fillText(l, M + 1 + padX, boxTop + padY + i * specLH));
+  }
 
   // Name: the biggest size that still fits. The menu keeps names on two
   // lines, so three are only used when two can't hold the word at any size.

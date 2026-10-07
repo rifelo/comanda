@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coffeeGramsOf, drinkSpec, planDrinkLabels, planSaleLabels } from "./drink-label";
+import { coffeeGramsOf, drinkSpec, energiaLine, planDrinkLabels, planSaleLabels } from "./drink-label";
 import type { OrderLine } from "./types";
 
 const latte = [
@@ -98,5 +98,16 @@ describe("drinkSpec", () => {
   });
   it("never shows zero shots for a trace of coffee", () => {
     expect(drinkSpec({ coffeeG: 3 })).toEqual(["1 SHOT · 3 G"]);
+  });
+});
+
+describe("energiaLine", () => {
+  it("draws a number from 1 to 10", () => {
+    expect(energiaLine(0)).toBe("+1 DE ENERGÍA");
+    expect(energiaLine(0.099)).toBe("+1 DE ENERGÍA");
+    expect(energiaLine(0.1)).toBe("+2 DE ENERGÍA");
+    expect(energiaLine(0.65)).toBe("+7 DE ENERGÍA");
+    expect(energiaLine(0.999999)).toBe("+10 DE ENERGÍA");
+    expect(energiaLine(1)).toBe("+10 DE ENERGÍA");
   });
 });
