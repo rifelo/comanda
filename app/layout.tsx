@@ -54,15 +54,6 @@ const frase = localFont({
   style: "normal",
 });
 
-// The customer's name on the 50 × 50 mm cup label ("PA' Andrés"): Nority
-// Display, the brand's own wordmark face (the owner supplied the font).
-const nombre = localFont({
-  src: "./fonts/nority-display.otf",
-  variable: "--font-nombre",
-  weight: "400",
-  style: "normal",
-});
-
 export const metadata: Metadata = {
   title: "co-manda",
   description:
@@ -104,7 +95,7 @@ export default async function RootLayout({
     <html
       lang="es"
       data-theme={theme}
-      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} ${nombre.variable} h-full antialiased`}
+      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} h-full antialiased`}
     >
       <body className="bg-paper text-ink min-h-full flex flex-col">
         {children}

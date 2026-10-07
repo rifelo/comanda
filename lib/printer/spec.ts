@@ -32,9 +32,6 @@ export const LabelSpecSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("message"), text: text(300), handle: text(80).nullable().optional() }),
   z.object({ kind: z.literal("instagram"), handle: text(80), orgName: text(120).optional(), cupSrc: text(800).nullable().optional() }),
   z.object({ kind: z.literal("sticker"), src: text(800) }),
-  // 50 × 50 mm stock: the name label and the phrase label.
-  z.object({ kind: z.literal("cup50"), customer: text(60).optional(), drink: text(120), cupSrc: text(800).nullable().optional(), artSrc: text(800).nullable().optional() }),
-  z.object({ kind: z.literal("frase50"), text: text(300), handle: text(80).nullable().optional(), cupSrc: text(800).nullable().optional() }),
 ]);
 export type LabelSpec = z.infer<typeof LabelSpecSchema>;
 

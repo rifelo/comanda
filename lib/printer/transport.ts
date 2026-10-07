@@ -16,10 +16,7 @@
 
 import {
   Cmd,
-  HEAD_WIDTH_BYTES,
   HEAD_WIDTH_PX,
-  parseRfid,
-  type RollChip,
   LINE_BUFFER_ROWS,
   RESP_REJECTED,
   RESP_UNSUPPORTED,
@@ -58,21 +55,9 @@ declare global {
 
 // ── errors ──────────────────────────────────────────────────────
 export class PrinterRejectedError extends Error {
-  constructor(public readonly cmd: number) {
+  constructor(cmd: number) {
     super(`La impresora rechazó el comando 0x${cmd.toString(16)}.`);
     this.name = "PrinterRejectedError";
-  }
-}
-/**
- * The printer took the whole page and never burned it (the 50 × 50 roll's
- * chip error). Deliberately NOT a PrinterRejectedError: sending the page
- * again is what turns one label into five, because the rows of every
- * attempt stay queued and come out together once the printer gives in.
- */
-export class PrinterStalledError extends Error {
-  constructor() {
-    super("La impresora recibió la etiqueta pero no la imprimió (error del chip del rollo). Apágala, enciéndela y vuelve a imprimir.");
-    this.name = "PrinterStalledError";
   }
 }
 export class PrinterTimeoutError extends Error {
@@ -256,20 +241,9 @@ export class NiimbotClient {
    */
   async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
-    if (raster.unlock || this.unlockAll) return this.printUnlocked(raster, density, pollMs);
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(1));
-    try {
-      await this.cmd(req.startPrint());
-    } catch (err) {
-      // Refused to even start under gap labels: the roll's chip. Nothing is
-      // queued yet, so this page goes the unlock way and so does every one
-      // after it — a refused gap START is what leaves the printer feeding
-      // blank labels on the next job, so it must not be tried again.
-      if (!(err instanceof PrinterRejectedError) || err.cmd !== Cmd.START_PRINT) throw err;
-      this.unlockAll = true;
-      return this.printUnlocked(raster, density, pollMs);
-    }
+    await this.cmd(req.startPrint());
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
     await this.cmd(req.setDimension(raster.height, raster.width));
@@ -286,79 +260,6 @@ export class NiimbotClient {
     await this.cmd(req.endPagePrint());
     await this.waitDrain(baseline, pollMs);
     await this.cmd(req.endPrint());
-  }
-
-  /**
-   * The 50 × 50 sequence (bench, 2026-10-04). The 50 × 50 roll's chip can't
-   * be written, and a session opened as gap labels is refused outright
-   * (0x14, "write RFID fail"). Opened as continuous paper it is accepted,
-   * and switching to gap labels inside the session makes the printer seek
-   * the gap as usual — the page lands exactly on its label, nothing is fed
-   * in between, and nothing has to be positioned by hand.
-   *
-   * Now and then the printer still trips on the chip after END_PAGE: the
-   * page counter runs, blank labels may feed, and the rows burn late or
-   * never. The wait is long (the bench saw the page come out 5–7 s late)
-   * and a page that still hasn't burned is reported as stalled, never
-   * resent — resending is how one label became five. The next session's
-   * PRINT_CLEAR drops whatever stayed queued.
-   */
-  /**
-   * Every page goes through {@link printUnlocked}. Bench, 2026-10-06, on the
-   * B21S with a roll whose chip reads as used up: the plain gap sequence is
-   * refused, and both a gap-mode attempt AND a GET_RFID read make the next
-   * page come out behind ~10 blank labels, while the unlock sequence sent
-   * cold prints clean every time (also after minutes idle). So there is no
-   * safe way to ask the printer which sequence to use: the unlock one is
-   * simply the sequence now. Left as a flag so a healthy roll can be put
-   * back on the plain path if it ever misbehaves on this one.
-   */
-  unlockAll = true;
-
-  /**
-   * The roll's chip, or null when the printer sees none. NOT called by the
-   * app: on a spent roll the read itself sets off the blank-label run.
-   */
-  async readRoll(): Promise<RollChip | null> {
-    try {
-      const p = await this.t.transceive(req.getRfid(), responseType(Cmd.GET_RFID), 1500);
-      return parseRfid(p.data);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Blank rows fed after the design on the unlock sequence. Tried at 24
-   * (3 mm) to bring the gap to the tear bar: the page then ran into the gap
-   * and the printer skipped to the following label, losing one blank label
-   * per print (owner, 2026-10-06). Kept at 0 — the printer parks where it
-   * parks on this sequence.
-   */
-  static UNLOCK_TAIL_ROWS = 0;
-
-  private async printUnlocked(raster: LabelRaster, density: number, pollMs: number) {
-    const tail = NiimbotClient.UNLOCK_TAIL_ROWS;
-    await this.cmd(req.setDensity(density));
-    await this.cmd(req.setLabelType(3));
-    await this.cmd(req.startPrint());
-    await this.cmd(req.setLabelType(1));
-    await this.cmd(req.allowPrintClear());
-    await this.cmd(req.startPagePrint());
-    await this.cmd(req.setDimension(raster.height + tail, raster.width));
-    await this.cmd(req.setQuantity(1));
-
-    for (let y = 0; y < raster.rows.length; y++) await this.t.write(rowPacket(y, raster.rows[y]));
-    const blank = new Uint8Array(HEAD_WIDTH_BYTES);
-    for (let y = 0; y < tail; y++) await this.t.write(rowPacket(raster.rows.length + y, blank));
-
-    await this.cmd(req.endPagePrint());
-    // Idle reads 798 or 799 after these jobs: aim just under, not at the baseline.
-    // Stall tolerance ≈ 24 s at the production poll rate (160 × 150 ms).
-    await this.waitDrain(LINE_BUFFER_ROWS - 4, pollMs, 90_000, pollMs * 160);
-    const free = await this.freeRows();
-    await this.cmd(req.endPrint());
-    if (free !== null && free < LINE_BUFFER_ROWS - 10) throw new PrinterStalledError();
   }
 
   /** Wait for the line buffer to climb back to `target`; give up on a stall. */

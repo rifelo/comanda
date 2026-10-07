@@ -21,12 +21,6 @@ export interface LabelRaster {
   height: number;
   /** One entry per row along the feed; each HEAD_WIDTH_BYTES, bit set = black. */
   rows: Uint8Array[];
-  /**
-   * Open the print session as continuous paper and switch to gap labels
-   * before the page (see NiimbotClient.printUnlocked). Only the 50 × 50 mm
-   * labels set it; absent = the plain gap sequence, as always.
-   */
-  unlock?: boolean;
 }
 
 export interface OrderLabelInput {
@@ -71,8 +65,6 @@ const displayFont = () => cssFamily("--font-slab", FALLBACK_SANS);
 const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
 /** Phrase face (Delight Bold). Loaded as weight 700 — always ask for bold. */
 const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
-/** Name face of the 50 × 50 label (Nority Display, the brand wordmark). Single weight — never ask for bold. */
-const nombreFont = () => cssFamily("--font-nombre", FALLBACK_SANS);
 
 /**
  * Canvas draws with whatever is loaded at that instant, so a cold label
@@ -86,7 +78,6 @@ export async function ensureLabelFonts(): Promise<void> {
       document.fonts.load(`96px ${displayFont()}`),
       document.fonts.load(`bold 30px ${monoFont()}`),
       document.fonts.load(`bold 30px ${fraseFont()}`),
-      document.fonts.load(`60px ${nombreFont()}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -385,235 +376,6 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
   ctx.textAlign = "left";
 
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 96);
-}
-
-// ── 50 × 50 mm stock ────────────────────────────────────────────
-// Square labels print two per cup: the name label (brand template: cup icon,
-// "PA'", the name, the drink, the hand at the foot) and the phrase label
-// (Instagram QR, cup icon, the phrase). Same head, so the ink is still
-// 45 mm wide; the design is 48 mm tall, 2 mm down like the 30 mm ones.
-const SQ_H = 48 * PX_PER_MM;
-type LabelImage = CanvasImageSource & { width: number; height: number };
-
-function squareCanvas(): { ctx: CanvasRenderingContext2D; W: number; H: number; cx: number; inkW: number } {
-  const W = HEAD_WIDTH_PX;
-  const H = SQ_H;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("canvas 2d context unavailable");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#000";
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  const inkW = INK_RIGHT - INK_LEFT;
-  return { ctx, W, H, cx: INK_LEFT + inkW / 2, inkW };
-}
-
-/** The brand cup in the top-right corner, as on the template. */
-function drawCornerCup(ctx: CanvasRenderingContext2D, cup: LabelImage | null | undefined): void {
-  if (!cup || !cup.width) return;
-  const w = 62;
-  const h = Math.round((cup.height / cup.width) * w);
-  ctx.drawImage(cup, INK_RIGHT - 6 - w, 2, w, h);
-}
-
-export interface CupNameLabelInput {
-  /** Whose cup it is. Empty → the drink is the hero and "PA'" is dropped. */
-  customer?: string;
-  /** Product name as on the menu ("Latte frío"). */
-  drink: string;
-  /** Brand cup for the corner (optional). */
-  cup?: LabelImage | null;
-  /** Brand illustration at the foot (optional). */
-  art?: LabelImage | null;
-}
-
-/**
- * 50 × 50 name label, after the brand template: "PA'" and the name in
- * Nority Display, the drink under it in Delight Bold, the hand reaching up
- * from the bottom edge. A long name shrinks, then takes a second line; the
- * text never runs into the illustration.
- */
-export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
-  const { ctx, W, H, cx, inkW } = squareCanvas();
-  drawCornerCup(ctx, input.cup);
-
-  // Foot illustration: template width (≈ 40 mm), bleeding off the bottom edge.
-  let textBottom = H - 14;
-  if (input.art && input.art.width) {
-    const w = 319;
-    const h = Math.round((input.art.height / input.art.width) * w);
-    const top = H - h;
-    ctx.drawImage(input.art, Math.round(cx - 158), top, w, h);
-    textBottom = top - 8;
-  }
-
-  const who = (input.customer ?? "").replace(/\s+/g, " ").trim();
-  const drink = input.drink.replace(/\s+/g, " ").trim();
-  const maxW = inkW - 20;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-
-  // "PA'" sits where the template has it; without a name the hero moves up a little.
-  let top = 62;
-  if (who) {
-    ctx.font = `32px ${nombreFont()}`;
-    ctx.fillText("PA’", cx, 86);
-    top = 96;
-  }
-  const hero = who || drink;
-  const sub = who ? drink : "";
-
-  // Biggest hero that leaves room for the drink line(s) above the hand.
-  const areaH = textBottom - top;
-  let chosen: { hs: number; hl: string[]; ss: number; sl: string[] } | null = null;
-  for (let hs = 64; hs >= 24 && !chosen; hs -= 2) {
-    ctx.font = `${hs}px ${nombreFont()}`;
-    const hl = wrap(ctx, hero, maxW);
-    if (hl.length > 2 || Math.max(...hl.map((l) => ctx.measureText(l).width)) > maxW) continue;
-    if (!sub) {
-      if (hl.length * Math.round(hs * 0.98) <= areaH) chosen = { hs, hl, ss: 0, sl: [] };
-      continue;
-    }
-    for (let ss = Math.min(36, Math.round(hs * 0.6)); ss >= 20; ss -= 2) {
-      ctx.font = `bold ${ss}px ${fraseFont()}`;
-      const sl = wrap(ctx, sub, maxW);
-      if (sl.length > 2 || Math.max(...sl.map((l) => ctx.measureText(l).width)) > maxW) continue;
-      if (hl.length * Math.round(hs * 0.98) + Math.round(ss * 0.45) + sl.length * Math.round(ss * 1.1) <= areaH) {
-        chosen = { hs, hl, ss, sl };
-        break;
-      }
-    }
-  }
-  if (!chosen) {
-    ctx.font = `28px ${nombreFont()}`;
-    const hl = [fitOneLine(ctx, hero, maxW)];
-    ctx.font = `bold 20px ${fraseFont()}`;
-    chosen = { hs: 28, hl, ss: sub ? 20 : 0, sl: sub ? [fitOneLine(ctx, sub, maxW)] : [] };
-  }
-
-  const hLH = Math.round(chosen.hs * 0.98);
-  // With a name the block hangs from "PA'" as on the template; a lone drink sits centred.
-  let y = top + Math.round(chosen.hs * 0.82) + (sub ? 0 : Math.max(0, Math.round((areaH - chosen.hl.length * hLH) / 2) - 6));
-  ctx.font = `${chosen.hs}px ${nombreFont()}`;
-  for (const l of chosen.hl) {
-    ctx.fillText(l, cx, y);
-    y += hLH;
-  }
-  if (chosen.sl.length) {
-    const sLH = Math.round(chosen.ss * 1.1);
-    y = y - hLH + Math.round(chosen.ss * 0.45) + Math.round(chosen.ss * 0.95);
-    ctx.font = `bold ${chosen.ss}px ${fraseFont()}`;
-    for (const l of chosen.sl) {
-      ctx.fillText(l, cx, y);
-      y += sLH;
-    }
-  }
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  return { ...rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 110), unlock: true };
-}
-
-export interface PhraseQrLabelInput {
-  /** The phrase for the customer (≤ 140 chars, plain text). */
-  text: string;
-  /** Instagram handle, without "@"; no handle → no QR. */
-  handle?: string | null;
-  /** Brand cup for the corner (optional). */
-  cup?: LabelImage | null;
-}
-
-/**
- * 50 × 50 phrase label: the Instagram QR and the brand cup on top, the
- * phrase below in Delight Bold, as big as fits.
- */
-export function renderPhraseQrLabel(input: PhraseQrLabelInput): LabelRaster {
-  const { ctx, W, H, cx, inkW } = squareCanvas();
-  const left = INK_LEFT + 10;
-  const right = INK_RIGHT - 6;
-  const innerW = right - left;
-  ctx.textBaseline = "top";
-
-  let bodyTop = 14;
-  const ig = (input.handle ?? "").trim() ? instagramLink(input.handle!) : null;
-  if (ig) {
-    // QR on the left, quiet zone included in its box.
-    const box = 132;
-    const qr = createQr(ig.url, { errorCorrectionLevel: "M" });
-    const n = qr.modules.size;
-    const mod = Math.max(2, Math.floor(box / n));
-    const qrPx = n * mod;
-    const qx = left;
-    const qy = 8;
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (qr.modules.get(r, c)) ctx.fillRect(qx + c * mod, qy + r * mod, mod, mod);
-      }
-    }
-    // Right of it: the cup, then "SÍGUENOS" and the handle.
-    const colL = qx + qrPx + 14;
-    const colW = right - colL;
-    const colCx = colL + colW / 2;
-    let ty = qy;
-    if (input.cup && input.cup.width) {
-      const w = Math.min(96, colW);
-      const h = Math.round((input.cup.height / input.cup.width) * w);
-      ctx.drawImage(input.cup, Math.round(colCx - w / 2), ty, w, h);
-      ty += h + 8;
-    }
-    ctx.textAlign = "center";
-    ctx.font = `bold 12px ${monoFont()}`;
-    setTracking(ctx, "2px");
-    ctx.fillText("SÍGUENOS", colCx, ty);
-    setTracking(ctx, "0px");
-    let hs = 22;
-    for (; hs >= 12; hs -= 1) {
-      ctx.font = `bold ${hs}px ${fraseFont()}`;
-      if (ctx.measureText(`@${ig.handle}`).width <= colW) break;
-    }
-    ctx.fillText(fitOneLine(ctx, `@${ig.handle}`, colW), colCx, ty + 17);
-    bodyTop = qy + qrPx + 14;
-  } else if (input.cup && input.cup.width) {
-    const w = 110;
-    const h = Math.round((input.cup.height / input.cup.width) * w);
-    ctx.drawImage(input.cup, Math.round(cx - w / 2), 8, w, h);
-    bodyTop = 8 + h + 12;
-  }
-
-  // rule, then the phrase centred in what is left
-  ctx.fillRect(left, bodyTop, innerW, 3);
-  const areaTop = bodyTop + 12;
-  const areaH = H - 10 - areaTop;
-  const text = input.text.replace(/\s+/g, " ").trim();
-  ctx.textAlign = "center";
-  let size = 44;
-  let lines: string[] = [];
-  for (; size >= 18; size -= 1) {
-    ctx.font = `bold ${size}px ${fraseFont()}`;
-    const candidate = wrap(ctx, text, innerW);
-    const widest = Math.max(0, ...candidate.map((l) => ctx.measureText(l).width));
-    if (candidate.length <= 7 && widest <= innerW && candidate.length * Math.round(size * 1.18) <= areaH - 6) {
-      lines = candidate;
-      break;
-    }
-  }
-  if (!lines.length) {
-    size = 18;
-    ctx.font = `bold ${size}px ${fraseFont()}`;
-    lines = wrap(ctx, text, innerW).slice(0, 7);
-  }
-  const lh = Math.round(size * 1.18);
-  let ty = areaTop + Math.max(0, Math.round((areaH - lines.length * lh) / 2));
-  for (const l of lines) {
-    ctx.fillText(l, Math.round(left + innerW / 2), ty);
-    ty += lh;
-  }
-  ctx.textAlign = "left";
-  void inkW;
-  return { ...rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, 110), unlock: true };
 }
 
 export interface DrinkLabelInput {

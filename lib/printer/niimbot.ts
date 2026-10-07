@@ -151,7 +151,7 @@ const u16 = (n: number): number[] => [(n >> 8) & 0xff, n & 0xff];
 
 export const req = {
   setDensity: (n: number) => encodePacket(Cmd.SET_LABEL_DENSITY, [clamp(n, 1, 5)]),
-  /** 1 = gap labels (die-cut on a liner), which is what the B21S ships with; 3 = continuous. */
+  /** 1 = gap labels (die-cut on a liner), which is what the B21S ships with. */
   setLabelType: (n = 1) => encodePacket(Cmd.SET_LABEL_TYPE, [clamp(n, 1, 3)]),
   startPrint: () => encodePacket(Cmd.START_PRINT, [1]),
   allowPrintClear: () => encodePacket(Cmd.ALLOW_PRINT_CLEAR, [1]),
@@ -168,7 +168,6 @@ export const req = {
   getPrintStatus: () => encodePacket(Cmd.GET_PRINT_STATUS, [1]),
   heartbeat: () => encodePacket(Cmd.HEARTBEAT, [1]),
   getInfo: (key: number) => encodePacket(Cmd.GET_INFO, [key]),
-  getRfid: () => encodePacket(Cmd.GET_RFID, [1]),
 };
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -233,32 +232,6 @@ export function parseHeartbeat(data: Uint8Array): Heartbeat {
   const n = data.length;
   const powerLevel = n === 13 ? data[10] : n === 19 ? data[16] : n === 10 ? data[9] : null;
   return { powerLevel };
-}
-
-export interface RollChip {
-  barcode: string;
-  serial: string;
-  /** Labels the roll was sold with and how many the printer has counted off it. */
-  total: number;
-  used: number;
-}
-/**
- * The roll's RFID tag: `null` when the printer sees none (byte 0 = 0). The
- * printer refuses gap-mode jobs once `used >= total` ("write RFID fail", 0x14)
- * — see NiimbotClient.printUnlocked for the way around it.
- */
-export function parseRfid(data: Uint8Array): RollChip | null {
-  if (!data.length || data[0] === 0) return null;
-  let i = 8; // uuid
-  const str = (n: number) => Array.from(data.subarray(i, i + n), (b) => String.fromCharCode(b)).join("");
-  const bl = data[i++];
-  const barcode = str(bl);
-  i += bl;
-  const sl = data[i++];
-  const serial = str(sl);
-  i += sl;
-  if (i + 4 > data.length) return null;
-  return { barcode, serial, total: (data[i] << 8) | data[i + 1], used: (data[i + 2] << 8) | data[i + 3] };
 }
 
 export function parseInfo(key: number, data: Uint8Array): string | number {
