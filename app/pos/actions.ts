@@ -24,8 +24,6 @@ import type {
 import { bogotaDay, shiftDay } from "@/lib/pos/pending";
 import { summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { LabelSize } from "@/lib/pos/types";
 
 // ── price recomputation (server is the source of truth, never the client) ────
 const ModSelectionSchema = z.record(
@@ -661,27 +659,6 @@ export async function generarFrase(tono?: FraseTono): Promise<GenerarFraseResult
     console.error("[generarFrase] failed:", err);
     return { ok: false, error: err instanceof Error ? err.message : "No se pudo generar la frase." };
   }
-}
-
-// ── label stock ───────────────────────────────────────────────────────────────
-/**
- * Which roll is in the printer (50 × 30 or 50 × 50). An org-wide setting so
- * the station that takes the order and the one that prints agree; whoever is
- * at the register changes the roll, so any POS station may switch it.
- */
-export async function guardarTamanoEtiqueta(size: LabelSize): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { organizationId } = await requirePosAuth();
-  const parsed = z.enum(["50x30", "50x50"]).safeParse(size);
-  if (!parsed.success) return { ok: false, error: "Tamaño no válido." };
-  const { error } = await createSupabaseAdminClient()
-    .from("organizations")
-    .update({ label_size: parsed.data })
-    .eq("id", organizationId);
-  if (error) {
-    console.error("[guardarTamanoEtiqueta] failed:", error.message);
-    return { ok: false, error: "No se pudo guardar el tamaño." };
-  }
-  return { ok: true };
 }
 
 // ── labels relayed to the station with the printer ───────────────────────────

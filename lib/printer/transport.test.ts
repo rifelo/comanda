@@ -5,7 +5,6 @@ import {
   HEAD_WIDTH_PX,
   LINE_BUFFER_ROWS,
   NIIMBOT_USB,
-  RESP_REJECTED,
   decodePackets,
   encodePacket,
   responseType,
@@ -14,7 +13,6 @@ import {
 import {
   NiimbotClient,
   PrinterRejectedError,
-  PrinterStalledError,
   PrinterTimeoutError,
   SerialTransport,
   type SerialPortLike,
@@ -84,13 +82,10 @@ function defaultReply(p: Packet, port: FakePort): Uint8Array | null {
   }
 }
 
-async function connect(port: FakePort, unlockAll = false) {
+async function connect(port: FakePort) {
   const t = new SerialTransport(port);
   await t.open();
-  const c = new NiimbotClient(t);
-  // The app defaults to the unlock sequence; most tests exercise the plain one.
-  c.unlockAll = unlockAll;
-  return { t, c };
+  return { t, c: new NiimbotClient(t) };
 }
 
 const raster = (rows: number) => ({
@@ -172,93 +167,6 @@ describe("NiimbotClient.printRaster", () => {
     expect(lastStatusBefore).toBeGreaterThan(types.indexOf(Cmd.END_PAGE_PRINT));
     expect(port.free).toBe(LINE_BUFFER_ROWS);
     await t.close();
-  });
-
-  it("prints an unlock raster (50 × 50): session opened as continuous, switched to gap before the page", async () => {
-    const port = new FakePort();
-    const { t, c } = await connect(port);
-    await c.printRaster({ ...raster(400), unlock: true }, 3, 1);
-    const types = port.sent.map((p) => p.type);
-    const cmds = types.filter((x) => x !== Cmd.IMAGE_ROW && x !== Cmd.GET_PRINT_STATUS);
-    expect(cmds).toEqual([
-      Cmd.SET_LABEL_DENSITY,
-      Cmd.SET_LABEL_TYPE,
-      Cmd.START_PRINT,
-      Cmd.SET_LABEL_TYPE,
-      Cmd.ALLOW_PRINT_CLEAR,
-      Cmd.START_PAGE_PRINT,
-      Cmd.SET_DIMENSION,
-      Cmd.SET_QUANTITY,
-      Cmd.END_PAGE_PRINT,
-      Cmd.END_PRINT,
-    ]);
-    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
-    // the design, then the tear-off tail of blank rows
-    expect(types.filter((x) => x === Cmd.IMAGE_ROW)).toHaveLength(400 + NiimbotClient.UNLOCK_TAIL_ROWS);
-    // dimension = (rows + tail, 384): no lead-in, the printer finds the gap itself
-    const dim = 400 + NiimbotClient.UNLOCK_TAIL_ROWS;
-    expect(Array.from(port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!.data)).toEqual([dim >> 8, dim & 0xff, 1, 128]);
-    await t.close();
-  });
-
-  it("reports an unlock job whose rows never burn as stalled (never resent), after closing the session", async () => {
-    // A printer that takes the page but never drains it (the chip stall).
-    const port = new FakePort((p, self) => {
-      if (p.type === Cmd.IMAGE_ROW) { self.free -= 1; return null; }
-      if (p.type === Cmd.GET_PRINT_STATUS) return encodePacket(responseType(p.type), [0, 8, 100, 100, self.free >> 8, self.free & 0xff, 0x14, 1]);
-      return encodePacket(responseType(p.type), [1]);
-    });
-    const { t, c } = await connect(port);
-    await expect(c.printRaster({ ...raster(400), unlock: true }, 3, 1)).rejects.toBeInstanceOf(PrinterStalledError);
-    expect(port.sent[port.sent.length - 1].type).toBe(Cmd.END_PRINT);
-    // the queue only retries rejections: a stall must not look like one
-    expect(new PrinterStalledError()).not.toBeInstanceOf(PrinterRejectedError);
-    await t.close();
-  });
-
-  it("a refused gap START switches the client to the unlock sequence, for this page and the next", async () => {
-    // A printer whose roll chip reads as spent: START_PRINT under gap labels is refused with 0x14.
-    let labelType = 1;
-    const port = new FakePort((p, self) => {
-      if (p.type === Cmd.SET_LABEL_TYPE) { labelType = p.data[0]; return encodePacket(responseType(p.type), [1]); }
-      if (p.type === Cmd.START_PRINT && labelType === 1) return encodePacket(RESP_REJECTED, [0x14]);
-      return defaultReply(p, self);
-    });
-    const { t, c } = await connect(port);
-    await c.printRaster(raster(240), 3, 1);
-    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([1, 3, 1]);
-    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240 + NiimbotClient.UNLOCK_TAIL_ROWS);
-    expect(c.unlockAll).toBe(true);
-    port.sent.length = 0;
-    await c.printRaster(raster(240), 3, 1);
-    // never tries gap first again
-    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
-    expect(port.free).toBe(LINE_BUFFER_ROWS);
-    await t.close();
-  });
-
-  it("defaults to the unlock sequence for every page", async () => {
-    const port = new FakePort();
-    const t = new SerialTransport(port);
-    await t.open();
-    const c = new NiimbotClient(t);
-    await c.printRaster(raster(240), 3, 1);
-    expect(port.sent.filter((p) => p.type === Cmd.SET_LABEL_TYPE).map((p) => p.data[0])).toEqual([3, 1]);
-    expect(port.sent.filter((p) => p.type === Cmd.GET_RFID)).toHaveLength(0);
-    await t.close();
-  });
-
-  it("reads the roll chip", async () => {
-    const hex = "881dbf708e1d10800831313236323131311050433049353231333934303034343430011401150100e6881dbf708e1d1080";
-    const data = Uint8Array.from(hex.match(/../g)!.map((h) => parseInt(h, 16)));
-    const port = new FakePort((p, self) => (p.type === Cmd.GET_RFID ? encodePacket(responseType(p.type), data) : defaultReply(p, self)));
-    const { t, c } = await connect(port);
-    expect(await c.readRoll()).toEqual({ barcode: "11262111", serial: "PC0I521394004440", total: 276, used: 277 });
-    await t.close();
-    const none = new FakePort((p, self) => (p.type === Cmd.GET_RFID ? encodePacket(responseType(p.type), [0]) : defaultReply(p, self)));
-    const { t: t2, c: c2 } = await connect(none);
-    expect(await c2.readRoll()).toBeNull();
-    await t2.close();
   });
 
   it("surfaces a page rejection (printer still busy) as PrinterRejectedError", async () => {
