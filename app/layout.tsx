@@ -54,6 +54,16 @@ const frase = localFont({
   style: "normal",
 });
 
+// Nority Display, PA'YO's own wordmark face (the owner supplied the font).
+// Only the cup label draws with it: the screens keep Dela Gothic One on
+// `--font-slab`, whose metrics every heading was laid out for.
+const nority = localFont({
+  src: "./fonts/nority-display.otf",
+  variable: "--font-nority",
+  weight: "400",
+  style: "normal",
+});
+
 export const metadata: Metadata = {
   title: "co-manda",
   description:
@@ -95,7 +105,7 @@ export default async function RootLayout({
     <html
       lang="es"
       data-theme={theme}
-      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} h-full antialiased`}
+      className={`${mono.variable} ${slab.variable} ${script.variable} ${sans.variable} ${frase.variable} ${nority.variable} h-full antialiased`}
     >
       <body className="bg-paper text-ink min-h-full flex flex-col">
         {children}
