@@ -65,8 +65,6 @@ const displayFont = () => cssFamily("--font-slab", FALLBACK_SANS);
 const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
 /** Phrase face (Delight Bold). Loaded as weight 700 — always ask for bold. */
 const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
-/** Nority Display, the brand wordmark face: the drink's name on the cup label. Single weight — never ask for bold. */
-const norityFont = () => cssFamily("--font-nority", `${displayFont()}`);
 
 /**
  * Canvas draws with whatever is loaded at that instant, so a cold label
@@ -80,7 +78,6 @@ export async function ensureLabelFonts(): Promise<void> {
       document.fonts.load(`96px ${displayFont()}`),
       document.fonts.load(`bold 30px ${monoFont()}`),
       document.fonts.load(`bold 30px ${fraseFont()}`),
-      document.fonts.load(`54px ${norityFont()}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -204,7 +201,7 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
 const DRINK_W = 28 * PX_PER_MM; // design width  → along the feed
 const DRINK_H = 45 * PX_PER_MM; // design height → across the head
 /** Height of the brand mark on the cup label: the small cut of the QR label's drawing (86 px there). */
-const DRINK_ICON_H = 56;
+const DRINK_ICON_H = 44;
 /** Only clearly dark pixels of the mark burn, so the lines inside the drawing survive the scale-down. */
 const ICON_THRESHOLD = 96;
 
@@ -459,9 +456,9 @@ export function breakDrinkName(
 }
 
 /**
- * The menu label for one drink: brand kicker, rule, the name big in the
- * brand's wordmark face, the brand mark small and a one-liner. Drawn in
- * portrait design coordinates and rotated onto the landscape stock.
+ * The menu label for one drink: brand kicker, rule, the name big, the
+ * brand mark small and a one-liner. Drawn in portrait design coordinates
+ * and rotated onto the landscape stock.
  */
 export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -584,7 +581,7 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   let lines: string[] | null = null;
   for (const maxLines of [2, 3]) {
     for (size = 54; size >= 18; size -= 2) {
-      ctx.font = `${size}px ${norityFont()}`;
+      ctx.font = `${size}px ${displayFont()}`;
       const candidate = breakDrinkName(input.name, maxLines, innerW, (t) => ctx.measureText(t).width);
       if (candidate && candidate.length * Math.round(size * 0.88) <= nameH) {
         lines = candidate;
@@ -595,10 +592,10 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   }
   if (!lines) {
     size = 18;
-    ctx.font = `${size}px ${norityFont()}`;
+    ctx.font = `${size}px ${displayFont()}`;
     lines = [fitOneLine(ctx, input.name.toUpperCase(), innerW)];
   }
-  ctx.font = `${size}px ${norityFont()}`;
+  ctx.font = `${size}px ${displayFont()}`;
   const lh = Math.round(size * 0.88);
   // The display face carries deep internal leading; nudge the block up so it
   // reads centred in the space the menu leaves between rule and box.
