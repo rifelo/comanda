@@ -474,8 +474,7 @@ function jobFor(spec: LabelSpec): Job {
       return { raster: async () => renderImageLabel(await loadImage(spec.src)), folio: STICKER_FOLIO, name: "Sticker" };
     case "drink":
       return {
-        // A mark that fails to load must not cost the cup its label.
-        raster: async () => renderDrinkLabel({ ...spec.input, icon: spec.cupSrc ? await loadImage(spec.cupSrc).catch(() => null) : null }),
+        raster: () => renderDrinkLabel(spec.input),
         folio: DRINK_FOLIO,
         // The "last printed" chip names whose cup it was.
         name: spec.input.customer ? `${spec.input.customer} · ${spec.input.name}` : spec.input.name,
@@ -524,9 +523,9 @@ export function printStickerLabel(src: string): void {
 }
 export const STICKER_FOLIO = "STICKER";
 
-/** Menu label for one drink (name, brand mark and descriptor) — one per cup. `cupSrc` is the brand mark. */
-export function printDrinkLabel(input: Omit<DrinkLabelInput, "icon">, cupSrc?: string | null): void {
-  submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input }, cupSrc: cupSrc ?? null });
+/** Menu label for one drink (name and descriptor) — one per cup. */
+export function printDrinkLabel(input: DrinkLabelInput): void {
+  submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input } });
 }
 export const DRINK_FOLIO = "BEBIDA";
 

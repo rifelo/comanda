@@ -221,9 +221,7 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
 // width along the feed. Ink area: 45 × 28 mm.
 const DRINK_W = 28 * PX_PER_MM; // design width  → along the feed
 const DRINK_H = 45 * PX_PER_MM; // design height → across the head
-/** Height of the brand mark on the cup label: the small cut of the QR label's drawing (86 px there). */
-const DRINK_ICON_H = 44;
-/** Only clearly dark pixels of the mark burn, so the lines inside the drawing survive the scale-down. */
+/** Default threshold for stamped line art: only clearly dark pixels burn, so the lines inside a drawing survive the scale-down. */
 const ICON_THRESHOLD = 96;
 
 export interface InstagramLabelInput {
@@ -406,12 +404,10 @@ export function renderMessageLabel(input: MessageLabelInput): LabelRaster {
 export interface DrinkLabelInput {
   /** Product name; uppercased and broken with the brand's apostrophe. */
   name: string;
-  /** Shots and grams of the recipe. Not drawn any more (the brand mark took the box's place); still travels with the label. */
+  /** Shots and grams of the recipe. Not drawn any more; still travels with the label. */
   spec?: string[];
-  /** Short descriptor under the mark ("suave, pa' quedarse un rato"). */
+  /** Short descriptor at the foot ("suave, pa' quedarse un rato"). */
   desc?: string;
-  /** Brand mark (the cup drawing of the QR label), drawn small where the spec box was. */
-  icon?: (CanvasImageSource & { width: number; height: number }) | null;
   /** Kicker on top, e.g. "CAFÉ PA'YO". */
   brand?: string;
   /** Whose cup it is; replaces the brand kicker with "PA' <NOMBRE>". */
@@ -477,9 +473,9 @@ export function breakDrinkName(
 }
 
 /**
- * The menu label for one drink: brand kicker, rule, the name big, the
- * brand mark small and a one-liner. Drawn in portrait design coordinates
- * and rotated onto the landscape stock.
+ * The menu label for one drink: brand kicker, rule, the name big and a
+ * one-liner. Drawn in portrait design coordinates and rotated onto the
+ * landscape stock.
  */
 export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
   const W = HEAD_WIDTH_PX;
@@ -559,16 +555,9 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
     descLines.forEach((l, i) => ctx.fillText(l, M, descTop + i * descLH));
   }
 
-  // brand mark, above the description — where the spec box used to sit
-  let boxTop = descTop - 14;
-  const icon = input.icon && input.icon.width > 0 && input.icon.height > 0 ? input.icon : null;
-  if (icon) {
-    const scale = Math.min(DRINK_ICON_H / icon.height, innerW / icon.width);
-    const w = Math.round(icon.width * scale);
-    const h = Math.round(icon.height * scale);
-    boxTop = descTop - 12 - h;
-    stampMark(ctx, icon, M, boxTop, w, h);
-  }
+  // Nothing sits between the name and the description any more (the spec
+  // box, then the brand mark, were both dropped): the name takes the room.
+  const boxTop = descTop - 14;
 
   // Name: the biggest size that still fits. The menu keeps names on two
   // lines, so three are only used when two can't hold the word at any size.
