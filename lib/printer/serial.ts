@@ -288,14 +288,16 @@ let draining = false;
  */
 const SETTLE_MS = 800;
 /**
- * Blank feed after the last label of a run, in rows (8 = 1 mm). The printer
- * stops where the page ends, which leaves the last label's edge sitting on
- * the tear bar; one more millimetre brings the gap to the bar so the strip
- * tears clean (owner, 2026-10-07). Only the label that empties the queue
- * gets it — labels inside a strip stay on their own pitch. Tune here; the
- * transport caps it at 2 mm.
+ * Where the last label of a run stops, in rows from the page's own end
+ * (8 = 1 mm; positive = further out, negative = stops short). The printer
+ * stops where the page ends, and at the full page the last label's edge
+ * came to rest over the tear bar, so the strip was hard to tear off. One
+ * millimetre less leaves the gap on the bar (owner, 2026-10-07; +8 was
+ * tried first and went the wrong way). Only the label that empties the
+ * queue gets it — labels inside a strip keep their pitch. Tune here; the
+ * transport caps it at 2 mm either way.
  */
-export const LAST_LABEL_TAIL_ROWS = 8;
+export const LAST_LABEL_TAIL_ROWS = -8;
 const REJECT_RETRY_MS = 1500;
 const MAX_REJECT_RETRIES = 2;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -316,7 +318,7 @@ export async function printJobWithRetry(
   raster: () => LabelRaster | Promise<LabelRaster>,
   opts: {
     retries?: number;
-    /** Blank rows fed after the design (8 = 1 mm); see NiimbotClient.printRaster. */
+    /** Rows added to (+) or dropped from (−) the end of the page (8 = 1 mm); see NiimbotClient.printRaster. */
     tailRows?: number;
     onRetry?: (attempt: number, of: number) => void;
     wait?: (ms: number) => Promise<void>;
