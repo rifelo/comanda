@@ -34,6 +34,8 @@ export interface OrderLabelInput {
   station?: string;
   /** Business name for the kicker line. */
   orgName?: string;
+  /** Brand line art (the hand that hands the cup over), drawn at the foot of a named label. */
+  art?: (CanvasImageSource & { width: number; height: number }) | null;
 }
 
 const LABEL_H_MM = 28;
@@ -42,6 +44,13 @@ const INK_LEFT = 1 * PX_PER_MM;
 const INK_RIGHT = 46 * PX_PER_MM;
 /** Luminance below this burns. Text is antialiased; 160 keeps strokes solid. */
 const THRESHOLD = 160;
+
+/** The hand on the name label: drawn this wide, this far from the ink edge, with this much showing above the bottom edge. */
+const HAND_W = 188;
+const HAND_LEFT = 18;
+const HAND_SHOW = 72;
+/** The hand is one even line: every pixel it touches burns, so it prints as heavy as on the sheet (~0.4 mm). */
+const HAND_THRESHOLD = 215;
 
 const FALLBACK_SANS = '"Arial", "Helvetica", "Segoe UI", sans-serif';
 const FALLBACK_MONO = '"Consolas", "Courier New", monospace';
@@ -163,7 +172,11 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
   const ROSTER_LH = 18;
   // A reprinted name (Etiquetas screen) may have no order behind it.
   const hasFolio = input.folio.trim().length > 0;
-  const footerH = roster ? 44 + 4 + ROSTER_LH * 2 : name && hasFolio ? 44 : 0;
+  // One person's label with the brand art: the hand reaches up from the
+  // bottom edge on the left, cut by the label as on the designer's sheet,
+  // and the folio moves to its right. The name keeps the space above.
+  const art = name && !roster && input.art && input.art.width > 0 && input.art.height > 0 ? input.art : null;
+  const footerH = art ? HAND_SHOW : roster ? 44 + 4 + ROSTER_LH * 2 : name && hasFolio ? 44 : 0;
   const heroTop = y;
   const heroBottom = H - footerH - 6;
 
@@ -178,7 +191,15 @@ export function renderOrderLabel(input: OrderLabelInput): LabelRaster {
     ty += lineH;
   }
 
-  if ((name && hasFolio) || roster) {
+  if (art) {
+    const h = Math.round((HAND_W * art.height) / art.width);
+    stampMark(ctx, art, INK_LEFT + HAND_LEFT, H - HAND_SHOW, HAND_W, h, HAND_THRESHOLD);
+    if (hasFolio) {
+      ctx.font = `bold 26px ${monoFont()}`;
+      ctx.textAlign = "right";
+      ctx.fillText(input.folio, INK_RIGHT, H - 38);
+    }
+  } else if ((name && hasFolio) || roster) {
     const ry = H - footerH;
     ctx.fillRect(INK_LEFT, ry, inkW, 2);
     ctx.font = `bold 30px ${monoFont()}`;
@@ -546,31 +567,7 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
     const w = Math.round(icon.width * scale);
     const h = Math.round(icon.height * scale);
     boxTop = descTop - 12 - h;
-    // The label burns at the text threshold, which floods the drawing's thin
-    // white lines. So the mark is turned to pure black and white on its own
-    // first, at the lower threshold the QR label uses, and stamped as is.
-    const stamp = document.createElement("canvas");
-    stamp.width = w;
-    stamp.height = h;
-    const sx = stamp.getContext("2d", { willReadFrequently: true });
-    if (sx) {
-      sx.fillStyle = "#fff";
-      sx.fillRect(0, 0, w, h);
-      sx.imageSmoothingEnabled = true;
-      sx.imageSmoothingQuality = "high";
-      sx.drawImage(icon, 0, 0, w, h);
-      const px = sx.getImageData(0, 0, w, h);
-      for (let i = 0; i < px.data.length; i += 4) {
-        const lum = 0.299 * px.data[i] + 0.587 * px.data[i + 1] + 0.114 * px.data[i + 2];
-        const v = lum < ICON_THRESHOLD ? 0 : 255;
-        px.data[i] = px.data[i + 1] = px.data[i + 2] = v;
-        px.data[i + 3] = 255;
-      }
-      sx.putImageData(px, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(stamp, M, boxTop);
-      ctx.imageSmoothingEnabled = true;
-    }
+    stampMark(ctx, icon, M, boxTop, w, h);
   }
 
   // Name: the biggest size that still fits. The menu keeps names on two
@@ -608,6 +605,46 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
 
   ctx.restore();
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+}
+
+/**
+ * Draw a piece of brand line art as pure black and white. The label burns
+ * at the text threshold, which floods a drawing's thin white lines, so the
+ * art is scaled and thresholded on its own first (lower by default, like
+ * the QR label; higher for a bare line that should print heavy) and stamped
+ * as is. Transparent pixels are paper.
+ */
+function stampMark(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  threshold: number = ICON_THRESHOLD,
+): void {
+  const stamp = document.createElement("canvas");
+  stamp.width = w;
+  stamp.height = h;
+  const sx = stamp.getContext("2d", { willReadFrequently: true });
+  if (!sx) return;
+  sx.fillStyle = "#fff";
+  sx.fillRect(0, 0, w, h);
+  sx.imageSmoothingEnabled = true;
+  sx.imageSmoothingQuality = "high";
+  sx.drawImage(img, 0, 0, w, h);
+  const px = sx.getImageData(0, 0, w, h);
+  for (let i = 0; i < px.data.length; i += 4) {
+    const lum = 0.299 * px.data[i] + 0.587 * px.data[i + 1] + 0.114 * px.data[i + 2];
+    const v = lum < threshold ? 0 : 255;
+    px.data[i] = px.data[i + 1] = px.data[i + 2] = v;
+    px.data[i + 3] = 255;
+  }
+  sx.putImageData(px, 0, 0);
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(stamp, Math.round(x), Math.round(y));
+  ctx.imageSmoothingEnabled = smooth;
 }
 
 /** `letterSpacing` is Chromium-only; ignore it elsewhere. */

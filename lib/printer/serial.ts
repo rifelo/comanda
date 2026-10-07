@@ -397,8 +397,12 @@ async function drain() {
 
 /** Station / business shown on every label; set once by the terminal on mount. */
 let labelDefaults: Pick<OrderLabelInput, "station" | "orgName"> = {};
-export function setLabelDefaults(d: Pick<OrderLabelInput, "station" | "orgName">) {
-  labelDefaults = { ...labelDefaults, ...d };
+/** Brand line art of the name label (the hand), a URL; null = none. */
+let labelArt: string | null = null;
+export function setLabelDefaults(d: Pick<OrderLabelInput, "station" | "orgName"> & { art?: string | null }) {
+  const { art, ...rest } = d;
+  labelDefaults = { ...labelDefaults, ...rest };
+  if (art !== undefined) labelArt = art;
 }
 
 // ── relay: no printer here → ask the station that has one ───────
@@ -452,7 +456,12 @@ async function flushRelay() {
 function jobFor(spec: LabelSpec): Job {
   switch (spec.kind) {
     case "order":
-      return { raster: () => renderOrderLabel(spec.input), folio: spec.input.folio, name: spec.input.name.trim() };
+      return {
+        // Art that fails to load must not cost the order its label.
+        raster: async () => renderOrderLabel({ ...spec.input, art: spec.artSrc ? await loadImage(spec.artSrc).catch(() => null) : null }),
+        folio: spec.input.folio,
+        name: spec.input.name.trim(),
+      };
     case "instagram":
       return {
         raster: async () => renderInstagramLabel({ handle: spec.handle, orgName: spec.orgName, cup: spec.cupSrc ? await loadImage(spec.cupSrc) : null }),
@@ -493,8 +502,8 @@ export function printRelayedLabel(spec: LabelSpec): void {
  * Fire-and-forget: called from completeSale on success. Never throws, never
  * blocks the receipt; failures show on the printer chip.
  */
-export function printOrderLabel(input: OrderLabelInput): void {
-  submit({ kind: "order", input: { ...labelDefaults, ...input } });
+export function printOrderLabel(input: Omit<OrderLabelInput, "art">): void {
+  submit({ kind: "order", input: { ...labelDefaults, ...input }, artSrc: labelArt });
 }
 
 /** "Síguenos" QR label; `cupSrc` is the brand art drawn above the code. */

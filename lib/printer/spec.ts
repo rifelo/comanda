@@ -18,6 +18,8 @@ export const LabelSpecSchema = z.discriminatedUnion("kind", [
       station: text(80).optional(),
       orgName: text(120).optional(),
     }),
+    /** Brand line art at the foot of the name label; loaded when the job runs. */
+    artSrc: text(800).nullable().optional(),
   }),
   z.object({
     kind: z.literal("drink"),
