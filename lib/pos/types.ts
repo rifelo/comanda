@@ -100,6 +100,8 @@ export interface PosCatalog {
   sticker: string | null;
   /** Brand line art for the "síguenos" QR label (organizations.cup_url), null = none. */
   cupArt: string | null;
+  /** Brand line art at the foot of the name label (organizations.label_art_url), null = none. */
+  handArt: string | null;
 }
 
 /** Catalog narrowed by the assistant to what the customer asked for. */

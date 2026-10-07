@@ -384,8 +384,8 @@ export function PosTerminal({
   }, [catalog]);
   // What every printed label shows in its kicker line.
   React.useEffect(() => {
-    setLabelDefaults({ station, orgName: catalog.orgName });
-  }, [station, catalog.orgName]);
+    setLabelDefaults({ station, orgName: catalog.orgName, art: catalog.handArt });
+  }, [station, catalog.orgName, catalog.handArt]);
 
   return (
     <CatalogCtx.Provider value={catalog}>
@@ -1981,7 +1981,7 @@ const etqHint: React.CSSProperties = { fontSize: 11.5, color: C.muted, margin: "
 const etqLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted, margin: "14px 0 6px" };
 
 /** The label exactly as the printer will draw it (same renderer, 1 bit). */
-function LabelPreview({ kind, text, extra }: { kind: "nombre" | "frase"; text: string; extra: string }) {
+function LabelPreview({ kind, text, extra, art }: { kind: "nombre" | "frase"; text: string; extra: string; art?: string | null }) {
   const ref = React.useRef<HTMLCanvasElement>(null);
   React.useEffect(() => {
     let off = false;
@@ -1989,7 +1989,12 @@ function LabelPreview({ kind, text, extra }: { kind: "nombre" | "frase"; text: s
       await ensureLabelFonts();
       const c = ref.current;
       if (off || !c) return;
-      const r = kind === "frase" ? renderMessageLabel({ text, handle: extra }) : renderOrderLabel({ name: text, folio: extra });
+      // The name label carries the brand's hand; a failed load just leaves it out.
+      const img = kind === "nombre" && art
+        ? await new Promise<HTMLImageElement | null>((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = art; })
+        : null;
+      if (off) return;
+      const r = kind === "frase" ? renderMessageLabel({ text, handle: extra }) : renderOrderLabel({ name: text, folio: extra, art: img });
       c.width = r.width;
       c.height = r.height;
       const ctx = c.getContext("2d");
@@ -2002,7 +2007,7 @@ function LabelPreview({ kind, text, extra }: { kind: "nombre" | "frase"; text: s
       });
     })();
     return () => { off = true; };
-  }, [kind, text, extra]);
+  }, [kind, text, extra, art]);
   return <canvas ref={ref} className="pos-etq-prev" aria-label="Vista previa de la etiqueta" />;
 }
 
@@ -2129,7 +2134,7 @@ function EtiquetasScreen() {
                   <button type="button" className="pos-textbtn tight" onClick={() => setFolio("")} style={{ background: "none", border: "none", color: C.red, fontFamily: F.mono, fontSize: 11.5, cursor: "pointer" }}>quitar</button>
                 </div>
               )}
-              {who && <LabelPreview kind="nombre" text={who} extra={folio} />}
+              {who && <LabelPreview kind="nombre" text={who} extra={folio} art={catalog.handArt} />}
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button type="button" disabled={!who || !canPrint} onClick={() => printOrderLabel({ name: who, folio, orgName: catalog.orgName })} style={etqBtn(true, !who || !canPrint)}>Imprimir nombre</button>
               </div>
