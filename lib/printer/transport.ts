@@ -16,6 +16,7 @@
 
 import {
   Cmd,
+  HEAD_WIDTH_BYTES,
   HEAD_WIDTH_PX,
   LINE_BUFFER_ROWS,
   RESP_REJECTED,
@@ -206,6 +207,9 @@ export class SerialTransport {
   }
 }
 
+/** Hard cap on the blank tail of a page (2 mm): 3 mm is known to skip a label. */
+export const MAX_TAIL_ROWS = 16;
+
 // ── protocol client ─────────────────────────────────────────────
 export class NiimbotClient {
   constructor(private t: SerialTransport) {}
@@ -245,18 +249,25 @@ export class NiimbotClient {
    * owner's 50 × 30 roll reads 277 of 276 — and every such refusal makes the
    * next page come out after a run of blank labels. Opened this way the
    * printer accepts the job and seeks the gap itself (bench 2026-10-06; the
-   * same sequence prints on a healthy chip). No chip read, no lead-in rows,
-   * no tail: each of those cost labels.
+   * same sequence prints on a healthy chip). No chip read and no lead-in
+   * rows: each of those cost labels.
+   *
+   * `tailRows` are blank rows fed after the design (8 = 1 mm), declared as
+   * part of the page. On this sequence the printer stops where the page
+   * ends, so a short tail pushes the strip that much further out. Keep it
+   * short: at 24 rows (3 mm) the page ran into the gap and the printer
+   * skipped a whole label on the next print (owner, 2026-10-06).
    */
-  async printRaster(raster: LabelRaster, density = 3, pollMs = 150) {
+  async printRaster(raster: LabelRaster, density = 3, pollMs = 150, tailRows = 0) {
     if (raster.width !== HEAD_WIDTH_PX) throw new RangeError(`raster must be ${HEAD_WIDTH_PX}px wide`);
+    const tail = Math.max(0, Math.min(MAX_TAIL_ROWS, Math.floor(tailRows)));
     await this.cmd(req.setDensity(density));
     await this.cmd(req.setLabelType(3));
     await this.cmd(req.startPrint());
     await this.cmd(req.setLabelType(1));
     await this.cmd(req.allowPrintClear());
     await this.cmd(req.startPagePrint());
-    await this.cmd(req.setDimension(raster.height, raster.width));
+    await this.cmd(req.setDimension(raster.height + tail, raster.width));
     await this.cmd(req.setQuantity(1));
 
     const baseline = (await this.freeRows()) ?? LINE_BUFFER_ROWS;
@@ -265,6 +276,10 @@ export class NiimbotClient {
     for (let y = 0; y < raster.rows.length; y++) {
       await this.t.write(rowPacket(y, raster.rows[y]));
       if (pace && (y + 1) % 16 === 0) await sleep(50);
+    }
+    if (tail) {
+      const blank = new Uint8Array(HEAD_WIDTH_BYTES);
+      for (let y = 0; y < tail; y++) await this.t.write(rowPacket(raster.rows.length + y, blank));
     }
 
     await this.cmd(req.endPagePrint());

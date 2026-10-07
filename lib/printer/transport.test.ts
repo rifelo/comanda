@@ -11,6 +11,7 @@ import {
   type Packet,
 } from "@/lib/printer/niimbot";
 import {
+  MAX_TAIL_ROWS,
   NiimbotClient,
   PrinterRejectedError,
   PrinterTimeoutError,
@@ -170,6 +171,25 @@ describe("NiimbotClient.printRaster", () => {
     const lastStatusBefore = types.slice(0, endPrintAt).lastIndexOf(Cmd.GET_PRINT_STATUS);
     expect(lastStatusBefore).toBeGreaterThan(types.indexOf(Cmd.END_PAGE_PRINT));
     expect(port.free).toBe(LINE_BUFFER_ROWS);
+    await t.close();
+  });
+
+  it("feeds a blank tail after the design, declared in the page size and capped at 2 mm", async () => {
+    const port = new FakePort();
+    const { t, c } = await connect(port);
+    await c.printRaster(raster(240), 3, 1, 8);
+    const rows = port.sent.filter((p) => p.type === Cmd.IMAGE_ROW);
+    expect(rows).toHaveLength(248);
+    // the tail rows carry on the row counter and are blank
+    const last = rows[rows.length - 1];
+    expect((last.data[0] << 8) | last.data[1]).toBe(247);
+    expect(Array.from(last.data.slice(6)).every((b) => b === 0)).toBe(true);
+    const dim = port.sent.find((p) => p.type === Cmd.SET_DIMENSION)!;
+    expect((dim.data[0] << 8) | dim.data[1]).toBe(248);
+
+    port.sent.length = 0;
+    await c.printRaster(raster(240), 3, 1, 999);
+    expect(port.sent.filter((p) => p.type === Cmd.IMAGE_ROW)).toHaveLength(240 + MAX_TAIL_ROWS);
     await t.close();
   });
 

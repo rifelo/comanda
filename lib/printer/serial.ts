@@ -287,6 +287,15 @@ let draining = false;
  * them and a rejection is retried instead of being thrown away.
  */
 const SETTLE_MS = 800;
+/**
+ * Blank feed after the last label of a run, in rows (8 = 1 mm). The printer
+ * stops where the page ends, which leaves the last label's edge sitting on
+ * the tear bar; one more millimetre brings the gap to the bar so the strip
+ * tears clean (owner, 2026-10-07). Only the label that empties the queue
+ * gets it — labels inside a strip stay on their own pitch. Tune here; the
+ * transport caps it at 2 mm.
+ */
+export const LAST_LABEL_TAIL_ROWS = 8;
 const REJECT_RETRY_MS = 1500;
 const MAX_REJECT_RETRIES = 2;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -294,7 +303,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** What the queue needs from a printer; `NiimbotClient` satisfies it. */
 export interface PrintTarget {
   waitIdle(timeoutMs?: number): Promise<boolean>;
-  printRaster(raster: LabelRaster): Promise<unknown>;
+  printRaster(raster: LabelRaster, density?: number, pollMs?: number, tailRows?: number): Promise<unknown>;
 }
 
 /**
@@ -307,6 +316,8 @@ export async function printJobWithRetry(
   raster: () => LabelRaster | Promise<LabelRaster>,
   opts: {
     retries?: number;
+    /** Blank rows fed after the design (8 = 1 mm); see NiimbotClient.printRaster. */
+    tailRows?: number;
     onRetry?: (attempt: number, of: number) => void;
     wait?: (ms: number) => Promise<void>;
   } = {},
@@ -316,7 +327,7 @@ export async function printJobWithRetry(
   for (let attempt = 0; ; attempt++) {
     try {
       await target.waitIdle();
-      await target.printRaster(await raster());
+      await target.printRaster(await raster(), undefined, undefined, opts.tailRows ?? 0);
       return;
     } catch (err) {
       // Busy, not broken: let the feed finish and send the page again.
@@ -361,6 +372,8 @@ async function drain() {
         // The brand face must be loaded before the canvas draws with it.
         await ensureLabelFonts();
         await printJobWithRetry(client, job.raster, {
+          // Nothing waiting behind this label: it ends the strip.
+          tailRows: queue.length === 1 ? LAST_LABEL_TAIL_ROWS : 0,
           onRetry: (n, of) => {
             console.warn(`[printer] rejected, retry ${n}/${of}`);
             printerStore.set({
