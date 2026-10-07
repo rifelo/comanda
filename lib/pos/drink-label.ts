@@ -9,6 +9,16 @@ import type { OrderLine } from "./types";
 /** One espresso shot, in grams (the menu's own wording: "1 SHOT · 9 G"). */
 export const GRAMS_PER_SHOT = 9;
 
+/**
+ * The line in the cup label's box: "+7 DE ENERGÍA", a number from 1 to 10
+ * drawn fresh for every cup. It replaced the recipe's shots and grams
+ * ("1 SHOT · 9 G") — a wink for the customer, not a measurement.
+ */
+export function energiaLine(rand: number = Math.random()): string {
+  const n = Math.min(10, Math.max(1, 1 + Math.floor(rand * 10)));
+  return `+${n} DE ENERGÍA`;
+}
+
 /** One job in the label run of a sale, in print order. */
 export type SaleLabelJob =
   | { kind: "name"; name: string }

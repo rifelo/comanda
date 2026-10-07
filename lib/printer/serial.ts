@@ -34,6 +34,7 @@ import {
   type SerialPortLike,
 } from "./transport";
 import type { LabelSpec } from "./spec";
+import { energiaLine } from "@/lib/pos/drink-label";
 import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
@@ -538,9 +539,13 @@ export function printStickerLabel(src: string): void {
 }
 export const STICKER_FOLIO = "STICKER";
 
-/** Menu label for one drink (name and descriptor) — one per cup. */
+/**
+ * Menu label for one drink (name, energy box and descriptor) — one per cup.
+ * The box is drawn here, once per cup, so a relayed label prints the same
+ * number the station drew; whatever `spec` the caller passes is replaced.
+ */
 export function printDrinkLabel(input: DrinkLabelInput): void {
-  submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input } });
+  submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input, spec: [energiaLine()] } });
 }
 export const DRINK_FOLIO = "BEBIDA";
 
