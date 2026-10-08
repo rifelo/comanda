@@ -155,7 +155,7 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
 
       {negativos > 0 && (
         <div role="note" style={{ border: "1.5px solid var(--amber)", background: "var(--paper-lt)", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.5, maxWidth: 820, marginBottom: 14, borderRadius: 4 }}>
-          <b>{negativos} ítems tienen stock negativo</b>: se vendieron sin que se registrara la compra. Los colores de esta pantalla no son confiables hasta hacer un conteo completo desde la tablet (Turno → Conteo) y aprobarlo.
+          <b>{negativos} ítems tienen stock negativo</b>: se vendieron sin que se registrara la compra. Los colores de esta pantalla no son confiables hasta hacer un conteo completo desde la tablet (Inventario → Contar) y aprobarlo.
         </div>
       )}
 

@@ -364,6 +364,8 @@ export interface InventarioConteo {
   reviewed_at: string | null;
   note: string | null;
   review_note: string | null;
+  /** Applied by itself: a quick count within tolerance, no owner review (0046). */
+  auto: boolean;
   items: InventarioConteoItem[];
 }
 

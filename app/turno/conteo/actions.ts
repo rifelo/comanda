@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireTurnoContext } from "@/lib/turno/server";
 import { conteoSummary, lineDiff, type ConteoSummary } from "@/lib/inventario/conteo";
+import { aplicarConteo, getConteo } from "@/lib/inventario/conteos";
+import { piezaDe } from "@/lib/inventario/niveles";
+import { conteoNormal } from "@/lib/inventario/rutina";
 
 const Schema = z.object({
   kind: z.enum(["diario", "completo"]),
@@ -37,15 +40,17 @@ export interface ConteoResultLine {
   value: number;
 }
 export type EnviarConteoResult =
-  | { ok: true; conteoId: string; lines: ConteoResultLine[]; summary: ConteoSummary; propuestas: number }
+  | { ok: true; conteoId: string; lines: ConteoResultLine[]; summary: ConteoSummary; propuestas: number; /** The stock was corrected right away (0046). */ aplicado: boolean }
   | { ok: false; error: string };
 
 /**
  * Store a physical count from the tablet, signed by the person logged in on
  * it. The count is blind on screen; here
  * every line gets the stock the system expected at this instant and the cost
- * that values the difference. Nothing moves stock — the owner approves the
- * count from the panel, and that creates the adjustments.
+ * that values the difference. A quick count whose differences are ordinary
+ * (lib/inventario/rutina.ts `conteoNormal`) corrects the stock right away,
+ * once a full count has been approved to stand on; anything else — a full
+ * count, a line far off, a proposed item — waits for the owner in the panel.
  */
 export async function enviarConteo(input: unknown): Promise<EnviarConteoResult> {
   const parsed = Schema.safeParse(input);
@@ -60,7 +65,7 @@ export async function enviarConteo(input: unknown): Promise<EnviarConteoResult> 
   const ids = [...new Set(parsed.data.items.map((i) => i.ingredienteId))];
   const { data: ings } = await admin
     .from("ingredientes")
-    .select("id, name, unit, stock_current, cost_cop")
+    .select("id, name, unit, stock_current, cost_cop, pack_qty, pieza_qty")
     .eq("organization_id", orgId)
     .in("id", ids);
   const byId = new Map((ings ?? []).map((i) => [i.id as string, i]));
@@ -74,6 +79,7 @@ export async function enviarConteo(input: unknown): Promise<EnviarConteoResult> 
     .eq("restaurant_id", ctx.restaurantId)
     .eq("date", today)
     .eq("status", "open")
+    .order("opened_at", { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
 
@@ -120,12 +126,23 @@ export async function enviarConteo(input: unknown): Promise<EnviarConteoResult> 
     console.error("[enviarConteo] insert items:", iErr);
     return { ok: false, error: "No se pudieron guardar las líneas del conteo." };
   }
-  revalidatePath("/turno/conteo");
-  revalidatePath("/inventario/conteos");
+  let aplicado = false;
+  if (parsed.data.kind === "diario" && parsed.data.propuestas.length === 0) {
+    const normal = conteoNormal(rows.map((r) => {
+      const ing = byId.get(r.ingrediente_id)!;
+      return { ...r, pieza: piezaDe({ unit: ing.unit as string, pack_qty: ing.pack_qty === null ? null : Number(ing.pack_qty), pieza_qty: ing.pieza_qty === null ? null : Number(ing.pieza_qty) }) };
+    }));
+    const { count: base } = normal
+      ? await admin.from("inventario_conteos").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("kind", "completo").eq("status", "aprobado")
+      : { count: 0 };
+    const full = normal && (base ?? 0) > 0 ? await getConteo(admin, orgId, conteo.id as string) : null;
+    if (full) aplicado = (await aplicarConteo(admin, orgId, full, { reviewerId: null, createdBy: ctx.actor.profileId })).ok;
+  }
+  for (const p of ["/turno", "/turno/conteo", "/turno/inventario", "/inventario", "/inventario/conteos", "/notificaciones"]) revalidatePath(p);
   const lines = rows.map((r) => {
     const ing = byId.get(r.ingrediente_id)!;
     const d = lineDiff(r);
     return { ingredienteId: r.ingrediente_id, name: ing.name as string, unit: ing.unit as string, expected: r.expected, counted: r.counted, diff: d.diff, value: d.value };
   });
-  return { ok: true, conteoId: conteo.id as string, lines, summary: conteoSummary(rows), propuestas: parsed.data.propuestas.length };
+  return { ok: true, conteoId: conteo.id as string, lines, summary: conteoSummary(rows), propuestas: parsed.data.propuestas.length, aplicado };
 }

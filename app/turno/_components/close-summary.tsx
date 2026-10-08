@@ -11,12 +11,14 @@ import { signOutTurno } from "../auth-actions";
  * Confirm sheet before closing: what is still pending, so "cerrar igual"
  * is a decision and not a slip.
  */
-export function CloseConfirm({ shift, now, busy, cajaPending, onCancel, onConfirm }: {
+export function CloseConfirm({ shift, now, busy, cajaPending, conteoPending, onCancel, onConfirm }: {
   shift: TurnoShift;
   now: string;
   busy: boolean;
   /** The turno has an arqueo task and no cash close was sent yet (0037). */
   cajaPending?: boolean;
+  /** This turno closes the day and today's inventory count was not sent (0046): its name. */
+  conteoPending?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -24,7 +26,7 @@ export function CloseConfirm({ shift, now, busy, cajaPending, onCancel, onConfir
     tasks: shift.tasks, completions: shift.completions, adHoc: shift.adHoc, novedades: shift.novedades.length,
     now, inicio: shift.template.inicio, fin: shift.template.fin, opened_at: shift.instance.opened_at, closed_at: null,
   });
-  const clean = s.pendingTasks.length === 0 && s.adHocPending === 0 && s.photosDone === s.photosTotal && !cajaPending;
+  const clean = s.pendingTasks.length === 0 && s.adHocPending === 0 && s.photosDone === s.photosTotal && !cajaPending && !conteoPending;
   return (
     <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }} style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(20,14,8,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div role="dialog" aria-label="Cerrar turno" style={{ width: "min(560px, 96vw)", maxHeight: "88vh", overflowY: "auto", border: "1.5px solid var(--ink)", borderRadius: 10, background: "var(--paper-lt)", padding: "20px 22px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
@@ -42,6 +44,7 @@ export function CloseConfirm({ shift, now, busy, cajaPending, onCancel, onConfir
             {s.photosTotal - s.photosDone > 0 && <li><b style={{ color: "var(--red)" }}>{s.photosTotal - s.photosDone}</b> foto{s.photosTotal - s.photosDone === 1 ? "" : "s"} sin tomar</li>}
             {s.adHocPending > 0 && <li><b style={{ color: "var(--red)" }}>{s.adHocPending}</b> inmediata{s.adHocPending === 1 ? "" : "s"} pendiente{s.adHocPending === 1 ? "" : "s"}</li>}
             {cajaPending && <li><b style={{ color: "var(--red)" }}>Falta el cierre de caja</b> · <Link href="/turno/caja" style={{ color: "var(--ink)", textDecoration: "underline" }}>Contar ahora →</Link></li>}
+            {conteoPending && <li><b style={{ color: "var(--red)" }}>Falta el {conteoPending.toLowerCase()} de inventario</b> · <Link href="/turno/conteo" style={{ color: "var(--ink)", textDecoration: "underline" }}>Contar ahora →</Link></li>}
           </ul>
         )}
         {s.pendingTasks.length > 0 && (

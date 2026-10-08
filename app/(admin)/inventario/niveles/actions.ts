@@ -27,7 +27,8 @@ const NivelesSchema = z.object({
 });
 
 function revalidate() {
-  for (const p of ["/inventario", "/inventario/niveles", "/inventario/faltantes", "/notificaciones", "/turno/inventario", "/turno/conteo"]) revalidatePath(p);
+  for (const p of ["/inventario", "/inventario/niveles", "/inventario/faltantes", "/notificaciones", "/turno/conteo"]) revalidatePath(p);
+  revalidatePath("/turno/inventario", "layout");
 }
 
 /**

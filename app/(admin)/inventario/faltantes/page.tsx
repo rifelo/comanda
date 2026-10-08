@@ -26,7 +26,7 @@ export default async function FaltantesPage() {
     <div>
       <TurnosHeader kicker="OPERACIÓN · INVENTARIO" title="Faltantes del equipo">
         <Link href="/inventario" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Inventario</Link>
-        <Link href="/turno/inventario" className="cmd-btn sm" style={{ textDecoration: "none" }}>Revisar ahora →</Link>
+        <Link href="/turno/inventario/faltantes" className="cmd-btn sm" style={{ textDecoration: "none" }}>Revisar ahora →</Link>
       </TurnosHeader>
       <FaltantesClient abiertos={abiertos} recientes={recientes} ingredientes={view.ingredientes} categorias={view.categorias} tz={sede?.tz ?? "America/Bogota"} />
     </div>

@@ -23,7 +23,7 @@ export async function guardarPrioridades(input: unknown): Promise<{ ok: true; co
     if (error) return { ok: false, error: "No se pudo guardar la lista." };
   }
   revalidatePath("/inventario/faltantes");
-  revalidatePath("/turno/inventario");
+  revalidatePath("/turno/inventario", "layout");
   return { ok: true, count: parsed.data.items.filter((i) => i.prioridad > 0).length };
 }
 
@@ -39,7 +39,7 @@ export async function resolverFaltanteAction(input: unknown): Promise<{ ok: true
     revalidatePath("/inventario/faltantes");
     revalidatePath("/notificaciones");
     revalidatePath("/hoy");
-    revalidatePath("/turno/inventario");
+    revalidatePath("/turno/inventario", "layout");
   }
   return r;
 }

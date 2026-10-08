@@ -7,6 +7,7 @@ import { bucketAdHoc, bucketTasks } from "@/lib/turno/blocks";
 import { assignedFor, groupTasksByPuesto, ALL_KEY, type PuestoGroup } from "@/lib/turno/state";
 import type { TurnoActor, TurnoBoardData, TurnoShift, TurnoPerson } from "@/lib/turno/server";
 import type { AdHocTask, TemplateTask } from "@/lib/types";
+import { NOMBRE_CONTEO, esTurnoDeCierre, type Rutina } from "@/lib/inventario/rutina";
 import { nowInTz } from "@/lib/utils";
 import { closeTurnoAs, completeTaskAs, setAdHocDoneAs, submitNovedadAs, uncompleteTaskAs, uploadTurnoPhoto } from "./actions";
 import { initialsOf } from "./_components/avatar";
@@ -42,7 +43,7 @@ function writeSession(key: string, value: unknown) {
   }
 }
 
-export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; actor: TurnoActor; serverNow: string }) {
+export function TurnoBoard({ data, actor, serverNow, rutina }: { data: TurnoBoardData; actor: TurnoActor; serverNow: string; rutina: Rutina }) {
   const router = useRouter();
   const [shiftId, setShiftId] = React.useState<string | null>(() => {
     const open = data.turnos.find((t) => t.instance.status === "open") ?? data.turnos[0];
@@ -77,6 +78,8 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
   }, [router]);
 
   const shift = data.turnos.find((t) => t.instance.id === shiftId) ?? null;
+  // The turno that ends last owes today's inventory count before closing.
+  const conteoPending = shift && !rutina.hecho && esTurnoDeCierre(shift.template.fin, data.turnos.map((t) => t.template.fin)) ? NOMBRE_CONTEO[rutina.toca] : null;
   const rosterById = React.useMemo(() => new Map(data.roster.map((p) => [p.id, p])), [data.roster]);
   const me: TurnoPerson = rosterById.get(actor.profileId) ?? {
     id: actor.profileId,
@@ -163,6 +166,7 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
         actor={actor}
         novedades={shift?.novedades.length ?? 0}
         onNovedades={() => setPanel("novedades")}
+        conteoPendiente={conteoPending !== null && shift?.instance.status === "open"}
       />
 
       <div className="flex flex-col lg:flex-row" style={{ minHeight: 0, minWidth: 0 }}>
@@ -245,6 +249,7 @@ export function TurnoBoard({ data, actor, serverNow }: { data: TurnoBoardData; a
           now={now}
           busy={busy === "close"}
           cajaPending={!shift.cajaCierreId && shift.tasks.some((t) => /arqueo|cierre de caja/i.test(t.title))}
+          conteoPending={conteoPending}
           onCancel={() => setPanel(null)}
           onConfirm={() => void confirmClose(shift)}
         />
