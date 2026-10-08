@@ -2,22 +2,26 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getTodayShifts } from "@/lib/db/shifts";
 import { listMyTasks } from "@/lib/db/tasks";
+import { loadRutina } from "@/lib/inventario/conteos";
+import { NOMBRE_CONTEO } from "@/lib/inventario/rutina";
 import { ComandaPlate } from "@/components/comanda/primitives";
 import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Staff home — where a team member lands after signing in. Two doors: the
- * day's turnos (checklists) and the register. Each one says what is waiting
+ * Staff home — where a team member lands after signing in. Three doors: the
+ * day's turnos (checklists), the register and the inventory (the tablet's
+ * own screens, signed by this person). Each one says what is waiting
  * behind it, so the person knows where they are needed before tapping.
  */
 export default async function StaffHomePage() {
-  const [{ profile }, shifts, myTasks] = await Promise.all([
+  const [{ profile, supabase }, shifts, myTasks] = await Promise.all([
     requireUser(),
     getTodayShifts(),
     listMyTasks(),
   ]);
+  const { rutina } = await loadRutina(supabase, profile.organization_id, "America/Bogota");
   const dateLabel = formatDateLabelEs(todayInTz());
   const firstName = profile.full_name.trim().split(/\s+/)[0] || profile.full_name;
 
@@ -44,7 +48,7 @@ export default async function StaffHomePage() {
         time={formatTime(new Date())}
       />
 
-      <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-4 px-4 py-5 sm:grid-cols-2 sm:py-8">
+      <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-4 px-4 py-5 sm:grid-cols-2 sm:py-8 lg:max-w-6xl lg:grid-cols-3">
         <Door
           href="/today"
           kicker="01"
@@ -65,6 +69,15 @@ export default async function StaffHomePage() {
           text="Toma pedidos, cobra y consulta los productos y sus recetas."
           accent="var(--red)"
           status="Caja y pedidos"
+          alert={null}
+        />
+        <Door
+          href="/turno/inventario"
+          kicker="03"
+          title="Inventario"
+          text="Cuenta lo que hay al cierre, mira las existencias y avisa lo que se acabó."
+          accent="var(--amber)"
+          status={rutina.hecho ? `${NOMBRE_CONTEO[rutina.toca]} · enviado` : `${NOMBRE_CONTEO[rutina.toca]} · al cierre`}
           alert={null}
         />
       </div>

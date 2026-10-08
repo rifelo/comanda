@@ -36,7 +36,7 @@ const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).re
 
 /**
  * Quick inventory for the barista, shared by the shop tablet
- * (/turno/inventario) and the staff shift screen (/shift/[id]/inventario).
+ * (/turno/inventario/faltantes) and the staff shift screen (/shift/[id]/inventario).
  * Only the priority ingredients, most critical first; one tap per item
  * (Hay / Poco / Se acabó), then one "Enviar" that records the batch. What is
  * already flagged shows with who and when, so the next person sees it

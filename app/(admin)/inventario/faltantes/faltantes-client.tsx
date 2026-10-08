@@ -69,7 +69,7 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
 
         <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", margin: "28px 0 6px" }}>Últimos reportes</div>
         {recientes.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>Todavía no hay reportes. El equipo los envía desde el tablet, en Turno → Faltantes.</div>
+          <div style={{ fontSize: 13, color: "var(--muted)" }}>Todavía no hay reportes. El equipo los envía desde el tablet, en Inventario → Avisar faltante.</div>
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
@@ -110,7 +110,7 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
         <div style={{ position: "sticky", top: 16, border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: 16 }}>
           <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)" }}>Lista prioritaria · {enLista}</div>
           <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, margin: "6px 0 10px" }}>
-            Lo que el barista ve en Turno → Faltantes, del más crítico al menos. Los demás ingredientes quedan fuera de la revisión rápida.
+            Lo que el barista ve en Inventario → Avisar faltante, del más crítico al menos. Los demás ingredientes quedan fuera de la revisión rápida.
           </p>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ingrediente…" aria-label="Buscar ingrediente" style={{ width: "100%", height: 34, padding: "0 8px", border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none", marginBottom: 8 }} />
           <div style={{ maxHeight: "56vh", overflowY: "auto", paddingRight: 4 }}>

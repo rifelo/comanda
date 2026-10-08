@@ -16,7 +16,9 @@ import { AsignarTareaForm } from "./asignar-tarea-form";
 import { ReviewButton } from "./review-button";
 import { CajaCard } from "./caja-card";
 import { getCierreByInstance } from "@/lib/caja/cierres";
+import { loadConteosPanel } from "@/lib/inventario/conteos";
 import { listFaltantesAbiertos } from "@/lib/inventario/faltantes-db";
+import { ConteosCard } from "@/components/inventario/conteos-card";
 import { FaltantesCard } from "@/components/inventario/faltantes-card";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +126,8 @@ export default async function HoyDetailPage({
   // Cierre de caja: the card needs the window in the sede's clock.
   const hasCajaTask = view.tasks.some((t) => /arqueo|cierre de caja/i.test(t.title));
   const faltantes = profile.organization_id ? await listFaltantesAbiertos(supabase, profile.organization_id) : [];
+  const conteos = profile.organization_id ? await loadConteosPanel(supabase, profile.organization_id, sede.tz) : null;
+  const hayConteos = !!conteos && (conteos.pendientes.length > 0 || conteos.ayerSinConteo);
   const cajaWindow = cierre ? `${formatTime(cierre.ventana_desde, sede.tz)} – ${formatTime(cierre.ventana_hasta, sede.tz)}` : null;
 
   // Ad-hoc tasks (0015): drop cancelled, immediate (no due_time) first.
@@ -311,6 +315,16 @@ export default async function HoyDetailPage({
             <HMLabel>Cierre de caja</HMLabel>
             <div style={{ padding: "0 14px" }}>
               <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} compact />
+            </div>
+          </>
+        )}
+
+        {/* conteos de inventario */}
+        {conteos && hayConteos && (
+          <>
+            <HMLabel>Inventario</HMLabel>
+            <div style={{ padding: "0 14px" }}>
+              <ConteosCard panel={conteos} tz={sede.tz} compact />
             </div>
           </>
         )}
@@ -661,6 +675,12 @@ export default async function HoyDetailPage({
             <div style={{ marginTop: 28 }}>
               <SectionLabel>Cierre de caja</SectionLabel>
               <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} />
+            </div>
+          )}
+          {conteos && hayConteos && (
+            <div style={{ marginTop: 28 }}>
+              <SectionLabel>Inventario</SectionLabel>
+              <ConteosCard panel={conteos} tz={sede.tz} />
             </div>
           )}
           {faltantes.length > 0 && (

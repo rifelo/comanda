@@ -16,7 +16,7 @@ export function dateLabel(yyyyMMdd: string, todayIdx: number): string {
   return `${DIAS[todayIdx]} ${d} · ${MESES[m - 1]}`;
 }
 
-export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, onNovedades }: {
+export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, onNovedades, conteoPendiente }: {
   sedeName: string;
   date: string;
   todayIdx: number;
@@ -25,6 +25,8 @@ export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, on
   actor: TurnoActor;
   novedades: number;
   onNovedades: () => void;
+  /** Today's inventory count is still owed (lib/inventario/rutina.ts). */
+  conteoPendiente?: boolean;
 }) {
   return (
     <div className="turno-topbar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)", minWidth: 0, overflowX: "auto", overflowY: "hidden", fontFamily: "var(--font-mono)" }}>
@@ -44,8 +46,10 @@ export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, on
       <form action={signOutTurno}>
         <button type="submit" style={{ ...linkChip, cursor: "pointer", background: "transparent", fontFamily: "var(--font-mono)" }} title="Cerrar sesión en esta tablet">Salir</button>
       </form>
-      <Link href="/turno/inventario" style={linkChip}>Faltantes</Link>
-      <Link href="/turno/conteo" style={linkChip}>Conteo</Link>
+      <Link href="/turno/inventario" style={{ ...linkChip, gap: 6 }} title={conteoPendiente ? "Falta el conteo de hoy" : "Inventario"}>
+        Inventario
+        {conteoPendiente && <span aria-label="conteo pendiente" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--red)" }} />}
+      </Link>
       <Link href="/turno/caja" style={linkChip}>Caja</Link>
       <Link href="/pos" style={linkChip}>POS →</Link>
       {actor.role === "admin" && !actor.viaDevice && <Link href="/" style={linkChip}>← Panel</Link>}

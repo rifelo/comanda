@@ -1,4 +1,5 @@
 import { ensureTodayInstances, getTurnoBoard, loadTurnoGate } from "@/lib/turno/server";
+import { loadRutina } from "@/lib/inventario/conteos";
 import { nowInTz, todayInTz } from "@/lib/utils";
 import { TurnoLogin } from "./_components/turno-login";
 import { TurnoBoard } from "./turno-board";
@@ -19,6 +20,6 @@ export default async function TurnoPage() {
   if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
   const { ctx } = gate;
   await ensureTodayInstances(ctx, todayInTz(ctx.sede.tz));
-  const data = await getTurnoBoard(ctx);
-  return <TurnoBoard data={data} actor={ctx.actor} serverNow={nowInTz(ctx.sede.tz)} />;
+  const [data, { rutina }] = await Promise.all([getTurnoBoard(ctx), loadRutina(ctx.admin, ctx.organizationId, ctx.sede.tz)]);
+  return <TurnoBoard data={data} actor={ctx.actor} serverNow={nowInTz(ctx.sede.tz)} rutina={rutina} />;
 }

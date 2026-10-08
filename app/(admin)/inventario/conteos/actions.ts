@@ -3,25 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { getConteo } from "@/lib/inventario/conteos";
-import { lineDiff } from "@/lib/inventario/conteo";
+import { aplicarConteo, getConteo } from "@/lib/inventario/conteos";
 import { UNIDADES_STOCK } from "@/lib/inventario/propuestas";
 
 export type ConteoActionResult = { ok: true; adjusted: number } | { ok: false; error: string };
 
 const IdSchema = z.object({ id: z.string().uuid(), note: z.string().trim().max(300).optional() });
 
-function dateLabel(iso: string): string {
-  const d = new Date(new Date(iso).getTime() - 5 * 3_600_000); // Bogotá, no DST
-  return d.toISOString().slice(0, 10);
-}
-
 /**
- * Approve a count: every line whose counted quantity differs from what the
- * system expected at count time becomes an 'ajuste' movement for that
- * difference (sales since then are already in the stock, so the delta is
- * against the snapshot, not today's number). The status flips first, guarded
- * on 'pendiente', so a double tap can't apply the adjustments twice.
+ * Approve a count: its differences become 'ajuste' movements
+ * (lib/inventario/conteos.ts `aplicarConteo`). Proposed items come first,
+ * since resolving one may add a line to the count.
  */
 export async function aprobarConteo(input: unknown): Promise<ConteoActionResult> {
   const parsed = IdSchema.safeParse(input);
@@ -40,39 +32,12 @@ export async function aprobarConteo(input: unknown): Promise<ConteoActionResult>
     .eq("status", "pendiente");
   if ((abiertas ?? 0) > 0) return { ok: false, error: `Resuelve primero ${abiertas === 1 ? "el ítem propuesto" : `los ${abiertas} ítems propuestos`}.` };
 
-  const { data: flipped, error: fErr } = await supabase
-    .from("inventario_conteos")
-    .update({ status: "aprobado", reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_note: parsed.data.note || null })
-    .eq("id", conteo.id)
-    .eq("organization_id", orgId)
-    .eq("status", "pendiente")
-    .select("id");
-  if (fErr || !flipped?.length) return { ok: false, error: "Este conteo ya fue revisado." };
-
-  const label = `Conteo ${conteo.kind} ${dateLabel(conteo.submitted_at)}`;
-  const movements = conteo.items
-    .map((it) => ({ it, diff: lineDiff(it).diff }))
-    .filter(({ diff }) => diff !== 0)
-    .map(({ it, diff }) => ({
-      organization_id: orgId,
-      ingrediente_id: it.ingrediente_id,
-      type: "ajuste" as const,
-      delta: diff,
-      note: `${label}${it.note ? ` · ${it.note}` : ""}`,
-      created_by: user.id,
-    }));
-  if (movements.length) {
-    const { error } = await supabase.from("ingrediente_movements").insert(movements);
-    if (error) {
-      console.error("[aprobarConteo] movements:", error);
-      await supabase.from("inventario_conteos").update({ status: "pendiente", reviewed_by: null, reviewed_at: null, review_note: null }).eq("id", conteo.id);
-      return { ok: false, error: "No se pudieron aplicar los ajustes." };
-    }
-  }
+  const res = await aplicarConteo(supabase, orgId, conteo, { reviewerId: user.id, createdBy: user.id, note: parsed.data.note });
+  if (!res.ok) return res;
   revalidatePath("/inventario");
   revalidatePath("/inventario/conteos");
   revalidatePath(`/inventario/conteos/${conteo.id}`);
-  return { ok: true, adjusted: movements.length };
+  return res;
 }
 
 /** Reject a count (nothing moves); the note tells the team why, e.g. "recontar la leche". */

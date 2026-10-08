@@ -10,9 +10,10 @@ const CAJA_STATUS: Record<CajaCierre["status"], { label: string; color: string }
 };
 
 /**
- * The two tools a person opens from their shift screen: the arqueo of this
- * turno and the quick inventory of the sede. Each tile shows its current
- * state so the screen doubles as the reminder.
+ * The tools a person opens from their shift screen: the arqueo of this
+ * turno, the quick inventory of the sede and the inventory hub (count,
+ * existencias). Each tile shows its current state so the screen doubles as
+ * the reminder.
  */
 export function ShiftTools({ shiftId, cierre, faltantes, hasCajaTask, basePorValidar }: {
   shiftId: string;
@@ -43,6 +44,7 @@ export function ShiftTools({ shiftId, cierre, faltantes, hasCajaTask, basePorVal
           tone={faltantes.agotado ? "var(--red)" : faltantes.bajo ? "var(--amber)" : "var(--muted)"}
           hint="Toca hay / poco / se acabó en los ítems prioritarios."
         />
+        <Tile href="/turno/inventario" title="Inventario · conteo y existencias" state="conteo rápido al cierre" tone="var(--muted)" hint="Cuenta lo crítico antes de cerrar y mira qué hay." />
       </div>
     </div>
   );

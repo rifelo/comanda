@@ -176,7 +176,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
         )}
         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }} title={actor.name}>{actor.name}</span>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/turno" style={chip}>← Turno</Link>
+          <Link href="/turno/inventario" style={chip}>← Inventario</Link>
           {actor.isAdmin && <Link href="/inventario/conteos" style={chip}>Panel</Link>}
         </div>
       </div>
@@ -207,7 +207,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
           </section>
 
           <section style={{ border: "1px dashed var(--rule)", borderRadius: 6, padding: "12px 14px", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-2, var(--ink))" }}>
-            <b>Cómo contar bien.</b> Cuenta lo que hay en estante y nevera, no lo que crees que debería haber. Lo que viene en paquete se cuenta en paquetes cerrados más lo suelto; lo abierto se pesa o se cuenta. Al escribir, cada ítem muestra su color: <b style={{ color: "var(--green)" }}>hay</b>, <b style={{ color: "var(--amber)" }}>poco</b> o <b style={{ color: "var(--red)" }}>se acabó</b>. Si algo se rompió o se botó, anótalo en el ítem. El dueño aprueba al final.
+            <b>Cómo contar bien.</b> Cuenta lo que hay en estante y nevera, no lo que crees que debería haber. Lo que viene en paquete se cuenta en paquetes cerrados más lo suelto; lo abierto se pesa o se cuenta. Al escribir, cada ítem muestra su color: <b style={{ color: "var(--green)" }}>hay</b>, <b style={{ color: "var(--amber)" }}>poco</b> o <b style={{ color: "var(--red)" }}>se acabó</b>. Si algo se rompió o se botó, anótalo en el ítem. Si el conteo rápido cuadra, corrige el inventario de una vez; si algo se sale de lo normal, lo revisa el dueño.
           </section>
         </div>
       )}
@@ -328,7 +328,7 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
     <div style={{ padding: "22px 20px 40px", maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ border: "1.5px solid var(--ink)", borderRadius: 10, padding: "20px 22px", background: "var(--paper-lt)" }}>
         <div className="font-slab" style={{ fontSize: 26 }}>Conteo enviado<span style={{ color: "var(--green)" }}>.</span></div>
-        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Contó {person} · {s.lines} ítems · queda pendiente de aprobación del dueño. El inventario no cambia hasta que lo apruebe.</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Contó {person} · {s.lines} ítems · {result.aplicado ? "las diferencias son normales: el inventario ya quedó corregido." : "queda pendiente de aprobación del dueño. El inventario no cambia hasta que lo apruebe."}</div>
         {result.propuestas > 0 && (
           <div style={{ fontSize: 12.5, marginTop: 8 }}>
             También se {result.propuestas === 1 ? "envió 1 ítem que no estaba" : `enviaron ${result.propuestas} ítems que no estaban`} en la lista. El dueño decide si {result.propuestas === 1 ? "entra" : "entran"} al inventario.
@@ -367,7 +367,10 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
       ) : (
         <div style={{ fontSize: 13, color: "var(--green)", fontWeight: 600 }}>✓ Todo cuadra con el sistema.</div>
       )}
-      <Link href="/turno" className="cmd-btn" style={{ textDecoration: "none", alignSelf: "flex-start", height: 48, display: "inline-flex", alignItems: "center" }}>← Volver al turno</Link>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Link href="/turno" className="cmd-btn" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>← Volver al turno</Link>
+        <Link href="/turno/inventario" className="cmd-btn ghost" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>Inventario</Link>
+      </div>
     </div>
   );
 }

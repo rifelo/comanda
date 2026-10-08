@@ -57,7 +57,7 @@ export function ConteosClient({ conteos, propuestas, ingredientes, categorias }:
         <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>
           Conteos {pending.length > 0 && <span style={{ color: "var(--amber)" }}>· {pending.length} por aprobar</span>}
         </div>
-        {conteos.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)" }}>Todavía no hay conteos. El equipo los envía desde el tablet, en Turno → Conteo.</div>}
+        {conteos.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)" }}>Todavía no hay conteos. El equipo los envía desde el tablet, en Inventario → Contar.</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {conteos.map((c) => {
             const s = conteoSummary(c.items);
@@ -66,8 +66,8 @@ export function ConteosClient({ conteos, propuestas, ingredientes, categorias }:
               <Link key={c.id} href={`/inventario/conteos/${c.id}`} style={{ textDecoration: "none", color: "var(--ink)", border: `1.5px solid ${c.status === "pendiente" ? "var(--ink)" : "var(--rule)"}`, borderRadius: 6, padding: "12px 14px", background: "var(--paper-lt)", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 14, alignItems: "center" }}>
                 <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: st.color, border: `1px solid ${st.color}`, padding: "3px 7px", borderRadius: 3 }}>{st.label}</span>
                 <span style={{ minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>{c.kind === "diario" ? "Conteo diario" : "Conteo completo"} · {fecha(c.submitted_at)}</span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{c.counted_by_name ?? "—"} · {s.lines} ítems · {s.withDiff} con diferencia{propuestas[c.id] ? <b style={{ color: "var(--amber)" }}> · {propuestas[c.id]} ítem{propuestas[c.id] === 1 ? "" : "s"} nuevo{propuestas[c.id] === 1 ? "" : "s"} por resolver</b> : null}</span>
+                  <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>{c.kind === "diario" ? "Conteo rápido" : "Conteo completo"} · {fecha(c.submitted_at)}</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{c.counted_by_name ?? "—"}{c.auto ? " · se aplicó solo" : ""} · {s.lines} ítems · {s.withDiff} con diferencia{propuestas[c.id] ? <b style={{ color: "var(--amber)" }}> · {propuestas[c.id]} ítem{propuestas[c.id] === 1 ? "" : "s"} nuevo{propuestas[c.id] === 1 ? "" : "s"} por resolver</b> : null}</span>
                 </span>
                 <span className="cmd-num" style={{ textAlign: "right", fontSize: 13, fontWeight: 700, color: s.shortValue ? "var(--red)" : "var(--green)" }}>
                   {s.shortValue ? `−${posMoney(s.shortValue)}` : "cuadra"}

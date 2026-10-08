@@ -37,7 +37,7 @@ export function FaltantesCard({ items, tz, compact, showLink = true }: { items: 
   if (items.length === 0) {
     return (
       <div className="text-muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
-        Nada reportado como faltante. El equipo lo marca desde el tablet en Turno → Faltantes.
+        Nada reportado como faltante. El equipo lo marca desde el tablet en Inventario → Avisar faltante.
         {showLink && <> <Link href="/inventario/faltantes" className="cmd-link">Lista prioritaria →</Link></>}
       </div>
     );

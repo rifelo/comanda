@@ -32,7 +32,7 @@ export async function reportarFaltantesShift(input: unknown): Promise<RapidoResu
   if (res.ok) {
     revalidatePath(`/shift/${ctx.instance.id}`);
     revalidatePath(`/shift/${ctx.instance.id}/inventario`);
-    revalidatePath("/turno/inventario");
+    revalidatePath("/turno/inventario", "layout");
     revalidatePath("/inventario/faltantes");
     revalidatePath("/notificaciones");
     revalidatePath(`/hoy/${ctx.instance.date}`);

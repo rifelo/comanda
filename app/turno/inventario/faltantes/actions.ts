@@ -40,7 +40,7 @@ export async function reportarFaltantes(input: unknown): Promise<RapidoResult> {
     parsed.data.items,
   );
   if (res.ok) {
-    revalidatePath("/turno/inventario");
+    revalidatePath("/turno/inventario", "layout");
     revalidatePath("/inventario/faltantes");
     revalidatePath("/notificaciones");
     revalidatePath(`/hoy/${today}`);
