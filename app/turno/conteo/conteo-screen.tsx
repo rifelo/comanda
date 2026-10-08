@@ -369,7 +369,7 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
       )}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Link href="/turno" className="cmd-btn" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>← Volver al turno</Link>
-        <Link href="/turno/inventario" className="cmd-btn ghost" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>Inventario</Link>
+        <Link href="/turno/inventario/pedir" className="cmd-btn ghost" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>Revisar pedido →</Link>
       </div>
     </div>
   );
