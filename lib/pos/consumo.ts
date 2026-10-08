@@ -1,7 +1,8 @@
 /**
  * Pure recipe explosion for POS orders (no I/O, unit-tested): turns the
  * lines of an order into ingredient quantities using the recipes, expanding
- * combos to their products first. Modifiers carry no ingredients today.
+ * combos to their products first. A modifier option may carry ingredients of
+ * its own (a juice "en leche" takes the milk): they add to the product's.
  */
 
 export interface ConsumoLine {
@@ -9,17 +10,33 @@ export interface ConsumoLine {
   productoId: string | null;
   comboId: string | null;
   qty: number;
+  /** Ids of the modifier options chosen on the line. */
+  optionIds?: ReadonlyArray<string>;
 }
 /** producto_id → recipe lines (ingrediente_id, qty per unit sold). */
 export type RecipeMap = ReadonlyMap<string, ReadonlyArray<{ ingredienteId: string; qty: number }>>;
 /** combo_id → products bundled (producto_id, qty per combo). */
 export type ComboMap = ReadonlyMap<string, ReadonlyArray<{ productoId: string; qty: number }>>;
+/** option_id → what the option takes per unit sold (modifier_option_receta, 0048). */
+export type OptionRecipeMap = ReadonlyMap<string, ReadonlyArray<{ ingredienteId: string; qty: number }>>;
+
+/**
+ * The options chosen on a line, out of its `mods` ({ groupId: name | name[] }).
+ * The POS stores the option's name, so the caller resolves each pair to its id.
+ */
+export function modPairsOf(mods: unknown): { groupId: string; name: string }[] {
+  if (!mods || typeof mods !== "object") return [];
+  return Object.entries(mods as Record<string, unknown>).flatMap(([groupId, v]) =>
+    (Array.isArray(v) ? v : [v]).filter((n): n is string => typeof n === "string" && n.length > 0).map((name) => ({ groupId, name })),
+  );
+}
 
 /** ingrediente_id → total quantity consumed by the order (positive numbers). */
 export function explodeConsumption(
   lines: ReadonlyArray<ConsumoLine>,
   recipes: RecipeMap,
   combos: ComboMap,
+  options: OptionRecipeMap = new Map(),
 ): Map<string, number> {
   const out = new Map<string, number>();
   const addProduct = (productoId: string, units: number) => {
@@ -29,6 +46,9 @@ export function explodeConsumption(
   };
   for (const l of lines) {
     if (l.qty <= 0) continue;
+    for (const oid of l.optionIds ?? []) {
+      for (const r of options.get(oid) ?? []) out.set(r.ingredienteId, round3((out.get(r.ingredienteId) ?? 0) + r.qty * l.qty));
+    }
     if (l.kind === "item" && l.productoId) addProduct(l.productoId, l.qty);
     else if (l.kind === "combo" && l.comboId) {
       for (const c of combos.get(l.comboId) ?? []) addProduct(c.productoId, c.qty * l.qty);
