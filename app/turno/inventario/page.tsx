@@ -18,7 +18,7 @@ const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", te
 /**
  * Inventory on the shared tablet: what the routine owes today (the quick
  * count at close, the full one on its weekday), what the owner sent back,
- * and the doors to each tool. The screen is the reminder — nobody has to
+ * and the doors to each tool (count, stock, requisition, faltantes). The screen is the reminder — nobody has to
  * remember which count is due.
  */
 export default async function TurnoInventarioPage() {
@@ -27,10 +27,11 @@ export default async function TurnoInventarioPage() {
   if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
   const { ctx } = gate;
   const { admin, organizationId, sede } = ctx;
-  const [estado, faltantes, { data: ings }] = await Promise.all([
+  const [estado, faltantes, { data: ings }, { count: solicitudes }] = await Promise.all([
     loadRutina(admin, organizationId, sede.tz),
     countFaltantesAbiertos(admin, organizationId),
     admin.from("ingredientes").select("stock_current, stock_critico, stock_min").eq("organization_id", organizationId).eq("archived", false),
+    admin.from("inventario_solicitudes").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("estado", "abierta"),
   ]);
   const { rutina, hoy } = estado;
   const niveles = { rojo: 0, amarillo: 0, verde: 0 };
@@ -40,6 +41,8 @@ export default async function TurnoInventarioPage() {
   const diaCompleto = DIAS_LARGOS[estado.completoDia];
   const isAdmin = ctx.actor.role === "admin" && !ctx.actor.viaDevice;
   const faltan = fraseFaltantes(faltantes);
+  // Rough size of the shopping list: what is short by level plus what the team asked for.
+  const porPedir = niveles.rojo + niveles.amarillo + (solicitudes ?? 0);
 
   return (
     <div className="cmd-paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
@@ -101,6 +104,7 @@ export default async function TurnoInventarioPage() {
               state={niveles.rojo || niveles.amarillo ? `${niveles.rojo} se acabó · ${niveles.amarillo} poco` : "todo en verde"}
               tone={niveles.rojo ? "var(--red)" : niveles.amarillo ? "var(--amber)" : "var(--green)"}
             />
+            <Tile href="/turno/inventario/pedir" title="Pedir" hint="Lo que ya está en la lista de compras, y pedir algo más." state={porPedir ? `${porPedir} por pedir` : "nada por pedir"} tone={porPedir ? "var(--amber)" : undefined} />
             <Tile
               href="/turno/inventario/faltantes"
               title="Avisar faltante"
