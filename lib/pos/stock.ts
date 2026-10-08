@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { asApplied, consumptionDeltas, explodeConsumption, type ComboMap, type RecipeMap } from "./consumo";
+import { asApplied, consumptionDeltas, explodeConsumption, modPairsOf, type ComboMap, type OptionRecipeMap, type RecipeMap } from "./consumo";
 
 /**
  * Keep inventory in step with an order. Idempotent: it reads what the
@@ -22,19 +22,28 @@ export async function syncOrderConsumption(
   try {
     const { data: orden } = await supabase
       .from("ordenes")
-      .select("id, folio, status, orden_items(kind, producto_id, combo_id, qty)")
+      .select("id, folio, status, orden_items(kind, producto_id, combo_id, qty, mods)")
       .eq("id", ordenId)
       .eq("organization_id", orgId)
       .maybeSingle();
     if (!orden) return { error: "orden not found" };
     const folio = orden.folio as string;
     const live = orden.status === "pendiente" || orden.status === "pagada";
-    const lines = ((orden as { orden_items?: Array<Record<string, unknown>> }).orden_items ?? []).map((it) => ({
+    const raw = ((orden as { orden_items?: Array<Record<string, unknown>> }).orden_items ?? []).map((it) => ({
       kind: it.kind as "item" | "combo",
       productoId: (it.producto_id as string | null) ?? null,
       comboId: (it.combo_id as string | null) ?? null,
       qty: Number(it.qty),
+      pairs: modPairsOf(it.mods),
     }));
+    // A line keeps the name of each chosen option; resolve it to the option.
+    const groupIds = [...new Set(raw.flatMap((l) => l.pairs.map((p) => p.groupId)))];
+    const optionId = new Map<string, string>();
+    if (groupIds.length) {
+      const { data } = await supabase.from("modifier_options").select("id, group_id, name").eq("organization_id", orgId).in("group_id", groupIds);
+      for (const o of data ?? []) optionId.set(`${o.group_id}|${o.name}`, o.id as string);
+    }
+    const lines = raw.map(({ pairs, ...l }) => ({ ...l, optionIds: pairs.map((p) => optionId.get(`${p.groupId}|${p.name}`)).filter((id): id is string => !!id) }));
 
     // Recipes for the products involved (combos expanded first).
     const comboIds = [...new Set(lines.filter((l) => l.kind === "combo" && l.comboId).map((l) => l.comboId!))];
@@ -69,7 +78,24 @@ export async function syncOrderConsumption(
       }
     }
 
-    const desired = live ? asApplied(explodeConsumption(lines, recipes, combos)) : new Map<string, number>();
+    // What the chosen modifier options take on top of the recipe (0048).
+    const optionIds = [...new Set(lines.flatMap((l) => l.optionIds))];
+    const options: OptionRecipeMap = new Map();
+    if (optionIds.length) {
+      const { data } = await supabase
+        .from("modifier_option_receta")
+        .select("option_id, ingrediente_id, qty")
+        .eq("organization_id", orgId)
+        .in("option_id", optionIds);
+      const m = options as Map<string, { ingredienteId: string; qty: number }[]>;
+      for (const r of data ?? []) {
+        const arr = m.get(r.option_id as string) ?? [];
+        arr.push({ ingredienteId: r.ingrediente_id as string, qty: Number(r.qty) });
+        m.set(r.option_id as string, arr);
+      }
+    }
+
+    const desired = live ? asApplied(explodeConsumption(lines, recipes, combos, options)) : new Map<string, number>();
 
     // What this order already took (or gave back).
     const { data: prev } = await supabase
