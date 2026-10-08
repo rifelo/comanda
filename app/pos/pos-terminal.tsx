@@ -916,7 +916,7 @@ function Banner({ children, onClose, closeLabel }: { children: React.ReactNode; 
 }
 
 /** How long a finger has to rest on a tile before it shows the recipe instead of adding. */
-const LONG_PRESS_MS = 550;
+const LONG_PRESS_MS = 350;
 
 /**
  * Tap = add to the ticket. Hold (or right-click) = open the recipe sheet.
