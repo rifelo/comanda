@@ -57,7 +57,7 @@
     "BC-014": { "short": "Espresso sobre leche condensada", "desc": "Espresso servido sobre leche condensada, en dos capas. Revuélvelo y es postre con cafeína.", "lleva": ["Espresso", "Leche condensada"], "p": [4, 5, 1, 4], "tags": ["despertar", "dulce"] },
     "SC-001": { "p": [1, 4, 0, 4], "tags": ["sincafe", "dulce"] },
     "SC-002": { "p": [1, 3, 1, 0], "tags": ["sincafe"] },
-    "BC-011": { "tags": ["refrescante", "sincafe", "dulce"] },
+    "BC-011": { "p": [1, 4, 0, 4], "tags": ["refrescante", "sincafe", "dulce"] },
     "BF-005": { "short": "Espresso, leche fría y hielo", "desc": "Espresso sobre leche fría y hielo. El clásico para cualquier hora.", "lleva": ["Espresso", "Leche", "Hielo"], "p": [3, 1, 1, 4], "tags": ["refrescante", "despertar"] },
     "BF-006": { "short": "Espresso alargado con agua y hielo", "desc": "Espresso alargado con agua fría y hielo. Limpio, ligero y sin leche.", "lleva": ["Espresso", "Agua", "Hielo"], "p": [3, 0, 2, 0], "tags": ["refrescante", "despertar"] },
     "BF-007": { "short": "Espresso con jengibre, chispeante", "desc": "Espresso con ginger y hielo. Burbujas, un picor suave de jengibre y el café de fondo.", "lleva": ["Espresso", "Ginger", "Hielo"], "p": [3, 2, 2, 0], "tags": ["refrescante", "despertar"] },
