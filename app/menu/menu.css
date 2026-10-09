@@ -1,0 +1,132 @@
+/* Café Pa' Yo — customers' QR menu. Tokens from the brand's design system
+   (three inks; text on amarillo is always café; never amarillo text on crema).
+   Everything is scoped under .pym so the panel and the POS are untouched. */
+body:has(.pym) { background: #f9f7e8; }
+.pym {
+  --amarillo: #f1a900; --crema: #f9f7e8; --cafe: #502b1c; --gris: #606060; --crema-72: #cabeaf;
+  --f-display: var(--pym-display), "Arial Black", sans-serif;
+  --f-name: var(--font-slab), "Arial Black", sans-serif;
+  --f-body: var(--pym-body), system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100dvh; width: 100%; background: var(--crema); color: var(--cafe);
+  font-family: var(--f-body); font-weight: 300; font-synthesis: none; scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+html:has(.pym) { scroll-behavior: smooth; }
+.pym *, .pym *::before, .pym *::after { box-sizing: border-box; }
+.pym button { font-family: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+.pym a { color: var(--cafe); text-decoration: none; }
+.pym button:focus-visible, .pym a:focus-visible { outline: 3px solid var(--cafe); outline-offset: 2px; }
+.pym strong { font-weight: 700; }
+.pym-page { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; }
+
+/* art: always cropped by the bottom edge of its container */
+.pym-art { position: absolute; display: block; height: auto; pointer-events: none; }
+.pym-art--todo {
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 14px; aspect-ratio: 1 / 1;
+  border: 2px dashed currentColor; border-radius: 21px; opacity: .45;
+  font-family: var(--f-body); font-weight: 700; font-size: 10px; line-height: 12px; text-align: center; word-break: break-all;
+}
+.pym-wordmark { display: block; font-family: var(--f-display); font-size: 30px; line-height: 30px; text-transform: uppercase; }
+
+/* 1 · header */
+.pym-header { position: relative; overflow: hidden; background: var(--amarillo); padding: 30px 26px 30px; min-height: 320px; display: flex; flex-direction: column; gap: 18px; border-radius: 0 0 21px 21px; }
+.pym-header > :not(.pym-art) { position: relative; z-index: 1; }
+.pym-header__logo { width: 180px; height: auto; }
+.pym-header__title { margin: 0; max-width: 240px; font-family: var(--f-display); font-weight: 400; font-size: 44px; line-height: 40px; text-transform: uppercase; }
+.pym-header__text { margin: 0; max-width: 230px; font-size: 15px; line-height: 22px; }
+.pym-header__art { right: -24px; bottom: -36px; width: 230px; }
+
+/* 2 · promo */
+.pym-block { padding: 24px 26px 0; }
+.pym-promo { position: relative; overflow: hidden; display: flex; align-items: stretch; width: 100%; min-height: 190px; padding: 0; border: 2px solid var(--cafe); border-radius: 21px; background: var(--cafe); color: var(--crema) !important; text-align: left; cursor: pointer; }
+.pym-promo__text { flex: 1 1 55%; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 20px 8px 20px 20px; }
+.pym-sticker { align-self: flex-start; display: inline-flex; align-items: center; padding: 4px 10px; border: 2px solid var(--amarillo); border-radius: 999px; background: var(--amarillo); color: var(--cafe); font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
+.pym-promo__name { font-family: var(--f-name); font-size: 24px; line-height: 28px; }
+.pym-promo__tagline { font-family: var(--f-display); font-style: italic; font-size: 17px; line-height: 19px; color: var(--amarillo); }
+.pym-promo__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
+.pym-promo__price { font-family: var(--f-display); font-size: 20px; line-height: 20px; }
+.pym-promo__more { display: inline-flex; align-items: center; gap: 4px; font-family: var(--f-display); font-size: 12px; line-height: 13px; text-transform: uppercase; color: var(--crema-72); }
+.pym-promo__photo { flex: 0 0 45%; position: relative; overflow: hidden; }
+.pym-promo__photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 35%; display: block; }
+
+/* 3 · moods */
+.pym-moods { padding: 28px 26px 10px; display: flex; flex-direction: column; gap: 14px; }
+.pym-moods__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.pym-h2 { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: 26px; line-height: 28px; text-transform: uppercase; }
+.pym-moods__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.pym-mood { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; min-height: 68px; padding: 14px 12px; border: 2px solid var(--cafe); border-radius: 21px; background: transparent; text-align: left; cursor: pointer; }
+.pym-mood[aria-pressed="true"] { background: var(--cafe); color: var(--crema) !important; }
+.pym-mood__label { font-family: var(--f-display); font-size: clamp(12.5px, 3.6vw, 17px); line-height: 18px; text-transform: uppercase; }
+.pym-mood__hint { font-size: 13px; line-height: 17px; }
+
+/* pills: buttons, chips, the options of a product */
+.pym-pill { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border: 2px solid var(--cafe); border-radius: 999px; background: transparent; font-family: var(--f-display) !important; font-size: 13px; line-height: 14px; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.pym-pill--wide { width: 100%; }
+.pym-pill[aria-pressed="true"] { background: var(--cafe); color: var(--crema) !important; }
+
+/* 4 · category nav */
+.pym-nav { position: sticky; top: 0; z-index: 5; background: var(--crema); padding: 14px 0 12px; border-bottom: 2px solid var(--cafe); }
+.pym-nav__row { display: flex; gap: 8px; overflow-x: auto; padding: 0 26px; scrollbar-width: none; }
+.pym-nav__row::-webkit-scrollbar { display: none; }
+
+/* 5 · sections */
+.pym-main { padding: 10px 26px 48px; display: flex; flex-direction: column; gap: 40px; }
+.pym-section { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 80px; }
+.pym-band { position: relative; overflow: hidden; background: var(--amarillo); border-radius: 21px; padding: 22px 22px 24px; min-height: 128px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }
+/* Nority is wide: the title takes the full band (the art sits behind it) and
+   scales down on narrow phones so a category name never breaks mid-word. */
+.pym-band__title { margin: 0; position: relative; z-index: 1; font-family: var(--f-display); font-weight: 400; font-size: clamp(28px, 9vw, 40px); line-height: .95; text-transform: uppercase; }
+.pym-band__sub { margin: 0; position: relative; z-index: 1; max-width: 62%; font-size: 14px; line-height: 20px; font-weight: 700; }
+.pym-band__art { right: -10px; bottom: -28px; width: 150px; }
+.pym-row { display: flex; align-items: flex-start; gap: 14px; width: 100%; min-height: 72px; padding: 18px 4px; border: 0; border-bottom: 1px solid rgba(80, 43, 28, .22); background: transparent; text-align: left; cursor: pointer; }
+.pym-row__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pym-row__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pym-row__name { font-family: var(--f-name); font-size: 18px; line-height: 24px; }
+.pym-row__short { font-size: 15px; line-height: 21px; font-weight: 700; }
+.pym-row__side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+.pym-row__price { font-family: var(--f-display); font-size: 19px; line-height: 20px; }
+.pym-tag { display: inline-flex; align-items: center; padding: 3px 8px; border: 2px solid var(--cafe); border-radius: 999px; background: var(--amarillo); font-family: var(--f-display); font-size: 10px; line-height: 11px; text-transform: uppercase; }
+.pym-tag--off { background: transparent; }
+
+/* 6 · footer */
+.pym-footer { position: relative; overflow: hidden; background: var(--cafe); color: var(--crema); border-radius: 21px 21px 0 0; padding: 36px 26px 40px; min-height: 300px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.pym-footer > :not(.pym-art) { position: relative; z-index: 1; }
+.pym-footer__logo { width: 150px; height: auto; }
+.pym-footer__tagline { margin: 0; max-width: 220px; font-family: var(--f-display); font-style: italic; font-size: 26px; line-height: 28px; color: var(--amarillo); }
+.pym-footer__text { margin: 0; max-width: 210px; font-size: 15px; line-height: 22px; }
+.pym-footer__art { right: -20px; bottom: -40px; width: 230px; color: var(--amarillo); }
+
+/* 7 · product sheet */
+.pym-overlay { position: fixed; inset: 0; z-index: 20; border: 0; padding: 0; margin: 0; background: rgba(31, 30, 26, .55); cursor: pointer; }
+.pym-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; max-width: 560px; margin: 0 auto; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--crema); color: var(--cafe); border-radius: 21px 21px 0 0; display: flex; flex-direction: column; animation: pym-up .22s ease-out; }
+@keyframes pym-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pym-sheet { animation: none; } .pym, html:has(.pym) { scroll-behavior: auto; } }
+.pym-sheet__head { position: relative; overflow: hidden; flex-shrink: 0; background: var(--amarillo); padding: 20px 26px 26px; border-radius: 21px 21px 0 0; display: flex; flex-direction: column; gap: 12px; min-height: 170px; }
+.pym-sheet__head > :not(.pym-art) { position: relative; z-index: 1; }
+.pym-sheet__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.pym-badge { display: inline-flex; align-items: center; padding: 4px 10px; border: 2px solid var(--cafe); border-radius: 999px; font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
+.pym-close { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 2px solid var(--cafe); border-radius: 999px; background: var(--crema); cursor: pointer; padding: 0; }
+.pym-sheet__name { margin: 0; max-width: 70%; font-family: var(--f-name); font-weight: 400; font-size: 30px; line-height: 36px; }
+.pym-sheet__price { align-self: flex-start; display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 999px; background: var(--cafe); color: var(--crema); font-family: var(--f-display); font-size: 22px; line-height: 22px; }
+.pym-sheet__art { right: -16px; bottom: -30px; width: 140px; }
+.pym-sheet__body { padding: 24px 26px 32px; display: flex; flex-direction: column; gap: 26px; }
+.pym-desc { margin: 0; font-size: 17px; line-height: 25px; font-weight: 700; }
+.pym-off { margin: 0; padding: 12px 16px; border: 2px solid var(--cafe); border-radius: 21px; font-size: 15px; line-height: 21px; font-weight: 700; }
+.pym-group { display: flex; flex-direction: column; gap: 10px; }
+.pym-h3 { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: 13px; line-height: 14px; text-transform: uppercase; }
+.pym-options { display: grid; gap: 8px; }
+.pym-profile { display: flex; align-items: center; gap: 12px; }
+.pym-profile__label { width: 92px; flex-shrink: 0; font-size: 15px; line-height: 20px; }
+.pym-profile__segs { flex: 1 1 auto; display: flex; gap: 5px; }
+.pym-seg { flex: 1 1 0; height: 12px; border-radius: 999px; border: 2px solid var(--cafe); background: transparent; }
+.pym-seg--on { background: var(--cafe); }
+.pym-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pym-chip { display: inline-flex; align-items: center; padding: 7px 12px; border: 2px solid var(--cafe); border-radius: 999px; font-size: 15px; line-height: 18px; }
+.pym-pair { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 60px; padding: 14px 18px; border: 2px solid var(--cafe); border-radius: 21px; background: transparent; text-align: left; cursor: pointer; }
+.pym-pair__name { flex: 1 1 auto; font-family: var(--f-name); font-size: 16px; line-height: 22px; }
+.pym-pair__price { font-family: var(--f-display); font-size: 17px; line-height: 18px; }
+.pym-order { position: relative; overflow: hidden; border-radius: 21px; background: var(--cafe); color: var(--crema); padding: 20px 22px 22px; min-height: 118px; display: flex; flex-direction: column; gap: 6px; }
+.pym-order > :not(.pym-art) { position: relative; z-index: 1; }
+.pym-order__kicker { font-family: var(--f-display); font-size: 13px; line-height: 14px; text-transform: uppercase; color: var(--amarillo); }
+.pym-order__text { max-width: 66%; font-size: 16px; line-height: 23px; }
+.pym-order__art { right: -14px; bottom: -26px; width: 120px; color: var(--amarillo); }

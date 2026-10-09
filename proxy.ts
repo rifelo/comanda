@@ -12,6 +12,6 @@ export const config = {
   // POS app manifest (app/pos/manifest.ts) — a manifest fetch must never hit
   // the auth round-trip or a login redirect.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.svg$|.*\\.png$|.*\\.webmanifest$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.svg$|.*\\.png$|.*\\.jpg$|.*\\.webmanifest$).*)",
   ],
 };
