@@ -77,7 +77,7 @@ html:has(.pym) { scroll-behavior: smooth; }
    scales down on narrow phones so a category name never breaks mid-word. */
 .pym-band__title { margin: 0; position: relative; z-index: 1; font-family: var(--f-display); font-weight: 400; font-size: clamp(28px, 9vw, 40px); line-height: .95; text-transform: uppercase; }
 .pym-band__sub { margin: 0; position: relative; z-index: 1; max-width: 62%; font-size: 14px; line-height: 20px; font-weight: 700; }
-.pym-band__art { right: -10px; bottom: -28px; width: 150px; }
+.pym-band__art { right: -10px; bottom: -96px; width: 150px; }
 .pym-row { display: flex; align-items: flex-start; gap: 14px; width: 100%; min-height: 72px; padding: 18px 4px; border: 0; border-bottom: 1px solid rgba(80, 43, 28, .22); background: transparent; text-align: left; cursor: pointer; }
 .pym-row__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .pym-row__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
