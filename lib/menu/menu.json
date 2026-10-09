@@ -36,7 +36,7 @@
     { "id": "envasadas", "pos": ["Envasadas"], "label": "Envasadas", "sub": "Bien frías, directo de la nevera.", "pair": null, "art": null }
   ],
   "moods": [
-    { "id": "despertar", "label": "Para despertar", "hint": "Café con carácter" },
+    { "id": "despertar", "label": "Pa' despertar", "hint": "Café con carácter" },
     { "id": "refrescante", "label": "Refrescante", "hint": "Frío y ligero" },
     { "id": "sincafe", "label": "Sin café", "hint": "Jugos, té y kombucha" },
     { "id": "dulce", "label": "Dulce antojo", "hint": "Para el antojo" }
