@@ -38,16 +38,16 @@ html:has(.pym) { scroll-behavior: smooth; }
 
 /* 2 · promo */
 .pym-block { padding: 24px 26px 0; }
-.pym-promo { position: relative; overflow: hidden; display: flex; align-items: stretch; width: 100%; min-height: 190px; padding: 0; border: 2px solid var(--cafe); border-radius: 21px; background: var(--cafe); color: var(--crema) !important; text-align: left; cursor: pointer; }
-.pym-promo__text { flex: 1 1 55%; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 20px 8px 20px 20px; }
-.pym-sticker { align-self: flex-start; display: inline-flex; align-items: center; padding: 4px 10px; border: 2px solid var(--amarillo); border-radius: 999px; background: var(--amarillo); color: var(--cafe); font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
-.pym-promo__name { font-family: var(--f-name); font-size: 24px; line-height: 28px; }
-.pym-promo__tagline { font-family: var(--f-display); font-style: italic; font-size: 17px; line-height: 19px; color: var(--amarillo); }
-.pym-promo__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
-.pym-promo__price { font-family: var(--f-display); font-size: 20px; line-height: 20px; }
-.pym-promo__more { display: inline-flex; align-items: center; gap: 4px; font-family: var(--f-display); font-size: 12px; line-height: 13px; text-transform: uppercase; color: var(--crema-72); }
-.pym-promo__photo { flex: 0 0 45%; position: relative; overflow: hidden; }
-.pym-promo__photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 35%; display: block; }
+.pym-promo { display: flex; flex-direction: column; padding: 20px 20px 6px; border-radius: 21px; background: var(--cafe); color: var(--crema); }
+.pym-sticker { align-self: flex-start; display: inline-flex; align-items: center; margin-bottom: 4px; padding: 4px 10px; border: 2px solid var(--amarillo); border-radius: 999px; background: var(--amarillo); color: var(--cafe); font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
+.pym-promo__row { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 72px; padding: 16px 0; border: 0; border-top: 1px solid rgba(249, 247, 232, .22); background: transparent; color: var(--crema) !important; text-align: left; cursor: pointer; }
+.pym-promo__row:first-of-type { border-top: 0; }
+.pym .pym-promo__row:focus-visible { outline-color: var(--amarillo); }
+.pym-promo__text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pym-promo__name { font-family: var(--f-name); font-size: 22px; line-height: 26px; }
+.pym-promo__tagline { font-family: var(--f-display); font-style: italic; font-size: 15px; line-height: 17px; color: var(--amarillo); }
+.pym-promo__side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.pym-promo__price { font-family: var(--f-display); font-size: 19px; line-height: 20px; }
 
 /* 3 · moods */
 .pym-moods { padding: 28px 26px 10px; display: flex; flex-direction: column; gap: 14px; }

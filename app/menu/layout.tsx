@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   description: "El café hecho para tu momento. Mira el menú, pide en tu mesa y paga al final en caja.",
   metadataBase: new URL("https://cafepayo.com"),
   alternates: { canonical: "/" },
-  openGraph: { title: "Menú · Café Pa' Yo", description: "El café hecho para tu momento.", url: "https://cafepayo.com", images: ["/menu/cafe-dalgona.jpg"] },
+  openGraph: { title: "Menú · Café Pa' Yo", description: "El café hecho para tu momento.", url: "https://cafepayo.com" },
 };
 
 // Customers may zoom: the app shell locks the scale, the menu must not.

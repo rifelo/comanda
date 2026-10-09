@@ -11,7 +11,8 @@ interface Props {
   footer: { tagline: string; texto: string; instagram: string };
   /** Brand art by file name → public path; null while the file is missing. */
   arte: Record<string, string | null>;
-  promo: { sku: string; sticker: string; tagline: string; imagen: string; alt: string } | null;
+  /** The featured drinks; every sku is on the menu. */
+  promo: { sticker: string; items: { sku: string; tagline: string }[] } | null;
 }
 
 const Chevron = ({ color = "currentColor", size = 16 }: { color?: string; size?: number }) => (
@@ -68,7 +69,6 @@ export function MenuClient({ sections, moods, profileLabels, header, footer, art
         return [{ id: moodObj.id, label: moodObj.label, sub: `${hits.length} ${hits.length === 1 ? "opción" : "opciones"} en todo el menú. ${moodObj.hint}.`, art: "mano-taza.svg", items: hits }];
       })()
     : sections;
-  const promoItem = promo ? bySku.get(promo.sku) ?? null : null;
 
   return (
     <div className="pym-page">
@@ -79,23 +79,27 @@ export function MenuClient({ sections, moods, profileLabels, header, footer, art
         <Arte arte={arte} name="mano-taza.svg" className="pym-header__art" />
       </header>
 
-      {promo && promoItem && (
-        <section aria-label="Promoción" className="pym-block">
-          <button type="button" className="pym-promo" onClick={(e) => show(promoItem.sku, e.currentTarget)}>
-            <span className="pym-promo__text">
-              <span className="pym-sticker">{promo.sticker}</span>
-              <span className="pym-promo__name">{promoItem.name}</span>
-              <span className="pym-promo__tagline">{promo.tagline}</span>
-              <span className="pym-promo__foot">
-                <span className="pym-promo__price">{money(promoItem.price)}</span>
-                <span className="pym-promo__more">Conócela <Chevron size={14} /></span>
-              </span>
-            </span>
-            <span className="pym-promo__photo">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={promo.imagen} alt={promo.alt} loading="lazy" />
-            </span>
-          </button>
+      {promo && (
+        <section aria-label={promo.sticker} className="pym-block">
+          <div className="pym-promo">
+            <span className="pym-sticker">{promo.sticker}</span>
+            {promo.items.map((f) => {
+              const it = bySku.get(f.sku);
+              if (!it) return null;
+              return (
+                <button key={f.sku} type="button" className="pym-promo__row" onClick={(e) => show(f.sku, e.currentTarget)}>
+                  <span className="pym-promo__text">
+                    <span className="pym-promo__name">{it.name}</span>
+                    <span className="pym-promo__tagline">{f.tagline}</span>
+                  </span>
+                  <span className="pym-promo__side">
+                    <span className="pym-promo__price">{money(it.price)}</span>
+                    <Chevron size={16} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
       )}
 
