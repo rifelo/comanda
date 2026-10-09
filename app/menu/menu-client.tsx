@@ -13,6 +13,7 @@ interface Props {
   footer: { tagline: string; texto: string; instagram: string };
   /** Brand art by file name → public path; null while the file is missing. */
   arte: Record<string, string | null>;
+  compartir: { url: string; qr: string; titulo: string; texto: string; mensaje: string };
   /** The featured drinks; every sku is on the menu. */
   promo: { sticker: string; items: { sku: string; tagline: string }[] } | null;
 }
@@ -44,10 +45,11 @@ function Logo({ arte, name, className }: { arte: Props["arte"]; name: "logo" | "
   return <span className={`pym-wordmark ${className}`}>Café Pa&apos; Yo</span>;
 }
 
-export function MenuClient({ sections, moods, profileLabels, profileByOption, header, footer, arte, promo }: Props) {
+export function MenuClient({ sections, moods, profileLabels, profileByOption, header, footer, arte, compartir, promo }: Props) {
   const [mood, setMood] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState<string | null>(null);
   const [option, setOption] = React.useState(0);
+  const [sharing, setSharing] = React.useState(false);
   const opener = React.useRef<HTMLElement | null>(null);
 
   const all = React.useMemo(() => sections.flatMap((s) => s.items), [sections]);
@@ -61,8 +63,13 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
   }
   const close = React.useCallback(() => {
     setOpen(null);
+    setSharing(false);
     opener.current?.focus();
   }, []);
+  function share(from: HTMLElement) {
+    opener.current = from;
+    setSharing(true);
+  }
 
   const moodObj = moods.find((m) => m.id === mood) ?? null;
   const shown: { id: string; label: string; sub: string; art: string | null; items: MenuItem[] }[] = moodObj
@@ -76,6 +83,7 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
     <div className="pym-page">
       <header className="pym-header">
         <Logo arte={arte} name="logo" className="pym-header__logo" />
+        <button type="button" className="pym-share" aria-label="Compartir el menú" onClick={(e) => share(e.currentTarget)}><IconoCompartir /></button>
         <h1 className="pym-header__title">{header.titulo}</h1>
         <p className="pym-header__text">{header.texto}</p>
         <Arte arte={arte} name="mano-taza.svg" className="pym-header__art" />
@@ -162,8 +170,11 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
         <Logo arte={arte} name="logoSticker" className="pym-footer__logo" />
         <p className="pym-footer__tagline">{footer.tagline}</p>
         <p className="pym-footer__text">{footer.texto} <strong>{footer.instagram}</strong></p>
+        <button type="button" className="pym-pill pym-footer__share" onClick={(e) => share(e.currentTarget)}><IconoCompartir size={16} /> Compartir el menú</button>
         <Arte arte={arte} name="mano-taza-amarilla.svg" className="pym-footer__art" />
       </footer>
+
+      {sharing && <Compartir c={compartir} onClose={close} />}
 
       {sel && (
         <Ficha
@@ -184,6 +195,82 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
   );
 }
 
+const IconoCompartir = ({ size = 20 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
+);
+
+/** While a sheet is open: focus its close button, lock the page behind, close on Escape. */
+function useSheet(onClose: () => void, closeRef: React.RefObject<HTMLButtonElement | null>) {
+  React.useEffect(() => {
+    closeRef.current?.focus();
+    const prev = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.documentElement.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose, closeRef]);
+}
+
+/**
+ * Share the menu: the QR for whoever is next to you, and the link for
+ * whoever is not — through the phone's own share sheet where it exists,
+ * copied to the clipboard otherwise.
+ */
+function Compartir({ c, onClose }: { c: Props["compartir"]; onClose: () => void }) {
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+  useSheet(onClose, closeRef);
+  const [copiado, setCopiado] = React.useState(false);
+  const [puedeCompartir, setPuedeCompartir] = React.useState(false);
+  React.useEffect(() => {
+    // Only known on the client; deferred so the first render matches the server's.
+    queueMicrotask(() => setPuedeCompartir(typeof navigator !== "undefined" && typeof navigator.share === "function"));
+  }, []);
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(c.url);
+      setCopiado(true);
+    } catch {
+      setCopiado(false);
+    }
+  }
+  async function enviar() {
+    try {
+      await navigator.share({ title: "Café Pa' Yo", text: c.mensaje, url: c.url });
+    } catch {
+      /* the person closed the share sheet */
+    }
+  }
+  return (
+    <>
+      <button type="button" aria-label="Cerrar" className="pym-overlay" onClick={onClose} tabIndex={-1} />
+      <div role="dialog" aria-modal="true" aria-label={c.titulo} className="pym-sheet">
+        <div className="pym-sheet__head pym-sheet__head--short">
+          <div className="pym-sheet__top">
+            <h2 className="pym-h2">{c.titulo}</h2>
+            <button ref={closeRef} type="button" aria-label="Cerrar" className="pym-close" onClick={onClose}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+        </div>
+        <div className="pym-sheet__body pym-qr">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={c.qr} alt={`Código QR de ${c.url.replace(/^https?:\/\//, "")}`} className="pym-qr__img" width={260} height={260} />
+          <p className="pym-qr__url">{c.url.replace(/^https?:\/\//, "")}</p>
+          <p className="pym-qr__text">{c.texto}</p>
+          <div className="pym-qr__actions">
+            {puedeCompartir && <button type="button" className="pym-pill pym-pill--wide pym-pill--solid" onClick={() => void enviar()}>Enviar enlace</button>}
+            <button type="button" className="pym-pill pym-pill--wide" onClick={() => void copiar()}>{copiado ? "Enlace copiado" : "Copiar enlace"}</button>
+          </div>
+          <span role="status" className="pym-sr">{copiado ? "Enlace copiado" : ""}</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /** The product sheet: slides up from the bottom, closes on the overlay, the X or Escape. */
 function Ficha({ item, section, pair, option, onOption, profileLabels, profileByOption, arte, onOpen, onClose }: {
   item: MenuItem;
@@ -199,18 +286,8 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
 }) {
   const closeRef = React.useRef<HTMLButtonElement>(null);
   const dialogRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    closeRef.current?.focus();
-    dialogRef.current?.scrollTo({ top: 0 });
-    const prev = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.documentElement.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
+  useSheet(onClose, closeRef);
+  React.useEffect(() => { dialogRef.current?.scrollTo({ top: 0 }); }, []);
 
   const opt = item.options[option] ?? null;
   const price = item.price + (opt?.delta ?? 0);
