@@ -1,0 +1,92 @@
+{
+  "organizationId": "b069847f-7fb9-4ddb-a85d-9707da9a03d7",
+  "header": {
+    "titulo": "El café hecho para tu momento",
+    "texto": "Pide en tu mesa y paga al final en caja. Toca cualquier producto para conocerlo."
+  },
+  "footer": {
+    "tagline": "Tómalo con calma. O con doble shot.",
+    "texto": "¿Dudas? Pregúntale a quien te atiende. Síguenos en",
+    "instagram": "@cafepayo"
+  },
+  "promo": {
+    "on": true,
+    "sku": "BF-008",
+    "sticker": "La favorita del mes",
+    "tagline": "Café batido y cremoso sobre leche fría",
+    "imagen": "/menu/cafe-dalgona.jpg",
+    "alt": "Café dalgona de Café Pa' Yo"
+  },
+  "arte": {
+    "logo": null,
+    "logoSticker": null,
+    "mano-taza.svg": null,
+    "mano-taza-asa.svg": null,
+    "mano-copa-vino.svg": null,
+    "mano-platillo.svg": null,
+    "mano-taza-amarilla.svg": null
+  },
+  "categories": [
+    { "id": "caliente", "pos": ["Caliente"], "label": "Caliente", "sub": "Espresso y leche, como te guste.", "pair": "PO-006", "art": "mano-taza-asa.svg" },
+    { "id": "frio", "pos": ["Frío"], "label": "Frío", "sub": "Café y té con hielo, para el calor de Yopal.", "pair": "PO-005", "art": "mano-copa-vino.svg" },
+    { "id": "jugos", "pos": ["Jugos"], "label": "Jugos", "sub": "Fruta natural. En agua o en leche (+$1.000).", "pair": "SA-001", "art": "mano-taza.svg" },
+    { "id": "kombucha", "pos": ["Kombucha"], "label": "Kombucha", "sub": "Té fermentado artesanal con panela, burbujeante y fresco.", "pair": "SA-001", "art": "mano-copa-vino.svg" },
+    { "id": "postres", "pos": ["Postres"], "label": "Postres", "sub": "Para acompañar tu café.", "pair": "BF-006", "art": "mano-platillo.svg" },
+    { "id": "salados", "pos": ["Salados"], "label": "Salados", "sub": "Algo de sal para tu pausa.", "pair": "BF-005", "art": "mano-platillo.svg" },
+    { "id": "envasadas", "pos": ["Envasadas"], "label": "Envasadas", "sub": "Bien frías, directo de la nevera.", "pair": null, "art": null }
+  ],
+  "moods": [
+    { "id": "despertar", "label": "Para despertar", "hint": "Café con carácter" },
+    { "id": "refrescante", "label": "Refrescante", "hint": "Frío y ligero" },
+    { "id": "sincafe", "label": "Sin café", "hint": "Jugos, té y kombucha" },
+    { "id": "dulce", "label": "Dulce antojo", "hint": "Para el antojo" }
+  ],
+  "profileLabels": ["Intensidad", "Dulzor", "Acidez", "Cuerpo"],
+  "items": {
+    "BC-001": { "tags": ["despertar"] },
+    "BC-002": { "tags": ["despertar"] },
+    "BC-003": { "tags": ["despertar"] },
+    "BC-006": { "tags": ["despertar"] },
+    "BC-007": { "tags": ["despertar"] },
+    "BC-008": { "tags": ["despertar", "dulce"] },
+    "BC-009": { "tags": ["despertar"] },
+    "BC-010": { "short": "Doble espresso y leche sedosa", "desc": "Doble espresso con una capa fina de leche texturizada. Más café que un latte, y más suave que un espresso solo.", "lleva": ["Espresso doble", "Leche vaporizada"], "p": [4, 1, 2, 3], "tags": ["despertar"] },
+    "BC-014": { "short": "Espresso sobre leche condensada", "desc": "Espresso servido sobre leche condensada, en dos capas. Revuélvelo y es postre con cafeína.", "lleva": ["Espresso", "Leche condensada"], "p": [4, 5, 1, 4], "tags": ["despertar", "dulce"] },
+    "SC-001": { "tags": ["sincafe", "dulce"] },
+    "SC-002": { "tags": ["sincafe"] },
+    "BC-011": { "tags": ["refrescante", "sincafe", "dulce"] },
+    "BF-005": { "short": "Espresso, leche fría y hielo", "desc": "Espresso sobre leche fría y hielo. El clásico para cualquier hora.", "lleva": ["Espresso", "Leche", "Hielo"], "p": [3, 1, 1, 3], "tags": ["refrescante", "despertar"] },
+    "BF-006": { "short": "Espresso alargado con agua y hielo", "desc": "Espresso alargado con agua fría y hielo. Limpio, ligero y sin leche.", "lleva": ["Espresso", "Agua", "Hielo"], "p": [3, 0, 2, 1], "tags": ["refrescante", "despertar"] },
+    "BF-007": { "short": "Espresso con jengibre, chispeante", "desc": "Espresso con ginger y hielo. Burbujas, un picor suave de jengibre y el café de fondo.", "lleva": ["Espresso", "Ginger", "Hielo"], "p": [3, 2, 2, 1], "tags": ["refrescante", "despertar"] },
+    "BF-008": { "short": "Crema de café batido sobre leche", "desc": "Café batido hasta volverse crema, sobre leche fría. Se mezcla en el vaso y queda dulce y espeso.", "lleva": ["Café batido", "Azúcar", "Leche", "Hielo"], "p": [3, 4, 1, 4], "tags": ["refrescante", "dulce"] },
+    "BF-009": { "short": "Espresso sobre agua tónica", "desc": "Espresso sobre agua tónica y hielo. Amargo, cítrico y con burbuja: el más refrescante de los cafés.", "lleva": ["Espresso", "Agua tónica", "Hielo"], "p": [3, 1, 3, 1], "tags": ["refrescante", "despertar"] },
+    "BF-010": { "short": "Cold brew con cereza", "desc": "Café extraído en frío, suave y con poca amargura, con notas de cereza.", "lleva": ["Cold brew", "Cereza", "Hielo"], "p": [3, 2, 3, 2], "tags": ["refrescante", "despertar"] },
+    "BF-011": { "short": "Cold brew con lychee, floral", "desc": "Café extraído en frío con lychee. Floral, frutal y muy fácil de tomar.", "lleva": ["Cold brew", "Lychee", "Hielo"], "p": [3, 2, 2, 2], "tags": ["refrescante", "despertar"] },
+    "BF-012": { "short": "Latte frío con arándanos", "desc": "Latte frío con arándanos. Cremoso, frutal y un poco dulce.", "lleva": ["Espresso", "Arándanos", "Leche", "Hielo"], "p": [2, 3, 2, 3], "tags": ["refrescante", "dulce"] },
+    "BF-003": { "short": "Matcha con leche y hielo", "desc": "Té verde matcha batido con leche fría y hielo. Herbal, cremoso y sin café.", "lleva": ["Matcha", "Leche", "Hielo"], "p": [2, 2, 1, 3], "tags": ["refrescante", "sincafe"] },
+    "BF-004": { "short": "Té especiado con leche y hielo", "desc": "Té negro con especias chai, leche fría y hielo. Especiado, dulce y sin café.", "lleva": ["Té chai", "Leche", "Hielo"], "p": [2, 3, 1, 3], "tags": ["refrescante", "sincafe", "dulce"] },
+    "JU-001": { "short": "Mora natural", "desc": "Mora natural licuada al momento. Ácido, intenso y de color profundo.", "lleva": ["Mora"], "p": [4, 2, 4, 2], "tags": ["refrescante", "sincafe"], "nuevo": true },
+    "JU-002": { "short": "Uva natural", "desc": "Uva licuada al momento. Dulce y suave.", "lleva": ["Uva"], "p": [3, 4, 2, 2], "tags": ["refrescante", "sincafe"], "nuevo": true },
+    "JU-003": { "short": "Guanábana natural", "desc": "Guanábana natural, cremosa y tropical. En leche queda como un batido.", "lleva": ["Guanábana"], "p": [3, 3, 2, 4], "tags": ["refrescante", "sincafe"], "nuevo": true },
+    "JU-004": { "short": "Maracuyá con un toque de mango", "desc": "Pulpa de maracuyá con mango. Ácido y tropical, con el dulzor del mango para redondear.", "lleva": ["Maracuyá", "Mango"], "p": [4, 3, 4, 2], "tags": ["refrescante", "sincafe"], "nuevo": true },
+    "JU-005": { "short": "Mango natural", "desc": "Mango natural, dulce y espeso.", "lleva": ["Mango"], "p": [3, 4, 1, 3], "tags": ["refrescante", "sincafe", "dulce"], "nuevo": true },
+    "BE-003": { "name": "Kombucha de maracuyá", "short": "Ácida y tropical", "desc": "Té fermentado con maracuyá. Burbujeante, ácida y muy fresca.", "lleva": ["Té fermentado", "Panela", "Maracuyá"], "p": [3, 2, 4, 1], "tags": ["refrescante", "sincafe"] },
+    "BE-004": { "name": "Kombucha natural", "short": "El sabor original del té fermentado", "desc": "Kombucha sola: té fermentado con su acidez natural y burbuja fina.", "lleva": ["Té fermentado", "Panela"], "p": [2, 1, 4, 1], "tags": ["refrescante", "sincafe"] },
+    "BE-005": { "name": "Kombucha de flor", "short": "Floral y aromática", "desc": "Kombucha con notas florales. Ligera, aromática y delicada.", "lleva": ["Té fermentado", "Panela", "Flores"], "p": [2, 2, 3, 1], "tags": ["refrescante", "sincafe"] },
+    "BE-006": { "name": "Kombucha de maíz y canela", "short": "Especiada, con alma de chicha", "desc": "Kombucha con maíz y canela. Especiada y cálida, aunque se sirve fría.", "lleva": ["Té fermentado", "Panela", "Maíz", "Canela"], "p": [3, 2, 3, 2], "tags": ["refrescante", "sincafe"] },
+    "BE-007": { "name": "Kombucha de fresa", "short": "Frutal y suave", "desc": "Kombucha con fresa. Frutal, rosada y fácil de tomar.", "lleva": ["Té fermentado", "Panela", "Fresa"], "p": [2, 3, 3, 1], "tags": ["refrescante", "sincafe", "dulce"] },
+    "PO-001": { "tags": ["dulce"] },
+    "PO-002": { "tags": ["dulce"] },
+    "PO-003": { "tags": ["dulce"] },
+    "PO-004": { "short": "Masa suave y canela", "desc": "Rollo de masa suave con canela. El compañero clásico del café caliente.", "lleva": ["Canela"], "tags": ["dulce"] },
+    "PO-005": { "tags": ["dulce"] },
+    "PO-006": { "short": "Cítrica, húmeda y con fruta", "desc": "Torta de limón con arándanos. Cítrica y húmeda: va perfecto con un espresso.", "lleva": ["Limón", "Arándanos"], "tags": ["dulce"] },
+    "PO-007": { "tags": ["dulce"] },
+    "SA-001": { "short": "Hojaldre relleno de pollo", "desc": "Pastel horneado relleno de pollo. Para cuando el café pide algo de sal.", "lleva": ["Pollo"] },
+    "BE-001": { "short": "Agua sin gas", "desc": "Agua sin gas, 600 ml.", "tags": ["sincafe"] },
+    "BE-002": { "short": "Agua con gas", "desc": "Soda Bretaña, bien fría.", "tags": ["sincafe"] },
+    "BE-008": { "short": "Ginger ale", "desc": "Ginger Ale Canada Dry, bien fría.", "tags": ["sincafe"] },
+    "BE-009": { "short": "Ginger", "desc": "Ginger Postobón, bien fría.", "tags": ["sincafe"] },
+    "BE-010": { "short": "Lata 330 ml", "desc": "Coca-Cola en lata, 330 ml.", "tags": ["sincafe"] }
+  }
+}

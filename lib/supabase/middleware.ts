@@ -48,6 +48,9 @@ export async function updateSession(request: NextRequest) {
     // The shared shift tablet pairs like the POS (device cookie) — see lib/turno/server.ts.
     path === "/turno" ||
     path.startsWith("/turno/") ||
+    // The customers' QR menu: no session, ever.
+    path === "/menu" ||
+    path.startsWith("/menu/") ||
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
     path.startsWith("/api/cron") ||
