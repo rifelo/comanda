@@ -13,7 +13,9 @@ export const revalidate = 300;
 export default async function MenuPage() {
   const sections = await loadMenu();
   const c = menuContent;
-  const promoItem = c.promo.on ? sections.flatMap((s) => s.items).find((i) => i.sku === c.promo.sku) ?? null : null;
+  // Only what is on the menu right now can be featured.
+  const enMenu = new Set(sections.flatMap((s) => s.items).map((i) => i.sku));
+  const favoritas = c.promo.on ? c.promo.items.filter((f) => enMenu.has(f.sku)) : [];
   return (
     <MenuClient
       sections={sections}
@@ -22,7 +24,7 @@ export default async function MenuPage() {
       header={c.header}
       footer={c.footer}
       arte={c.arte}
-      promo={promoItem ? { sku: promoItem.sku, sticker: c.promo.sticker, tagline: c.promo.tagline, imagen: c.promo.imagen, alt: c.promo.alt } : null}
+      promo={favoritas.length ? { sticker: c.promo.sticker, items: favoritas } : null}
     />
   );
 }

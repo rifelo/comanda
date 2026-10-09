@@ -11,11 +11,11 @@
   },
   "promo": {
     "on": true,
-    "sku": "BF-008",
-    "sticker": "La favorita del mes",
-    "tagline": "Café batido y cremoso sobre leche fría",
-    "imagen": "/menu/cafe-dalgona.jpg",
-    "alt": "Café dalgona de Café Pa' Yo"
+    "sticker": "Las favoritas del mes",
+    "items": [
+      { "sku": "BF-008", "tagline": "Café batido y cremoso sobre leche fría" },
+      { "sku": "BF-012", "tagline": "Cremoso, frutal y un poco dulce" }
+    ]
   },
   "arte": {
     "logo": "/menu/art/cafe-payo-logo-principal.svg",

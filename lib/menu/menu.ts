@@ -24,7 +24,8 @@ export interface MenuContent {
   organizationId: string;
   header: { titulo: string; texto: string };
   footer: { tagline: string; texto: string; instagram: string };
-  promo: { on: boolean; sku: string; sticker: string; tagline: string; imagen: string; alt: string };
+  /** The featured drinks at the top: one panel, one row per product on the menu. */
+  promo: { on: boolean; sticker: string; items: { sku: string; tagline: string }[] };
   /** Brand art by file name → public path, or null while the file is missing. */
   arte: Record<string, string | null>;
   categories: { id: string; pos: string[]; label: string; sub: string; pair: string | null; art: string | null }[];
