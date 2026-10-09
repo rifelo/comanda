@@ -132,3 +132,16 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-order__kicker { font-family: var(--f-display); font-size: 13px; line-height: 14px; text-transform: uppercase; color: var(--amarillo); }
 .pym-order__text { max-width: 66%; font-size: 16px; line-height: 23px; }
 .pym-order__art { right: -14px; bottom: -26px; width: 120px; color: var(--amarillo); }
+
+/* 8 · share: a round button on the header, a pill on the footer, and the QR sheet */
+.pym-share { position: absolute !important; top: 22px; right: 22px; z-index: 2 !important; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; border: 2px solid var(--cafe); border-radius: 999px; background: var(--crema); cursor: pointer; }
+.pym-footer__share { gap: 8px; margin-top: 6px; border-color: var(--crema); color: var(--crema) !important; }
+.pym .pym-footer__share:focus-visible { outline-color: var(--amarillo); }
+.pym-sheet__head--short { min-height: 0; padding-bottom: 20px; }
+.pym-pill--solid { background: var(--cafe); color: var(--crema) !important; }
+.pym-qr { align-items: center; gap: 14px; text-align: center; }
+.pym-qr__img { display: block; width: min(260px, 70vw); height: auto; border: 2px solid var(--cafe); border-radius: 21px; }
+.pym-qr__url { margin: 0; font-family: var(--f-display); font-size: 22px; line-height: 24px; text-transform: uppercase; }
+.pym-qr__text { margin: 0; max-width: 300px; font-size: 15px; line-height: 22px; }
+.pym-qr__actions { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; }
+.pym-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

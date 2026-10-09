@@ -24,6 +24,8 @@ export interface MenuContent {
   organizationId: string;
   header: { titulo: string; texto: string };
   footer: { tagline: string; texto: string; instagram: string };
+  /** The share sheet: the menu's address, its QR (a file in public/) and the words around it. */
+  compartir: { url: string; qr: string; titulo: string; texto: string; mensaje: string };
   /** The featured drinks at the top: one panel, one row per product on the menu. */
   promo: { on: boolean; sticker: string; items: { sku: string; tagline: string }[] };
   /** Brand art by file name → public path, or null while the file is missing. */

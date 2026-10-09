@@ -25,6 +25,7 @@ export default async function MenuPage() {
       header={c.header}
       footer={c.footer}
       arte={c.arte}
+      compartir={c.compartir}
       promo={favoritas.length ? { sticker: c.promo.sticker, items: favoritas } : null}
     />
   );

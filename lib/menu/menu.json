@@ -9,6 +9,13 @@
     "texto": "¿Dudas? Pregúntale a quien te atiende. Síguenos en",
     "instagram": "@cafepayo"
   },
+  "compartir": {
+    "url": "https://cafepayo.com",
+    "qr": "/menu/qr-cafepayo.svg",
+    "titulo": "Comparte el menú",
+    "texto": "Que lo escaneen con la cámara, o envíales el enlace.",
+    "mensaje": "Mira el menú de Café Pa' Yo"
+  },
   "promo": {
     "on": true,
     "sticker": "Las favoritas del mes",
