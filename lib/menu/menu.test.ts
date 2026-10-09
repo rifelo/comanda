@@ -16,9 +16,9 @@ describe("buildMenu", () => {
     prod({ sku: "XX-001", name: "Sin sección", category: "Otra cosa" }),
   ]);
   const frio = menu.find((s) => s.id === "frio")!;
-  it("takes name, price and stock from the catalog, the copy from the JSON", () => {
-    expect(frio.items.map((i) => i.sku)).toEqual(["BF-006", "BF-008", "BF-099"]);
-    expect(frio.items[1]).toMatchObject({ name: "Café dalgona", price: 8500, short: "Crema de café batido sobre leche", p: [3, 4, 1, 4] });
+  it("takes name, price and stock from the catalog, the copy from the JSON, cheapest first", () => {
+    expect(frio.items.map((i) => i.sku)).toEqual(["BF-006", "BF-099", "BF-008"]);
+    expect(frio.items[2]).toMatchObject({ name: "Café dalgona", price: 8500, short: "Crema de café batido sobre leche", p: [3, 4, 1, 4] });
     expect(frio.items[0].agotado).toBe(true);
   });
   it("hides what has no price or no section, and drops empty sections", () => {
@@ -26,7 +26,7 @@ describe("buildMenu", () => {
     expect(menu.map((s) => s.id)).toEqual(["frio", "jugos", "kombucha"]);
   });
   it("a product the JSON does not know shows with its catalog description", () => {
-    expect(frio.items[2]).toMatchObject({ name: "Nuevo del POS", short: "Recién llegado", desc: "Recién llegado. Con hielo.", tags: [], p: null });
+    expect(frio.items[1]).toMatchObject({ name: "Nuevo del POS", short: "Recién llegado", desc: "Recién llegado. Con hielo.", tags: [], p: null });
   });
   it("name override, options, and pairings only when the product is on the menu", () => {
     expect(menu.find((s) => s.id === "kombucha")!.items[0].name).toBe("Kombucha de maracuyá");
