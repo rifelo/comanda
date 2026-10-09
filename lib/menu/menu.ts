@@ -15,7 +15,7 @@ export interface MenuContentItem {
   short?: string;
   desc?: string;
   lleva?: string[];
-  /** Intensidad, dulzor, acidez, cuerpo — 0 to 5 each. */
+  /** Intensidad, dulzor, acidez, cremosidad — 0 to 5 each. */
   p?: number[];
   tags?: string[];
   nuevo?: boolean;
