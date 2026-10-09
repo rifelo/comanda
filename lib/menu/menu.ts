@@ -31,6 +31,8 @@ export interface MenuContent {
   categories: { id: string; pos: string[]; label: string; sub: string; pair: string | null; art: string | null }[];
   moods: { id: string; label: string; hint: string }[];
   profileLabels: string[];
+  /** What choosing an option adds to the profile: a juice "En leche" is creamier. */
+  profileByOption?: Record<string, number[]>;
   items: Record<string, MenuContentItem>;
 }
 
@@ -119,6 +121,11 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
   // A pairing that is not on the menu is no pairing.
   const skus = new Set(visibles.flatMap((s) => s.items.map((i) => i.sku)));
   return visibles.map((s) => ({ ...s, pair: s.pair && skus.has(s.pair) ? s.pair : null }));
+}
+
+/** A product's profile with the chosen option applied, each value kept within 0–5. */
+export function perfilCon(p: ReadonlyArray<number>, delta: ReadonlyArray<number> | undefined): number[] {
+  return p.map((v, i) => Math.max(0, Math.min(5, v + (delta?.[i] ?? 0))));
 }
 
 /** Ascending by price, then by name. */
