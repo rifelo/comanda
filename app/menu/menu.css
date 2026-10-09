@@ -31,7 +31,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 /* 1 · header */
 .pym-header { position: relative; overflow: hidden; background: var(--amarillo); padding: 30px 26px 30px; min-height: 320px; display: flex; flex-direction: column; gap: 18px; border-radius: 0 0 21px 21px; }
 .pym-header > :not(.pym-art) { position: relative; z-index: 1; }
-.pym-header__logo { width: 180px; height: auto; }
+.pym-header__logo { width: 140px; height: auto; }
 .pym-header__title { margin: 0; max-width: 240px; font-family: var(--f-display); font-weight: 400; font-size: 44px; line-height: 40px; text-transform: uppercase; }
 .pym-header__text { margin: 0; max-width: 230px; font-size: 15px; line-height: 22px; }
 .pym-header__art { right: -44px; bottom: -36px; width: 200px; }
