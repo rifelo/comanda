@@ -18,13 +18,13 @@
     "alt": "Café dalgona de Café Pa' Yo"
   },
   "arte": {
-    "logo": null,
-    "logoSticker": null,
-    "mano-taza.svg": null,
-    "mano-taza-asa.svg": null,
-    "mano-copa-vino.svg": null,
-    "mano-platillo.svg": null,
-    "mano-taza-amarilla.svg": null
+    "logo": "/menu/art/cafe-payo-logo-principal.svg",
+    "logoSticker": "/menu/art/cafe-payo-logo-sticker-crema.svg",
+    "mano-taza.svg": "/menu/art/mano-taza.svg",
+    "mano-taza-asa.svg": "/menu/art/mano-taza-asa.svg",
+    "mano-copa-vino.svg": "/menu/art/mano-copa-vino.svg",
+    "mano-platillo.svg": "/menu/art/mano-platillo.svg",
+    "mano-taza-amarilla.svg": "/menu/art/mano-taza-amarilla.svg"
   },
   "categories": [
     { "id": "caliente", "pos": ["Caliente"], "label": "Caliente", "sub": "Espresso y leche, como te guste.", "pair": "PO-006", "art": "mano-taza-asa.svg" },
