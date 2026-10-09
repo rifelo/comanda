@@ -84,7 +84,7 @@ function corta(text: string): string {
 
 /**
  * The sections of the menu, in the JSON's order, each with the products the
- * catalog files under one of its POS categories. Leaves out what has no
+ * catalog files under one of its POS categories, cheapest first. Leaves out what has no
  * price yet (a product being set up) and the sections left empty.
  */
 export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogProduct>): MenuSection[] {
@@ -113,14 +113,17 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
       options: p.options,
     });
   }
-  // Written copy first (the JSON's order), then whatever the catalog added since.
-  const orden = Object.keys(content.items);
-  const rank = (sku: string) => { const i = orden.indexOf(sku); return i < 0 ? orden.length : i; };
-  for (const s of sections) s.items.sort((a, b) => rank(a.sku) - rank(b.sku) || a.sku.localeCompare(b.sku));
+  // Cheapest first, so each section reads as a ladder of prices; same price, by name.
+  for (const s of sections) s.items.sort(porPrecio);
   const visibles = sections.filter((s) => s.items.length > 0);
   // A pairing that is not on the menu is no pairing.
   const skus = new Set(visibles.flatMap((s) => s.items.map((i) => i.sku)));
   return visibles.map((s) => ({ ...s, pair: s.pair && skus.has(s.pair) ? s.pair : null }));
+}
+
+/** Ascending by price, then by name. */
+export function porPrecio(a: MenuItem, b: MenuItem): number {
+  return a.price - b.price || a.name.localeCompare(b.name, "es");
 }
 
 /** What the customer says at the table: «Jugo de mora en leche». */

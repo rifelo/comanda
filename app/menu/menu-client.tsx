@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fraseDePedido, money, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { fraseDePedido, money, porPrecio, type MenuItem, type MenuSection } from "@/lib/menu/menu";
 
 interface Props {
   sections: MenuSection[];
@@ -65,7 +65,7 @@ export function MenuClient({ sections, moods, profileLabels, header, footer, art
   const moodObj = moods.find((m) => m.id === mood) ?? null;
   const shown: { id: string; label: string; sub: string; art: string | null; items: MenuItem[] }[] = moodObj
     ? (() => {
-        const hits = all.filter((i) => i.tags.includes(moodObj.id));
+        const hits = all.filter((i) => i.tags.includes(moodObj.id)).sort(porPrecio);
         return [{ id: moodObj.id, label: moodObj.label, sub: `${hits.length} ${hits.length === 1 ? "opción" : "opciones"} en todo el menú. ${moodObj.hint}.`, art: "mano-taza.svg", items: hits }];
       })()
     : sections;
