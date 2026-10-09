@@ -34,7 +34,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-header__logo { width: 180px; height: auto; }
 .pym-header__title { margin: 0; max-width: 240px; font-family: var(--f-display); font-weight: 400; font-size: 44px; line-height: 40px; text-transform: uppercase; }
 .pym-header__text { margin: 0; max-width: 230px; font-size: 15px; line-height: 22px; }
-.pym-header__art { right: -24px; bottom: -36px; width: 230px; }
+.pym-header__art { right: -44px; bottom: -36px; width: 200px; }
 
 /* 2 · promo */
 .pym-block { padding: 24px 26px 0; }
