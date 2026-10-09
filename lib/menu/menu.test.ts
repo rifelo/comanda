@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import contenido from "./menu.json";
-import { buildMenu, fraseDePedido, money, type CatalogProduct, type MenuContent } from "./menu";
+import { buildMenu, fraseDePedido, money, perfilCon, type CatalogProduct, type MenuContent } from "./menu";
 
 const content = contenido as MenuContent;
 const prod = (over: Partial<CatalogProduct> & { sku: string; name: string }): CatalogProduct => ({ price: 7000, stock: "ok", description: null, category: "Frío", options: [], ...over });
@@ -18,7 +18,7 @@ describe("buildMenu", () => {
   const frio = menu.find((s) => s.id === "frio")!;
   it("takes name, price and stock from the catalog, the copy from the JSON, cheapest first", () => {
     expect(frio.items.map((i) => i.sku)).toEqual(["BF-006", "BF-099", "BF-008"]);
-    expect(frio.items[2]).toMatchObject({ name: "Café dalgona", price: 8500, short: "Crema de café batido sobre leche", p: [3, 4, 1, 4] });
+    expect(frio.items[2]).toMatchObject({ name: "Café dalgona", price: 8500, short: "Crema de café batido sobre leche", p: [3, 4, 1, 5] });
     expect(frio.items[0].agotado).toBe(true);
   });
   it("hides what has no price or no section, and drops empty sections", () => {
@@ -42,6 +42,14 @@ describe("the content file", () => {
       if (it.p) expect(it.p, sku).toHaveLength(4);
       for (const t of it.tags ?? []) expect(moods.has(t), `${sku}: ${t}`).toBe(true);
     }
+  });
+});
+
+describe("perfilCon", () => {
+  it("adds what the option changes and stays within 0–5", () => {
+    expect(perfilCon([3, 3, 2, 3], [0, 0, 0, 2])).toEqual([3, 3, 2, 5]);
+    expect(perfilCon([3, 3, 2, 4], [0, 0, 0, 2])).toEqual([3, 3, 2, 5]);
+    expect(perfilCon([4, 2, 4, 1], undefined)).toEqual([4, 2, 4, 1]);
   });
 });
 

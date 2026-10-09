@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { fraseDePedido, money, porPrecio, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { fraseDePedido, money, perfilCon, porPrecio, type MenuItem, type MenuSection } from "@/lib/menu/menu";
 
 interface Props {
   sections: MenuSection[];
   moods: { id: string; label: string; hint: string }[];
   profileLabels: string[];
+  /** What an option adds to the profile, by option name. */
+  profileByOption: Record<string, number[]>;
   header: { titulo: string; texto: string };
   footer: { tagline: string; texto: string; instagram: string };
   /** Brand art by file name → public path; null while the file is missing. */
@@ -42,7 +44,7 @@ function Logo({ arte, name, className }: { arte: Props["arte"]; name: "logo" | "
   return <span className={`pym-wordmark ${className}`}>Café Pa&apos; Yo</span>;
 }
 
-export function MenuClient({ sections, moods, profileLabels, header, footer, arte, promo }: Props) {
+export function MenuClient({ sections, moods, profileLabels, profileByOption, header, footer, arte, promo }: Props) {
   const [mood, setMood] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState<string | null>(null);
   const [option, setOption] = React.useState(0);
@@ -172,6 +174,7 @@ export function MenuClient({ sections, moods, profileLabels, header, footer, art
           option={option}
           onOption={setOption}
           profileLabels={profileLabels}
+          profileByOption={profileByOption}
           arte={arte}
           onOpen={(sku) => show(sku)}
           onClose={close}
@@ -182,13 +185,14 @@ export function MenuClient({ sections, moods, profileLabels, header, footer, art
 }
 
 /** The product sheet: slides up from the bottom, closes on the overlay, the X or Escape. */
-function Ficha({ item, section, pair, option, onOption, profileLabels, arte, onOpen, onClose }: {
+function Ficha({ item, section, pair, option, onOption, profileLabels, profileByOption, arte, onOpen, onClose }: {
   item: MenuItem;
   section: MenuSection | null;
   pair: MenuItem | null;
   option: number;
   onOption: (i: number) => void;
   profileLabels: string[];
+  profileByOption: Record<string, number[]>;
   arte: Props["arte"];
   onOpen: (sku: string) => void;
   onClose: () => void;
@@ -210,6 +214,7 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, arte, onO
 
   const opt = item.options[option] ?? null;
   const price = item.price + (opt?.delta ?? 0);
+  const perfil = item.p ? perfilCon(item.p, opt ? profileByOption[opt.name] : undefined) : null;
   return (
     <>
       <button type="button" aria-label="Cerrar detalle" className="pym-overlay" onClick={onClose} tabIndex={-1} />
@@ -243,10 +248,10 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, arte, onO
             </div>
           )}
 
-          {item.p && (
+          {perfil && (
             <div className="pym-group">
               <h3 className="pym-h3">Perfil de sabor</h3>
-              {item.p.slice(0, profileLabels.length).map((v, idx) => (
+              {perfil.slice(0, profileLabels.length).map((v, idx) => (
                 <div key={profileLabels[idx]} className="pym-profile" role="img" aria-label={`${profileLabels[idx]}: ${v} de 5`}>
                   <span className="pym-profile__label">{profileLabels[idx]}</span>
                   <span className="pym-profile__segs">

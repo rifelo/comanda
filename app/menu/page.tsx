@@ -21,6 +21,7 @@ export default async function MenuPage() {
       sections={sections}
       moods={c.moods}
       profileLabels={c.profileLabels}
+      profileByOption={c.profileByOption ?? {}}
       header={c.header}
       footer={c.footer}
       arte={c.arte}
