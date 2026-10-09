@@ -41,7 +41,7 @@
     { "id": "sincafe", "label": "Sin café", "hint": "Jugos, té y kombucha" },
     { "id": "dulce", "label": "Dulce antojo", "hint": "Para el antojo" }
   ],
-  "profileLabels": ["Intensidad", "Dulzor", "Acidez", "Cuerpo"],
+  "profileLabels": ["Intensidad", "Dulzor", "Acidez", "Cremosidad"],
   "items": {
     "BC-001": { "tags": ["despertar"] },
     "BC-002": { "tags": ["despertar"] },
