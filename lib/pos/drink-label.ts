@@ -22,13 +22,14 @@ export function energiaLine(rand: number = Math.random()): string {
 /** One job in the label run of a sale, in print order. */
 export type SaleLabelJob =
   | { kind: "name"; name: string }
-  | { kind: "instagram" }
+  /** The rating QR for whoever these cups are for ("" = the table / the whole order). */
+  | { kind: "califica"; customer: string }
   | { kind: "drink"; item: DrinkLabelPlanItem };
 
 /**
  * The whole label run of a sale. Labels are for the cups the bar prepares:
  * with people on the ticket, each person who has at least one prepared
- * drink gets "Pa' <nombre>", the Instagram QR and their cups; someone with
+ * drink gets "Pa' <nombre>", their rating QR and their cups; someone with
  * only food or a bottle gets nothing. Cups that belong to nobody come last
  * behind the order label (table name or number) with their own QR. Without
  * people it is the order label (always — it is the pickup number), the QR
@@ -41,14 +42,13 @@ export function planSaleLabels(input: {
   byId: Readonly<Record<string, DrinkLabelProduct | undefined>>;
   /** Table / group label ("Mesa 3"), "" for none. */
   tableName: string;
-  instagram: boolean;
 }): SaleLabelJob[] {
   const cups = planDrinkLabels(input.order, input.people, input.byId);
   const jobs: SaleLabelJob[] = [];
   const group = (name: string, items: DrinkLabelPlanItem[], always: boolean) => {
     if (!items.length && !always) return;
     jobs.push({ kind: "name", name });
-    if (input.instagram && items.length) jobs.push({ kind: "instagram" });
+    if (items.length) jobs.push({ kind: "califica", customer: input.people.includes(name) ? name : "" });
     for (const item of items) jobs.push({ kind: "drink", item });
   };
   if (input.people.length === 0) {

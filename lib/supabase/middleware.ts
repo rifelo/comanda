@@ -51,6 +51,8 @@ export async function updateSession(request: NextRequest) {
     // The customers' QR menu: no session, ever.
     path === "/menu" ||
     path.startsWith("/menu/") ||
+    // …and the rating page behind the QR on the cup.
+    path.startsWith("/c/") ||
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
     path.startsWith("/api/cron") ||

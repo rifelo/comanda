@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requirePosContext, requirePosAuth, type PosAuth } from "@/lib/pos/server";
+import { registrarEnlaces } from "@/lib/calificaciones/calificaciones-db";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
@@ -938,4 +939,21 @@ export async function desvincularPos(): Promise<{ ok: true }> {
   await unlinkCurrentPosDevice();
   revalidatePath("/configuracion/pos");
   return { ok: true };
+}
+
+const CalificacionesSchema = z.object({
+  ordenId: z.string().uuid(),
+  enlaces: z.array(z.object({ codigo: z.string().regex(/^[2-9A-HJKMNP-Z]{10}$/), customer: z.string().trim().max(60).nullable() })).min(1).max(40),
+});
+
+/**
+ * Register the rating links a sale just printed (one per QR label), so that
+ * scanning one opens that customer's own one-use page. The labels never wait
+ * for this: the register calls it in the background and retries.
+ */
+export async function registrarCalificaciones(input: unknown): Promise<{ ok: boolean }> {
+  const parsed = CalificacionesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false };
+  const { organizationId } = await requirePosAuth();
+  return registrarEnlaces(organizationId, parsed.data.ordenId, parsed.data.enlaces);
 }
