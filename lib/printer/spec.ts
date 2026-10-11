@@ -33,6 +33,8 @@ export const LabelSpecSchema = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("message"), text: text(300), handle: text(80).nullable().optional() }),
   z.object({ kind: z.literal("instagram"), handle: text(80), orgName: text(120).optional(), cupSrc: text(800).nullable().optional() }),
+  /** The rating QR of one sale (0049): `url` is that cup's own one-use link. */
+  z.object({ kind: z.literal("califica"), url: text(120), cupSrc: text(800).nullable().optional() }),
   z.object({ kind: z.literal("sticker"), src: text(800) }),
 ]);
 export type LabelSpec = z.infer<typeof LabelSpecSchema>;

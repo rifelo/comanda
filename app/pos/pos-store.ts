@@ -43,6 +43,7 @@ import {
   cobrarPendiente,
   crearOrden,
   generarFrase,
+  registrarCalificaciones,
   guardarPendiente,
   listarOrdenes,
   listarPendientes,
@@ -52,7 +53,8 @@ import {
   transcribeAudio,
 } from "./actions";
 import { nudge } from "./pos-live";
-import { printOrderLabel, printMessageLabel, printDrinkLabel, printInstagramLabel } from "@/lib/printer/serial";
+import { printOrderLabel, printMessageLabel, printDrinkLabel, printCalificaLabel } from "@/lib/printer/serial";
+import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
 export const EMPTY_CATALOG: PosCatalog = {
@@ -781,7 +783,7 @@ export async function runOutbox() {
           outbox: st.outbox.filter((j) => j.id !== job.id),
           ...(st.receiptJobId === job.id ? { orderNo: folio, sent: true, lastChange: change, lastTotal: res.total, receiptJobId: null } : {}),
         }));
-        printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio);
+        printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, res.ordenId);
         void refreshPendientes();
         nudge("ordenes");
       } else {
@@ -1093,7 +1095,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     return { ok: false };
   }
   posStore.set({ sending: false });
-  if (!s.pending) printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio);
+  if (!s.pending) printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio, res.ordenId);
   void refreshPendientes();
   nudge("ordenes");
   return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total };
@@ -1322,26 +1324,49 @@ export function discardPendingEdit() {
  * Everything that prints when an order is registered, in the order the
  * counter wants to pick it up. With people on the ticket: "Pa' Juan", his
  * cups, "Pa' María", her cups… (planSaleLabels); without: the order label
- * and the cups. The Instagram QR once. Then one phrase per cup — they wait
+ * and the cups. Each group of cups gets its rating QR — a one-use link made
+ * here and registered in the background. Then one phrase per cup — they wait
  * on the AI and are queued when it answers. A missing piece (no handle, no
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
-function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog }, folio: string) {
+function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog }, folio: string, ordenId: string) {
   const orgName = s.catalog.orgName;
-  const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim(), instagram: !!s.catalog.instagram });
+  const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim() });
   const cups: string[] = [];
+  const enlaces: { codigo: string; customer: string | null }[] = [];
   for (const j of jobs) {
     if (j.kind === "name") printOrderLabel({ name: j.name, folio, orgName });
-    else if (j.kind === "instagram") printInstagramLabel(s.catalog.instagram!, s.catalog.cupArt);
-    else {
+    else if (j.kind === "califica") {
+      const codigo = nuevoCodigo();
+      enlaces.push({ codigo, customer: j.customer || null });
+      printCalificaLabel(urlCalificacion(codigo), s.catalog.cupArt);
+    } else {
       cups.push(j.item.productId);
       printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
     }
   }
+  if (enlaces.length > 0) void registrarEnlacesVenta(ordenId, enlaces);
   if (cups.length > 0) {
     lastCups = cups;
     void printFrases(cups);
   }
+}
+
+/**
+ * Tell the server which rating codes went out with a sale. The labels are
+ * already printing; this only has to land before the customer scans, so it
+ * retries a few times over a minute and then gives up quietly.
+ */
+async function registrarEnlacesVenta(ordenId: string, enlaces: { codigo: string; customer: string | null }[]) {
+  for (const espera of [0, 3_000, 15_000, 45_000]) {
+    if (espera) await new Promise((r) => setTimeout(r, espera));
+    try {
+      if ((await registrarCalificaciones({ ordenId, enlaces })).ok) return;
+    } catch {
+      /* offline: try again */
+    }
+  }
+  console.warn("[pos] rating links not registered for", ordenId);
 }
 
 /** The cups of the last sale, so «Frase IA» on the receipt writes about one of them. */

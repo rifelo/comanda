@@ -239,11 +239,33 @@ export function instagramLink(handle: string): { handle: string; url: string } {
 }
 
 /**
- * "Síguenos" label, portrait like the menu ones: the brand cup on top, the
- * rule, a big QR to the profile and the handle underneath. Printed turned
- * 90° on the 50 × 30 mm stock.
+ * "Síguenos" label: the QR to the Instagram profile, the handle underneath.
  */
 export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
+  const { handle, url } = instagramLink(input.handle);
+  return renderQrLabel({ url, kicker: "SÍGUENOS", title: `@${handle}`, cup: input.cup });
+}
+
+export interface CalificaLabelInput {
+  /** The one-use rating link of this cup (lib/calificaciones `urlCalificacion`). */
+  url: string;
+  cup?: (CanvasImageSource & { width: number; height: number }) | null;
+}
+
+/**
+ * The label that asks for a rating: a QR that is this sale's own, good for
+ * one answer, with the reason to scan it under it.
+ */
+export function renderCalificaLabel(input: CalificaLabelInput): LabelRaster {
+  return renderQrLabel({ url: input.url, kicker: "CALIFÍCANOS", title: "y gana puntos", cup: input.cup });
+}
+
+/**
+ * A QR label, portrait like the menu ones: the brand cup on top, the rule, a
+ * big QR and two lines underneath (a small kicker and a title). Printed
+ * turned 90° on the 50 × 30 mm stock.
+ */
+function renderQrLabel(input: { url: string; kicker: string; title: string; cup?: (CanvasImageSource & { width: number; height: number }) | null }): LabelRaster {
   const W = HEAD_WIDTH_PX;
   const H = DRINK_W;
   const canvas = document.createElement("canvas");
@@ -263,7 +285,7 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   const M = 14;
   const innerW = DRINK_W - M * 2;
   const cx = DRINK_W / 2;
-  const { handle, url } = instagramLink(input.handle);
+  const url = input.url;
 
   // brand illustration
   let y = 6;
@@ -283,8 +305,8 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   ctx.fillRect(M, y, innerW, 3);
   const qrTop = y + 14;
 
-  // handle and its kicker, bottom-anchored
-  const at = `@${handle}`;
+  // title and its kicker, bottom-anchored
+  const at = input.title;
   let size = 26;
   for (; size >= 14; size -= 2) {
     ctx.font = `${size}px ${displayFont()}`;
@@ -296,7 +318,7 @@ export function renderInstagramLabel(input: InstagramLabelInput): LabelRaster {
   ctx.fillText(at, cx, atTop);
   ctx.font = `bold 11px ${monoFont()}`;
   setTracking(ctx, "2px");
-  ctx.fillText("SÍGUENOS", cx, atTop - 17);
+  ctx.fillText(input.kicker, cx, atTop - 17);
   setTracking(ctx, "0px");
 
   // QR: as big as the gap between the rule and the kicker allows

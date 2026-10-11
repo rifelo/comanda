@@ -1,27 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
+import { body, display } from "./fonts";
 import "./menu.css";
-
-// Brand faces of Café Pa' Yo, only for the menu. Nority Slanted is the
-// italic of the display family; Delight is the text face (300 and 700).
-const display = localFont({
-  src: [
-    { path: "./fonts/nority-display.woff2", weight: "400", style: "normal" },
-    { path: "./fonts/nority-slanted.woff2", weight: "400", style: "italic" },
-  ],
-  variable: "--pym-display",
-  display: "swap",
-  fallback: ["Arial Black", "sans-serif"],
-});
-const body = localFont({
-  src: [
-    { path: "./fonts/delight-light.woff2", weight: "300", style: "normal" },
-    { path: "./fonts/delight-bold.woff2", weight: "700", style: "normal" },
-  ],
-  variable: "--pym-body",
-  display: "swap",
-  fallback: ["system-ui", "sans-serif"],
-});
 
 export const metadata: Metadata = {
   title: "Menú · Café Pa' Yo",

@@ -35,7 +35,7 @@ import {
 } from "./transport";
 import type { LabelSpec } from "./spec";
 import { energiaLine } from "@/lib/pos/drink-label";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderCalificaLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -484,6 +484,13 @@ function jobFor(spec: LabelSpec): Job {
         folio: INSTAGRAM_FOLIO,
         name: `@${spec.handle.replace(/^@/, "")}`,
       };
+    case "califica":
+      return {
+        // The drawing is decoration: without it the label still carries the code.
+        raster: async () => renderCalificaLabel({ url: spec.url, cup: spec.cupSrc ? await loadImage(spec.cupSrc).catch(() => null) : null }),
+        folio: CALIFICA_FOLIO,
+        name: "Califícanos",
+      };
     case "message":
       return { raster: async () => renderMessageLabel({ text: spec.text, handle: spec.handle }), folio: FRASE_FOLIO, name: spec.text };
     case "sticker":
@@ -526,6 +533,11 @@ export function printInstagramLabel(handle: string, cupSrc?: string | null): voi
   submit({ kind: "instagram", handle, orgName: labelDefaults.orgName, cupSrc: cupSrc ?? null });
 }
 export const INSTAGRAM_FOLIO = "INSTAGRAM";
+/** The rating QR of a sale; `url` is its own one-use link. */
+export function printCalificaLabel(url: string, cupSrc?: string | null): void {
+  submit({ kind: "califica", url, cupSrc: cupSrc ?? null });
+}
+export const CALIFICA_FOLIO = "CALIFICA";
 
 /** AI "frase del día" label for the cup. */
 export function printMessageLabel(text: string, handle?: string | null): void {

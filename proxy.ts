@@ -9,15 +9,17 @@ const MENU_HOSTS = new Set(["cafepayo.com", "www.cafepayo.com"]);
 export async function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   if (MENU_HOSTS.has(host)) {
-    // No session on this domain: "/" is the menu, and nothing else of the app
-    // (panel, POS, login) answers here — any other page goes back to it.
+    // No session on this domain: "/" is the menu, "/c/…" a rating, and nothing
+    // else of the app (panel, POS, login) answers here — any other page goes
+    // back to the menu.
     const path = request.nextUrl.pathname;
     if (path === "/" || path === "/menu") {
       const url = request.nextUrl.clone();
       url.pathname = "/menu";
       return path === "/" ? NextResponse.rewrite(url) : NextResponse.next();
     }
-    if (path.startsWith("/menu/") || path.startsWith("/_next")) return NextResponse.next();
+    // "/c/<code>" is the rating page behind the QR on the cup (app/c).
+    if (path.startsWith("/menu/") || path.startsWith("/c/") || path.startsWith("/_next")) return NextResponse.next();
     const home = request.nextUrl.clone();
     home.pathname = "/";
     home.search = "";
