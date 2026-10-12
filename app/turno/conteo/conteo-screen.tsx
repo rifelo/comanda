@@ -78,6 +78,8 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
   // Items outside this count's list that the counter added because they found them.
   const [extras, setExtras] = React.useState<string[]>([]);
   const [propuestas, setPropuestas] = React.useState<Propuesta[]>([]);
+  // The count is walked one area at a time: only this one shows its items.
+  const [abierta, setAbierta] = React.useState<string | null>(null);
 
   const daily = pickCountList(ingredientes, "diario");
   const full = pickCountList(ingredientes, "completo");
@@ -97,6 +99,12 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
       setExtras([]);
       setPropuestas([]);
     }
+    const vals = d?.values ?? {};
+    const have = pickCountList(ingredientes, kind);
+    const todos = [...have, ...ingredientes.filter((i) => !i.archived && (d?.extras ?? []).includes(i.id) && !have.some((h) => h.id === i.id))];
+    const areas = groupForCount(todos, categorias, ZONAS);
+    const pendiente = areas.find((g) => g.items.some((i) => !(vals[i.id] ?? "").trim() && !(vals[pk(i.id)] ?? "").trim()));
+    setAbierta((pendiente ?? areas[0])?.label ?? null);
     setStep({ kind: "count", countKind: kind });
   }
   React.useEffect(() => {
@@ -162,8 +170,13 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
     router.refresh();
   }
 
-  // Walked zone by zone when the items have one, else by category.
+  // Walked area by area when the items have one, else by category.
   const byCat = React.useMemo(() => groupForCount(list, categorias, ZONAS), [list, categorias]);
+  function abrirArea(label: string, index: number) {
+    setAbierta(label);
+    // Next paint: the previous area collapsed — put this one's header at the top.
+    window.setTimeout(() => document.getElementById(`conteo-area-${index}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 60);
+  }
 
   return (
     <div className="cmd-paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
@@ -207,7 +220,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
           </section>
 
           <section style={{ border: "1px dashed var(--rule)", borderRadius: 6, padding: "12px 14px", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-2, var(--ink))" }}>
-            <b>Cómo contar bien.</b> Cuenta lo que hay en estante y nevera, no lo que crees que debería haber. Lo que viene en paquete se cuenta en paquetes cerrados más lo suelto; lo abierto se pesa o se cuenta. Al escribir, cada ítem muestra su color: <b style={{ color: "var(--green)" }}>hay</b>, <b style={{ color: "var(--amber)" }}>poco</b> o <b style={{ color: "var(--red)" }}>se acabó</b>. Si algo se rompió o se botó, anótalo en el ítem. Si el conteo rápido cuadra, corrige el inventario de una vez; si algo se sale de lo normal, lo revisa el dueño.
+            <b>Cómo contar bien.</b> Se cuenta por áreas: abre una, cuenta todo lo de esa área y pasa a la siguiente. Cuenta lo que hay en estante y nevera, no lo que crees que debería haber. Lo que viene en paquete se cuenta en paquetes cerrados más lo suelto; lo abierto se pesa o se cuenta. Al escribir, cada ítem muestra su color: <b style={{ color: "var(--green)" }}>hay</b>, <b style={{ color: "var(--amber)" }}>poco</b> o <b style={{ color: "var(--red)" }}>se acabó</b>. Si algo se rompió o se botó, anótalo en el ítem. Si el conteo rápido cuadra, corrige el inventario de una vez; si algo se sale de lo normal, lo revisa el dueño.
           </section>
         </div>
       )}
@@ -219,9 +232,22 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
               <span>Cuenta <b style={{ color: "var(--ink)" }}>{actor.name}</b> · {step.countKind === "diario" ? "conteo rápido" : "inventario completo"}</span>
               <button type="button" onClick={() => setStep({ kind: "setup" })} style={{ ...chip, marginLeft: "auto", height: 30 }}>Cambiar</button>
             </div>
-            {byCat.map((g) => (
-              <div key={g.label} style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--rule)", marginBottom: 6 }}>{g.label}</div>
+            {byCat.map((g, gi) => {
+              const hechos = g.items.filter((i) => typeof countedOf(i) === "number").length;
+              const malos = g.items.some((i) => countedOf(i) === "bad");
+              const listo = hechos === g.items.length;
+              const open = abierta === g.label;
+              const sigue = byCat[gi + 1];
+              return (
+              <section key={g.label} id={`conteo-area-${gi}`} aria-label={g.label} style={{ marginBottom: 10, border: `1.5px solid ${open ? "var(--ink)" : "var(--rule)"}`, borderRadius: 8, background: open ? "transparent" : "var(--paper-lt)", scrollMarginTop: 8 }}>
+                <button type="button" onClick={() => (open ? setAbierta(null) : abrirArea(g.label, gi))} aria-expanded={open} style={{ width: "100%", minHeight: 60, display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", background: "none", border: "none", color: "var(--ink)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-mono)" }}>
+                  <span className="font-slab" style={{ fontSize: 19, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: malos ? "var(--red)" : listo ? "var(--green)" : "var(--muted)" }}>{malos ? "revisar" : listo ? "✓ listo" : hechos ? `faltan ${g.items.length - hechos}` : "sin contar"}</span>
+                  <span className="cmd-num" style={{ fontSize: 13, fontWeight: 700, minWidth: 64, textAlign: "right" }}>{hechos} de {g.items.length}</span>
+                  <span aria-hidden style={{ fontSize: 13, color: "var(--muted)", width: 14, textAlign: "center" }}>{open ? "▾" : "▸"}</span>
+                </button>
+                {open && (
+                <div style={{ padding: "0 14px 14px", borderTop: "1px solid var(--rule)" }}>
                 {g.items.map((i) => {
                   const c = countedOf(i);
                   const bad = c === "bad";
@@ -266,14 +292,25 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
                     </div>
                   );
                 })}
-              </div>
-            ))}
+                <button type="button" onClick={() => (sigue ? abrirArea(sigue.label, gi + 1) : setAbierta(null))} className={listo ? "cmd-btn" : "cmd-btn ghost"} style={{ marginTop: 12, height: 48, width: "100%", fontSize: 13 }}>
+                  {sigue ? `Siguiente área: ${sigue.label} →` : "Cerrar área"}
+                </button>
+                </div>
+                )}
+              </section>
+              );
+            })}
             <NoListado
               ingredientes={ingredientes}
               enLista={new Set(list.map((i) => i.id))}
               propuestas={propuestas}
               onExistente={(id) => {
                 setExtras((x) => (x.includes(id) ? x : [...x, id]));
+                // Its area has to be the open one for the row to be on screen.
+                const extra = ingredientes.find((i) => i.id === id);
+                const conEl = list.some((i) => i.id === id) || !extra ? list : [...list, extra];
+                const area = groupForCount(conEl, categorias, ZONAS).find((g) => g.items.some((i) => i.id === id));
+                if (area) setAbierta(area.label);
                 // Next paint: the row exists (or already did) — take the counter to it.
                 window.setTimeout(() => {
                   const el = document.getElementById(`conteo-${id}`);

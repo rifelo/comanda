@@ -173,7 +173,7 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
             <tr style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--muted)" }}>
               <th style={{ ...th, paddingLeft: 12, position: "sticky", left: 0, background: "var(--paper-lt)", zIndex: 1, minWidth: 210 }}>Ítem</th>
               <th style={th}>Stock hoy</th>
-              <th style={{ ...th, width: 120 }}>Zona</th>
+              <th style={{ ...th, width: 120 }}>Área</th>
               <th style={{ ...th, width: 190 }} title="La pieza que se cuenta en el estante y cuánto trae">Presentación</th>
               <th style={{ ...th, width: 92, color: NIVELES.rojo.color }}>Se acabó</th>
               <th style={{ ...th, width: 92, color: NIVELES.amarillo.color }}>Poco</th>
@@ -220,7 +220,7 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
                         <span className="cmd-num" style={{ color: stock < 0 ? "var(--muted)" : "var(--ink)" }}>{stock < 0 ? "sin contar" : cantidadLegible(stock, { ...it, pack_label: d.pack_label })}</span>
                       </td>
                       <td style={cell}>
-                        <input value={d.ubicacion} onChange={(e) => patch(i.id, { ubicacion: e.target.value })} list="niveles-zonas" placeholder="—" aria-label={`Zona de ${i.name}`} maxLength={40} style={input} />
+                        <input value={d.ubicacion} onChange={(e) => patch(i.id, { ubicacion: e.target.value })} list="niveles-zonas" placeholder="—" aria-label={`Área de ${i.name}`} maxLength={40} style={input} />
                       </td>
                       <td style={cell}>
                         <div className="flex items-center" style={{ gap: 4 }}>

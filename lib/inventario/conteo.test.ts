@@ -66,7 +66,7 @@ describe("groupForCount", () => {
       cats,
       ["Barra", "Nevera", "Bodega"],
     );
-    expect(g.map((x) => x.label)).toEqual(["Barra", "nevera", "Bodega", "Patio", "Sin zona"]);
+    expect(g.map((x) => x.label)).toEqual(["Barra", "nevera", "Bodega", "Patio", "Sin área"]);
     expect(g[4].items.map((x) => x.name)).toEqual(["Hielo"]);
   });
 });

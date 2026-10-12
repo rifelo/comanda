@@ -70,9 +70,9 @@ export function fullCountDue(lastCompletoAt: string | null, now: Date = new Date
 }
 
 /**
- * The order a count is walked in: by zone (where things physically are) when
- * the items have one, in the order given, with whatever has no zone at the
- * end; by category when no item has a zone yet. Counting shelf by shelf is
+ * The order a count is walked in: by area (where things physically are) when
+ * the items have one, in the order given, with whatever has no area at the
+ * end; by category when no item has an area yet. Counting area by area is
  * what keeps a full count under half an hour.
  */
 export function groupForCount<T extends { category_id: string | null; ubicacion?: string | null }>(
@@ -90,7 +90,7 @@ export function groupForCount<T extends { category_id: string | null; ubicacion?
     });
     for (const z of seen) groups.push({ label: z, items: items.filter((i) => zoneOf(i) === z) });
     const rest = items.filter((i) => !zoneOf(i));
-    if (rest.length) groups.push({ label: "Sin zona", items: rest });
+    if (rest.length) groups.push({ label: "Sin área", items: rest });
     return groups;
   }
   const label = new Map(categorias.map((c) => [c.id, c.label]));

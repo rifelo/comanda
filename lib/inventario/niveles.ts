@@ -23,8 +23,8 @@ export const NIVELES: Record<Nivel, { label: string; short: string; color: strin
   rojo: { label: "Se acabó", short: "se acabó", color: "var(--red)" },
 };
 
-/** Zones offered when sorting items by where they are counted (free text is allowed too). */
-export const ZONAS = ["Barra", "Nevera", "Vitrina", "Bodega", "Aseo"] as const;
+/** Areas a count is walked through, in this order (free text is allowed too). */
+export const ZONAS = ["Aseo", "Barra", "Nevera", "Vitrina", "Bodega"] as const;
 
 export interface NivelItem {
   unit: string;

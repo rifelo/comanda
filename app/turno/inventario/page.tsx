@@ -70,7 +70,7 @@ export default async function TurnoInventarioPage() {
               ) : (
                 <div style={{ fontSize: 12.5, marginTop: 5, color: "var(--ink-2)", lineHeight: 1.5 }}>
                   {rutina.toca === "completo"
-                    ? `Hoy es ${diaCompleto}: se cuenta todo, zona por zona, antes de cerrar. Empieza media hora antes.`
+                    ? `Hoy es ${diaCompleto}: se cuenta todo, área por área, antes de cerrar. Empieza media hora antes.`
                     : "Se hace al cierre, antes de la caja: lo crítico, unos cinco minutos."}
                 </div>
               )}
