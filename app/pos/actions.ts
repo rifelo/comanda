@@ -166,7 +166,7 @@ async function insertOrden(
   data: OrdenBase,
   priced: { items: PricedItem[]; subtotal: number },
   header: OrdenHeader,
-): Promise<{ ok: true; folio: string; ordenId: string; existing?: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; folio: string; ordenId: string; existing?: { status: string } } | { ok: false; error: string }> {
   const { supabase, organizationId: orgId, actor } = ctx;
   const restaurantId =
     actor.kind === "device" ? actor.device.restaurantId : actor.restaurantId;
@@ -177,11 +177,11 @@ async function insertOrden(
     if (!data.clientRef) return null;
     const { data: hit } = await supabase
       .from("ordenes")
-      .select("id, folio")
+      .select("id, folio, status")
       .eq("organization_id", orgId)
       .eq("client_ref", data.clientRef)
       .maybeSingle();
-    return hit ? { ok: true as const, folio: hit.folio as string, ordenId: hit.id as string, existing: true } : null;
+    return hit ? { ok: true as const, folio: hit.folio as string, ordenId: hit.id as string, existing: { status: hit.status as string } } : null;
   };
   const prior = await findByRef();
   if (prior) return prior;
@@ -264,7 +264,16 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
     paid_at: orderTime(base.createdAt),
   });
   if (!ins.ok) return ins;
-  if (ins.existing) return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };
+  if (ins.existing) {
+    // Queued as «pagar después», then charged while still offline: the order
+    // may have landed as pendiente on an attempt whose answer was lost.
+    if (ins.existing.status === "pendiente") {
+      const res = await applyPago(ctx, ins.ordenId, null, payment, undefined);
+      if (!res.ok) return res;
+      return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total, change: res.change };
+    }
+    return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };
+  }
   // Inventory follows the sale; a stock problem is logged, never blocks the receipt.
   await syncOrderConsumption(ctx.supabase, ctx.organizationId, ins.ordenId, actorId(ctx));
   return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };

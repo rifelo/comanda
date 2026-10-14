@@ -84,6 +84,8 @@ import {
   resetConversation,
   hydrateOutbox,
   watchConnectivity,
+  queuedOrders,
+  LOCAL_ORDER,
   hydratePendientes,
   retryOutbox,
   dropOutbox,
@@ -554,7 +556,7 @@ function SearchBox() {
 /** "Pedidos" — opens the Square-style orders screen; badge = open orders. */
 function PendientesChip() {
   const s = usePos();
-  const n = s.pendientes.length;
+  const n = s.pendientes.length + s.outbox.filter((j) => j.kind === "pendiente").length;
   const on = s.view === "ordenes";
   return (
     <button
@@ -1193,8 +1195,13 @@ function OrdenesScreen() {
   }, []);
   const today = bogotaDay();
   const isQueue = s.ordenesTab === "pendiente";
-  const sel = s.ordenSel ? s.ordenes.find((o) => o.id === s.ordenSel) ?? null : null;
-  const total = s.ordenes.filter((o) => o.status === "pagada").reduce((n, o) => n + o.total, 0);
+  // Orders still in this register's queue (offline) are listed first, next to the server's.
+  const queued = queuedOrders(s).filter(
+    (o) => (s.ordenesTab === "todas" || o.status === s.ordenesTab) && (isQueue || bogotaDay(Date.parse(o.createdAt)) === s.ordenesDay),
+  );
+  const list = [...queued, ...s.ordenes];
+  const sel = s.ordenSel ? list.find((o) => o.id === s.ordenSel) ?? null : null;
+  const total = list.filter((o) => o.status === "pagada").reduce((n, o) => n + o.total, 0);
 
   return (
     <Overlay align="fill">
@@ -1207,7 +1214,7 @@ function OrdenesScreen() {
           <div role="tablist" className="pos-ord-tabs">
             {ORDER_TABS.map((t) => {
               const on = s.ordenesTab === t.id;
-              const n = t.id === "pendiente" ? s.pendientes.length : 0;
+              const n = t.id === "pendiente" ? s.pendientes.length + s.outbox.filter((j) => j.kind === "pendiente").length : 0;
               return (
                 <button key={t.id} role="tab" aria-selected={on} onClick={() => setOrdenesTab(t.id)} style={{ height: "max(36px, var(--pos-x))", padding: "0 12px", borderRadius: 3, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   {t.label}
@@ -1235,7 +1242,7 @@ function OrdenesScreen() {
               <button onClick={cancelMerge} style={{ height: 36, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
             )}
             {!isQueue && total > 0 && <span>Ventas <span className="cmd-num" style={{ color: C.ink }}>{posMoney(total)}</span></span>}
-            <span className="cmd-num">{s.ordenes.length} pedido{s.ordenes.length === 1 ? "" : "s"}</span>
+            <span className="cmd-num">{list.length} pedido{list.length === 1 ? "" : "s"}</span>
             <button onClick={() => void refreshOrdenes()} aria-label="Actualizar" title="Actualizar" style={dayBtn}>{s.ordenesLoading ? "…" : "↻"}</button>
           </div>
         </div>
@@ -1243,13 +1250,13 @@ function OrdenesScreen() {
         <div className="pos-ord-body">
           <div className="pos-scroll" style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 16 }}>
             {s.ordenesError && <div role="alert" style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{s.ordenesError}</div>}
-            {!s.ordenes.length && !s.ordenesError && (
+            {!list.length && !s.ordenesError && (
               <div style={{ padding: "64px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
                 {s.ordenesLoading ? "Cargando…" : isQueue ? <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</> : "Sin pedidos ese día."}
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, paddingBottom: s.merge.on ? 90 : 0 }}>
-              {s.ordenes.map((o) => (
+              {list.map((o) => (
                 <OrdenCard key={o.id} o={o} selected={s.merge.on ? s.merge.sel.includes(o.id) : o.id === s.ordenSel} merging={s.merge.on} isTarget={s.merge.on && s.merge.target === o.id} />
               ))}
             </div>
@@ -1347,8 +1354,17 @@ function MergeConfirm() {
 
 const dayBtn: React.CSSProperties = { width: "max(36px, var(--pos-x))", height: "max(36px, var(--pos-x))", flexShrink: 0, borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" };
 
+/** Badge of an order still in this register's queue. */
+const LOCAL_UI = {
+  sending: { label: "Enviando…", color: C.muted },
+  offline: { label: "Sin enviar", color: C.amber },
+  failed: { label: "Error al enviar", color: C.red },
+} as const;
+
 function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosOrder; selected: boolean; merging?: boolean; isTarget?: boolean }) {
   const st = o.mergedInto ? { label: "Combinado", color: C.muted } : STATUS_UI[o.status];
+  // A queued order can't be combined until the server has it.
+  if (merging && o.local) return null;
   const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
   const count = o.items.reduce((n, it) => n + it.qty, 0);
   return (
@@ -1376,6 +1392,9 @@ function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosO
         {o.items.map((it) => `${it.qty}× ${it.name}`).join(" · ")}
       </div>
       <div className="cmd-num" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{posMoney(o.total)}</div>
+      {o.local && (
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: LOCAL_UI[o.local].color }}>{LOCAL_UI[o.local].label} · en esta caja</div>
+      )}
       {o.status === "pendiente" && o.paid > 0 && (
         <div style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>Pagado <span className="cmd-num">{posMoney(o.paid)}</span> · falta <span className="cmd-num">{posMoney(o.total - o.paid)}</span></div>
       )}
@@ -1447,7 +1466,19 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         </div>
       </div>
       <div style={{ padding: "12px 20px 16px", borderTop: `1.5px solid ${C.ink}`, display: "flex", flexDirection: "column", gap: 8 }}>
-        {o.status === "pendiente" && (
+        {o.local && (
+          <div style={{ fontSize: 11.5, color: LOCAL_UI[o.local].color, lineHeight: 1.5 }}>
+            {o.local === "failed" ? "El servidor rechazó este pedido." : "Guardado en esta caja; se envía solo cuando vuelva el internet."}
+            {o.folio.startsWith("L-") && " El número definitivo llega al sincronizar."}
+          </div>
+        )}
+        {o.local && o.status === "pendiente" && (
+          <button className="cmd-btn red" disabled={o.local === "sending"} onClick={() => { if (guard()) chargePending(o); }} style={{ width: "100%", height: 52, fontSize: 14, opacity: o.local === "sending" ? 0.5 : 1 }}>Cobrar {posMoney(o.total)}</button>
+        )}
+        {o.local && o.local !== "sending" && (
+          <button onClick={() => { if (window.confirm(`¿Descartar el pedido ${o.folio}? No quedará registrado.`)) { dropOutbox(o.id.slice(LOCAL_ORDER.length)); selectOrden(null); } }} style={{ width: "100%", height: 40, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Descartar</button>
+        )}
+        {o.status === "pendiente" && !o.local && (
           <>
             <button className="cmd-btn red" onClick={() => { if (guard()) chargePending(o); }} style={{ width: "100%", height: 52, fontSize: 14 }}>Cobrar {posMoney(remaining)}</button>
             {shares.length >= 2 && (
@@ -2308,7 +2339,8 @@ function TenderScreen() {
           <div style={{ marginLeft: "auto", flexShrink: 0 }}>
             {split ? (
               <button onClick={stopSplit} style={hdrBtn}>Cobrar todo junto</button>
-            ) : shares.length >= 2 ? (
+            ) : shares.length >= 2 && s.online && !s.pending?.id.startsWith(LOCAL_ORDER) ? (
+              // Paying in parts needs the order on the server.
               <button onClick={() => void startSplit()} disabled={s.sending} style={{ ...hdrBtn, border: `1.5px solid ${C.ink}` }}>Dividir por persona</button>
             ) : null}
           </div>
