@@ -184,6 +184,8 @@ export interface PosState {
   outbox: OutboxItem[];
   /** The outbox job the receipt screen is showing, until it lands. */
   receiptJobId: string | null;
+  /** Whether the server answers right now (false = selling offline, orders queue up). */
+  online: boolean;
   /** AI "frase del día" label: last generated text + request state. */
   frase: string | null;
   fraseLoading: boolean;
@@ -249,6 +251,7 @@ export const POS_INITIAL: PosState = {
   receiptKind: "pagada",
   outbox: [],
   receiptJobId: null,
+  online: true,
   frase: null,
   fraseLoading: false,
   fraseError: null,
@@ -708,6 +711,7 @@ export function resetConversation() {
     ordenesTab: s.ordenesTab,
     ordenesDay: s.ordenesDay,
     outbox: s.outbox,
+    online: s.online,
   }));
 }
 
@@ -718,11 +722,16 @@ export function resetConversation() {
  * the request runs behind. When it lands the receipt gets its folio and the
  * labels print; if it fails the job stays here, marked, until it is retried
  * or dropped. Persisted per tablet so a reload never loses a sale.
+ *
+ * Offline: when the server can't be reached the job waits ("offline") instead
+ * of failing — its labels print right away with a provisional folio (L-n) and
+ * it is sent on its own when the connection comes back. The job id travels as
+ * `clientRef`, so a retry whose first answer was lost never doubles the order.
  */
 export interface OutboxItem {
   id: string;
   kind: "pagada" | "pendiente";
-  status: "sending" | "failed";
+  status: "sending" | "failed" | "offline";
   error: string | null;
   createdAt: number;
   base: {
@@ -736,6 +745,8 @@ export interface OutboxItem {
   payment?: { method: PayMethodId; tendered: number | null };
   /** What the labels and the receipt need, frozen at confirm time. */
   snapshot: { order: OrderLine[]; people: string[]; customerName: string; total: number; change: number };
+  /** Labels already printed offline: the provisional folio and the rating codes to register on landing. */
+  printed?: { folio: string; enlaces: { codigo: string; customer: string | null }[] };
 }
 const OUTBOX_KEY = "pos:outbox";
 function persistOutbox() {
@@ -751,8 +762,77 @@ export function hydrateOutbox() {
     const items = (JSON.parse(raw) as OutboxItem[]).map((j) => ({ ...j, status: "sending" as const, error: null }));
     if (!items.length) return;
     posStore.set((st) => ({ ...st, outbox: [...items, ...st.outbox] }));
-    void runOutbox();
+    void runOutbox(true);
   } catch { /* ignore */ }
+}
+
+/** Server unreachable (thrown fetch, timeout) — as opposed to the server saying no. */
+class OfflineError extends Error {}
+const SEND_TIMEOUT_MS = 30_000;
+/** A server action that gives up after a while; a hung request on a bad hotspot reads as offline. */
+function withTimeout<T>(p: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new OfflineError("timeout")), SEND_TIMEOUT_MS);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(new OfflineError(String(e))); });
+  });
+}
+const OFFLINE_MSG = "Sin conexión con el servidor.";
+/** Await a server action without ever leaving the screen stuck: a network failure becomes an error result. */
+async function safeAction<T>(p: Promise<T>): Promise<T | { ok: false; error: string }> {
+  try {
+    return await p;
+  } catch {
+    setOnline(false);
+    return { ok: false, error: OFFLINE_MSG };
+  }
+}
+
+function setOnline(online: boolean) {
+  if (posStore.get().online === online) return;
+  posStore.set({ online });
+  // The server answered again: whatever waited goes out now.
+  if (online) wakeOffline();
+}
+
+/** Provisional folio for labels printed offline: L-1, L-2… per Bogotá day. */
+function offlineFolio(): string {
+  const KEY = "pos:offline-folio";
+  const day = bogotaDay();
+  let n = 1;
+  try {
+    const prev = JSON.parse(window.localStorage.getItem(KEY) ?? "null") as { day: string; n: number } | null;
+    if (prev && prev.day === day) n = prev.n + 1;
+    window.localStorage.setItem(KEY, JSON.stringify({ day, n }));
+  } catch { /* private mode */ }
+  return `L-${n}`;
+}
+
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+/** Put waiting jobs back in line and send them (reconnect, timer, or the cashier). */
+function wakeOffline() {
+  if (!posStore.get().outbox.some((j) => j.status === "offline")) return;
+  posStore.set((st) => ({ ...st, outbox: st.outbox.map((j) => (j.status === "offline" ? { ...j, status: "sending" } : j)) }));
+  void runOutbox(true);
+}
+function scheduleOfflineRetry() {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    wakeOffline();
+  }, 15_000);
+}
+let connectivityWired = false;
+/** Follow the browser's connection state; a reconnect flushes the queue at once. */
+export function watchConnectivity() {
+  if (connectivityWired || typeof window === "undefined") return;
+  connectivityWired = true;
+  setOnline(navigator.onLine);
+  window.addEventListener("online", () => {
+    setOnline(true);
+    wakeOffline();
+    void refreshPendientes();
+  });
+  window.addEventListener("offline", () => setOnline(false));
 }
 function enqueueOutbox(job: OutboxItem) {
   posStore.set((st) => ({ ...st, outbox: [...st.outbox, job] }));
@@ -760,21 +840,46 @@ function enqueueOutbox(job: OutboxItem) {
   void runOutbox();
 }
 let outboxRunning = false;
-export async function runOutbox() {
+/**
+ * Send queued orders in order. While the server is known to be unreachable a
+ * new order skips the network (its labels must print now, not after a 30 s
+ * timeout); `probe` lets the first job try anyway to find out if it is back.
+ */
+export async function runOutbox(probe = false) {
   if (outboxRunning) return;
   outboxRunning = true;
+  let tryNetwork = probe || posStore.get().online;
   try {
     for (;;) {
       const job = posStore.get().outbox.find((j) => j.status === "sending");
       if (!job) break;
       let res: Awaited<ReturnType<typeof crearOrden>> | Awaited<ReturnType<typeof guardarPendiente>>;
+      const ref = { clientRef: job.id, createdAt: job.createdAt };
       try {
-        res = job.kind === "pagada"
-          ? await crearOrden({ ...job.base, payment: job.payment })
-          : await guardarPendiente(job.base);
+        if (!tryNetwork || (typeof navigator !== "undefined" && !navigator.onLine)) throw new OfflineError("offline");
+        res = await withTimeout(job.kind === "pagada"
+          ? crearOrden({ ...job.base, ...ref, payment: job.payment })
+          : guardarPendiente({ ...job.base, ...ref }));
       } catch {
-        res = { ok: false, error: "Sin conexión con el servidor." };
+        // No server: the sale is safe in the queue. Print its labels now so
+        // the bar keeps working, and send it when the connection is back.
+        setOnline(false);
+        tryNetwork = false;
+        let printed = job.printed;
+        if (!printed) {
+          const folio = offlineFolio();
+          printed = { folio, enlaces: printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, null) };
+        }
+        posStore.set((st) => ({
+          ...st,
+          outbox: st.outbox.map((j) => (j.id === job.id ? { ...j, status: "offline", error: OFFLINE_MSG, printed } : j)),
+          ...(st.receiptJobId === job.id ? { orderNo: printed.folio } : {}),
+        }));
+        persistOutbox();
+        scheduleOfflineRetry();
+        continue;
       }
+      setOnline(true);
       if (res.ok) {
         const folio = res.folio;
         const change = Number((res as { change?: number }).change ?? 0);
@@ -783,7 +888,9 @@ export async function runOutbox() {
           outbox: st.outbox.filter((j) => j.id !== job.id),
           ...(st.receiptJobId === job.id ? { orderNo: folio, sent: true, lastChange: change, lastTotal: res.total, receiptJobId: null } : {}),
         }));
-        printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, res.ordenId);
+        if (job.printed) {
+          if (job.printed.enlaces.length) void registrarEnlacesVenta(res.ordenId, job.printed.enlaces);
+        } else printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, res.ordenId);
         void refreshPendientes();
         nudge("ordenes");
       } else {
@@ -798,9 +905,9 @@ export async function runOutbox() {
   }
 }
 export function retryOutbox(id?: string) {
-  posStore.set((st) => ({ ...st, outbox: st.outbox.map((j) => (j.status === "failed" && (!id || j.id === id) ? { ...j, status: "sending", error: null } : j)) }));
+  posStore.set((st) => ({ ...st, outbox: st.outbox.map((j) => (j.status !== "sending" && (!id || j.id === id) ? { ...j, status: "sending", error: null } : j)) }));
   persistOutbox();
-  void runOutbox();
+  void runOutbox(true);
 }
 /** Drop a failed order for good (the cashier decided it is not coming back). */
 export function dropOutbox(id: string) {
@@ -889,7 +996,7 @@ export async function startSplit() {
   if (!res.ok) return;
   // Fetch the stored order directly: refreshPendientes is single-flight and
   // persistPending just kicked one off, so awaiting it would return at once.
-  const list = await listarPendientes();
+  const list = await safeAction(listarPendientes());
   const o = list.ok ? list.orders.find((x) => x.id === res.ordenId) : undefined;
   if (!o) {
     posStore.set({ sendError: "El pedido se guardó, pero no se pudo abrir para cobrar. Búscalo en Pedidos." });
@@ -911,12 +1018,12 @@ export async function paySplit() {
   }
   posStore.set({ sending: true, sendError: null });
   const target = s.splitTarget;
-  const res = await registrarPago({
+  const res = await safeAction(registrarPago({
     ordenId: s.pending.id,
     customerName: target.kind === "share" ? target.customer : null,
     payment: { method: s.payMethod, tendered },
     amount: target.kind === "share" ? amount : undefined,
-  });
+  }));
   if (!res.ok) {
     posStore.set({ sending: false, sendError: res.error });
     return;
@@ -994,7 +1101,7 @@ export async function completeSale() {
   let res: Awaited<ReturnType<typeof crearOrden>>;
   if (s.pending) {
     if (s.pending.mode === "edit") {
-      const saved = await guardarPendiente({ ...base, ordenId: s.pending.id });
+      const saved = await safeAction(guardarPendiente({ ...base, ordenId: s.pending.id }));
       if (!saved.ok) {
         posStore.set({ sending: false, sendError: saved.error });
         return;
@@ -1005,9 +1112,9 @@ export async function completeSale() {
         return;
       }
     }
-    res = await cobrarPendiente({ ordenId: s.pending.id, payment });
+    res = await safeAction(cobrarPendiente({ ordenId: s.pending.id, payment }));
   } else {
-    res = await crearOrden({ ...base, payment });
+    res = await safeAction(crearOrden({ ...base, payment }));
   }
 
   if (res.ok) {
@@ -1081,7 +1188,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     return { ok: false };
   }
   posStore.set({ sending: true, sendError: null });
-  const res = await guardarPendiente({
+  const res = await safeAction(guardarPendiente({
     ordenId: s.pending?.id,
     orderType: s.orderType,
     sinGluten: s.noteSinGluten,
@@ -1089,7 +1196,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     customerName: s.customerName.trim() || undefined,
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
-  });
+  }));
   if (!res.ok) {
     posStore.set({ sending: false, sendError: res.error });
     return { ok: false };
@@ -1131,6 +1238,7 @@ export async function refreshPendientes() {
       refreshAgain = false;
       try {
         const res = await listarPendientes();
+        setOnline(true);
         if (res.ok) {
           posStore.set((st) => {
             // A pending order loaded for payment follows the stored total, so
@@ -1148,6 +1256,7 @@ export async function refreshPendientes() {
           });
         } else posStore.set({ pendientesError: res.error });
       } catch {
+        setOnline(false);
         posStore.set({ pendientesError: "Sin conexión con el servidor." });
       }
     } while (refreshAgain);
@@ -1329,7 +1438,11 @@ export function discardPendingEdit() {
  * on the AI and are queued when it answers. A missing piece (no handle, no
  * drinks, AI down) just doesn't print; nothing blocks the sale.
  */
-function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog }, folio: string, ordenId: string) {
+function printSaleLabels(
+  s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog },
+  folio: string,
+  ordenId: string | null,
+): { codigo: string; customer: string | null }[] {
   const orgName = s.catalog.orgName;
   const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim() });
   const cups: string[] = [];
@@ -1345,11 +1458,13 @@ function printSaleLabels(s: { order: OrderLine[]; people: string[]; customerName
       printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
     }
   }
-  if (enlaces.length > 0) void registrarEnlacesVenta(ordenId, enlaces);
+  // Offline (no ordenId yet) the codes ride with the queued order and are registered when it lands.
+  if (enlaces.length > 0 && ordenId) void registrarEnlacesVenta(ordenId, enlaces);
   if (cups.length > 0) {
     lastCups = cups;
     void printFrases(cups);
   }
+  return enlaces;
 }
 
 /**
