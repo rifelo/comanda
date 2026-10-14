@@ -892,6 +892,7 @@ export async function runOutbox(probe = false) {
           if (job.printed.enlaces.length) void registrarEnlacesVenta(res.ordenId, job.printed.enlaces);
         } else printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, res.ordenId);
         void refreshPendientes();
+        if (posStore.get().view === "ordenes") void refreshOrdenes();
         nudge("ordenes");
       } else {
         const error = res.error;
@@ -914,6 +915,56 @@ export function dropOutbox(id: string) {
   posStore.set((st) => ({ ...st, outbox: st.outbox.filter((j) => j.id !== id), receiptJobId: st.receiptJobId === id ? null : st.receiptJobId }));
   persistOutbox();
 }
+/** Id of a queued order shown in Pedidos: the outbox job id behind a prefix. */
+export const LOCAL_ORDER = "local:";
+const jobIdOf = (ordenId: string) => (ordenId.startsWith(LOCAL_ORDER) ? ordenId.slice(LOCAL_ORDER.length) : null);
+
+/**
+ * The orders still in this register's queue, shaped like stored ones so the
+ * Pedidos view can list them next to what the server returned — offline a
+ * sale must not vanish from the screen until it syncs.
+ */
+export function queuedOrders(s: Pick<PosState, "outbox" | "catalog">): PosOrder[] {
+  return s.outbox.map((j) => {
+    const createdAt = new Date(j.createdAt).toISOString();
+    const items = j.snapshot.order.map((l, i) => ({
+      id: `${j.id}-${i}`,
+      kind: l.kind,
+      productoId: l.kind === "item" ? l.id : null,
+      comboId: l.kind === "combo" ? l.id : null,
+      name: l.name,
+      qty: l.qty,
+      unitPrice: modLinePrice(l, s.catalog),
+      mods: l.mods ?? {},
+      position: i,
+      customer: l.customer ?? "",
+    }));
+    const pagada = j.kind === "pagada";
+    return {
+      id: LOCAL_ORDER + j.id,
+      folio: j.printed?.folio ?? "…",
+      status: j.kind,
+      orderType: j.base.orderType,
+      total: j.snapshot.total,
+      sinGluten: j.base.sinGluten,
+      note: j.base.note ?? "",
+      customerName: j.base.customerName ?? "",
+      customerNames: j.base.customerNames ?? [],
+      createdAt,
+      paidAt: pagada ? createdAt : null,
+      paymentMethod: pagada ? j.payment?.method ?? null : null,
+      tendered: pagada ? j.payment?.tendered ?? null : null,
+      change: pagada ? j.snapshot.change : 0,
+      paid: 0,
+      pagos: [],
+      items,
+      mergedInto: null,
+      mergedIntoFolio: null,
+      local: j.status,
+    };
+  });
+}
+
 function newJobId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -1083,6 +1134,29 @@ export async function completeSale() {
     note: s.note.trim() || undefined,
   };
   const payment = { method: s.payMethod, tendered };
+
+  const queuedId = s.pending ? jobIdOf(s.pending.id) : null;
+  if (queuedId) {
+    // A «pagar después» order that never reached the server: charging it just
+    // turns its queued job into a paid sale (no new labels — they printed).
+    const job = s.outbox.find((j) => j.id === queuedId);
+    if (!job || job.status === "sending") {
+      posStore.set({ sending: false, sendError: job ? "El pedido se está enviando; intenta en un momento." : "El pedido ya no está en la cola." });
+      return;
+    }
+    const change = tendered !== null ? tendered - total : 0;
+    posStore.set((st) => ({
+      ...st,
+      outbox: st.outbox.map((j) => (j.id === queuedId
+        ? { ...j, kind: "pagada" as const, payment, status: "sending" as const, error: null, snapshot: { ...j.snapshot, change } }
+        : j)),
+      sending: false, sent: false, orderNo: job.printed?.folio ?? "…", view: "done", receiptKind: "pagada",
+      lastTotal: total, lastChange: change, lastMethod: s.payMethod, receiptJobId: queuedId,
+    }));
+    persistOutbox();
+    void runOutbox();
+    return;
+  }
 
   if (!s.pending) {
     // A new sale: hand it to the outbox and open the receipt right away.
@@ -1267,6 +1341,7 @@ export async function refreshPendientes() {
 }
 // ── Pedidos view (queue + history) ──────────────────────────────
 let ordenesReq = 0;
+const ordenesKey = (s: Pick<PosState, "ordenesTab" | "ordenesDay">) => `pos:ordenes:${s.ordenesTab}:${s.ordenesTab === "pendiente" ? "" : s.ordenesDay}`;
 /** Reload the Pedidos view for the current tab/day. Latest request wins. */
 export async function refreshOrdenes() {
   const s = posStore.get();
@@ -1275,10 +1350,24 @@ export async function refreshOrdenes() {
   try {
     const res = await listarOrdenes({ status: s.ordenesTab, day: s.ordenesDay });
     if (req !== ordenesReq) return;
-    if (res.ok) posStore.set({ ordenes: res.orders, ordenesError: null, ordenesLoading: false });
-    else posStore.set({ ordenesError: res.error, ordenesLoading: false });
+    setOnline(true);
+    if (res.ok) {
+      posStore.set({ ordenes: res.orders, ordenesError: null, ordenesLoading: false });
+      try { window.localStorage.setItem(ordenesKey(s), JSON.stringify(res.orders)); } catch { /* ignore */ }
+    } else posStore.set({ ordenesError: res.error, ordenesLoading: false });
   } catch {
-    if (req === ordenesReq) posStore.set({ ordenesError: "Sin conexión con el servidor.", ordenesLoading: false });
+    if (req !== ordenesReq) return;
+    setOnline(false);
+    // Offline: the last list this register saw for the tab/day (the pending
+    // queue keeps its own cache), plus the queued orders the view adds itself.
+    let cached: PosOrder[] | null = null;
+    try { cached = JSON.parse(window.localStorage.getItem(ordenesKey(s)) ?? "null") as PosOrder[] | null; } catch { /* ignore */ }
+    if (!cached && s.ordenesTab === "pendiente") cached = s.pendientes;
+    posStore.set({
+      ordenes: cached ?? [],
+      ordenesError: "Sin conexión: se muestra lo último guardado en esta caja.",
+      ordenesLoading: false,
+    });
   }
 }
 /** Open the Pedidos screen (defaults to the pending queue). */

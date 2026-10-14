@@ -251,6 +251,8 @@ export interface PosOrder {
   /** Set when this order was folded into another one (it is then cancelada). */
   mergedInto: string | null;
   mergedIntoFolio: string | null;
+  /** Only on orders still in this register's queue (not on the server yet). */
+  local?: "sending" | "offline" | "failed";
 }
 /** An unpaid order the register can reopen, charge or cancel. */
 export type PendingOrder = PosOrder;
