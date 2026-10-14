@@ -83,6 +83,7 @@ import {
   appendTranscript,
   resetConversation,
   hydrateOutbox,
+  watchConnectivity,
   hydratePendientes,
   retryOutbox,
   dropOutbox,
@@ -427,8 +428,10 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
   // tab is visible — another register may send or settle orders too.
   React.useEffect(() => {
     hydratePendientes();
+    watchConnectivity();
     hydrateOutbox();
     void refreshPendientes();
+    registerOfflineWorker();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshPendientes();
     }, 30_000);
@@ -1943,11 +1946,44 @@ function RecetaSheet({ productId }: { productId: string }) {
   );
 }
 
-/** Orders still on their way to the server, or that failed and wait for a retry. */
+/**
+ * The register keeps selling without internet: a service worker keeps the
+ * page and its assets (public/pos-sw.js), the outbox keeps the orders. Only
+ * in production — in dev a cached page would hide every edit.
+ */
+function registerOfflineWorker() {
+  if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+  navigator.serviceWorker
+    .register("/pos-sw.js", { scope: "/pos" })
+    .then(async () => {
+      // Hand the worker everything this page already loaded (it may have come
+      // before the worker existed), so the next offline reload finds it all.
+      const reg = await navigator.serviceWorker.ready;
+      const cat = posStore.get().catalog;
+      const urls = [
+        location.href,
+        ...performance.getEntriesByType("resource").map((e) => e.name),
+        // Label art loads only when a label prints; product photos when a recipe opens.
+        ...[cat.sticker, cat.cupArt, cat.handArt, ...cat.menu.map((p) => p.image)].filter((u): u is string => !!u).map((u) => new URL(u, location.href).href),
+      ].filter((u) => u.startsWith(location.origin) || u.includes("/storage/v1/object/"));
+      reg.active?.postMessage({ type: "cache", urls });
+    })
+    .catch((e) => console.warn("[pos] service worker:", e));
+}
+
+/** Orders still on their way to the server, waiting for the connection, or that failed and wait for a retry. */
 function OutboxChip() {
   const s = usePos();
   const sending = s.outbox.filter((j) => j.status === "sending").length;
   const failed = s.outbox.filter((j) => j.status === "failed").length;
+  const waiting = s.outbox.filter((j) => j.status === "offline").length;
+  if (!s.online || waiting) {
+    return (
+      <button onClick={() => retryOutbox()} title="Sin internet: los pedidos se guardan en esta caja y se envían solos cuando vuelva la conexión. Toca para intentar ya." style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.amber}`, background: C.amber, color: "#fff", fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
+        Sin conexión{waiting + sending ? ` · ${waiting + sending} en cola` : ""}{failed ? ` · ${failed} con error` : ""}
+      </button>
+    );
+  }
   if (!sending && !failed) return null;
   if (failed) {
     return (
@@ -2446,14 +2482,16 @@ function ReceiptScreen() {
   const job = s.receiptJobId ? s.outbox.find((j) => j.id === s.receiptJobId) ?? null : null;
   const registrando = !!job && job.status === "sending";
   const failed = !!job && job.status === "failed";
+  const offline = !!job && job.status === "offline";
   const btnRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { btnRef.current?.focus(); }, []);
   return (
     <Overlay align="fill">
       <div className="pos-card" style={{ width: "min(560px, 92vw)", textAlign: "center", padding: "40px 32px 32px", border: `1.5px solid ${C.ink}`, borderRadius: 10, background: C.paperLt }}>
-        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: failed ? C.red : registrando ? C.muted : pendiente ? C.amber : C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{failed ? "!" : registrando ? "…" : pendiente ? "⏱" : "✓"}</div>
-        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>{failed ? "No se registró" : registrando ? "Registrando pedido…" : pendiente ? "Pedido enviado" : "Venta registrada"}</div>
+        <div style={{ width: 64, height: 64, borderRadius: 32, margin: "0 auto", background: failed ? C.red : registrando ? C.muted : offline ? C.amber : pendiente ? C.amber : C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{failed ? "!" : registrando ? "…" : offline ? "⇅" : pendiente ? "⏱" : "✓"}</div>
+        <div style={{ fontFamily: F.slab, fontSize: 30, marginTop: 16 }}>{failed ? "No se registró" : registrando ? "Registrando pedido…" : offline ? "Guardado sin conexión" : pendiente ? "Pedido enviado" : "Venta registrada"}</div>
         {registrando && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Puedes empezar el siguiente pedido; el número y las etiquetas salen solos en cuanto el servidor confirme.</div>}
+        {offline && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Quedó guardado en esta caja con número provisional y sus etiquetas ya salieron. Se envía solo cuando vuelva el internet — no cierres ni borres los datos del navegador.</div>}
         {failed && job && (
           <div role="alert" style={{ marginTop: 10, border: `1px solid ${C.red}`, color: C.red, padding: "10px 12px", borderRadius: 4, fontSize: 12.5, textAlign: "left" }}>
             {job.error ?? "No se pudo registrar el pedido."}

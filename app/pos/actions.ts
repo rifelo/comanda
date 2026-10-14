@@ -54,7 +54,20 @@ const CrearOrdenSchema = z.object({
   /** Ordered roster of the table; keeps people who have no line yet. */
   customerNames: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   note: z.string().trim().max(500).optional(),
+  /** Id the register gave the order; a retry with the same ref returns the stored order. */
+  clientRef: z.string().trim().min(8).max(64).optional(),
+  /** When the cashier confirmed it (ms) — an order queued offline keeps its real time. */
+  createdAt: z.number().int().positive().optional(),
 });
+
+/** The confirm time of a queued order, if believable (last 3 days, not in the future); else now. */
+function orderTime(createdAt: number | undefined): string {
+  const now = Date.now();
+  if (createdAt && createdAt <= now + 2 * 60_000 && createdAt >= now - 3 * 86_400_000) {
+    return new Date(Math.min(createdAt, now)).toISOString();
+  }
+  return new Date(now).toISOString();
+}
 
 function lineUnitPrice(
   catalog: PosCatalog,
@@ -153,10 +166,25 @@ async function insertOrden(
   data: OrdenBase,
   priced: { items: PricedItem[]; subtotal: number },
   header: OrdenHeader,
-): Promise<{ ok: true; folio: string; ordenId: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; folio: string; ordenId: string; existing?: boolean } | { ok: false; error: string }> {
   const { supabase, organizationId: orgId, actor } = ctx;
   const restaurantId =
     actor.kind === "device" ? actor.device.restaurantId : actor.restaurantId;
+
+  // The register retries a queued order until it hears back; one that already
+  // landed (the answer was lost on the way) is returned instead of doubled.
+  const findByRef = async () => {
+    if (!data.clientRef) return null;
+    const { data: hit } = await supabase
+      .from("ordenes")
+      .select("id, folio")
+      .eq("organization_id", orgId)
+      .eq("client_ref", data.clientRef)
+      .maybeSingle();
+    return hit ? { ok: true as const, folio: hit.folio as string, ordenId: hit.id as string, existing: true } : null;
+  };
+  const prior = await findByRef();
+  if (prior) return prior;
 
   // Atomic per-org folio.
   const { data: seq, error: seqErr } = await supabase.rpc("next_orden_folio", {
@@ -183,10 +211,16 @@ async function insertOrden(
       customer_names: data.customerNames ?? [],
       created_by: actor.kind === "user" ? actor.profileId : null,
       pos_device_id: actor.kind === "device" ? actor.device.id : null,
+      client_ref: data.clientRef ?? null,
+      created_at: orderTime(data.createdAt),
       ...header,
     })
     .select("id")
     .single();
+  if (ordenErr?.code === "23505") {
+    const dup = await findByRef();
+    if (dup) return dup;
+  }
   if (ordenErr || !orden) {
     console.error("[insertOrden] insert orden failed:", ordenErr);
     return { ok: false, error: "No se pudo guardar el pedido." };
@@ -227,9 +261,10 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
     payment_method: payment.method,
     tendered_cop: tender.tendered,
     change_cop: tender.change,
-    paid_at: new Date().toISOString(),
+    paid_at: orderTime(base.createdAt),
   });
   if (!ins.ok) return ins;
+  if (ins.existing) return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };
   // Inventory follows the sale; a stock problem is logged, never blocks the receipt.
   await syncOrderConsumption(ctx.supabase, ctx.organizationId, ins.ordenId, actorId(ctx));
   return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal, change: tender.change };
@@ -281,7 +316,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
       paid_at: null,
     });
     if (!ins.ok) return ins;
-    await syncOrderConsumption(supabase, orgId, ins.ordenId, actorId(ctx));
+    if (!ins.existing) await syncOrderConsumption(supabase, orgId, ins.ordenId, actorId(ctx));
     return { ok: true, folio: ins.folio, ordenId: ins.ordenId, total: priced.subtotal };
   }
 
