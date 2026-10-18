@@ -32,7 +32,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Stamp } from "@/components/comanda/primitives";
+import { Stamp, Wordmark } from "@/components/comanda/primitives";
 import {
   posMoney,
   POS_KIND_LABEL,
@@ -510,8 +510,8 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
 
   return (
     <div className="pos-hdr">
-      <span className="pos-wordmark" style={{ fontFamily: F.slab, fontSize: 20, lineHeight: 1, whiteSpace: "nowrap" }}>
-        comanda<span style={{ color: C.red }}>.</span>
+      <span className="pos-wordmark" style={{ lineHeight: 1, flexShrink: 0 }}>
+        <Wordmark size={20} />
       </span>
 
       <SearchBox />
