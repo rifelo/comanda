@@ -13,6 +13,7 @@ import {
   type ResumenPagos,
 } from "./arqueo";
 import { planBase, type PlanBase } from "./base";
+import { sumMovimientosVentana } from "./movimientos-db";
 
 // DB helpers for cash closes (caja_cierres, 0037). Same shape as
 // lib/inventario/conteos.ts: they take either the RLS client (admin panel)
@@ -245,6 +246,9 @@ export type EnviarCierreResult =
       baseDejada: number;
       entrega: number;
       pagos: ResumenPagos;
+      /** Cash brought in / taken out of the drawer during the window (caja_movimientos). */
+      ingresos: number;
+      salidas: number;
       ventana: { desde: string; hasta: string };
       /** Plan de base: which pieces stay in the drawer (lib/caja/base.ts). */
       plan: PlanBase;
@@ -299,16 +303,12 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
     opened_at: (inst.opened_at as string | null) ?? null,
     closed_at: (inst.closed_at as string | null) ?? null,
   });
-  const pagos = await sumPagosVentana(db, {
-    orgId: actor.orgId,
-    restaurantId: actor.restaurantId,
-    desde: ventana.desde,
-    hasta: ventana.hasta,
-  });
+  const win = { orgId: actor.orgId, restaurantId: actor.restaurantId, desde: ventana.desde, hasta: ventana.hasta };
+  const [pagos, mov] = await Promise.all([sumPagosVentana(db, win), sumMovimientosVentana(db, win)]);
 
   const denominaciones = data.denominaciones.filter((d) => d.cantidad > 0).sort((a, b) => b.valor - a.valor);
   const contado = totalContado(denominaciones);
-  const esperado = esperadoCaja(data.baseInicial, pagos.efectivo);
+  const esperado = esperadoCaja(data.baseInicial, pagos.efectivo, mov.ingresos, mov.salidas);
   const diferencia = diferenciaCaja(contado, esperado);
   const plan = planBase(denominaciones, data.baseDejada);
 
@@ -327,7 +327,9 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
       tarjeta_cop: pagos.tarjeta,
       transferencia_cop: pagos.transferencia,
       pagos_count: pagos.count,
-      esperado_cop: esperado,
+      ingresos_cop: mov.ingresos,
+      salidas_cop: mov.salidas,
+      esperado_cop: Math.max(0, esperado),
       contado_cop: contado,
       diferencia_cop: diferencia,
       base_dejada_cop: data.baseDejada,
@@ -353,6 +355,8 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
     baseDejada: data.baseDejada,
     entrega: entregaCaja(contado, data.baseDejada),
     pagos,
+    ingresos: mov.ingresos,
+    salidas: mov.salidas,
     ventana,
     plan,
     shiftDate: inst.date as string,

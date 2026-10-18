@@ -52,6 +52,7 @@ export default async function CajaPage() {
       backHref="/turno"
       backLabel="Turno"
       panelHref={`/hoy/${today}`}
+      movimientosHref="/turno/caja/movimientos"
     />
   );
 }

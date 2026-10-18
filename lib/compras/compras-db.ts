@@ -122,11 +122,17 @@ export interface Compra {
   recibido_by_name: string | null;
   total_cop: number | null;
   note: string | null;
+  /** Reception on the tablet (0054): photos (storage paths in «compras-fotos»), invoice total, payment. */
+  recibido_foto_path: string | null;
+  factura_foto_path: string | null;
+  factura_total_cop: number | null;
+  pago_metodo: "efectivo_caja" | "transferencia" | "pendiente" | null;
+  recibido_nota: string | null;
   items: CompraItem[];
 }
 
 const COMPRA_SELECT =
-  "id, folio, status, origen, proveedor_id, pedido_at, entrega_esperada, recibido_at, total_cop, note, proveedor:proveedores(name, whatsapp), pidio:profiles!compras_pedido_by_fkey(full_name), recibio:profiles!compras_recibido_by_fkey(full_name), compra_items(id, ingrediente_id, nombre, qty_pedida, qty_recibida, costo_total_cop, vence_el, created_at, ingrediente:ingredientes(name, unit, pack_label, pack_qty, pieza_qty, controla_vencimiento))";
+  "id, folio, status, origen, proveedor_id, pedido_at, entrega_esperada, recibido_at, total_cop, note, recibido_foto_path, factura_foto_path, factura_total_cop, pago_metodo, recibido_nota, proveedor:proveedores(name, whatsapp), pidio:profiles!compras_pedido_by_fkey(full_name), recibio:profiles!compras_recibido_by_fkey(full_name), compra_items(id, ingrediente_id, nombre, qty_pedida, qty_recibida, costo_total_cop, vence_el, created_at, ingrediente:ingredientes(name, unit, pack_label, pack_qty, pieza_qty, controla_vencimiento))";
 
 function mapCompra(r: Record<string, unknown>): Compra {
   const prov = r.proveedor as { name: string; whatsapp: string | null } | { name: string; whatsapp: string | null }[] | null;
@@ -166,6 +172,11 @@ function mapCompra(r: Record<string, unknown>): Compra {
     recibido_by_name: nombreDe(r.recibio),
     total_cop: num(r.total_cop),
     note: (r.note as string | null) ?? null,
+    recibido_foto_path: (r.recibido_foto_path as string | null) ?? null,
+    factura_foto_path: (r.factura_foto_path as string | null) ?? null,
+    factura_total_cop: num(r.factura_total_cop),
+    pago_metodo: (r.pago_metodo as Compra["pago_metodo"]) ?? null,
+    recibido_nota: (r.recibido_nota as string | null) ?? null,
     items,
   };
 }

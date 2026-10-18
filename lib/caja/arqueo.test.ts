@@ -35,6 +35,8 @@ describe("totals", () => {
   });
   it("expected = float + cash sales; difference keeps its sign", () => {
     expect(esperadoCaja(100000, 350000)).toBe(450000);
+    // sencillo in, a supplier paid in cash out
+    expect(esperadoCaja(100000, 350000, 50000, 35200)).toBe(464800);
     expect(diferenciaCaja(440000, 450000)).toBe(-10000);
     expect(diferenciaCaja(452000, 450000)).toBe(2000);
     expect(entregaCaja(452000, 100000)).toBe(352000);
