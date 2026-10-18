@@ -66,7 +66,7 @@ function defaultInstance(instances: CajaInstance[], existing: Record<string, Caj
  * and validated by whoever opens the next turno. `submit`, `confirmBase`
  * and `validateBase` are the server actions of whichever surface renders it.
  */
-export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida, existing, historial, submit, confirmBase, validateBase, backHref, backLabel, panelHref }: {
+export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida, existing, historial, submit, confirmBase, validateBase, backHref, backLabel, panelHref, movimientosHref }: {
   actor: { name: string; isAdmin: boolean };
   sedeName: string;
   today: string;
@@ -83,6 +83,8 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
   backHref: string;
   backLabel: string;
   panelHref?: string;
+  /** Cash in / out of the drawer (sencillo, small purchases) — counted in the expected amount. */
+  movimientosHref?: string;
 }) {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>({ kind: "contar" });
@@ -164,6 +166,7 @@ export function CajaScreen({ actor, sedeName, today, tz, instances, baseSugerida
         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }} title={actor.name}>{actor.name}</span>
         <div style={{ display: "flex", gap: 8 }}>
           <Link href={backHref} style={chip}>← {backLabel}</Link>
+          {movimientosHref && <Link href={movimientosHref} style={chip}>Ingresos y salidas</Link>}
           {actor.isAdmin && panelHref && <Link href={panelHref} style={chip}>Panel</Link>}
         </div>
       </div>
@@ -378,7 +381,9 @@ export function HistorialBase({ rows, tz }: { rows: CajaCierre[]; tz: string }) 
 function CajaResult({ result, person, tz, turno, backHref, backLabel, confirm }: { result: Extract<EnviarCierreResult, { ok: true }>; person: string; tz: string; turno: string; backHref: string; backLabel: string; confirm: (cierreId: string) => Promise<BaseActionResult> }) {
   const r = result;
   const tone = r.diferencia < 0 ? "var(--red)" : r.diferencia > 0 ? "var(--amber)" : "var(--green)";
-  const verdict = r.pagos.count === 0
+  // Nothing to compare against: no POS payment and no cash movement in the window.
+  const sinBase = r.pagos.count === 0 && r.ingresos === 0 && r.salidas === 0;
+  const verdict = sinBase
     ? "Sin pagos registrados en el POS en esta ventana: no hay con qué comparar."
     : r.diferencia === 0
       ? "✓ La caja cuadra."
@@ -392,12 +397,12 @@ function CajaResult({ result, person, tz, turno, backHref, backLabel, confirm }:
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Contó {person}{turno ? ` · ${turno}` : ""} · queda pendiente de revisión del dueño.</div>
         <div style={{ display: "flex", gap: 24, marginTop: 16, flexWrap: "wrap" }}>
           <Stat k="Contado" v={posMoney(r.contado)} />
-          <Stat k="Esperado" v={r.pagos.count === 0 ? "—" : posMoney(r.esperado)} />
-          <Stat k="Diferencia" v={r.pagos.count === 0 ? "—" : money(r.diferencia)} color={r.pagos.count === 0 ? undefined : tone} />
+          <Stat k="Esperado" v={sinBase ? "—" : posMoney(r.esperado)} />
+          <Stat k="Diferencia" v={sinBase ? "—" : money(r.diferencia)} color={sinBase ? undefined : tone} />
           <Stat k="Base que queda" v={posMoney(r.baseDejada)} />
           <Stat k="Entrega" v={money(r.entrega)} color={r.entrega < 0 ? "var(--red)" : undefined} />
         </div>
-        <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: r.pagos.count === 0 ? "var(--muted)" : tone }}>{verdict}</div>
+        <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: sinBase ? "var(--muted)" : tone }}>{verdict}</div>
       </div>
       <BaseConfirmCard
         cierre={{ id: r.cierreId, base_dejada_cop: r.baseDejada, base_denominaciones: r.plan.lineas, base_exacta: r.plan.exacto, base_confirmada_at: null, base_confirmada_by_name: null, denominaciones: r.plan.lineas.concat(r.plan.resto), contado_cop: r.contado }}
@@ -410,7 +415,8 @@ function CajaResult({ result, person, tz, turno, backHref, backLabel, confirm }:
         <div style={{ fontSize: 12.5, lineHeight: 1.7, padding: "8px 0" }}>
           <div>Ventana: {formatTime(r.ventana.desde, tz)} – {formatTime(r.ventana.hasta, tz)} · {r.pagos.count} pago{r.pagos.count === 1 ? "" : "s"}</div>
           <div>Efectivo <b className="cmd-num">{posMoney(r.pagos.efectivo)}</b> · Tarjeta <b className="cmd-num">{posMoney(r.pagos.tarjeta)}</b> · Transferencia <b className="cmd-num">{posMoney(r.pagos.transferencia)}</b></div>
-          <div style={{ color: "var(--muted)" }}>Esperado = base inicial {posMoney(r.baseInicial)} + efectivo {posMoney(r.pagos.efectivo)}.</div>
+          {(r.ingresos > 0 || r.salidas > 0) && <div>Ingresos a caja <b className="cmd-num">{posMoney(r.ingresos)}</b> · Salidas de caja <b className="cmd-num">{posMoney(r.salidas)}</b></div>}
+          <div style={{ color: "var(--muted)" }}>Esperado = base inicial {posMoney(r.baseInicial)} + efectivo {posMoney(r.pagos.efectivo)}{r.ingresos > 0 ? ` + ingresos ${posMoney(r.ingresos)}` : ""}{r.salidas > 0 ? ` − salidas ${posMoney(r.salidas)}` : ""}.</div>
         </div>
       </div>
       <Link href={backHref} className="cmd-btn" style={{ textDecoration: "none", alignSelf: "flex-start", height: 48, display: "inline-flex", alignItems: "center" }}>← {backLabel}</Link>

@@ -6,6 +6,7 @@ import { DIAS_CORTOS, diasLegibles, type Motivo } from "@/lib/compras/compras";
 import { parseCount } from "@/lib/inventario/conteo";
 import { NIVELES, type Nivel } from "@/lib/inventario/niveles";
 import { armarPedido, cancelarPedidoAction, descartarSolicitud, guardarDiasProveedor, type ArmarPedidoResult } from "./actions";
+import { NuevoPedido } from "./nuevo-pedido";
 
 export interface LineaView {
   key: string;
@@ -45,14 +46,19 @@ const MOTIVO: Record<Motivo, string> = { nivel: "nivel", faltante: "reportado", 
 const trim = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
 const cuando = (g: GrupoView) => (g.proveedor === null ? "sin proveedor asignado" : g.faltan === null ? "sin días fijos" : g.faltan === 0 ? "hoy toca pedir" : g.faltan === 1 ? "toca mañana" : `toca en ${g.faltan} días`);
 
-export function ComprasClient({ grupos, enCamino, proveedores }: {
+export function ComprasClient({ grupos, enCamino, proveedores, items, today, recibidos }: {
   grupos: GrupoView[];
   enCamino: PedidoView[];
   proveedores: { id: string; name: string; whatsapp: string | null; dias: number[]; entregaDias: number }[];
+  items: { id: string; name: string; enQue: string }[];
+  today: string;
+  recibidos: React.ReactNode;
 }) {
   const total = grupos.reduce((n, g) => n + g.lineas.length, 0);
   return (
     <div style={{ padding: "20px 16px 48px", maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 30 }} className="md:px-8">
+      <NuevoPedido items={items} proveedores={proveedores} today={today} />
+
       <section aria-label="Por pedir">
         <div style={label}>Por pedir · {total}</div>
         {total === 0 && <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>Nada por pedir: ningún ítem está en «poco» o «se acabó», y el equipo no ha pedido nada. La lista se arma sola con los conteos, los faltantes y lo que piden desde el tablet.</p>}
@@ -68,6 +74,8 @@ export function ComprasClient({ grupos, enCamino, proveedores }: {
           {enCamino.map((p) => <Pedido key={p.id} p={p} />)}
         </div>
       </section>
+
+      {recibidos}
 
       <section aria-label="Días de pedido">
         <div style={label}>Días de pedido por proveedor</div>

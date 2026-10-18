@@ -24,9 +24,13 @@ export function totalContado(lines: ReadonlyArray<Denominacion>): number {
   return lines.reduce((sum, l) => sum + l.valor * l.cantidad, 0);
 }
 
-/** What should be in the drawer: the float it opened with plus cash sales. */
-export function esperadoCaja(baseInicial: number, efectivoVentas: number): number {
-  return baseInicial + efectivoVentas;
+/**
+ * What should be in the drawer: the float it opened with plus cash sales,
+ * plus cash brought in (sencillo) minus cash taken out (a supplier paid at
+ * the door) during the turno — caja_movimientos.
+ */
+export function esperadoCaja(baseInicial: number, efectivoVentas: number, ingresos = 0, salidas = 0): number {
+  return baseInicial + efectivoVentas + ingresos - salidas;
 }
 
 /** Negative = money missing, positive = money over. */

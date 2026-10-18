@@ -28,12 +28,13 @@ export default async function TurnoInventarioPage() {
   if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
   const { ctx } = gate;
   const { admin, organizationId, sede } = ctx;
-  const [estado, faltantes, { data: ings }, { count: solicitudes }, { count: mermasHoy }] = await Promise.all([
+  const [estado, faltantes, { data: ings }, { count: solicitudes }, { count: mermasHoy }, { count: porLlegar }] = await Promise.all([
     loadRutina(admin, organizationId, sede.tz),
     countFaltantesAbiertos(admin, organizationId),
     admin.from("ingredientes").select("stock_current, stock_critico, stock_min").eq("organization_id", organizationId).eq("archived", false),
     admin.from("inventario_solicitudes").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("estado", "abierta"),
     admin.from("inventario_mermas").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).gte("reported_at", inicioDia(todayInTz(sede.tz))),
+    admin.from("compras").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "pedido"),
   ]);
   const { rutina, hoy } = estado;
   const niveles = { rojo: 0, amarillo: 0, verde: 0 };
@@ -105,6 +106,13 @@ export default async function TurnoInventarioPage() {
               hint="Qué hay, qué queda poco y qué se acabó."
               state={niveles.rojo || niveles.amarillo ? `${niveles.rojo} se acabó · ${niveles.amarillo} poco` : "todo en verde"}
               tone={niveles.rojo ? "var(--red)" : niveles.amarillo ? "var(--amber)" : "var(--green)"}
+            />
+            <Tile
+              href="/turno/inventario/recibir"
+              title="Pedidos por llegar"
+              hint="Llegó un pedido: cuéntalo, toma la foto y la factura, y registra el pago."
+              state={porLlegar ? `${porLlegar} por llegar` : "nada por llegar"}
+              tone={porLlegar ? "var(--amber)" : undefined}
             />
             <Tile href="/turno/inventario/pedir" title="Pedir" hint="Lo que ya está en la lista de compras, y pedir algo más." state={porPedir ? `${porPedir} por pedir` : "nada por pedir"} tone={porPedir ? "var(--amber)" : undefined} />
             <Tile

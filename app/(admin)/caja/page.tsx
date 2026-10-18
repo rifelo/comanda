@@ -7,6 +7,9 @@ import { fechaCorta, formatTime, todayInTz } from "@/lib/utils";
 import { baseEstado, describirLineas } from "@/lib/caja/base";
 import { SectionCrumb } from "../_components/shared";
 import { CajaCard } from "../hoy/[date]/caja-card";
+import { listMovimientos } from "@/lib/caja/movimientos-db";
+import { MOTIVO_CAJA, resumenCaja } from "@/lib/caja/movimientos";
+import { inicioDia } from "@/lib/inventario/mermas-db";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Operación · Caja · co-manda" };
@@ -27,8 +30,9 @@ export default async function CajaAdminPage() {
   const [{ profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const tz = sede?.tz ?? "America/Bogota";
   const today = todayInTz(tz);
-  const [cierres, base] = await Promise.all([
+  const [cierres, movs, base] = await Promise.all([
     listCierres(supabase, profile.organization_id, 60),
+    listMovimientos(supabase, { orgId: profile.organization_id, restaurantId: sede?.id }, inicioDia(today, 6), 100),
     sede ? baseSugerida(supabase, sede.id) : Promise.resolve({ monto: 0, fecha: null, turno: null, counted_by_name: null }),
   ]);
   const pendientes = cierres.filter((c) => c.status === "pendiente");
@@ -62,6 +66,31 @@ export default async function CajaAdminPage() {
           {stat("Diferencia acumulada", money(diffTotal), diffTotal < 0 ? "var(--red)" : diffTotal > 0 ? "var(--amber)" : "var(--green)", `${aprobados.length} cierre${aprobados.length === 1 ? "" : "s"} aprobado${aprobados.length === 1 ? "" : "s"}`)}
           {stat("Entregado", posMoney(entregas), undefined, "suma de las entregas aprobadas")}
         </div>
+
+        <section aria-label="Ingresos y salidas" style={{ marginTop: 24 }}>
+          {(() => {
+            const t = resumenCaja(movs);
+            return (
+              <div className="text-muted" style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", marginBottom: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <span>Ingresos y salidas · 7 días · {movs.length}</span>
+                <span>entró <b className="cmd-num" style={{ color: "var(--green)" }}>{posMoney(t.ingresos)}</b></span>
+                <span>salió <b className="cmd-num" style={{ color: "var(--red)" }}>{posMoney(t.salidas)}</b></span>
+                <Link href="/turno/caja/movimientos" style={{ color: "var(--ink)" }}>registrar →</Link>
+              </div>
+            );
+          })()}
+          {movs.length === 0 && <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0" }}>Nada registrado. El sencillo que se deposita y lo que se paga desde la caja se anota en la tablet (Caja → Ingresos y salidas) y el arqueo lo cuenta.</div>}
+          {movs.map((m) => (
+            <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 12.5 }}>
+              <span className="cmd-num text-muted" style={{ fontSize: 11, whiteSpace: "nowrap", minWidth: 120 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/compras" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}</Link></> : null}
+                <span className="text-muted"> · «{m.justificacion}» · {m.by ?? "—"}</span>
+              </span>
+              <span className="cmd-num" style={{ fontWeight: 700, whiteSpace: "nowrap", color: m.tipo === "ingreso" ? "var(--green)" : "var(--red)" }}>{m.tipo === "ingreso" ? "+" : "−"}{posMoney(m.monto)}</span>
+            </div>
+          ))}
+        </section>
 
         {pendientes.length > 0 && (
           <section style={{ marginTop: 24 }}>

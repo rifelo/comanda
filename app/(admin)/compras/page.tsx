@@ -8,6 +8,7 @@ import { todayIdxOf } from "@/lib/turno/state";
 import { fechaCorta, todayInTz } from "@/lib/utils";
 import { TurnosHeader } from "../_components/turnos-header";
 import { ComprasClient, type GrupoView, type PedidoView } from "./compras-client";
+import { Recibidos } from "./recibidos";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Operación · Compras · co-manda" };
@@ -23,7 +24,11 @@ export default async function ComprasPage() {
   const [{ profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const tz = sede?.tz ?? "America/Bogota";
   const today = todayInTz(tz);
-  const [data, pedidos] = await Promise.all([loadPorPedir(supabase, profile.organization_id), listCompras(supabase, profile.organization_id, ["pedido"])]);
+  const [data, pedidos, recibidos] = await Promise.all([
+    loadPorPedir(supabase, profile.organization_id),
+    listCompras(supabase, profile.organization_id, ["pedido"]),
+    listCompras(supabase, profile.organization_id, ["recibido", "cerrada"], 15),
+  ]);
   const itemById = new Map(data.items.map((i) => [i.id, i]));
 
   const grupos: GrupoView[] = agruparPorProveedor(data.lineas, data.proveedores, todayIdxOf(today)).map((g) => ({
@@ -72,6 +77,9 @@ export default async function ComprasPage() {
         grupos={grupos}
         enCamino={enCamino}
         proveedores={data.proveedores.map((p) => ({ id: p.id, name: p.name, whatsapp: p.whatsapp, dias: p.dias_pedido_idx, entregaDias: p.entrega_dias }))}
+        items={data.items.map((i) => { const pieza = piezaDe(i); return { id: i.id, name: i.name, enQue: pieza ? nombrePaquete(i, 2) : i.unit }; })}
+        today={today}
+        recibidos={<Recibidos compras={recibidos} tz={tz} />}
       />
     </div>
   );
