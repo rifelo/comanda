@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: "Punto de venta · comanda",
   applicationName: "comanda POS",
   manifest: "/pos/manifest.webmanifest",
-  icons: { icon: "/icons/icon-192.png", apple: "/icons/icon-192.png" },
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
 };
 export const dynamic = "force-dynamic";
 

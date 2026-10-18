@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
  * dashed perforated rules. All page UI composes from these.
  */
 
-// ── Wordmark · "comanda." in serif with red period ──────────────
+// ── Wordmark · Café Pa'Yo brand mark (hand holding the cup) ─────
+// `size` keeps its old meaning (the wordmark's font size) so every call site
+// stays as it was; the mark is drawn a bit taller than that text line.
 export function Wordmark({
   size = 28,
   className,
@@ -18,12 +20,13 @@ export function Wordmark({
   className?: string;
 }) {
   return (
-    <span
-      className={cn("font-slab leading-none tracking-tight", className)}
-      style={{ fontSize: size }}
-    >
-      co-manda<span className="text-red">.</span>
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/brand/payo-mark.svg"
+      alt="Café Pa'Yo"
+      className={cn("block", className)}
+      style={{ height: Math.round(size * 1.6), width: "auto" }}
+    />
   );
 }
 

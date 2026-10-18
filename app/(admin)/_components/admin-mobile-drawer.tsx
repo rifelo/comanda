@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/login/actions";
 import { activeModuleFor } from "./comanda-module-nav";
+import { Wordmark } from "@/components/comanda/primitives";
 
 /**
  * Mobile hamburger drawer — the phone translation of the 220px admin sidebar.
@@ -124,9 +125,7 @@ export function AdminMobileDrawer({
             style={{ padding: "calc(env(safe-area-inset-top) + 18px) 18px 16px", borderBottom: "1.5px solid var(--ink)" }}
           >
             <div>
-              <div className="font-slab" style={{ fontSize: 30, lineHeight: 1, letterSpacing: "-.01em" }}>
-                co-manda<span style={{ color: "var(--red)" }}>.</span>
-              </div>
+              <Wordmark size={30} />
               <div
                 className="text-muted"
                 style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", marginTop: 5 }}
