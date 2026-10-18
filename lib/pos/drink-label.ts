@@ -19,22 +19,30 @@ export function energiaLine(rand: number = Math.random()): string {
   return `+${n} DE ENERGÍA`;
 }
 
+/** Labels every prepared drink carries: name, rating QR, the drink, its phrase. */
+export const LABELS_PER_DRINK = 4;
+
 /** One job in the label run of a sale, in print order. */
 export type SaleLabelJob =
   | { kind: "name"; name: string }
-  /** The rating QR for whoever these cups are for ("" = the table / the whole order). */
-  | { kind: "califica"; customer: string }
-  | { kind: "drink"; item: DrinkLabelPlanItem };
+  /**
+   * The rating QR of one cup ("" customer = the table / the whole order).
+   * `line` is the cup's ticket line, so the QR is worth that drink; the
+   * person's first cup (`resto`) also carries what has no label (food, bottles).
+   */
+  | { kind: "califica"; customer: string; line: number; resto: boolean }
+  | { kind: "drink"; item: DrinkLabelPlanItem }
+  /** The AI phrase about this cup's drink — printed when it answers. */
+  | { kind: "frase"; productId: string };
 
 /**
- * The whole label run of a sale. Labels are for the cups the bar prepares:
- * with people on the ticket, each person who has at least one prepared
- * drink gets "Pa' <nombre>", their rating QR and their cups; someone with
- * only food or a bottle gets nothing. Cups that belong to nobody come last
- * behind the order label (table name or number) with their own QR. Without
- * people it is the order label (always — it is the pickup number), the QR
- * when there is a cup, and the cups. Phrases are not here: they wait on the
- * AI and are queued per cup when it answers.
+ * The whole label run of a sale. Every prepared drink gets the same four
+ * labels, one after the other so each cup's set comes out together: its
+ * name ("Pa' <nombre>", or the table / order label), its rating QR, the
+ * drink label and its phrase — whether it is alone or one of ten in the
+ * order. Sets follow the roster order, cups that belong to nobody last.
+ * Someone with only food or a bottle gets nothing; an order with no drink
+ * at all still gets its order label (it is the pickup number).
  */
 export function planSaleLabels(input: {
   order: ReadonlyArray<OrderLine>;
@@ -46,10 +54,17 @@ export function planSaleLabels(input: {
   const cups = planDrinkLabels(input.order, input.people, input.byId);
   const jobs: SaleLabelJob[] = [];
   const group = (name: string, items: DrinkLabelPlanItem[], always: boolean) => {
-    if (!items.length && !always) return;
-    jobs.push({ kind: "name", name });
-    if (items.length) jobs.push({ kind: "califica", customer: input.people.includes(name) ? name : "" });
-    for (const item of items) jobs.push({ kind: "drink", item });
+    if (!items.length) {
+      if (always) jobs.push({ kind: "name", name });
+      return;
+    }
+    const customer = input.people.includes(name) ? name : "";
+    items.forEach((item, i) => {
+      jobs.push({ kind: "name", name });
+      jobs.push({ kind: "califica", customer, line: item.line, resto: i === 0 });
+      jobs.push({ kind: "drink", item });
+      jobs.push({ kind: "frase", productId: item.productId });
+    });
   };
   if (input.people.length === 0) {
     group(input.tableName, cups, true);
@@ -62,6 +77,8 @@ export function planSaleLabels(input: {
 
 export interface DrinkLabelPlanItem {
   productId: string;
+  /** Index of the ticket line the cup comes from (= orden_items.position). */
+  line: number;
   name: string;
   spec?: string[];
   desc?: string;
@@ -95,14 +112,14 @@ export function planDrinkLabels(
   const extra = [...new Set(order.map((l) => l.customer ?? "").filter((c) => c && !people.includes(c)))];
   const groups: Array<string | null> = [...people, ...extra, null];
   for (const who of groups) {
-    for (const line of order) {
+    for (const [idx, line] of order.entries()) {
       if (line.kind !== "item") continue;
       if ((line.customer ?? "") !== (who ?? "")) continue;
       const p = byId[line.id];
       if (!p?.printsLabel) continue;
       for (let i = 0; i < Math.min(line.qty, perLine); i++) {
         if (out.length >= total) return out;
-        out.push({ productId: line.id, name: p.name, spec: p.spec, desc: p.desc, ...(who ? { customer: who } : {}) });
+        out.push({ productId: line.id, line: idx, name: p.name, spec: p.spec, desc: p.desc, ...(who ? { customer: who } : {}) });
       }
     }
   }

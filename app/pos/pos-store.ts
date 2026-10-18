@@ -37,7 +37,8 @@ import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@
 import { defaultMergeTarget } from "@/lib/pos/combinar";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
-import { planSaleLabels } from "@/lib/pos/drink-label";
+import { planSaleLabels, type SaleLabelJob } from "@/lib/pos/drink-label";
+import { fraseRespaldo } from "@/lib/pos/frase";
 import {
   cancelarPendiente,
   cobrarPendiente,
@@ -751,7 +752,7 @@ export interface OutboxItem {
   /** What the labels and the receipt need, frozen at confirm time. */
   snapshot: { order: OrderLine[]; people: string[]; customerName: string; total: number; change: number };
   /** Labels already printed offline: the provisional folio and the rating codes to register on landing. */
-  printed?: { folio: string; enlaces: { codigo: string; customer: string | null }[] };
+  printed?: { folio: string; enlaces: EnlaceVenta[] };
 }
 const OUTBOX_KEY = "pos:outbox";
 function persistOutbox() {
@@ -1573,42 +1574,86 @@ export function discardPendingEdit() {
   resetConversation();
 }
 
+/** A rating link that went out on a QR label: whose it is and which cup (ticket line) it is worth. */
+type EnlaceVenta = { codigo: string; customer: string | null; linea: number; resto: boolean };
+
+/** How long a cup's set waits for its AI phrase before printing a fallback one. */
+const FRASE_WAIT_MS = 8_000;
+/** Sales print one after the other: a sale waiting on its phrases never interleaves with the next. */
+let labelChain: Promise<void> = Promise.resolve();
+
 /**
- * Everything that prints when an order is registered, in the order the
- * counter wants to pick it up. With people on the ticket: "Pa' Juan", his
- * cups, "Pa' María", her cups… (planSaleLabels); without: the order label
- * and the cups. Each group of cups gets its rating QR — a one-use link made
- * here and registered in the background. Then one phrase per cup — they wait
- * on the AI and are queued when it answers. A missing piece (no handle, no
- * drinks, AI down) just doesn't print; nothing blocks the sale.
+ * Everything that prints when an order is registered. Every prepared drink
+ * gets the same four labels in a row — its name ("Pa' Juan" or the order
+ * label), its rating QR, the drink label and its phrase (planSaleLabels) —
+ * whether it is alone or one of many in the order. The phrases are asked
+ * for all at once up front; a cup whose phrase is late or failed (AI down,
+ * offline) prints a fallback phrase, so a set is never short. Each QR is a
+ * one-use link made here and registered in the background. Nothing blocks
+ * the sale.
  */
 function printSaleLabels(
   s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog },
   folio: string,
   ordenId: string | null,
-): { codigo: string; customer: string | null }[] {
-  const orgName = s.catalog.orgName;
+): EnlaceVenta[] {
+  const { orgName, instagram, cupArt } = s.catalog;
   const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim() });
-  const cups: string[] = [];
-  const enlaces: { codigo: string; customer: string | null }[] = [];
+  const enlaces: EnlaceVenta[] = [];
+  const codes = new Map<SaleLabelJob, string>();
   for (const j of jobs) {
-    if (j.kind === "name") printOrderLabel({ name: j.name, folio, orgName });
-    else if (j.kind === "califica") {
-      const codigo = nuevoCodigo();
-      enlaces.push({ codigo, customer: j.customer || null });
-      printCalificaLabel(urlCalificacion(codigo), s.catalog.cupArt);
-    } else {
-      cups.push(j.item.productId);
-      printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
-    }
+    if (j.kind !== "califica") continue;
+    const codigo = nuevoCodigo();
+    codes.set(j, codigo);
+    enlaces.push({ codigo, customer: j.customer || null, linea: j.line, resto: j.resto });
   }
+  const cups = jobs.flatMap((j) => (j.kind === "frase" ? [j.productId] : []));
   // Offline (no ordenId yet) the codes ride with the queued order and are registered when it lands.
   if (enlaces.length > 0 && ordenId) void registrarEnlacesVenta(ordenId, enlaces);
-  if (cups.length > 0) {
-    lastCups = cups;
-    void printFrases(cups);
-  }
+  if (cups.length > 0) lastCups = cups;
+  const frases = cups.map((id) => askFrase(id));
+  if (frases.length) markFraseBatch(+1);
+  // Fallback phrases start at a random one and then rotate, so two cups don't repeat.
+  const base = Math.floor(Math.random() * 1000);
+  labelChain = labelChain.then(async () => {
+    let k = 0;
+    for (const j of jobs) {
+      if (j.kind === "name") printOrderLabel({ name: j.name, folio, orgName });
+      else if (j.kind === "califica") printCalificaLabel(urlCalificacion(codes.get(j)!), cupArt);
+      else if (j.kind === "drink") printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
+      else {
+        const text = await frases[k];
+        printMessageLabel(text ?? fraseRespaldo(base + k), instagram);
+        k += 1;
+      }
+    }
+  }).catch((err) => console.error("[pos] label run failed:", err)).finally(() => {
+    if (frases.length) markFraseBatch(-1);
+  });
   return enlaces;
+}
+
+/** The AI phrase for one cup, or null if it fails or takes longer than FRASE_WAIT_MS. Never throws. */
+function askFrase(productId: string): Promise<string | null> {
+  const ai = generarFrase(undefined, productId)
+    .then((r) => {
+      if (r.ok) {
+        posStore.set({ frase: r.texto, fraseError: null });
+        return r.texto;
+      }
+      posStore.set({ fraseError: r.error });
+      return null;
+    })
+    .catch(() => null);
+  const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), FRASE_WAIT_MS));
+  return Promise.race([ai, late]);
+}
+
+let fraseBatches = 0;
+/** The receipt's «escribiendo frase…» spinner stays on while any sale is still waiting on phrases. */
+function markFraseBatch(delta: 1 | -1) {
+  fraseBatches = Math.max(0, fraseBatches + delta);
+  posStore.set({ fraseLoading: fraseBatches > 0 });
 }
 
 /**
@@ -1616,7 +1661,7 @@ function printSaleLabels(
  * already printing; this only has to land before the customer scans, so it
  * retries a few times over a minute and then gives up quietly.
  */
-async function registrarEnlacesVenta(ordenId: string, enlaces: { codigo: string; customer: string | null }[]) {
+async function registrarEnlacesVenta(ordenId: string, enlaces: EnlaceVenta[]) {
   for (const espera of [0, 3_000, 15_000, 45_000]) {
     if (espera) await new Promise((r) => setTimeout(r, espera));
     try {
@@ -1635,52 +1680,6 @@ let lastCups: string[] = [];
 function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio: string, orgName: string) {
   if (names.length === 0) printOrderLabel({ name: tableName, folio, orgName });
   for (const n of names) printOrderLabel({ name: n, folio, orgName });
-}
-
-/**
- * One phrase label per cup, about the drink in that cup (product ids, in
- * print order). Each cup gets its own phrase when the AI answers every
- * request; if some fail (rate limit), a phrase written for the same drink
- * is reused, else any that arrived, so every cup still gets a message.
- * None answered → nothing prints.
- */
-let fraseBatches = 0;
-export async function printFrases(cups: ReadonlyArray<string>) {
-  const s = posStore.get();
-  const n = cups.length;
-  if (n <= 0) return;
-  // Batches run side by side: an order that lands while the previous one is
-  // still waiting on the AI must not lose its phrases.
-  fraseBatches += 1;
-  posStore.set({ fraseLoading: true, fraseError: null });
-  try {
-    const results = await Promise.allSettled(cups.map((id) => generarFrase(undefined, id)));
-    const texts: Array<string | null> = [];
-    let err: string | null = null;
-    for (const r of results) {
-      if (r.status === "fulfilled" && r.value.ok) texts.push(r.value.texto);
-      else {
-        texts.push(null);
-        if (r.status === "fulfilled" && !r.value.ok) err = r.value.error;
-      }
-    }
-    const ok = texts.filter((t): t is string => t !== null);
-    if (!ok.length) {
-      posStore.set({ fraseError: err ?? "No se pudo generar la frase." });
-      return;
-    }
-    for (let i = 0; i < n; i++) {
-      // A failed cup borrows the phrase of another cup of the same drink first.
-      const same = texts.find((t, k) => t !== null && cups[k] === cups[i]);
-      printMessageLabel(texts[i] ?? same ?? ok[i % ok.length], s.catalog.instagram);
-    }
-    posStore.set({ frase: ok[0] });
-  } catch {
-    posStore.set({ fraseError: "No se pudo generar la frase." });
-  } finally {
-    fraseBatches -= 1;
-    if (fraseBatches === 0) posStore.set({ fraseLoading: false });
-  }
 }
 
 /**

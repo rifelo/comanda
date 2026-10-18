@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coffeeGramsOf, drinkSpec, energiaLine, planDrinkLabels, planSaleLabels } from "./drink-label";
+import { coffeeGramsOf, drinkSpec, energiaLine, LABELS_PER_DRINK, planDrinkLabels, planSaleLabels } from "./drink-label";
 import type { OrderLine } from "./types";
 
 const latte = [
@@ -55,32 +55,39 @@ describe("planDrinkLabels", () => {
 });
 
 describe("planSaleLabels", () => {
-  const byId = { latte: { name: "Latte", printsLabel: true }, torta: { name: "Torta", printsLabel: false }, agua: { name: "Agua", printsLabel: false } };
+  const byId = { latte: { name: "Latte", printsLabel: true }, tinto: { name: "Tinto", printsLabel: true }, torta: { name: "Torta", printsLabel: false }, agua: { name: "Agua", printsLabel: false } };
   const line = (id: string, qty: number, customer?: string): OrderLine => ({ id, name: id, qty, kind: "item", ...(customer ? { customer } : {}) });
-  const kinds = (jobs: ReturnType<typeof planSaleLabels>) => jobs.map((j) => (j.kind === "name" ? `name:${j.name}` : j.kind === "drink" ? `drink:${j.item.customer ?? "-"}` : `qr:${j.customer || "-"}`));
+  const kinds = (jobs: ReturnType<typeof planSaleLabels>) =>
+    jobs.map((j) => (j.kind === "name" ? `name:${j.name}` : j.kind === "drink" ? `drink:${j.item.name}` : j.kind === "frase" ? `frase:${j.productId}` : `qr:${j.customer || "-"}@${j.line}${j.resto ? "+" : ""}`));
+  const set = (name: string, qr: string, drink: string) => [`name:${name}`, `qr:${qr}`, `drink:${drink}`, `frase:${drink.toLowerCase()}`];
 
-  it("without people: order label, QR, cups", () => {
-    expect(kinds(planSaleLabels({ order: [line("latte", 2)], people: [], byId, tableName: "" })))
-      .toEqual(["name:", "qr:-", "drink:-", "drink:-"]);
+  it("one drink: name, QR, drink, phrase", () => {
+    expect(kinds(planSaleLabels({ order: [line("latte", 1)], people: [], byId, tableName: "" })))
+      .toEqual(set("", "-@0+", "Latte"));
   });
-  it("without people and without cups: the order label only, no QR", () => {
+  it("every drink of the same order gets the same four labels", () => {
+    const jobs = planSaleLabels({ order: [line("latte", 2), line("torta", 1), line("tinto", 1)], people: [], byId, tableName: "" });
+    expect(kinds(jobs)).toEqual([...set("", "-@0+", "Latte"), ...set("", "-@0", "Latte"), ...set("", "-@2", "Tinto")]);
+    expect(jobs.length).toBe(3 * LABELS_PER_DRINK);
+  });
+  it("without cups: the order label only", () => {
     expect(kinds(planSaleLabels({ order: [line("torta", 1), line("agua", 1)], people: [], byId, tableName: "" })))
       .toEqual(["name:"]);
   });
-  it("with people: name label + QR + cups per person", () => {
+  it("with people: each cup's set under its person, roster order", () => {
     const order = [line("latte", 1, "María"), line("latte", 2, "Juan"), line("torta", 1, "Juan")];
     expect(kinds(planSaleLabels({ order, people: ["Juan", "María"], byId, tableName: "Mesa 3" })))
-      .toEqual(["name:Juan", "qr:Juan", "drink:Juan", "drink:Juan", "name:María", "qr:María", "drink:María"]);
+      .toEqual([...set("Juan", "Juan@1+", "Latte"), ...set("Juan", "Juan@1", "Latte"), ...set("María", "María@0+", "Latte")]);
   });
   it("a person with only food or a bottle gets no labels", () => {
     const order = [line("torta", 1, "Ana"), line("agua", 1, "Ana"), line("latte", 1, "Beto")];
     expect(kinds(planSaleLabels({ order, people: ["Ana", "Beto"], byId, tableName: "" })))
-      .toEqual(["name:Beto", "qr:Beto", "drink:Beto"]);
+      .toEqual(set("Beto", "Beto@2+", "Latte"));
   });
-  it("unassigned cups come last behind the table label with their own QR", () => {
+  it("unassigned cups come last behind the table label", () => {
     const order = [line("latte", 1), line("latte", 1, "Ana")];
     expect(kinds(planSaleLabels({ order, people: ["Ana"], byId, tableName: "Mesa 3" })))
-      .toEqual(["name:Ana", "qr:Ana", "drink:Ana", "name:Mesa 3", "qr:-", "drink:-"]);
+      .toEqual([...set("Ana", "Ana@1+", "Latte"), ...set("Mesa 3", "-@0+", "Latte")]);
   });
 });
 

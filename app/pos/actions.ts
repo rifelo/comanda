@@ -1030,7 +1030,13 @@ export async function desvincularPos(): Promise<{ ok: true }> {
 
 const CalificacionesSchema = z.object({
   ordenId: z.string().uuid(),
-  enlaces: z.array(z.object({ codigo: z.string().regex(/^[2-9A-HJKMNP-Z]{10}$/), customer: z.string().trim().max(60).nullable() })).min(1).max(40),
+  enlaces: z.array(z.object({
+    codigo: z.string().regex(/^[2-9A-HJKMNP-Z]{10}$/),
+    customer: z.string().trim().max(60).nullable(),
+    /** The cup's ticket line; absent on QRs printed before one-QR-per-drink. */
+    linea: z.number().int().min(0).max(199).nullable().optional(),
+    resto: z.boolean().optional(),
+  })).min(1).max(40),
 });
 
 /**
