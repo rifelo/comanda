@@ -21,6 +21,32 @@ export function pickCategoriaBebida(rand: number = Math.random()): Exclude<Frase
   return rand < 0.55 ? "gracioso" : "motivador";
 }
 
+/**
+ * Phrases the register prints when the AI does not answer in time (offline,
+ * rate limit): every drink still gets its four labels. They never mention
+ * coffee — the cup may be a juice or a Milo.
+ */
+export const FRASES_RESPALDO = [
+  "Hoy te toca un ratico pa' ti.",
+  "Respira hondo: lo bueno se toma despacio.",
+  "Esta va con cariño, como debe ser.",
+  "Que el día te trate tan bien como este vaso.",
+  "Pausa merecida. El resto puede esperar.",
+  "Hecho a mano, servido con ganas.",
+  "Sorbo a sorbo también se llega lejos.",
+  "Pa' que el día arranque con buena cara.",
+  "Si hoy pesa, que esto lo aliviane.",
+  "Un gusto tenerte por aquí. Vuelve pronto.",
+  "Lo rico de la vida cabe en un vaso.",
+  "Date el crédito: llegaste hasta aquí.",
+] as const;
+
+/** A fallback phrase; `seed` picks it so two cups of one order don't repeat when it can be helped. */
+export function fraseRespaldo(seed: number = Math.floor(Math.random() * FRASES_RESPALDO.length)): string {
+  const n = FRASES_RESPALDO.length;
+  return FRASES_RESPALDO[((seed % n) + n) % n];
+}
+
 /** What the phrase generator needs to know about the drink in the cup. */
 export interface FraseBebida {
   nombre: string;

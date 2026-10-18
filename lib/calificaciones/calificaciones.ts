@@ -71,6 +71,28 @@ export function lineasDe<T extends { customer_name: string | null }>(lineas: Rea
   return lineas.filter((l) => !people.includes((l.customer_name ?? "").trim()));
 }
 
+/**
+ * The lines one QR is worth. A QR printed for one cup (`linea` = its ticket
+ * line) is worth one unit of that drink; the person's first cup (`resto`)
+ * also takes the lines no cup was printed for (food, bottles), so the QRs of
+ * a person add up to what they bought, never more. `copas` = the lines that
+ * got a cup QR. No `linea` (older QRs) = everything the person bought.
+ */
+export function lineasDeQr<T extends { customer_name: string | null; position: number; qty: number }>(
+  lineas: ReadonlyArray<T>,
+  customer: string | null,
+  people: ReadonlyArray<string>,
+  qr: { linea: number | null; resto: boolean },
+  copas: ReadonlySet<number>,
+): T[] {
+  const grupo = lineasDe(lineas, customer, people);
+  if (qr.linea === null) return grupo;
+  const copa = grupo.find((l) => l.position === qr.linea);
+  const out: T[] = copa ? [{ ...copa, qty: Math.min(1, copa.qty) }] : [];
+  if (qr.resto) out.push(...grupo.filter((l) => !copas.has(l.position)));
+  return out;
+}
+
 export type EstadoEnlace = "valido" | "usado" | "vencido" | "desconocido";
 export function estadoDe(fila: { usada_at: string | null; expira_at: string } | null, ahora: Date = new Date()): EstadoEnlace {
   if (!fila) return "desconocido";

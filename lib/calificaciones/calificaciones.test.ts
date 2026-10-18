@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estadoDe, leerCodigo, lineasDe, normalizarInstagram, nuevoCodigo, puntosDe, tuPedido, urlCalificacion } from "./calificaciones";
+import { estadoDe, leerCodigo, lineasDe, lineasDeQr, normalizarInstagram, nuevoCodigo, puntosDe, tuPedido, urlCalificacion } from "./calificaciones";
 
 describe("codes", () => {
   it("ten characters, none that read alike", () => {
@@ -58,5 +58,31 @@ describe("estadoDe / tuPedido", () => {
     expect(tuPedido([{ name: "Latte frío", qty: 1, opciones: [] }])).toBe("tu Latte frío");
     expect(tuPedido([{ name: "Latte frío", qty: 2, opciones: [] }])).toBe("tu pedido");
     expect(tuPedido([])).toBe("tu pedido");
+  });
+});
+
+describe("lineasDeQr", () => {
+  const l = (position: number, name: string, qty: number, price: number, customer_name: string | null = null) => ({ position, name, qty, unit_price_cop: price, customer_name });
+  // Juan: 2 lattes (line 0) + a cake (line 1); María: 1 tinto (line 2).
+  const lineas = [l(0, "Latte", 2, 9000, "Juan"), l(1, "Torta", 1, 8000, "Juan"), l(2, "Tinto", 1, 3000, "María")];
+  const people = ["Juan", "María"];
+  const copasJuan = new Set([0]);
+
+  it("one QR per cup: the first takes the rest, together they add up to what the person bought", () => {
+    const a = lineasDeQr(lineas, "Juan", people, { linea: 0, resto: true }, copasJuan);
+    const b = lineasDeQr(lineas, "Juan", people, { linea: 0, resto: false }, copasJuan);
+    expect(a.map((x) => `${x.qty}×${x.name}`)).toEqual(["1×Latte", "1×Torta"]);
+    expect(b.map((x) => `${x.qty}×${x.name}`)).toEqual(["1×Latte"]);
+    expect(puntosDe(a) + puntosDe(b)).toBe(puntosDe(lineas.slice(0, 2)));
+  });
+  it("never reaches into another person's lines", () => {
+    expect(lineasDeQr(lineas, "María", people, { linea: 0, resto: true }, new Set([2]))).toEqual([]);
+    expect(lineasDeQr(lineas, "María", people, { linea: 2, resto: true }, new Set([2])).map((x) => x.name)).toEqual(["Tinto"]);
+  });
+  it("an older QR without a line is worth everything the person bought", () => {
+    expect(lineasDeQr(lineas, "Juan", people, { linea: null, resto: false }, copasJuan).map((x) => x.name)).toEqual(["Latte", "Torta"]);
+  });
+  it("a line that no longer exists (edited order) is worth nothing but the rest", () => {
+    expect(lineasDeQr(lineas, "Juan", people, { linea: 7, resto: false }, new Set([7]))).toEqual([]);
   });
 });
