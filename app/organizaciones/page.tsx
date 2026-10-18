@@ -1,13 +1,13 @@
 import { Wordmark } from "@/components/comanda/primitives";
 import { getUserAndProfile } from "@/lib/auth";
-import { NuevaOrganizacionForm } from "./nueva-organizacion-form";
 import { switchOrganization } from "./actions";
 
 /**
  * Organization selector — the post-login landing for users without (or
  * choosing) an active org. Lists every org the user belongs to (readable via
  * the 0014 `org members read own` + `org read member` policies), lets them
- * switch into one, and always offers a create form below.
+ * switch into one. Organizations are provisioned by us, so there is no
+ * self-serve create form here.
  *
  * Top-level route (NOT inside (admin)/(staff), whose layouts assume an active
  * org via requireUser/requireAdmin).
@@ -57,7 +57,7 @@ export default async function OrganizacionesPage() {
           className="text-muted mt-2 leading-relaxed"
           style={{ fontSize: 12, letterSpacing: "0.04em" }}
         >
-          Entra a una de tus organizaciones o crea una nueva.
+          Entra a una de tus organizaciones.
         </p>
 
         <div style={{ marginTop: 24 }}>
@@ -66,7 +66,7 @@ export default async function OrganizacionesPage() {
               className="text-muted leading-relaxed"
               style={{ fontSize: 13 }}
             >
-              Aún no perteneces a ninguna organización. Crea la primera.
+              Aún no perteneces a ninguna organización. Pídele al administrador de tu negocio que te agregue.
             </p>
           ) : (
             <ul
@@ -176,8 +176,6 @@ export default async function OrganizacionesPage() {
             </ul>
           )}
         </div>
-
-        <NuevaOrganizacionForm />
 
         <div
           className="mt-auto pt-12 text-center text-muted"
