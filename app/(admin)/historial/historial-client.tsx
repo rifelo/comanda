@@ -26,6 +26,7 @@ const TIPO_META: Record<MovTipo, { label: string; bd: string }> = {
   gasto: { label: "Gasto", bd: "var(--amber)" },
   ajuste: { label: "Ajuste manual", bd: "var(--red)" },
   import: { label: "Importación", bd: "var(--green)" },
+  merma: { label: "Merma", bd: "var(--red)" },
 };
 
 const MESES_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -235,6 +236,7 @@ export function HistorialClient({
           <Chip active={filter === "gasto"} onClick={() => setFilter("gasto")}>Gastos</Chip>
           <Chip active={filter === "ajuste"} danger onClick={() => setFilter("ajuste")}>Ajustes</Chip>
           <Chip active={filter === "import"} onClick={() => setFilter("import")}>Importaciones</Chip>
+          <Chip active={filter === "merma"} danger onClick={() => setFilter("merma")}>Mermas</Chip>
         </div>
 
         <div className="cmd-paper-lt" style={{ border: "1.5px solid var(--ink)" }}>

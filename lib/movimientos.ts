@@ -4,7 +4,7 @@
  * lib/db/movements.ts.
  */
 
-export type MovTipo = "venta" | "gasto" | "ajuste" | "import";
+export type MovTipo = "venta" | "gasto" | "ajuste" | "import" | "merma";
 
 export interface MovimientoRow {
   id: string;

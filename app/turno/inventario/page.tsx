@@ -6,6 +6,7 @@ import { fraseFaltantes } from "@/lib/inventario/faltantes";
 import { countFaltantesAbiertos } from "@/lib/inventario/faltantes-db";
 import { nivelDe } from "@/lib/inventario/niveles";
 import { DIAS_LARGOS, NOMBRE_CONTEO } from "@/lib/inventario/rutina";
+import { inicioDia } from "@/lib/inventario/mermas-db";
 import { TurnoLogin } from "../_components/turno-login";
 import { TurnoUnpaired } from "../unpaired";
 
@@ -18,7 +19,7 @@ const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", te
 /**
  * Inventory on the shared tablet: what the routine owes today (the quick
  * count at close, the full one on its weekday), what the owner sent back,
- * and the doors to each tool (count, stock, requisition, faltantes). The screen is the reminder — nobody has to
+ * and the doors to each tool (count, stock, requisition, faltantes, mermas). The screen is the reminder — nobody has to
  * remember which count is due.
  */
 export default async function TurnoInventarioPage() {
@@ -27,11 +28,12 @@ export default async function TurnoInventarioPage() {
   if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
   const { ctx } = gate;
   const { admin, organizationId, sede } = ctx;
-  const [estado, faltantes, { data: ings }, { count: solicitudes }] = await Promise.all([
+  const [estado, faltantes, { data: ings }, { count: solicitudes }, { count: mermasHoy }] = await Promise.all([
     loadRutina(admin, organizationId, sede.tz),
     countFaltantesAbiertos(admin, organizationId),
     admin.from("ingredientes").select("stock_current, stock_critico, stock_min").eq("organization_id", organizationId).eq("archived", false),
     admin.from("inventario_solicitudes").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("estado", "abierta"),
+    admin.from("inventario_mermas").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).gte("reported_at", inicioDia(todayInTz(sede.tz))),
   ]);
   const { rutina, hoy } = estado;
   const niveles = { rojo: 0, amarillo: 0, verde: 0 };
@@ -111,6 +113,12 @@ export default async function TurnoInventarioPage() {
               hint="Algo se acabó en pleno turno: un toque y el dueño se entera."
               state={faltan ? `reportados: ${faltan}` : "nada reportado"}
               tone={faltantes.agotado ? "var(--red)" : faltantes.bajo ? "var(--amber)" : undefined}
+            />
+            <Tile
+              href="/turno/inventario/merma"
+              title="Registrar merma"
+              hint="Algo se cayó, se dañó o se venció: se descuenta con su justificación."
+              state={mermasHoy ? `hoy: ${mermasHoy} ${mermasHoy === 1 ? "merma" : "mermas"}` : "nada perdido hoy"}
             />
           </div>
         </section>

@@ -420,7 +420,7 @@ export interface CajaCierre {
   shift_name: string | null;
 }
 
-export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import";
+export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import" | "merma";
 
 export interface IngredienteMovement {
   id: string;

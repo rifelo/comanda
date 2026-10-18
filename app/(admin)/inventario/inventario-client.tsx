@@ -1920,6 +1920,9 @@ export function InventarioClient({
               <Link href="/inventario/faltantes" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Faltantes</Link>
             )}
             {!conteoMode && (
+              <Link href="/inventario/mermas" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Mermas</Link>
+            )}
+            {!conteoMode && (
               <Link href="/inventario/niveles" className="cmd-btn ghost" style={{ textDecoration: "none" }}>Niveles</Link>
             )}
             {conteoMode ? (
