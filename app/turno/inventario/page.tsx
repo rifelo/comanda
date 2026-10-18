@@ -28,13 +28,14 @@ export default async function TurnoInventarioPage() {
   if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
   const { ctx } = gate;
   const { admin, organizationId, sede } = ctx;
-  const [estado, faltantes, { data: ings }, { count: solicitudes }, { count: mermasHoy }, { count: porLlegar }] = await Promise.all([
+  const [estado, faltantes, { data: ings }, { count: solicitudes }, { count: mermasHoy }, { count: porLlegar }, { count: sugerencias }] = await Promise.all([
     loadRutina(admin, organizationId, sede.tz),
     countFaltantesAbiertos(admin, organizationId),
     admin.from("ingredientes").select("stock_current, stock_critico, stock_min").eq("organization_id", organizationId).eq("archived", false),
     admin.from("inventario_solicitudes").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("estado", "abierta"),
     admin.from("inventario_mermas").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).gte("reported_at", inicioDia(todayInTz(sede.tz))),
     admin.from("compras").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "pedido"),
+    admin.from("inventario_sugerencias").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "pendiente"),
   ]);
   const { rutina, hoy } = estado;
   const niveles = { rojo: 0, amarillo: 0, verde: 0 };
@@ -127,6 +128,12 @@ export default async function TurnoInventarioPage() {
               title="Registrar merma"
               hint="Algo se cayó, se dañó o se venció: se descuenta con su justificación."
               state={mermasHoy ? `hoy: ${mermasHoy} ${mermasHoy === 1 ? "merma" : "mermas"}` : "nada perdido hoy"}
+            />
+            <Tile
+              href="/turno/inventario/sugerir"
+              title="Sugerir ítems"
+              hint="Por sección: algo que va en la barra o la nevera, o algo que falta en la lista."
+              state={sugerencias ? `${sugerencias} esperando al dueño` : "nada pendiente"}
             />
           </div>
         </section>
