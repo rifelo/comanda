@@ -114,6 +114,7 @@ import {
   openEtiquetas,
   closeEtiquetas,
   setOrdenesTab,
+  marcarEntregada,
   setOrdenesDay,
   refreshOrdenes,
   selectOrden,
@@ -557,11 +558,12 @@ function SearchBox() {
 function PendientesChip() {
   const s = usePos();
   const n = s.pendientes.length + s.outbox.filter((j) => j.kind === "pendiente").length;
+  const entregar = s.porEntregar + s.outbox.length;
   const on = s.view === "ordenes";
   return (
     <button
       onClick={() => (on ? closeOrdenes() : openOrdenes())}
-      title="Pedidos: pendientes e historial"
+      title={`Pedidos: ${n} sin pagar · ${entregar} por entregar`}
       aria-pressed={on}
       style={{ ...chipStyle, justifyContent: "center", minWidth: "min(150px, 22vw)", padding: "0 16px", fontSize: 12, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
     >
@@ -569,6 +571,11 @@ function PendientesChip() {
       {n > 0 && (
         <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.amber, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           {n}
+        </span>
+      )}
+      {entregar > 0 && (
+        <span aria-label={`${entregar} por entregar`} className="cmd-num" style={{ height: 18, padding: "0 6px", borderRadius: 9, border: `1.5px solid ${on ? C.paperLt : C.ink}`, color: on ? C.paperLt : C.ink, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}>
+          ☕ {entregar}
         </span>
       )}
     </button>
@@ -1173,6 +1180,7 @@ function Ticket() {
 // ════════════════════════════════════════════════════════════════
 const ORDER_TABS: { id: OrdersTab; label: string }[] = [
   { id: "pendiente", label: "Pendientes" },
+  { id: "por_entregar", label: "Por entregar" },
   { id: "pagada", label: "Pagadas" },
   { id: "cancelada", label: "Canceladas" },
   { id: "todas", label: "Todas" },
@@ -1194,12 +1202,17 @@ function OrdenesScreen() {
     return () => window.clearInterval(id);
   }, []);
   const today = bogotaDay();
-  const isQueue = s.ordenesTab === "pendiente";
+  const isPend = s.ordenesTab === "pendiente";
+  const isEntrega = s.ordenesTab === "por_entregar";
+  // The two queues have no day; the history tabs do.
+  const isQueue = isPend || isEntrega;
   // Orders still in this register's queue (offline) are listed first, next to the server's.
   const queued = queuedOrders(s).filter(
-    (o) => (s.ordenesTab === "todas" || o.status === s.ordenesTab) && (isQueue || bogotaDay(Date.parse(o.createdAt)) === s.ordenesDay),
+    (o) => (s.ordenesTab === "todas" || isEntrega || o.status === s.ordenesTab) && ((isPend) || bogotaDay(Date.parse(o.createdAt)) === (isEntrega ? today : s.ordenesDay)),
   );
-  const list = [...queued, ...s.ordenes];
+  // In «Por entregar» a card just marked sinks to the end until the next reload.
+  const server = isEntrega ? [...s.ordenes.filter((o) => !o.entregadaAt), ...s.ordenes.filter((o) => o.entregadaAt)] : s.ordenes;
+  const list = [...queued, ...server];
   const sel = s.ordenSel ? list.find((o) => o.id === s.ordenSel) ?? null : null;
   const total = list.filter((o) => o.status === "pagada").reduce((n, o) => n + o.total, 0);
 
@@ -1214,7 +1227,9 @@ function OrdenesScreen() {
           <div role="tablist" className="pos-ord-tabs">
             {ORDER_TABS.map((t) => {
               const on = s.ordenesTab === t.id;
-              const n = t.id === "pendiente" ? s.pendientes.length + s.outbox.filter((j) => j.kind === "pendiente").length : 0;
+              const n = t.id === "pendiente"
+                ? s.pendientes.length + s.outbox.filter((j) => j.kind === "pendiente").length
+                : t.id === "por_entregar" ? s.porEntregar + s.outbox.length : 0;
               return (
                 <button key={t.id} role="tab" aria-selected={on} onClick={() => setOrdenesTab(t.id)} style={{ height: "max(36px, var(--pos-x))", padding: "0 12px", borderRadius: 3, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink2, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   {t.label}
@@ -1231,14 +1246,14 @@ function OrdenesScreen() {
               {s.ordenesDay !== today && <button onClick={() => setOrdenesDay(today)} style={{ ...dayBtn, width: "auto", padding: "0 10px", fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase" }}>Hoy</button>}
             </div>
           )}
-          {isQueue && s.merge.on && (
+          {isPend && s.merge.on && (
             <span className="pos-ord-hint" style={{ fontSize: 11, color: C.ink, letterSpacing: ".06em" }}>Elige dos o más pedidos para combinarlos.</span>
           )}
           <div className="pos-ord-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-            {isQueue && !s.merge.on && s.ordenes.length >= 2 && (
+            {isPend && !s.merge.on && s.ordenes.length >= 2 && (
               <button onClick={startMerge} style={{ height: 36, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.ink}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Combinar</button>
             )}
-            {isQueue && s.merge.on && (
+            {isPend && s.merge.on && (
               <button onClick={cancelMerge} style={{ height: 36, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Cancelar</button>
             )}
             {!isQueue && total > 0 && <span>Ventas <span className="cmd-num" style={{ color: C.ink }}>{posMoney(total)}</span></span>}
@@ -1252,7 +1267,7 @@ function OrdenesScreen() {
             {s.ordenesError && <div role="alert" style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{s.ordenesError}</div>}
             {!list.length && !s.ordenesError && (
               <div style={{ padding: "64px 24px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
-                {s.ordenesLoading ? "Cargando…" : isQueue ? <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</> : "Sin pedidos ese día."}
+                {s.ordenesLoading ? "Cargando…" : isEntrega ? <>Todo entregado ✓<br />Aquí aparece cada pedido de hoy hasta que lo marques entregado.</> : isPend ? <>No hay pedidos pendientes.<br />Usa «Enviar · pagar después» en el ticket.</> : "Sin pedidos ese día."}
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, paddingBottom: s.merge.on ? 90 : 0 }}>
@@ -1263,8 +1278,8 @@ function OrdenesScreen() {
           </div>
           {sel && !s.merge.on && <OrdenDetail o={sel} />}
         </div>
-        {isQueue && s.merge.on && <MergeBar />}
-        {isQueue && s.merge.on && s.merge.confirming && <MergeConfirm />}
+        {isPend && s.merge.on && <MergeBar />}
+        {isPend && s.merge.on && s.merge.confirming && <MergeConfirm />}
       </div>
     </Overlay>
   );
@@ -1367,13 +1382,16 @@ function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosO
   if (merging && o.local) return null;
   const type = ORDER_TYPES.find((t) => t.id === o.orderType)?.label ?? o.orderType;
   const count = o.items.reduce((n, it) => n + it.qty, 0);
+  const pending = !o.entregadaAt;
+  // The delivery strip is a sibling of the card button, never inside it.
+  const strip = !merging && !o.local && o.status !== "cancelada";
   return (
+    <div className="pos-card" style={{ display: "flex", flexDirection: "column", borderRadius: 8, overflow: "hidden", border: `1.5px solid ${selected ? C.ink : strip && pending ? C.amber : C.rule}`, boxShadow: selected ? `0 0 0 2px ${C.ink}` : "none", background: C.paperLt, opacity: o.status === "cancelada" ? 0.6 : 1 }}>
     <button
       onClick={() => (merging ? toggleMergeSel(o.id) : selectOrden(o.id))}
       aria-pressed={selected}
       aria-label={`Pedido ${o.folio}`}
-      className="pos-card"
-      style={{ textAlign: "left", padding: "12px 14px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${selected ? C.ink : C.rule}`, boxShadow: selected ? `0 0 0 2px ${C.ink}` : "none", background: C.paperLt, color: C.ink, fontFamily: F.mono, display: "flex", flexDirection: "column", gap: 6, opacity: o.status === "cancelada" ? 0.6 : 1 }}
+      style={{ flex: 1, textAlign: "left", padding: "12px 14px", cursor: "pointer", border: "none", background: "transparent", color: C.ink, fontFamily: F.mono, display: "flex", flexDirection: "column", gap: 6 }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -1398,6 +1416,28 @@ function OrdenCard({ o, selected, merging = false, isTarget = false }: { o: PosO
       {o.status === "pendiente" && o.paid > 0 && (
         <div style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>Pagado <span className="cmd-num">{posMoney(o.paid)}</span> · falta <span className="cmd-num">{posMoney(o.total - o.paid)}</span></div>
       )}
+    </button>
+    {strip && <EntregaStrip o={o} />}
+    </div>
+  );
+}
+
+/**
+ * The bottom of every live order card: one big tap to mark it delivered. Amber
+ * «Por entregar» until tapped, then green «Entregado 10:32»; tapping again undoes.
+ */
+function EntregaStrip({ o }: { o: PosOrder }) {
+  const done = !!o.entregadaAt;
+  return (
+    <button
+      onClick={() => void marcarEntregada(o.id, !done)}
+      aria-pressed={done}
+      aria-label={done ? `${o.folio} entregado · deshacer` : `Marcar ${o.folio} entregado`}
+      style={{ height: "max(46px, var(--pos-x))", width: "100%", border: "none", borderTop: `1.5px ${done ? "dashed" : "solid"} ${done ? C.rule : C.amber}`, background: done ? "transparent" : C.amber, color: done ? C.green : "#fff", fontFamily: F.mono, fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+    >
+      {done
+        ? <>✓ Entregado <span className="cmd-num" style={{ fontWeight: 600 }}>{bogotaTime(o.entregadaAt!)}</span><span style={{ color: C.muted, fontWeight: 500, fontSize: 10, letterSpacing: ".06em", textTransform: "none" }}>· deshacer</span></>
+        : <span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>Por entregar<span style={{ fontSize: 10, fontWeight: 500, letterSpacing: ".04em", textTransform: "none", opacity: 0.9 }}>toca aquí al entregarlo</span></span>}
     </button>
   );
 }
@@ -1435,6 +1475,7 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         {row("Tipo", type)}
         {row("Enviado", `${bogotaTime(o.createdAt)} · ${timeAgo(o.createdAt)}`)}
         {o.paidAt && row("Pagado", bogotaTime(o.paidAt))}
+        {!o.local && o.status !== "cancelada" && row("Entrega", o.entregadaAt ? <span style={{ color: C.green, fontWeight: 700 }}>Entregado · {bogotaTime(o.entregadaAt)}</span> : <span style={{ color: C.amber, fontWeight: 700 }}>Por entregar</span>)}
         {o.pagos.length === 0 && method && row("Pago", method)}
         {o.pagos.map((pg) => (
           <React.Fragment key={pg.id}>
@@ -1466,6 +1507,9 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         </div>
       </div>
       <div style={{ padding: "12px 20px 16px", borderTop: `1.5px solid ${C.ink}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        {!o.local && o.status !== "cancelada" && (o.entregadaAt
+          ? <button onClick={() => void marcarEntregada(o.id, false)} style={{ width: "100%", height: 40, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>Deshacer entrega</button>
+          : <button onClick={() => void marcarEntregada(o.id, true)} style={{ width: "100%", height: 52, border: "none", borderRadius: 4, background: C.amber, color: "#fff", fontFamily: F.mono, fontSize: 14, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}>✓ Marcar entregado</button>)}
         {o.local && (
           <div style={{ fontSize: 11.5, color: LOCAL_UI[o.local].color, lineHeight: 1.5 }}>
             {o.local === "failed" ? "El servidor rechazó este pedido." : "Guardado en esta caja; se envía solo cuando vuelva el internet."}

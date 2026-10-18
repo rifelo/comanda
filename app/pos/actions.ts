@@ -384,7 +384,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
 }
 
 const ListarOrdenesSchema = z.object({
-  status: z.enum(["pendiente", "pagada", "cancelada", "todas"]).default("pendiente"),
+  status: z.enum(["pendiente", "pagada", "cancelada", "todas", "por_entregar"]).default("pendiente"),
   /** Bogotá calendar day (YYYY-MM-DD); ignored for the pending queue. */
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
@@ -402,16 +402,19 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
     )
     .eq("organization_id", orgId);
-  if (status !== "todas") q = q.eq("status", status);
-  if (status !== "pendiente") {
+  if (status === "por_entregar") {
+    // Today's live orders not handed over yet; one forgotten yesterday is noise.
+    q = q.in("status", ["pendiente", "pagada"]).is("entregada_at", null).gte("created_at", `${bogotaDay()}T05:00:00Z`);
+  } else if (status !== "todas") q = q.eq("status", status);
+  if (status !== "pendiente" && status !== "por_entregar") {
     const d = day ?? bogotaDay();
     q = q.gte("created_at", `${d}T05:00:00Z`).lt("created_at", `${shiftDay(d, 1)}T05:00:00Z`);
   }
   const { data, error } = await q
-    .order("created_at", { ascending: status === "pendiente" })
+    .order("created_at", { ascending: status === "pendiente" || status === "por_entregar" })
     .limit(200);
   if (error) {
     console.error("[listarOrdenes] failed:", error);
@@ -441,6 +444,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       customerNames: (o.customer_names as string[] | null) ?? [],
       createdAt: o.created_at as string,
       paidAt: (o.paid_at as string | null) ?? null,
+      entregadaAt: (o.entregada_at as string | null) ?? null,
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
@@ -682,6 +686,45 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   // Voided → give the ingredients back.
   await syncOrderConsumption(supabase, orgId, parsed.data.ordenId, actorId(ctx));
   return { ok: true };
+}
+
+// ── entrega ───────────────────────────────────────────────────────────────────
+const MarcarEntregaSchema = z.object({ ordenId: z.string().uuid(), entregada: z.boolean() });
+
+/** Mark an order as handed to the customer (or undo it). Payment is untouched. */
+export async function marcarEntrega(input: unknown): Promise<{ ok: true; entregadaAt: string | null } | { ok: false; error: string }> {
+  const parsed = MarcarEntregaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const ctx = await requirePosAuth();
+  const { supabase, organizationId: orgId } = ctx;
+  const entregadaAt = parsed.data.entregada ? new Date().toISOString() : null;
+  const { data: updated, error } = await supabase
+    .from("ordenes")
+    .update({ entregada_at: entregadaAt, entregada_by: parsed.data.entregada ? actorId(ctx) : null })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .in("status", ["pendiente", "pagada"])
+    .select("id");
+  if (error) {
+    console.error("[marcarEntrega] update failed:", error);
+    return { ok: false, error: "No se pudo marcar la entrega." };
+  }
+  if (!updated?.length) return { ok: false, error: "Ese pedido ya no está activo." };
+  return { ok: true, entregadaAt };
+}
+
+/** How many of today's live orders are still to deliver (the Pedidos badge). */
+export async function contarPorEntregar(): Promise<{ ok: true; n: number } | { ok: false; error: string }> {
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { count, error } = await supabase
+    .from("ordenes")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .in("status", ["pendiente", "pagada"])
+    .is("entregada_at", null)
+    .gte("created_at", `${bogotaDay()}T05:00:00Z`);
+  if (error) return { ok: false, error: "No se pudo contar." };
+  return { ok: true, n: count ?? 0 };
 }
 
 // ── "frase del día" label ─────────────────────────────────────────────────────

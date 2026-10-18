@@ -4,7 +4,7 @@ import type { PosOrder } from "./types";
 
 const order = (folio: string, over: Partial<PosOrder> = {}): PosOrder => ({
   id: folio, folio, status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [],
-  createdAt: "2026-09-21T10:00:00Z", paidAt: null, paymentMethod: null, tendered: null, change: 0, paid: 0, pagos: [], items: [], mergedInto: null, mergedIntoFolio: null, ...over,
+  createdAt: "2026-09-21T10:00:00Z", paidAt: null, entregadaAt: null, paymentMethod: null, tendered: null, change: 0, paid: 0, pagos: [], items: [], mergedInto: null, mergedIntoFolio: null, ...over,
 });
 const item = (qty: number) => ({ id: `i${qty}`, kind: "item" as const, productoId: "p", comboId: null, name: "Latte", qty, unitPrice: 7500, mods: {}, position: 0, customer: "" });
 
