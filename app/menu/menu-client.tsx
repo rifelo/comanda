@@ -215,13 +215,81 @@ function useSheet(onClose: () => void, closeRef: React.RefObject<HTMLButtonEleme
 }
 
 /**
+ * Swipe a sheet down to close it, as an alternative to the X. The drag only
+ * starts when the sheet is scrolled to the top (a long sheet keeps its own
+ * scroll); the sheet follows the finger and the overlay fades with it. Let go
+ * past ~110 px, or with a quick flick, and it slides away; otherwise it
+ * springs back.
+ */
+function useSwipeDown(sheetRef: React.RefObject<HTMLDivElement | null>, overlayRef: React.RefObject<HTMLButtonElement | null>, onClose: () => void) {
+  React.useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    let startY = 0, startT = 0, dy = 0, tracking = false, dragging = false;
+    const paint = (y: number, animate: boolean) => {
+      sheet.style.transition = animate ? "transform .2s ease-out" : "none";
+      sheet.style.transform = y ? `translateY(${y}px)` : "";
+      const o = overlayRef.current;
+      if (o) {
+        o.style.transition = animate ? "opacity .2s ease-out" : "none";
+        o.style.opacity = y ? String(Math.max(0, 1 - y / (sheet.offsetHeight || 1))) : "";
+      }
+    };
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      tracking = true;
+      dragging = false;
+      startY = e.touches[0].clientY;
+      startT = performance.now();
+      dy = 0;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!tracking) return;
+      dy = e.touches[0].clientY - startY;
+      if (!dragging) {
+        // Only a downward pull from the very top becomes a drag.
+        if (dy > 6 && sheet.scrollTop <= 0) dragging = true;
+        else if (dy < -6 || sheet.scrollTop > 0) { tracking = false; return; }
+        else return;
+      }
+      e.preventDefault();
+      paint(Math.max(0, dy), false);
+    };
+    const onEnd = () => {
+      if (!tracking) return;
+      tracking = false;
+      if (!dragging) return;
+      const v = dy / Math.max(1, performance.now() - startT);
+      if (dy > 110 || (dy > 40 && v > 0.5)) {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return onClose();
+        paint(sheet.offsetHeight, true);
+        window.setTimeout(onClose, 180);
+      } else paint(0, true);
+    };
+    sheet.addEventListener("touchstart", onStart, { passive: true });
+    sheet.addEventListener("touchmove", onMove, { passive: false });
+    sheet.addEventListener("touchend", onEnd);
+    sheet.addEventListener("touchcancel", onEnd);
+    return () => {
+      sheet.removeEventListener("touchstart", onStart);
+      sheet.removeEventListener("touchmove", onMove);
+      sheet.removeEventListener("touchend", onEnd);
+      sheet.removeEventListener("touchcancel", onEnd);
+    };
+  }, [sheetRef, overlayRef, onClose]);
+}
+
+/**
  * Share the menu: the QR for whoever is next to you, and the link for
  * whoever is not — through the phone's own share sheet where it exists,
  * copied to the clipboard otherwise.
  */
 function Compartir({ c, onClose }: { c: Props["compartir"]; onClose: () => void }) {
   const closeRef = React.useRef<HTMLButtonElement>(null);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const overlayRef = React.useRef<HTMLButtonElement>(null);
   useSheet(onClose, closeRef);
+  useSwipeDown(sheetRef, overlayRef, onClose);
   const [copiado, setCopiado] = React.useState(false);
   const [puedeCompartir, setPuedeCompartir] = React.useState(false);
   React.useEffect(() => {
@@ -245,9 +313,10 @@ function Compartir({ c, onClose }: { c: Props["compartir"]; onClose: () => void 
   }
   return (
     <>
-      <button type="button" aria-label="Cerrar" className="pym-overlay" onClick={onClose} tabIndex={-1} />
-      <div role="dialog" aria-modal="true" aria-label={c.titulo} className="pym-sheet">
+      <button ref={overlayRef} type="button" aria-label="Cerrar" className="pym-overlay" onClick={onClose} tabIndex={-1} />
+      <div ref={sheetRef} role="dialog" aria-modal="true" aria-label={c.titulo} className="pym-sheet">
         <div className="pym-sheet__head pym-sheet__head--short">
+          <span aria-hidden="true" className="pym-grab" />
           <div className="pym-sheet__top">
             <h2 className="pym-h2">{c.titulo}</h2>
             <button ref={closeRef} type="button" aria-label="Cerrar" className="pym-close" onClick={onClose}>
@@ -271,7 +340,7 @@ function Compartir({ c, onClose }: { c: Props["compartir"]; onClose: () => void 
   );
 }
 
-/** The product sheet: slides up from the bottom, closes on the overlay, the X or Escape. */
+/** The product sheet: slides up from the bottom, closes on the overlay, the X, Escape or a swipe down. */
 function Ficha({ item, section, pair, option, onOption, profileLabels, profileByOption, arte, onOpen, onClose }: {
   item: MenuItem;
   section: MenuSection | null;
@@ -286,7 +355,9 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
 }) {
   const closeRef = React.useRef<HTMLButtonElement>(null);
   const dialogRef = React.useRef<HTMLDivElement>(null);
+  const overlayRef = React.useRef<HTMLButtonElement>(null);
   useSheet(onClose, closeRef);
+  useSwipeDown(dialogRef, overlayRef, onClose);
   React.useEffect(() => { dialogRef.current?.scrollTo({ top: 0 }); }, []);
 
   const opt = item.options[option] ?? null;
@@ -294,9 +365,10 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
   const perfil = item.p ? perfilCon(item.p, opt ? profileByOption[opt.name] : undefined) : null;
   return (
     <>
-      <button type="button" aria-label="Cerrar detalle" className="pym-overlay" onClick={onClose} tabIndex={-1} />
+      <button ref={overlayRef} type="button" aria-label="Cerrar detalle" className="pym-overlay" onClick={onClose} tabIndex={-1} />
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={item.name} className="pym-sheet">
         <div className="pym-sheet__head">
+          <span aria-hidden="true" className="pym-grab" />
           <div className="pym-sheet__top">
             <span className="pym-badge">{section?.label ?? ""}</span>
             <button ref={closeRef} type="button" aria-label="Cerrar" className="pym-close" onClick={onClose}>
