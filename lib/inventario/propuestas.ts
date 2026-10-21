@@ -24,7 +24,7 @@ export interface ConteoPropuesta {
 export const PRESENTACIONES = ["und", "bolsa", "caja", "paquete", "botella", "frasco", "rollo", "g", "kg", "ml", "L"] as const;
 
 /** Stock units an item can be created with (same list as the inventario form). */
-export const UNIDADES_STOCK = ["und", "g", "kg", "ml", "L", "porción", "loncha", "bola", "caja", "bulto"] as const;
+export const UNIDADES_STOCK = ["und", "g", "kg", "ml", "L", "porción", "loncha", "bola", "caja", "bulto", "paquete"] as const;
 
 /** Best stock unit to start from, given how the counter described it. */
 export function unidadSugerida(unit: string): (typeof UNIDADES_STOCK)[number] {

@@ -7,7 +7,7 @@
 // Units the inventario form exposes — keep in sync with
 // app/(admin)/inventario/actions.ts UNITS.
 export const UNITS = [
-  "kg", "g", "L", "ml", "und", "porción", "loncha", "bola", "caja", "bulto",
+  "kg", "g", "L", "ml", "und", "porción", "loncha", "bola", "caja", "bulto", "paquete",
 ] as const;
 export type Unit = (typeof UNITS)[number];
 

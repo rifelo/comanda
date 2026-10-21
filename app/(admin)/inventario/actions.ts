@@ -22,6 +22,7 @@ const UNITS = [
   "bola",
   "caja",
   "bulto",
+  "paquete",
 ] as const;
 
 const CreateCategoriaSchema = z.object({
