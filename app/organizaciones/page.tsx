@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Wordmark } from "@/components/comanda/primitives";
 import { getUserAndProfile } from "@/lib/auth";
 import { switchOrganization } from "./actions";
@@ -36,6 +37,13 @@ export default async function OrganizacionesPage() {
     .order("created_at", { ascending: true });
 
   const memberships = (data ?? []) as MembershipRow[];
+
+  // Nothing to choose: a user without an active org who belongs to exactly
+  // one goes straight in (the barista lands on /home, the owner on /hoy).
+  if (!profile.organization_id && memberships.length === 1) {
+    await supabase.rpc("switch_organization", { target: memberships[0].organization_id });
+    redirect("/");
+  }
 
   return (
     <main className="cmd-paper flex min-h-screen flex-col px-6 pt-16 pb-10">
