@@ -195,10 +195,11 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
   );
 }
 
-/** «$8.5K», in the drinks' name face; read out whole ($8.500). */
+/** «$8.5K» with a small «$», in the drinks' name face; read out whole ($8.500). */
 function Precio({ n, className }: { n: number; className: string }) {
   return (
     <span className={`${className} pym-precio`} aria-label={money(n)}>
+      <span aria-hidden="true" className="pym-precio__signo">$</span>
       <span aria-hidden="true">{precioK(n)}</span>
     </span>
   );
