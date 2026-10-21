@@ -406,6 +406,17 @@ export async function updateProducto(
 
   const sku = parsed.data.sku.trim().toUpperCase();
 
+  // A product with a recipe gets its cost from the recipe (lib/db/recetas
+  // recomputeProductoCost); a typed cost must not overwrite it.
+  const { data: recetaLine } = await supabase
+    .from("receta_items")
+    .select("id")
+    .eq("organization_id", profile.organization_id)
+    .eq("producto_id", parsed.data.id)
+    .limit(1)
+    .maybeSingle();
+  const tieneReceta = Boolean(recetaLine);
+
   // margin_pct is a generated column — recomputed by Postgres from
   // price_cop/cost_cop, so we explicitly omit it from the update payload.
   const { error: updateErr } = await supabase
@@ -416,7 +427,7 @@ export async function updateProducto(
       description: parsed.data.description,
       sku,
       price_cop: parsed.data.price_cop,
-      cost_cop: parsed.data.cost_cop,
+      ...(tieneReceta ? {} : { cost_cop: parsed.data.cost_cop }),
       stock_status: parsed.data.stock_status,
     })
     .eq("id", parsed.data.id);

@@ -7,6 +7,8 @@ import { piezaDe } from "@/lib/inventario/niveles";
 import { todayInTz } from "@/lib/utils";
 import { errorRecepcion, justificacionPago, PAGOS_RECEPCION } from "@/lib/compras/recepcion";
 import { crearMovimiento, turnoAbierto } from "@/lib/caja/movimientos-db";
+import { unitCostFromPack } from "@/lib/cost";
+import { recomputeProductosForIngrediente } from "@/lib/db/recetas";
 
 const BUCKET = "compras-fotos";
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -41,8 +43,8 @@ export async function subirFotoCompra(formData: FormData): Promise<{ ok: true; p
 
 const Schema = z.object({
   compraId: z.string().uuid(),
-  /** What arrived per line: pieces when the item is counted in pieces, else its unit. */
-  lineas: z.array(z.object({ itemId: z.string().uuid(), recibida: z.number().min(0).max(10_000_000) })).min(1).max(200),
+  /** What arrived per line: pieces when the item is counted in pieces, else its unit; `costo` = what the invoice charged for the whole line (COP), when read off it. */
+  lineas: z.array(z.object({ itemId: z.string().uuid(), recibida: z.number().min(0).max(10_000_000), costo: z.number().int().min(0).max(100_000_000).nullable().optional() })).min(1).max(200),
   fotoRecibido: z.string().min(10).max(300),
   fotoFactura: z.string().min(10).max(300),
   facturaTotal: z.number().int().positive().max(100_000_000),
@@ -105,29 +107,45 @@ export async function recibirPedido(input: unknown): Promise<RecibirResult> {
   const folio = Number(compra.folio);
   const note = `Recepción pedido n.º ${folio}${proveedor ? ` · ${proveedor}` : ""}`;
   const movs: Record<string, unknown>[] = [];
+  // Lines whose invoice cost was typed: the item's cost becomes this purchase's
+  // (último costo) and its recipes are re-priced after the stock is in.
+  const recostear: { ingredienteId: string; unitCost: number; packQty: number | null }[] = [];
   for (const l of d.lineas) {
     const it = byId.get(l.itemId)!;
     const ing = one<{ unit: string; pack_qty: number | null; pieza_qty: number | null; cost_cop: number }>(it.ingrediente);
     const pieza = ing ? piezaDe({ unit: ing.unit, pack_qty: ing.pack_qty === null ? null : Number(ing.pack_qty), pieza_qty: ing.pieza_qty === null ? null : Number(ing.pieza_qty) }) : null;
     const qty = Math.round(l.recibida * (pieza ?? 1) * 1000) / 1000;
-    const { error } = await admin.from("compra_items").update({ qty_recibida: qty }).eq("id", l.itemId);
+    const costoLinea = l.costo != null && l.costo > 0 && qty > 0 ? l.costo : null;
+    const unitCost = costoLinea != null ? unitCostFromPack(costoLinea, qty) : Number(ing?.cost_cop ?? 0);
+    const { error } = await admin.from("compra_items").update({ qty_recibida: qty, ...(costoLinea != null ? { costo_total_cop: costoLinea } : {}) }).eq("id", l.itemId);
     if (error) {
       console.error("[recibirPedido] item:", error);
       await revert();
       return { ok: false, error: "No se pudo guardar el conteo. Intenta de nuevo." };
     }
     if (it.ingrediente_id && ing && qty > 0) {
-      movs.push({ organization_id: orgId, ingrediente_id: it.ingrediente_id, type: "import", delta: qty, unit_cost_cop: Number(ing.cost_cop ?? 0), note, created_by: ctx.actor.profileId, compra_id: d.compraId });
+      movs.push({ organization_id: orgId, ingrediente_id: it.ingrediente_id, type: "import", delta: qty, unit_cost_cop: unitCost, note, created_by: ctx.actor.profileId, compra_id: d.compraId });
+      if (costoLinea != null && unitCost !== Number(ing.cost_cop ?? 0)) recostear.push({ ingredienteId: it.ingrediente_id, unitCost, packQty: ing.pack_qty === null ? null : Number(ing.pack_qty) });
     }
   }
   if (movs.length) {
     const { error } = await admin.from("ingrediente_movements").insert(movs);
     if (error) {
       console.error("[recibirPedido] movements:", error);
-      await admin.from("compra_items").update({ qty_recibida: null }).eq("compra_id", d.compraId);
+      await admin.from("compra_items").update({ qty_recibida: null, costo_total_cop: null }).eq("compra_id", d.compraId);
       await revert();
       return { ok: false, error: "No se pudo sumar al inventario. Intenta de nuevo." };
     }
+  }
+  // Último costo: the goods are in, so a failure here is logged, not rolled back.
+  for (const r of recostear) {
+    const { error } = await admin
+      .from("ingredientes")
+      .update({ cost_cop: r.unitCost, ...(r.packQty && r.packQty > 0 ? { pack_cost_cop: Math.round(r.unitCost * r.packQty) } : {}) })
+      .eq("organization_id", orgId)
+      .eq("id", r.ingredienteId);
+    if (error) console.error("[recibirPedido] costo:", error);
+    else await recomputeProductosForIngrediente(admin, orgId, r.ingredienteId).catch((e) => console.error("[recibirPedido] recompute:", e));
   }
 
   let movimientoId: string | null = null;

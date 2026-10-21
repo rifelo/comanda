@@ -11,6 +11,8 @@
 import * as React from "react";
 import Link from "next/link";
 import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
+import type { CostosPendientes } from "@/lib/db/costos-pendientes";
+import { CostosPanel } from "../recetas/costos-panel";
 import { unitCostFromPack } from "@/lib/cost";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
 import {
@@ -1511,9 +1513,12 @@ const GRID = "22px 1.4fr 1fr 60px 90px 130px 90px 90px 32px";
 export function InventarioClient({
   initialCategorias,
   initialIngredientes,
+  costos,
 }: {
   initialCategorias: IngredienteCategoria[];
   initialIngredientes: Ingrediente[];
+  /** «Costos por revisar» summary (server-computed); omitted in tests. */
+  costos?: CostosPendientes;
 }) {
   const [categorias, setCategorias] = React.useState(initialCategorias);
   const [ingredientes, setIngredientes] = React.useState(initialIngredientes);
@@ -1958,6 +1963,8 @@ export function InventarioClient({
           </>
         }
       />
+
+      {costos ? <CostosPanel c={costos} compact /> : null}
 
       <div
         style={{
@@ -2562,6 +2569,25 @@ export function InventarioClient({
                                 ± Ajustar stock
                               </button>
                             ) : null}
+                            <Link
+                              href={`/inventario/kardex/${ing.id}`}
+                              role="menuitem"
+                              onClick={() => setRowMenuId(null)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                width: "100%",
+                                padding: "8px 12px",
+                                fontSize: 11,
+                                textAlign: "left",
+                                color: "var(--ink)",
+                                textDecoration: "none",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              ≡ Kardex
+                            </Link>
                             <button
                               type="button"
                               role="menuitem"

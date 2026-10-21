@@ -10,6 +10,8 @@ import type {
   IngredienteOption,
 } from "@/lib/db/recetas";
 import { Stamp } from "@/components/comanda/primitives";
+import type { CostosPendientes } from "@/lib/db/costos-pendientes";
+import { CostosPanel } from "./costos-panel";
 import { SectionCrumb, Thumb, CmdMiniLabel } from "../_components/shared";
 import {
   addRecetaItem,
@@ -711,7 +713,7 @@ function NuevaRecetaDrawer({
 }
 
 // ── shell ──────────────────────────────────────────────────────────────────
-export function RecetasClient({ view, producto = null }: { view: RecetasView; producto?: string | null }) {
+export function RecetasClient({ view, producto = null, costos }: { view: RecetasView; producto?: string | null; costos?: CostosPendientes }) {
   const router = useRouter();
   const { recetas, productosSinReceta, ingredientes } = view;
   const sinReceta = producto !== null && productosSinReceta.some((p) => p.id === producto);
@@ -765,6 +767,8 @@ export function RecetasClient({ view, producto = null }: { view: RecetasView; pr
           </button>
         }
       />
+
+      {costos ? <CostosPanel c={costos} /> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", minHeight: "calc(100vh - 120px)" }}>
         <div ref={listRef} className="cmd-paper-lt" style={{ borderRight: "1.5px solid var(--ink)", overflowY: "auto" }}>
