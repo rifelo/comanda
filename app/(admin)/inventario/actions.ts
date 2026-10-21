@@ -289,6 +289,24 @@ export async function updateIngrediente(input: unknown) {
   const byPack = d.packCostCop != null && d.packQty != null;
   const costCop = byPack ? unitCostFromPack(d.packCostCop!, d.packQty!) : d.costCop;
 
+  // Recipes, stock and movements are all in the item's unit: switching ml →
+  // und on milk turned "200 ml per latte" into 200 bags (2026-10-21). Only
+  // an unused item may change unit; a used one is counted by the piece.
+  const { data: actual } = await supabase.from("ingredientes").select("unit").eq("id", d.id).eq("organization_id", profile.organization_id).maybeSingle();
+  if (actual && actual.unit !== d.unit) {
+    const [{ count: recetas }, { count: opciones }] = await Promise.all([
+      supabase.from("receta_items").select("id", { count: "exact", head: true }).eq("ingrediente_id", d.id),
+      supabase.from("modifier_option_receta").select("id", { count: "exact", head: true }).eq("ingrediente_id", d.id),
+    ]);
+    const usos = (recetas ?? 0) + (opciones ?? 0);
+    if (usos > 0) {
+      return {
+        ok: false as const,
+        error: `No se puede cambiar la unidad: este ítem está en ${usos} receta${usos === 1 ? "" : "s"} en ${actual.unit}. Para contarlo por bolsa o paquete, ponle la presentación en Inventario → Niveles.`,
+      };
+    }
+  }
+
   const { data, error } = await supabase
     .from("ingredientes")
     .update({
