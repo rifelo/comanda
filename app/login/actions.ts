@@ -31,5 +31,5 @@ export async function signInWithPassword(
     if (msg.includes("not confirmed")) return { error: "La cuenta no está activada. Pídele al administrador que la active." };
     return { error: error.message };
   }
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/organizaciones");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
 }
