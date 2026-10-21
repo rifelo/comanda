@@ -102,7 +102,7 @@ function computeCategoryCounts(
   return counts;
 }
 
-// Keep in sync with the Zod `UNITS` in ./actions.ts — `caja` and `bulto`
+// Keep in sync with the Zod `UNITS` in ./actions.ts — `caja`, `bulto` and `paquete`
 // are pack-level primaries that pair with a secondary unit + conversion
 // factor (e.g. 1 caja = 12 und) via the dual-unit fields on Ingrediente.
 const UNITS = [
@@ -116,6 +116,7 @@ const UNITS = [
   "bola",
   "caja",
   "bulto",
+  "paquete",
 ] as const;
 type Unit = (typeof UNITS)[number];
 
