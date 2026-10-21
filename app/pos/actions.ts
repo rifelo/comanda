@@ -1050,3 +1050,25 @@ export async function registrarCalificaciones(input: unknown): Promise<{ ok: boo
   const { organizationId } = await requirePosAuth();
   return registrarEnlaces(organizationId, parsed.data.ordenId, parsed.data.enlaces);
 }
+
+export type PuntosCliente = { instagram: string; puntos: number; ultimaVisita: string };
+
+/** The customers' points board: every @ with its points, most points first. */
+export async function listarPuntos(): Promise<{ ok: true; clientes: PuntosCliente[] } | { ok: false; error: string }> {
+  const { supabase, organizationId } = await requirePosAuth();
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("instagram, puntos, ultima_visita_at")
+    .eq("organization_id", organizationId)
+    .order("puntos", { ascending: false })
+    .order("ultima_visita_at", { ascending: false })
+    .limit(500);
+  if (error) {
+    console.error("[listarPuntos]", error);
+    return { ok: false, error: "No se pudo cargar la lista de puntos." };
+  }
+  return {
+    ok: true,
+    clientes: (data ?? []).map((r) => ({ instagram: r.instagram as string, puntos: Number(r.puntos), ultimaVisita: r.ultima_visita_at as string })),
+  };
+}
