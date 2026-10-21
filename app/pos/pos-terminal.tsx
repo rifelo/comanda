@@ -44,7 +44,7 @@ import {
   type PosModGroup,
   type PosSuggestKind,
 } from "@/lib/pos/types";
-import { desvincularPos, generarFrase } from "./actions";
+import { desvincularPos, generarFrase, listarPuntos, type PuntosCliente } from "./actions";
 import { usePosLive } from "./pos-live";
 import { usePosWindowLease } from "./pos-window";
 import { FRASE_TONOS, FRASE_MAX, type FraseTono } from "@/lib/pos/frase";
@@ -113,6 +113,8 @@ import {
   closeOrdenes,
   openEtiquetas,
   closeEtiquetas,
+  openPuntos,
+  closePuntos,
   setOrdenesTab,
   marcarEntregada,
   setOrdenesDay,
@@ -465,6 +467,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       else if (st.view === "tender") cancelTender();
       else if (st.view === "ordenes") closeOrdenes();
       else if (st.view === "etiquetas") closeEtiquetas();
+      else if (st.view === "puntos") closePuntos();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
       else if (st.ticketOpen) posStore.set({ ticketOpen: false });
     };
@@ -488,6 +491,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
         : <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />)}
       {s.view === "ordenes" && <OrdenesScreen />}
       {s.view === "etiquetas" && <EtiquetasScreen />}
+      {s.view === "puntos" && <PuntosScreen />}
       {ventana.role === "secondary" && <OtraVentana onTakeOver={ventana.takeOver} />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
@@ -534,6 +538,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         <OutboxChip />
         <PendientesChip />
+        <PuntosChip />
         <EtiquetasChip />
         <PrinterChip />
         {mode === "device" && <UnlinkButton station={station} />}
@@ -593,6 +598,22 @@ function PendientesChip() {
           ☕ {entregar}
         </span>
       )}
+    </button>
+  );
+}
+
+/** "Puntos" — the customers' points board (@ and accumulated points). */
+function PuntosChip() {
+  const s = usePos();
+  const on = s.view === "puntos";
+  return (
+    <button
+      onClick={() => (on ? closePuntos() : openPuntos())}
+      title="Puntos: los clientes con su @ de Instagram y los puntos acumulados"
+      aria-pressed={on}
+      style={{ ...chipStyle, justifyContent: "center", padding: "0 14px", fontSize: 12, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink }}
+    >
+      Puntos
     </button>
   );
 }
@@ -2100,6 +2121,96 @@ function OutboxChip() {
  * on a narrow screen is itself a positioned panel — the sheet has to cover
  * the screen, not the panel.
  */
+// ════════════════════════════════════════════════════════════════
+// Puntos — the customers' scoreboard
+// ════════════════════════════════════════════════════════════════
+const PUNTOS_REFRESH_MS = 60_000;
+
+/** "hace 3 h", "ayer", "hace 6 días". */
+function visitaAgo(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days < 1) return timeAgo(iso);
+  return days === 1 ? "ayer" : `hace ${days} días`;
+}
+
+function PuntosScreen() {
+  const [clientes, setClientes] = React.useState<PuntosCliente[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [q, setQ] = React.useState("");
+
+  // Load on open and keep it fresh while it stays on screen.
+  React.useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await listarPuntos();
+        if (!alive) return;
+        if (r.ok) { setClientes(r.clientes); setError(null); } else setError(r.error);
+      } catch {
+        if (alive) setError("Sin conexión: no se pudo cargar la lista de puntos.");
+      }
+    };
+    void load();
+    const id = window.setInterval(load, PUNTOS_REFRESH_MS);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+
+  const needle = q.trim().replace(/^@/, "").toLowerCase();
+  // Rank on the full list (ties share a place), then filter, so a search keeps each @'s real place.
+  const ranked = (clientes ?? []).map((c, i, all) => ({ ...c, rank: all.findIndex((x) => x.puntos === c.puntos) + 1, i }));
+  const shown = needle ? ranked.filter((c) => c.instagram.toLowerCase().includes(needle)) : ranked;
+  const total = (clientes ?? []).reduce((s, c) => s + c.puntos, 0);
+  const medal = (rank: number) => (rank === 1 ? C.amber : rank === 2 ? C.ink2 : rank === 3 ? C.red : null);
+
+  return (
+    <Overlay align="fill">
+      <div role="region" aria-label="Puntos de clientes" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+        <div className="pos-hdr pos-ord-hdr">
+          <button onClick={closePuntos} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
+          <span style={{ fontFamily: F.slab, fontSize: 22 }}>Puntos<span style={{ color: C.red }}>.</span></span>
+          {clientes && <span style={{ fontSize: 11, letterSpacing: ".06em", color: C.muted, whiteSpace: "nowrap" }}>{clientes.length} clientes · {total.toLocaleString("es-CO")} pts</span>}
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar @"
+            aria-label="Buscar cliente por Instagram"
+            style={{ marginLeft: "auto", height: 40, width: 220, maxWidth: "45%", padding: "0 12px", border: `1.5px solid ${C.rule}`, borderRadius: 3, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 14, outline: "none" }}
+          />
+        </div>
+        <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "16px 16px 28px" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            {error && <div role="alert" style={{ padding: "10px 14px", marginBottom: 12, border: `1.5px solid ${C.red}`, borderRadius: 6, color: C.red, fontSize: 13 }}>{error}</div>}
+            {clientes === null && !error && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13 }}>Cargando…</div>}
+            {clientes && clientes.length === 0 && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.6 }}>Aún no hay clientes con puntos. Se suman cuando el cliente califica desde el QR de su vaso y deja su @.</div>}
+            {clientes && clientes.length > 0 && shown.length === 0 && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13 }}>Ningún @ coincide con «{q}».</div>}
+            {shown.length > 0 && (
+              <ol aria-label="Clientes por puntos" style={{ listStyle: "none", margin: 0, padding: 0, border: `1.5px solid ${C.ink}`, borderRadius: 8, overflow: "hidden", background: C.paperLt }}>
+                {shown.map((c) => {
+                  const m = medal(c.rank);
+                  return (
+                    <li key={c.instagram} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderTop: c.i === shown[0].i ? "none" : `1px dashed ${C.ruleSoft}` }}>
+                      <span className="cmd-num" style={{ width: 38, height: 38, borderRadius: 19, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, border: `1.5px solid ${m ?? C.rule}`, background: m ?? "transparent", color: m ? C.paperLt : C.ink2 }}>{c.rank}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 18, fontWeight: 700, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{c.instagram}</span>
+                        <span style={{ display: "block", fontSize: 11, color: C.muted, marginTop: 2 }}>Última visita {visitaAgo(c.ultimaVisita)}</span>
+                      </span>
+                      <span style={{ textAlign: "right", flexShrink: 0 }}>
+                        <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 28, lineHeight: 1, color: C.ink }}>{c.puntos.toLocaleString("es-CO")}</span>
+                        <span style={{ display: "block", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted, marginTop: 3 }}>pts</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            <div style={{ marginTop: 12, fontSize: 11, color: C.muted, textAlign: "center", lineHeight: 1.5 }}>1 punto por cada $1.000 · se suman al calificar desde el QR del vaso con su @ · se actualiza cada minuto</div>
+          </div>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // Etiquetas — print or reprint a label on demand
 // ════════════════════════════════════════════════════════════════

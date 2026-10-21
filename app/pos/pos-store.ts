@@ -118,7 +118,7 @@ export interface PosState {
 
   // ── Square-style screen state ──
   /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
-  view: "sale" | "tender" | "done" | "ordenes" | "etiquetas";
+  view: "sale" | "tender" | "done" | "ordenes" | "etiquetas" | "puntos";
   /** Item sheet (modifiers / qty) — add a new product or edit a ticket line. */
   sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | { mode: "receta"; productId: string } | null;
   /** Free-text search over the catalog (name / sku / description). */
@@ -1406,6 +1406,12 @@ export function openEtiquetas() {
   posStore.set({ view: "etiquetas", sheet: null, ticketOpen: false });
 }
 export function closeEtiquetas() {
+  posStore.set({ view: "sale" });
+}
+export function openPuntos() {
+  posStore.set({ view: "puntos", sheet: null, ticketOpen: false });
+}
+export function closePuntos() {
   posStore.set({ view: "sale" });
 }
 export function closeOrdenes() {
