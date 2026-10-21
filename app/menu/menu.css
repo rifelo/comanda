@@ -5,7 +5,7 @@ body:has(.pym) { background: #f9f7e8; }
 .pym {
   --amarillo: #f1a900; --crema: #f9f7e8; --cafe: #502b1c; --gris: #606060; --crema-72: #cabeaf;
   --f-display: var(--pym-display), "Arial Black", sans-serif;
-  --f-name: var(--font-slab), "Arial Black", sans-serif;
+  --f-name: var(--font-slab), "Arial Black", sans-serif; /* drink names, prices and every small label; Nority (--f-display) only for large titles */
   --f-body: var(--pym-body), system-ui, -apple-system, "Segoe UI", sans-serif;
   min-height: 100dvh; width: 100%; background: var(--crema); color: var(--cafe);
   font-family: var(--f-body); font-weight: 300; font-synthesis: none; scroll-behavior: smooth;
@@ -39,7 +39,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 /* 2 · promo */
 .pym-block { padding: 24px 26px 0; }
 .pym-promo { display: flex; flex-direction: column; padding: 20px 20px 6px; border-radius: 21px; background: var(--cafe); color: var(--crema); }
-.pym-sticker { align-self: flex-start; display: inline-flex; align-items: center; margin-bottom: 4px; padding: 4px 10px; border: 2px solid var(--amarillo); border-radius: 999px; background: var(--amarillo); color: var(--cafe); font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
+.pym-sticker { align-self: flex-start; display: inline-flex; align-items: center; margin-bottom: 4px; padding: 4px 10px; border: 2px solid var(--amarillo); border-radius: 999px; background: var(--amarillo); color: var(--cafe); font-family: var(--f-name); font-size: 11px; line-height: 12px; text-transform: uppercase; }
 .pym-promo__row { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 72px; padding: 16px 0; border: 0; border-top: 1px solid rgba(249, 247, 232, .22); background: transparent; color: var(--crema) !important; text-align: left; cursor: pointer; }
 .pym-promo__row:first-of-type { border-top: 0; }
 .pym .pym-promo__row:focus-visible { outline-color: var(--amarillo); }
@@ -56,11 +56,11 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-moods__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .pym-mood { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; min-height: 68px; padding: 14px 12px; border: 2px solid var(--cafe); border-radius: 21px; background: transparent; text-align: left; cursor: pointer; }
 .pym-mood[aria-pressed="true"] { background: var(--cafe); color: var(--crema) !important; }
-.pym-mood__label { font-family: var(--f-display); font-size: clamp(12.5px, 3.6vw, 17px); line-height: 18px; text-transform: uppercase; }
+.pym-mood__label { font-family: var(--f-name); font-size: clamp(12.5px, 3.6vw, 17px); line-height: 18px; text-transform: uppercase; }
 .pym-mood__hint { font-size: 13px; line-height: 17px; }
 
 /* pills: buttons, chips, the options of a product */
-.pym-pill { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border: 2px solid var(--cafe); border-radius: 999px; background: transparent; font-family: var(--f-display) !important; font-size: 13px; line-height: 14px; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.pym-pill { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border: 2px solid var(--cafe); border-radius: 999px; background: transparent; font-family: var(--f-name) !important; font-size: 13px; line-height: 14px; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
 .pym-pill--wide { width: 100%; }
 .pym-pill[aria-pressed="true"] { background: var(--cafe); color: var(--crema) !important; }
 
@@ -90,7 +90,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-row__short { font-size: 15px; line-height: 21px; font-weight: 700; }
 .pym-row__side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-top: 2px; }
 .pym-row__price { font-size: 17px; line-height: 20px; }
-.pym-tag { display: inline-flex; align-items: center; padding: 3px 8px; border: 2px solid var(--cafe); border-radius: 999px; background: var(--amarillo); font-family: var(--f-display); font-size: 10px; line-height: 11px; text-transform: uppercase; }
+.pym-tag { display: inline-flex; align-items: center; padding: 3px 8px; border: 2px solid var(--cafe); border-radius: 999px; background: var(--amarillo); font-family: var(--f-name); font-size: 10px; line-height: 11px; text-transform: uppercase; }
 .pym-tag--off { background: transparent; }
 
 /* 6 · footer */
@@ -111,7 +111,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 /* The handle hints the sheet can be swiped down to close. */
 .pym-sheet__head > .pym-grab { position: absolute; top: 8px; left: 50%; width: 44px; height: 5px; margin-left: -22px; border-radius: 3px; background: var(--cafe); opacity: .35; z-index: 2; }
 .pym-sheet__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.pym-badge { display: inline-flex; align-items: center; padding: 4px 10px; border: 2px solid var(--cafe); border-radius: 999px; font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
+.pym-badge { display: inline-flex; align-items: center; padding: 4px 10px; border: 2px solid var(--cafe); border-radius: 999px; font-family: var(--f-name); font-size: 11px; line-height: 12px; text-transform: uppercase; }
 .pym-close { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 2px solid var(--cafe); border-radius: 999px; background: var(--crema); cursor: pointer; padding: 0; }
 .pym-sheet__name { margin: 0; max-width: 70%; font-family: var(--f-name); font-weight: 400; font-size: 30px; line-height: 36px; }
 .pym-sheet__price { align-self: flex-start; display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 999px; background: var(--cafe); color: var(--crema); font-size: 20px; line-height: 22px; }
@@ -120,7 +120,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-desc { margin: 0; font-size: 17px; line-height: 25px; font-weight: 700; }
 .pym-off { margin: 0; padding: 12px 16px; border: 2px solid var(--cafe); border-radius: 21px; font-size: 15px; line-height: 21px; font-weight: 700; }
 .pym-group { display: flex; flex-direction: column; gap: 10px; }
-.pym-h3 { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: 13px; line-height: 14px; text-transform: uppercase; }
+.pym-h3 { margin: 0; font-family: var(--f-name); font-weight: 400; font-size: 13px; line-height: 14px; text-transform: uppercase; }
 .pym-options { display: grid; gap: 8px; }
 .pym-profile { display: flex; align-items: center; gap: 12px; }
 .pym-profile__label { width: 92px; flex-shrink: 0; font-size: 15px; line-height: 20px; }
@@ -134,7 +134,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-pair__price { font-size: 15px; line-height: 18px; }
 .pym-order { position: relative; overflow: hidden; border-radius: 21px; background: var(--cafe); color: var(--crema); padding: 20px 22px 22px; min-height: 118px; display: flex; flex-direction: column; gap: 6px; }
 .pym-order > :not(.pym-art) { position: relative; z-index: 1; }
-.pym-order__kicker { font-family: var(--f-display); font-size: 13px; line-height: 14px; text-transform: uppercase; color: var(--amarillo); }
+.pym-order__kicker { font-family: var(--f-name); font-size: 13px; line-height: 14px; text-transform: uppercase; color: var(--amarillo); }
 .pym-order__text { max-width: 66%; font-size: 16px; line-height: 23px; }
 .pym-order__art { right: -14px; bottom: -26px; width: 120px; color: var(--amarillo); }
 
