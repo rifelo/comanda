@@ -32,6 +32,7 @@ export const PROD_SECTIONS: readonly ProductosSection[] = [
   { id: "compras", n: "13", label: "Compras", href: "/compras" },
   { id: "calificaciones", n: "14", label: "Calificaciones", href: "/calificaciones" },
   { id: "gastos", n: "15", label: "Gastos", href: "/gastos" },
+  { id: "baristas", n: "16", label: "Baristas", href: "/baristas" },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────

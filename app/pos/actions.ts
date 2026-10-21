@@ -56,6 +56,8 @@ const CrearOrdenSchema = z.object({
   note: z.string().trim().max(500).optional(),
   /** Id the register gave the order; a retry with the same ref returns the stored order. */
   clientRef: z.string().trim().min(8).max(64).optional(),
+  /** Who is on the bar («Barista: …» in the POS); kept only if they're on the team. */
+  baristaId: z.string().uuid().optional(),
   /** When the cashier confirmed it (ms) — an order queued offline keeps its real time. */
   createdAt: z.number().int().positive().optional(),
 });
@@ -212,6 +214,7 @@ async function insertOrden(
       created_by: actor.kind === "user" ? actor.profileId : null,
       pos_device_id: actor.kind === "device" ? actor.device.id : null,
       client_ref: data.clientRef ?? null,
+      barista_id: data.baristaId && ctx.catalog.equipo.some((b) => b.id === data.baristaId) ? data.baristaId : null,
       created_at: orderTime(data.createdAt),
       ...header,
     })
@@ -1070,5 +1073,51 @@ export async function listarPuntos(): Promise<{ ok: true; clientes: PuntosClient
   return {
     ok: true,
     clientes: (data ?? []).map((r) => ({ instagram: r.instagram as string, puntos: Number(r.puntos), ultimaVisita: r.ultima_visita_at as string })),
+  };
+}
+
+export type ResenaCliente = {
+  id: string;
+  usadaAt: string;
+  estrellas: number;
+  sugerencia: string | null;
+  bebida: string;
+  cliente: string | null;
+  instagram: string | null;
+  barista: string | null;
+};
+
+/** What customers said behind the QR on their cup in the last 30 days, newest first. */
+export async function listarResenas(): Promise<{ ok: true; resenas: ResenaCliente[] } | { ok: false; error: string }> {
+  const { supabase, organizationId } = await requirePosAuth();
+  const { data, error } = await supabase
+    .from("calificaciones")
+    .select("id, usada_at, estrellas, sugerencia, customer_name, items, cliente:clientes(instagram), orden:ordenes(barista:profiles!ordenes_barista_id_fkey(full_name))")
+    .eq("organization_id", organizationId)
+    .not("usada_at", "is", null)
+    .gte("usada_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+    .order("usada_at", { ascending: false })
+    .limit(300);
+  if (error) {
+    console.error("[listarResenas]", error);
+    return { ok: false, error: "No se pudieron cargar las reseñas." };
+  }
+  const uno = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null);
+  return {
+    ok: true,
+    resenas: (data ?? []).map((r) => {
+      const items = (r.items as { qty: number; name: string }[] | null) ?? [];
+      const orden = uno(r.orden as unknown as { barista: unknown } | null);
+      return {
+        id: r.id as string,
+        usadaAt: r.usada_at as string,
+        estrellas: Number(r.estrellas),
+        sugerencia: ((r.sugerencia as string | null) ?? "").trim() || null,
+        bebida: items.map((i) => (i.qty > 1 ? `${i.qty} × ${i.name}` : i.name)).join(" · ") || "Bebida",
+        cliente: (r.customer_name as string | null) ?? null,
+        instagram: uno(r.cliente as unknown as { instagram: string } | null)?.instagram ?? null,
+        barista: uno(orden?.barista as { full_name: string | null } | null)?.full_name ?? null,
+      };
+    }),
   };
 }

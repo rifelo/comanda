@@ -44,7 +44,7 @@ import {
   type PosModGroup,
   type PosSuggestKind,
 } from "@/lib/pos/types";
-import { desvincularPos, generarFrase, listarPuntos, type PuntosCliente } from "./actions";
+import { desvincularPos, generarFrase, listarPuntos, listarResenas, type PuntosCliente, type ResenaCliente } from "./actions";
 import { usePosLive } from "./pos-live";
 import { usePosWindowLease } from "./pos-window";
 import { FRASE_TONOS, FRASE_MAX, type FraseTono } from "@/lib/pos/frase";
@@ -115,6 +115,10 @@ import {
   closeEtiquetas,
   openPuntos,
   closePuntos,
+  hydrateBarista,
+  setBarista,
+  openBaristaPicker,
+  closeBaristaPicker,
   setOrdenesTab,
   marcarEntregada,
   setOrdenesDay,
@@ -239,6 +243,7 @@ const POS_CSS = `
     .pos-root{--pos-qty:44px;--pos-chip:42px;--pos-x:40px;--pos-close:44px}
   }
   .pos-hdr{height:58px;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1.5px solid var(--ink);background:var(--paper-lt);flex-shrink:0}
+  .pos-barista-ask-short{display:none}
   .pos-root button.pos-textbtn{padding:4px 0}
   .pos-root button.pos-textbtn.tight{padding:0}
   .pos-linebadge{font-size:8.5px;padding:2px 5px}
@@ -334,6 +339,9 @@ const POS_CSS = `
      catalog takes the whole width; the ticket slides over it from the bar
      at the bottom. */
   @media (max-width:899px){
+    .pos-barista-pre,.pos-barista-ask-long{display:none}
+    .pos-barista-ask-short{display:inline}
+    .pos-root button.pos-chip-c{padding:0 9px !important}
     .pos-etq-grid{grid-template-columns:1fr}
     .pos-ticket{position:absolute;top:0;right:0;bottom:0;z-index:26;width:min(480px,100%);
       transform:translateX(100%);visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s;
@@ -402,6 +410,7 @@ export function PosTerminal({
       catalog,
       ...(!hasFavs && firstReal && (cur === FAV_CAT || !cur) ? { cat: firstReal } : {}),
     });
+    hydrateBarista();
   }, [catalog]);
   // What every printed label shows in its kicker line.
   React.useEffect(() => {
@@ -492,6 +501,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       {s.view === "ordenes" && <OrdenesScreen />}
       {s.view === "etiquetas" && <EtiquetasScreen />}
       {s.view === "puntos" && <PuntosScreen />}
+      {s.baristaPicker && <BaristaPicker />}
       {ventana.role === "secondary" && <OtraVentana onTakeOver={ventana.takeOver} />}
       {s.view === "tender" && <TenderScreen />}
       {s.view === "done" && <ReceiptScreen />}
@@ -536,6 +546,7 @@ function TopBar({ mode }: { mode: "device" | "user" }) {
       <SearchBox />
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <BaristaChip />
         <OutboxChip />
         <PendientesChip />
         <PuntosChip />
@@ -602,6 +613,67 @@ function PendientesChip() {
   );
 }
 
+/**
+ * «Barista: Andrés» — who is on the bar. Every new order is credited to them,
+ * so the drinks they make and the ratings those cups get count for them.
+ * Unset, it asks «¿Quién prepara?» in red until someone picks.
+ */
+function BaristaChip() {
+  const s = usePos();
+  if (!s.catalog.equipo.length) return null;
+  const b = s.barista;
+  return (
+    <button
+      onClick={openBaristaPicker}
+      className={"pos-chip-c" + (b ? "" : " pos-hl")}
+      title={b ? `Las bebidas se cuentan para ${b.name}. Toca para cambiar de barista.` : "Elige quién está en la barra: las bebidas y sus calificaciones se cuentan para esa persona."}
+      aria-label={b ? `Barista: ${b.name}. Cambiar` : "Elegir barista"}
+      style={{ ...chipStyle, justifyContent: "center", padding: "0 12px", fontSize: 12, maxWidth: 220, border: `1.5px solid ${b ? C.ink : C.red}`, background: "transparent", color: b ? C.ink : C.red, fontWeight: b ? 600 : 700 }}
+    >
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {b ? <><span className="pos-barista-pre">Barista: </span>{b.name.split(" ")[0]}</> : <><span className="pos-barista-ask-long">¿Quién prepara?</span><span className="pos-barista-ask-short">¿Quién?</span></>}
+      </span>
+    </button>
+  );
+}
+
+/** Pick who is on the bar. One tap; stays on this register until changed. */
+function BaristaPicker() {
+  const s = usePos();
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); closeBaristaPicker(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+  return (
+    <Overlay onClose={closeBaristaPicker} align="center">
+      <div role="dialog" aria-modal aria-label="¿Quién prepara?" style={{ width: "min(440px, 94vw)", maxHeight: "86dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1.1 }}>¿Quién prepara?</div>
+            <div style={{ fontSize: 12, color: C.ink2, marginTop: 6, lineHeight: 1.5 }}>Las bebidas que se vendan desde ahora, y sus calificaciones, se cuentan para esta persona.</div>
+          </div>
+          <button onClick={closeBaristaPicker} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+        </div>
+        <div className="pos-scroll" style={{ overflowY: "auto", padding: "8px 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {s.catalog.equipo.map((m) => {
+            const on = s.barista?.id === m.id;
+            return (
+              <button key={m.id} onClick={() => setBarista(m)} aria-pressed={on} style={{ height: 56, padding: "0 16px", borderRadius: 6, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, fontFamily: F.mono, fontSize: 16, fontWeight: 600, textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>{m.name}</span>
+                {on && <span style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}>En barra</span>}
+              </button>
+            );
+          })}
+          {s.barista && (
+            <button onClick={() => setBarista(null)} style={{ height: 44, marginTop: 4, border: "none", background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 12, letterSpacing: ".06em", cursor: "pointer" }}>Nadie en barra (no contar)</button>
+          )}
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 /** "Puntos" — the customers' points board (@ and accumulated points). */
 function PuntosChip() {
   const s = usePos();
@@ -609,6 +681,7 @@ function PuntosChip() {
   return (
     <button
       onClick={() => (on ? closePuntos() : openPuntos())}
+      className="pos-chip-c"
       title="Puntos: los clientes con su @ de Instagram y los puntos acumulados"
       aria-pressed={on}
       style={{ ...chipStyle, justifyContent: "center", padding: "0 14px", fontSize: 12, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink }}
@@ -625,6 +698,7 @@ function EtiquetasChip() {
   return (
     <button
       onClick={() => (on ? closeEtiquetas() : openEtiquetas())}
+      className="pos-chip-c"
       title="Etiquetas: imprimir o reimprimir un nombre, un vaso o una frase"
       aria-pressed={on}
       style={{ ...chipStyle, justifyContent: "center", padding: "0 14px", fontSize: 12, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink }}
@@ -2133,7 +2207,89 @@ function visitaAgo(iso: string): string {
   return days === 1 ? "ayer" : `hace ${days} días`;
 }
 
+/** Reseñas: what customers said behind the QR on their cup (30 days). */
+function ResenasPanel() {
+  const [resenas, setResenas] = React.useState<ResenaCliente[] | null>(null);
+  const [loadedAt, setLoadedAt] = React.useState(0);
+  const [error, setError] = React.useState<string | null>(null);
+  const [filtro, setFiltro] = React.useState<"todas" | "comentario" | 1 | 2 | 3 | 4 | 5>("todas");
+  React.useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await listarResenas();
+        if (!alive) return;
+        if (r.ok) { setResenas(r.resenas); setLoadedAt(Date.now()); setError(null); } else setError(r.error);
+      } catch {
+        if (alive) setError("Sin conexión: no se pudieron cargar las reseñas.");
+      }
+    };
+    void load();
+    const id = window.setInterval(load, PUNTOS_REFRESH_MS);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+
+  const all = resenas ?? [];
+  const avg = (rs: ResenaCliente[]) => (rs.length ? (rs.reduce((t, r) => t + r.estrellas, 0) / rs.length).toFixed(1).replace(".", ",") : "—");
+  const hace7 = loadedAt - 7 * 86_400_000;
+  const semana = all.filter((r) => new Date(r.usadaAt).getTime() >= hace7);
+  const shown = all.filter((r) => (filtro === "todas" ? true : filtro === "comentario" ? !!r.sugerencia : r.estrellas === filtro));
+  const filtros: { k: typeof filtro; label: string; n: number }[] = [
+    { k: "todas", label: "Todas", n: all.length },
+    { k: "comentario", label: "Con comentario", n: all.filter((r) => r.sugerencia).length },
+    ...([5, 4, 3, 2, 1] as const).map((e) => ({ k: e, label: `${e}★`, n: all.filter((r) => r.estrellas === e).length })),
+  ];
+  const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
+
+  return (
+    <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "16px 16px 28px" }}>
+      <div style={{ maxWidth: 760, margin: "0 auto" }}>
+        {error && <div role="alert" style={{ padding: "10px 14px", marginBottom: 12, border: `1.5px solid ${C.red}`, borderRadius: 6, color: C.red, fontSize: 13 }}>{error}</div>}
+        {resenas === null && !error && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13 }}>Cargando…</div>}
+        {resenas && (
+          <>
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              {[{ k: "Últimos 7 días", rs: semana }, { k: "Últimos 30 días", rs: all }].map((x) => (
+                <div key={x.k} style={{ flex: 1, border: `1.5px solid ${C.ink}`, borderRadius: 8, background: C.paperLt, padding: "12px 16px" }}>
+                  <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted }}>{x.k}</div>
+                  <div style={{ fontFamily: F.slab, fontSize: 32, lineHeight: 1.1, marginTop: 4 }}>{avg(x.rs)}<span style={{ fontSize: 16 }}> ★</span></div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{x.rs.length} {x.rs.length === 1 ? "calificación" : "calificaciones"}</div>
+                </div>
+              ))}
+            </div>
+            <div role="group" aria-label="Filtrar reseñas" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {filtros.map((f) => (
+                <button key={String(f.k)} onClick={() => setFiltro(f.k)} aria-pressed={filtro === f.k} style={{ ...personChip(filtro === f.k), height: "max(36px, var(--pos-chip))", padding: "0 12px", fontSize: 12 }}>
+                  {f.label} <span style={{ opacity: 0.6 }}>{f.n}</span>
+                </button>
+              ))}
+            </div>
+            {all.length === 0 && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.6 }}>Aún no hay reseñas. Aparecen cuando un cliente escanea el QR de su vaso y califica.</div>}
+            {all.length > 0 && shown.length === 0 && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13 }}>Ninguna reseña con ese filtro.</div>}
+            <div aria-label="Reseñas de clientes" role="list" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {shown.map((r) => (
+                <article role="listitem" key={r.id} style={{ border: `1.5px solid ${r.estrellas <= 2 ? C.red : C.rule}`, borderRadius: 8, background: C.paperLt, padding: "12px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                    <span aria-label={`${r.estrellas} de 5 estrellas`} style={{ fontSize: 18, letterSpacing: 1, color: r.estrellas <= 2 ? C.red : C.ink }}>{stars(r.estrellas)}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700 }}>{r.bebida}</span>
+                    <span style={{ fontSize: 11, color: C.muted, marginLeft: "auto" }}>{visitaAgo(r.usadaAt)}</span>
+                  </div>
+                  {r.sugerencia && <p style={{ margin: "8px 0 0", fontSize: 15, lineHeight: 1.5, color: C.ink }}>«{r.sugerencia}»</p>}
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 6 }}>
+                    {[r.cliente, r.instagram ? `@${r.instagram}` : null, r.barista ? `preparó ${r.barista.split(" ")[0]}` : null].filter(Boolean).join(" · ") || "Cliente anónimo"}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PuntosScreen() {
+  const [tab, setTab] = React.useState<"clientes" | "resenas">("clientes");
   const [clientes, setClientes] = React.useState<PuntosCliente[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
@@ -2168,17 +2324,34 @@ function PuntosScreen() {
         <div className="pos-hdr pos-ord-hdr">
           <button onClick={closePuntos} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
           <span style={{ fontFamily: F.slab, fontSize: 22 }}>Puntos<span style={{ color: C.red }}>.</span></span>
-          {clientes && <span style={{ fontSize: 11, letterSpacing: ".06em", color: C.muted, whiteSpace: "nowrap" }}>{clientes.length} clientes · {total.toLocaleString("es-CO")} pts</span>}
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar @"
-            aria-label="Buscar cliente por Instagram"
-            style={{ marginLeft: "auto", height: 40, width: 220, maxWidth: "45%", padding: "0 12px", border: `1.5px solid ${C.rule}`, borderRadius: 3, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 14, outline: "none" }}
-          />
+          <span role="tablist" aria-label="Puntos o reseñas" style={{ display: "inline-flex", gap: 6 }}>
+            {(["clientes", "resenas"] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} style={{ ...chipStyle, padding: "0 14px", fontSize: 12, border: `1.5px solid ${tab === t ? C.ink : C.rule}`, background: tab === t ? C.ink : "transparent", color: tab === t ? C.paperLt : C.ink }}>
+                {t === "clientes" ? "Clientes" : "Reseñas"}
+              </button>
+            ))}
+          </span>
+          {tab === "clientes" && clientes && <span style={{ fontSize: 11, letterSpacing: ".06em", color: C.muted, whiteSpace: "nowrap" }}>{clientes.length} clientes · {total.toLocaleString("es-CO")} pts</span>}
         </div>
+        {tab === "resenas" ? <ResenasPanel /> : (
         <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "16px 16px 28px" }}>
           <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            <div role="search" style={{ display: "flex", alignItems: "center", gap: 10, height: 56, padding: "0 8px 0 16px", marginBottom: 14, border: `1.5px solid ${C.ink}`, borderRadius: 8, background: C.paperLt }}>
+              <span aria-hidden style={{ fontSize: 20, color: C.muted }}>⌕</span>
+              <input
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar cliente por su @ de Instagram"
+                aria-label="Buscar cliente por Instagram"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                style={{ flex: 1, minWidth: 0, height: "100%", border: "none", background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 17, outline: "none" }}
+              />
+              {q && <button onClick={() => setQ("")} aria-label="Borrar búsqueda" style={{ width: 40, height: 40, borderRadius: 20, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>}
+            </div>
+            {needle && clientes && clientes.length > 0 && shown.length > 0 && <div style={{ fontSize: 11, color: C.muted, margin: "-6px 0 10px 4px" }}>{shown.length} de {clientes.length} clientes</div>}
             {error && <div role="alert" style={{ padding: "10px 14px", marginBottom: 12, border: `1.5px solid ${C.red}`, borderRadius: 6, color: C.red, fontSize: 13 }}>{error}</div>}
             {clientes === null && !error && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13 }}>Cargando…</div>}
             {clientes && clientes.length === 0 && <div style={{ padding: 30, textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.6 }}>Aún no hay clientes con puntos. Se suman cuando el cliente califica desde el QR de su vaso y deja su @.</div>}
@@ -2206,6 +2379,7 @@ function PuntosScreen() {
             <div style={{ marginTop: 12, fontSize: 11, color: C.muted, textAlign: "center", lineHeight: 1.5 }}>1 punto por cada $1.000 · se suman al calificar desde el QR del vaso con su @ · se actualiza cada minuto</div>
           </div>
         </div>
+        )}
       </div>
     </Overlay>
   );
