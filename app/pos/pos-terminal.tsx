@@ -210,6 +210,21 @@ const POS_CSS = `
   .pos-key:active{background:var(--paper-dk)}
   .pos-line:active{background:var(--paper-dk)}
 
+  /* Recipe sheet: photo on top, ingredients | steps side by side, each column scrolls. */
+  .pos-receta{width:min(1100px,96vw);height:min(860px,92dvh)}
+  .pos-receta-photo{height:240px}
+  .pos-receta-cols{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+  .pos-receta-col{min-height:0;overflow-y:auto;padding:14px 22px 18px}
+  .pos-receta-col + .pos-receta-col{border-left:1px solid var(--rule)}
+  @media (max-height:760px){ .pos-receta-photo{height:170px} }
+  @media (max-width:719px){
+    .pos-receta{height:auto;max-height:92dvh}
+    .pos-receta-photo{height:180px}
+    .pos-receta-cols{display:block;overflow-y:auto}
+    .pos-receta-col{overflow:visible}
+    .pos-receta-col + .pos-receta-col{border-left:none;border-top:1px solid var(--rule)}
+  }
+
   /* ── responsive layout ─────────────────────────────────────────
      Every size that changes with the screen lives here and not inline: an
      inline style beats a media query. Touch sizes are custom properties the
@@ -1948,13 +1963,14 @@ function RecetaSheet({ productId }: { productId: string }) {
   }, [zoom]);
   if (!p) return null;
   const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000).replace(".", ","));
+  const colHead: React.CSSProperties = { fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted, paddingBottom: 6, borderBottom: `1px solid ${C.rule}` };
   return (
     <Overlay onClose={close} align="center">
-      <div role="dialog" aria-modal aria-label={`Receta · ${p.name}`} style={{ width: "min(620px, 94vw)", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
+      <div role="dialog" aria-modal aria-label={`Receta · ${p.name}`} className="pos-receta" style={{ display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
         {p.image ? (
           <button type="button" onClick={() => setZoom(true)} aria-label={`Ver la foto de ${p.name} en grande`} style={{ position: "relative", padding: 0, border: "none", background: C.paperDk, cursor: "zoom-in", flexShrink: 0, display: "block", width: "100%" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.image} alt={p.name} style={{ width: "100%", height: 220, objectFit: "cover", display: "block" }} />
+            <img src={p.image} alt={p.name} className="pos-receta-photo" style={{ width: "100%", objectFit: "cover", display: "block" }} />
             <span style={{ position: "absolute", right: 10, bottom: 10, fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: C.paperLt, background: "rgba(20,14,8,.6)", padding: "4px 8px", borderRadius: 3, fontFamily: F.mono }}>Toca para ampliar</span>
           </button>
         ) : (
@@ -1973,33 +1989,38 @@ function RecetaSheet({ productId }: { productId: string }) {
           </div>
           <button onClick={close} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
         </div>
-        <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "6px 20px 14px" }}>
-          {p.recipe.length === 0 ? (
-            <div style={{ padding: "18px 0", color: C.muted, fontSize: 12.5, lineHeight: 1.5 }}>Este producto no tiene receta cargada. Se agrega desde el panel, en Operación → Recetas.</div>
-          ) : (
-            p.recipe.map((l, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "10px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
-                <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, color: C.ink, minWidth: 82, textAlign: "right", whiteSpace: "nowrap" }}>{fmtQty(l.qty)} <span style={{ fontSize: 11, fontWeight: 400, color: C.muted }}>{l.unit}</span></span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.ink }}>{l.name}</span>
-                  {l.note && <span style={{ display: "block", fontSize: 12, color: C.ink2, marginTop: 2, lineHeight: 1.45 }}>{l.note}</span>}
-                </span>
-              </div>
-            ))
-          )}
-          {p.prep.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: C.muted, paddingBottom: 6, borderBottom: `1px solid ${C.rule}` }}>Preparación</div>
+        <div className="pos-receta-cols">
+          <section className="pos-receta-col pos-scroll" aria-label="Ingredientes">
+            <div style={colHead}>Ingredientes{p.recipe.length > 0 ? ` · ${p.recipe.length}` : ""}</div>
+            {p.recipe.length === 0 ? (
+              <div style={{ padding: "18px 0", color: C.muted, fontSize: 12.5, lineHeight: 1.5 }}>Este producto no tiene receta cargada. Agrégala con «Editar receta».</div>
+            ) : (
+              p.recipe.map((l, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "10px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
+                  <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, color: C.ink, minWidth: 82, textAlign: "right", whiteSpace: "nowrap" }}>{fmtQty(l.qty)} <span style={{ fontSize: 11, fontWeight: 400, color: C.muted }}>{l.unit}</span></span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.ink }}>{l.name}</span>
+                    {l.note && <span style={{ display: "block", fontSize: 12, color: C.ink2, marginTop: 2, lineHeight: 1.45 }}>{l.note}</span>}
+                  </span>
+                </div>
+              ))
+            )}
+          </section>
+          <section className="pos-receta-col pos-scroll" aria-label="Preparación">
+            <div style={colHead}>Preparación{p.prep.length > 0 ? ` · ${p.prep.length} pasos` : ""}</div>
+            {p.prep.length === 0 ? (
+              <div style={{ padding: "18px 0", color: C.muted, fontSize: 12.5, lineHeight: 1.5 }}>Sin pasos de preparación. Agrégalos con «Editar receta».</div>
+            ) : (
               <ol aria-label="Pasos de preparación" style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {p.prep.map((step, i) => (
-                  <li key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "9px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
-                    <span className="cmd-num" style={{ width: 26, height: 26, borderRadius: 13, border: `1.5px solid ${C.ink}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
-                    <span style={{ fontSize: 14, color: C.ink, lineHeight: 1.5, paddingTop: 3 }}>{step}</span>
+                  <li key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "12px 0", borderBottom: `1px dashed ${C.ruleSoft}` }}>
+                    <span className="cmd-num" style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.ink}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ fontSize: 15, color: C.ink, lineHeight: 1.5, paddingTop: 4 }}>{step}</span>
                   </li>
                 ))}
               </ol>
-            </div>
-          )}
+            )}
+          </section>
         </div>
         <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 11, color: C.muted }}>Mantén presionado un producto para ver su receta.</span>
