@@ -5,6 +5,7 @@ import { getActiveSede } from "@/lib/data/sede";
 import { loadNumerosDia } from "@/lib/numeros/data";
 import { METODOS, METODO_LABEL, addDays, diaSemana, esFecha, horaEnTz } from "@/lib/numeros/dia";
 import { posMoney } from "@/lib/pos/types";
+import { CATEGORIA_GASTO, CUENTA_GASTO, moneyGasto, resumenGastos } from "@/lib/gastos/gastos";
 import { fechaCorta, formatDateLabelEs, formatTime, todayInTz } from "@/lib/utils";
 import { Stamp } from "@/components/comanda/primitives";
 import { AutoRefresh } from "../_components/auto-refresh";
@@ -48,6 +49,7 @@ export default async function NumerosPage({ params }: { params: Promise<{ fecha?
   const ultimaNovedad = n.novedades[0] ?? null;
   const maxUnidades = Math.max(1, ...r.productos.map((p) => p.unidades));
   const lastArqueo = caja.arqueos[caja.arqueos.length - 1] ?? null;
+  const gastosTotal = resumenGastos(n.gastos).total;
 
   return (
     <div style={{ paddingBottom: 48 }}>
@@ -151,6 +153,38 @@ export default async function NumerosPage({ params }: { params: Promise<{ fecha?
             <b className="cmd-num" style={{ fontSize: 15 }}>{posMoney(r.cobros.total)}</b>
           </span>
           <CuadreVentas cuadre={r.cuadre} vendido={r.ventas.total} />
+        </div>
+
+        {/* ── gastos del día ── */}
+        <SectionLabel right={<Link href="/gastos" className="cmd-link">{n.gastos.length ? "ver gastos →" : "registrar gasto →"}</Link>}>
+          Gastos del día · {n.gastos.length}
+        </SectionLabel>
+        <div style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)" }}>
+          {n.gastos.length === 0 ? (
+            <Empty pad>Sin gastos registrados {n.esHoy ? "hoy" : "ese día"}. La comisión de Bold, servicios y demás se anotan en Gastos.</Empty>
+          ) : (
+            <>
+              {n.gastos.map((g, i) => (
+                <div key={g.id} className="flex items-baseline" style={{ gap: 10, padding: "9px 14px", borderTop: i ? "1px solid var(--rule-soft)" : "none", fontSize: 12.5 }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b>{g.concepto}</b>
+                    <span className="text-muted"> · {CATEGORIA_GASTO[g.categoria].label} · {CUENTA_GASTO[g.cuenta]}</span>
+                  </span>
+                  <span className="cmd-num" style={{ fontWeight: 700, color: "var(--red)", whiteSpace: "nowrap" }}>−{moneyGasto(g.monto)}</span>
+                </div>
+              ))}
+              <div className="flex flex-wrap items-baseline justify-between" style={{ gap: 10, padding: "10px 14px", borderTop: "1.5px solid var(--ink)", fontSize: 12 }}>
+                <span>
+                  <span className="text-muted" style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", marginRight: 8 }}>Total gastos</span>
+                  <b className="cmd-num" style={{ fontSize: 15 }}>{moneyGasto(gastosTotal)}</b>
+                </span>
+                <span className="text-muted">
+                  cobrado {posMoney(r.cobros.total)} − gastos ={" "}
+                  <b className="cmd-num" style={{ color: "var(--ink)", fontSize: 14 }}>{moneyGasto(Math.round((r.cobros.total - gastosTotal) * 100) / 100)}</b>
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ── cierre del día ── */}

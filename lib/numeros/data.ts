@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCierresSede } from "@/lib/caja/cierres";
+import { listGastos, type Gasto } from "@/lib/gastos/gastos-db";
 import { todayInTz } from "@/lib/utils";
 import {
   addDays,
@@ -50,6 +51,8 @@ export interface NumerosDia {
   caja: CuadreCaja;
   abiertos: PedidoAbierto[];
   novedades: NovedadDia[];
+  /** Expenses booked on this day (Bold fee, utilities…). */
+  gastos: Gasto[];
 }
 
 function cliente(o: { customer_name?: unknown; customer_names?: unknown }): string | null {
@@ -69,7 +72,7 @@ export async function loadNumerosDia(
   const previa = addDays(date, -7);
   const diaPrevio = ventanaDia(previa, tz);
 
-  const [ordenesRes, pagosRes, previasRes, abiertosRes, novedadesRes, cierres] = await Promise.all([
+  const [ordenesRes, pagosRes, previasRes, abiertosRes, novedadesRes, cierres, gastos] = await Promise.all([
     db
       .from("ordenes")
       .select(
@@ -111,6 +114,7 @@ export async function loadNumerosDia(
           .order("submitted_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     sedeId ? listCierresSede(db, sedeId, 40) : Promise.resolve([]),
+    listGastos(db, orgId, date, date),
   ]);
   for (const [name, res] of [["ordenes", ordenesRes], ["pagos", pagosRes], ["previas", previasRes], ["abiertos", abiertosRes], ["novedades", novedadesRes]] as const) {
     if (res.error) console.error(`[loadNumerosDia] ${name}:`, res.error);
@@ -213,5 +217,5 @@ export async function loadNumerosDia(
     turno: (n.shift as { template: { name: string } | null } | null)?.template?.name ?? null,
   }));
 
-  return { date, esHoy, previa, resumen, caja, abiertos, novedades };
+  return { date, esHoy, previa, resumen, caja, abiertos, novedades, gastos };
 }
