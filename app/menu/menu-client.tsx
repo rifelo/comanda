@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fraseDePedido, money, perfilCon, porPrecio, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { fraseDePedido, money, perfilCon, porPrecio, precioPartes, type MenuItem, type MenuSection } from "@/lib/menu/menu";
 
 interface Props {
   sections: MenuSection[];
@@ -103,7 +103,7 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
                     <span className="pym-promo__tagline">{f.tagline}</span>
                   </span>
                   <span className="pym-promo__side">
-                    <span className="pym-promo__price">{money(it.price)}</span>
+                    <Precio n={it.price} className="pym-promo__price" />
                     <Chevron size={16} />
                   </span>
                 </button>
@@ -156,7 +156,7 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
                     {it.short && <span className="pym-row__short">{it.short}</span>}
                   </span>
                   <span className="pym-row__side">
-                    <span className="pym-row__price">{money(it.price)}</span>
+                    <Precio n={it.price} className="pym-row__price" />
                     <Chevron />
                   </span>
                 </button>
@@ -192,6 +192,18 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
         />
       )}
     </div>
+  );
+}
+
+/** «7» big and «.000» small; read out whole ($7.000). */
+function Precio({ n, className }: { n: number; className: string }) {
+  const { mil, resto } = precioPartes(n);
+  return (
+    <span className={`${className} pym-precio`} aria-label={money(n)}>
+      <span aria-hidden="true" className="pym-precio__chico">$</span>
+      <span aria-hidden="true">{mil}</span>
+      {resto && <span aria-hidden="true" className="pym-precio__chico">{resto}</span>}
+    </span>
   );
 }
 
@@ -376,7 +388,7 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
             </button>
           </div>
           <h2 className="pym-sheet__name">{item.name}</h2>
-          <span className="pym-sheet__price">{money(price)}</span>
+          <Precio n={price} className="pym-sheet__price" />
           <Arte arte={arte} name={section?.art ?? "mano-taza.svg"} className="pym-sheet__art" />
         </div>
 
@@ -423,7 +435,7 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
               <h3 className="pym-h3">Va bien con</h3>
               <button type="button" className="pym-pair" onClick={() => onOpen(pair.sku)}>
                 <span className="pym-pair__name">{pair.name}</span>
-                <span className="pym-pair__price">{money(pair.price)}</span>
+                <Precio n={pair.price} className="pym-pair__price" />
                 <Chevron />
               </button>
             </div>

@@ -80,6 +80,14 @@ export function money(n: number): string {
   return "$" + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
+/** A price split for display: the thousands big, the rest small — $8.500 → { mil: "8", resto: ".500" }. */
+export function precioPartes(n: number): { mil: string; resto: string } {
+  const r = Math.max(0, Math.round(n));
+  if (r < 1000) return { mil: String(r), resto: "" };
+  const mil = Math.floor(r / 1000);
+  return { mil: String(mil).replace(/\B(?=(\d{3})+(?!\d))/g, "."), resto: "." + String(r % 1000).padStart(3, "0") };
+}
+
 /** The first sentence, without its final period: a catalog description as a one-liner. */
 function corta(text: string): string {
   const first = text.split(/(?<=[.!?])\s+/)[0] ?? text;

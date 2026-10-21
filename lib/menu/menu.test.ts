@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import contenido from "./menu.json";
-import { buildMenu, fraseDePedido, money, perfilCon, type CatalogProduct, type MenuContent } from "./menu";
+import { buildMenu, fraseDePedido, money, perfilCon, precioPartes, type CatalogProduct, type MenuContent } from "./menu";
 
 const content = contenido as MenuContent;
 const prod = (over: Partial<CatalogProduct> & { sku: string; name: string }): CatalogProduct => ({ price: 7000, stock: "ok", description: null, category: "Frío", options: [], ...over });
@@ -60,5 +60,15 @@ describe("money / fraseDePedido", () => {
     expect(money(900)).toBe("$900");
     expect(fraseDePedido("Jugo de mora", "En leche")).toBe("«Jugo de mora en leche»");
     expect(fraseDePedido("Latte frío", null)).toBe("«Latte frío»");
+  });
+});
+
+describe("precioPartes", () => {
+  it("thousands big, the rest small", () => {
+    expect(precioPartes(7000)).toEqual({ mil: "7", resto: ".000" });
+    expect(precioPartes(8500)).toEqual({ mil: "8", resto: ".500" });
+    expect(precioPartes(10000)).toEqual({ mil: "10", resto: ".000" });
+    expect(precioPartes(1250000)).toEqual({ mil: "1.250", resto: ".000" });
+    expect(precioPartes(500)).toEqual({ mil: "500", resto: "" });
   });
 });
