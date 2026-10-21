@@ -157,6 +157,8 @@ export async function aplicarConteo(
       ingrediente_id: it.ingrediente_id,
       type: "ajuste" as const,
       delta: diff,
+      // Valued at the cost snapshotted when the count was taken (kardex).
+      unit_cost_cop: Number(it.unit_cost_cop ?? 0),
       note: `${label}${it.note ? ` · ${it.note}` : ""}`,
       created_by: by.createdBy,
     }));

@@ -399,7 +399,7 @@ export async function adjustIngredienteStock(input: unknown) {
   // Need the current stock to compute the delta (movements are signed).
   const { data: current, error: readErr } = await supabase
     .from("ingredientes")
-    .select("id, stock_current")
+    .select("id, stock_current, cost_cop")
     .eq("id", parsed.data.id)
     .eq("organization_id", profile.organization_id)
     .maybeSingle();
@@ -423,6 +423,7 @@ export async function adjustIngredienteStock(input: unknown) {
       ingrediente_id: parsed.data.id,
       type: "ajuste",
       delta,
+      unit_cost_cop: Number(current.cost_cop ?? 0),
       note: parsed.data.note ?? "Ajuste manual",
       created_by: user.id,
     })
@@ -453,7 +454,7 @@ export async function applyConteo(input: unknown) {
   const ids = parsed.data.counts.map((c) => c.id);
   const { data: rows, error: readErr } = await supabase
     .from("ingredientes")
-    .select("id, stock_current")
+    .select("id, stock_current, cost_cop")
     .in("id", ids)
     .eq("organization_id", profile.organization_id);
   if (readErr) {
@@ -462,12 +463,16 @@ export async function applyConteo(input: unknown) {
   const stockById = new Map<string, number>(
     (rows ?? []).map((r) => [r.id, Number(r.stock_current)]),
   );
+  const costById = new Map<string, number>(
+    (rows ?? []).map((r) => [r.id, Number(r.cost_cop ?? 0)]),
+  );
 
   const movements: {
     organization_id: string;
     ingrediente_id: string;
     type: "ajuste";
     delta: number;
+    unit_cost_cop: number;
     note: string;
     created_by: string;
   }[] = [];
@@ -482,6 +487,7 @@ export async function applyConteo(input: unknown) {
       ingrediente_id: c.id,
       type: "ajuste",
       delta,
+      unit_cost_cop: costById.get(c.id) ?? 0,
       note: "Conteo físico",
       created_by: user.id,
     });

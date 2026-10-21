@@ -22,11 +22,21 @@ export async function registrarAjuste(input: unknown) {
   }
   const { user, profile, supabase } = await requireAdmin();
 
+  // Value the adjustment at the item's current cost so the kardex can price it.
+  const { data: ing } = await supabase
+    .from("ingredientes")
+    .select("cost_cop")
+    .eq("organization_id", profile.organization_id)
+    .eq("id", parsed.data.ingrediente_id)
+    .maybeSingle();
+  if (!ing) return { error: "Ingrediente no encontrado." };
+
   const { error } = await supabase.from("ingrediente_movements").insert({
     organization_id: profile.organization_id,
     ingrediente_id: parsed.data.ingrediente_id,
     type: "ajuste",
     delta: parsed.data.delta,
+    unit_cost_cop: Number(ing.cost_cop ?? 0),
     note: parsed.data.note?.trim() || "Ajuste manual",
     created_by: user.id,
   });

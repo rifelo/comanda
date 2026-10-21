@@ -65,6 +65,8 @@ export function RecibirScreen({ sedeName, actorName, pedidos }: { sedeName: stri
 function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   const router = useRouter();
   const [cant, setCant] = React.useState<Record<string, string>>({});
+  // What the invoice charged for each line (optional): it becomes the item's new cost.
+  const [costo, setCosto] = React.useState<Record<string, string>>({});
   const [fotoRecibido, setFotoRecibido] = React.useState<string | null>(null);
   const [fotoFactura, setFotoFactura] = React.useState<string | null>(null);
   const [total, setTotal] = React.useState("");
@@ -77,7 +79,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    const lineas = p.lineas.map((l) => ({ itemId: l.id, recibida: (cant[l.id] ?? "").trim() ? parseCount(cant[l.id]) : null }));
+    const lineas = p.lineas.map((l) => ({ itemId: l.id, recibida: (cant[l.id] ?? "").trim() ? parseCount(cant[l.id]) : null, costo: (costo[l.id] ?? "").trim() ? parseMonto(costo[l.id]) : null }));
     const invalid = errorRecepcion({ lineas, fotoRecibido, fotoFactura, facturaTotal: t, pago });
     if (invalid) return setError(invalid);
     if (pago === "efectivo_caja" && !window.confirm(`Se registra una salida de caja de ${posMoney(t ?? 0)} por el pedido n.º ${p.folio}. ¿Continuar?`)) return;
@@ -100,6 +102,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
 
       <section aria-label="Conteo">
         <div style={kicker}>1 · Cuenta lo que llegó</div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "8px 0 2px" }}>Si la factura trae el precio de cada producto, escríbelo en «$ costó»: así el costo del insumo queda al día.</div>
         {p.lineas.map((l) => (
           <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 60, padding: "8px 0", borderBottom: "1px dashed var(--rule)", flexWrap: "wrap" }}>
             <span style={{ flex: "1 1 220px", minWidth: 0 }}>
@@ -109,6 +112,9 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
             <button type="button" onClick={() => setCant((c) => ({ ...c, [l.id]: num(l.pedida) }))} style={{ ...chip, height: 44 }} title="Llegó completo">= {num(l.pedida)}</button>
             <input value={cant[l.id] ?? ""} onChange={(e) => setCant((c) => ({ ...c, [l.id]: e.target.value }))} inputMode="decimal" placeholder="llegó" aria-label={`Llegó de ${l.nombre}`} style={{ ...field, width: 110, textAlign: "center", fontWeight: 700 }} />
             <span style={{ fontSize: 12, color: "var(--muted)", width: 70 }}>{l.enQue}</span>
+            {l.enInventario ? (
+              <input value={costo[l.id] ?? ""} onChange={(e) => setCosto((c) => ({ ...c, [l.id]: e.target.value }))} inputMode="numeric" placeholder="$ costó" title="Lo que cobra la factura por esta línea: actualiza el costo del insumo" aria-label={`Costo en factura de ${l.nombre}`} style={{ ...field, width: 120, textAlign: "right", height: 44, fontSize: 14 }} />
+            ) : null}
           </div>
         ))}
       </section>

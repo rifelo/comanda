@@ -15,6 +15,8 @@ import {
   type MovFiltro,
   type MovTipo,
 } from "@/lib/movimientos";
+import Link from "next/link";
+import { DIAS_KARDEX, diaCorto, type Periodo } from "@/lib/kardex-periodo";
 import { SectionCrumb } from "../_components/shared";
 import { Chip } from "../_components/chip";
 import { registrarAjuste } from "./actions";
@@ -180,15 +182,24 @@ function AjusteDrawer({
 export function HistorialClient({
   movimientos,
   ingredientes,
+  ingredienteId,
+  periodo,
+  limit,
 }: {
   movimientos: MovimientoRow[];
   ingredientes: IngredienteOpt[];
+  /** Server-side filters already applied to `movimientos` (from the URL). */
+  ingredienteId: string | null;
+  periodo: Periodo | null;
+  limit: number;
 }) {
   const [filter, setFilter] = React.useState<MovFiltro>("todos");
   const [q, setQ] = React.useState("");
   const [drawer, setDrawer] = React.useState(false);
 
   const filtered = filterMovimientos(movimientos, { tipo: filter, query: q });
+  const acotado = Boolean(ingredienteId || periodo);
+  const itemActual = ingredienteId ? ingredientes.find((i) => i.id === ingredienteId) ?? null : null;
 
   const exportCsv = () => {
     const csv = movimientosToCsv(filtered);
@@ -219,6 +230,32 @@ export function HistorialClient({
       />
 
       <div style={{ padding: "20px 28px" }}>
+        {/* Server-side filters: a plain GET form (router.push with only a changed query no-ops on this Next). */}
+        <form method="get" className="flex items-center flex-wrap" style={{ gap: 8, marginBottom: 12, fontFamily: "var(--font-mono)" }}>
+          <select name="ingrediente" defaultValue={ingredienteId ?? ""} aria-label="Ítem" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "6px 8px", border: "1.5px solid var(--ink)", minHeight: 0, maxWidth: 280 }}>
+            <option value="">Todos los ítems</option>
+            {ingredientes.map((i) => (
+              <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
+            ))}
+          </select>
+          {DIAS_KARDEX.map((d) => (
+            <button key={d} type="submit" name="dias" value={d} className={`cmd-btn sm${periodo?.dias === d ? "" : " ghost"}`}>{d} días</button>
+          ))}
+          <input type="date" name="desde" defaultValue={periodo?.desde ?? ""} aria-label="Desde" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "5px 8px", border: "1.5px solid var(--ink)", minHeight: 0 }} />
+          <input type="date" name="hasta" defaultValue={periodo?.hasta ?? ""} aria-label="Hasta" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "5px 8px", border: "1.5px solid var(--ink)", minHeight: 0 }} />
+          <button type="submit" className="cmd-btn ghost sm">Ver</button>
+          {acotado ? (
+            <Link href="/historial" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>Quitar filtros</Link>
+          ) : null}
+          {itemActual ? (
+            <Link href={`/inventario/kardex/${itemActual.id}${periodo ? `?desde=${periodo.desde}&hasta=${periodo.hasta}` : ""}`} className="cmd-btn sm" style={{ textDecoration: "none" }}>
+              Kardex de {itemActual.name} →
+            </Link>
+          ) : null}
+          {periodo ? (
+            <span className="text-muted" style={{ fontSize: 11 }}>{diaCorto(periodo.desde, true)} → {diaCorto(periodo.hasta, true)}</span>
+          ) : null}
+        </form>
         <div className="flex items-center flex-wrap" style={{ gap: 10, marginBottom: 16 }}>
           <div className="cmd-paper-lt" style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--ink)", minWidth: 240 }}>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>⌕</span>
@@ -265,7 +302,15 @@ export function HistorialClient({
                 style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "10px 14px", alignItems: "flex-start", borderBottom: "1px dashed var(--rule-soft)", background: i % 2 ? "var(--paper-lt)" : "var(--paper)" }}
               >
                 <div className="cmd-num" style={{ fontSize: 11, color: "var(--ink-2)" }}>{fmtFecha(m.created_at)}</div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{m.ingrediente_name}</div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  {m.ingrediente_id ? (
+                    <Link href={`/inventario/kardex/${m.ingrediente_id}`} title="Ver kardex" style={{ color: "inherit", textDecoration: "none", borderBottom: "1px dotted var(--rule)" }}>
+                      {m.ingrediente_name}
+                    </Link>
+                  ) : (
+                    m.ingrediente_name
+                  )}
+                </div>
                 <div><TipoBadge tipo={m.type} /></div>
                 <div className="cmd-num" style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: m.delta > 0 ? "var(--green)" : "var(--red)" }}>
                   {m.delta > 0 ? "+" : ""}{m.delta}
@@ -282,7 +327,7 @@ export function HistorialClient({
           )}
 
           <div className="bg-paper text-muted" style={{ padding: "10px 14px", borderTop: "1px dashed var(--rule)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-            Mostrando {filtered.length} de {movimientos.length} movimientos
+            Mostrando {filtered.length} de {movimientos.length} movimientos{movimientos.length >= limit ? ` · solo los ${limit} más recientes: acota el periodo o el ítem` : ""}
           </div>
         </div>
       </div>
