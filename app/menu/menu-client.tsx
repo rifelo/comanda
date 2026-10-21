@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fraseDePedido, money, perfilCon, porPrecio, precioPartes, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { fraseDePedido, money, perfilCon, porPrecio, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
 
 interface Props {
   sections: MenuSection[];
@@ -195,14 +195,11 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
   );
 }
 
-/** «7» big and «.000» small; read out whole ($7.000). */
+/** «8.5K», in the drinks' name face; read out whole ($8.500). */
 function Precio({ n, className }: { n: number; className: string }) {
-  const { mil, resto } = precioPartes(n);
   return (
     <span className={`${className} pym-precio`} aria-label={money(n)}>
-      <span aria-hidden="true" className="pym-precio__chico">$</span>
-      <span aria-hidden="true">{mil}</span>
-      {resto && <span aria-hidden="true" className="pym-precio__chico">{resto}</span>}
+      <span aria-hidden="true">{precioK(n)}</span>
     </span>
   );
 }
