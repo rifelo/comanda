@@ -2003,7 +2003,9 @@ function RecetaSheet({ productId }: { productId: string }) {
         </div>
         <div style={{ borderTop: `1.5px solid ${C.ink}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 11, color: C.muted }}>Mantén presionado un producto para ver su receta.</span>
-          <button className="cmd-btn" onClick={() => { close(); tapItem(p.id); }} disabled={p.stock === "sin"} style={{ marginLeft: "auto", height: 48, padding: "0 18px", fontSize: 13 }}>Agregar al pedido</button>
+          {/* New tab: the register keeps its order; /recetas asks for the owner's login. */}
+          <a href={`/recetas?producto=${p.id}`} target="_blank" rel="noopener" className="cmd-btn ghost" style={{ marginLeft: "auto", height: 48, padding: "0 16px", fontSize: 13, display: "inline-flex", alignItems: "center", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>Editar receta ↗</a>
+          <button className="cmd-btn" onClick={() => { close(); tapItem(p.id); }} disabled={p.stock === "sin"} style={{ height: 48, padding: "0 18px", fontSize: 13 }}>Agregar al pedido</button>
         </div>
       </div>
       {zoom && p.image && (

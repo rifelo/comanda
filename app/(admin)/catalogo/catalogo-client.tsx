@@ -8,6 +8,7 @@
  * pick) so chip taps don't round-trip to Supabase.
  */
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import type {
   CatalogoCategoryNode,
   CatalogoRow,
@@ -42,6 +43,7 @@ function RowMenu({
   onClose: () => void;
   onEdit: () => void;
 }) {
+  const router = useRouter();
   const [mode, setMode] = React.useState<"menu" | "confirm">("menu");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -129,6 +131,14 @@ function RowMenu({
                 }}
               >
                 ✏ Editar
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  onClose();
+                  router.push(`/recetas?producto=${product.id}`);
+                }}
+              >
+                ☰ Editar receta
               </MenuItem>
               <div style={{ height: 1, background: "var(--rule)" }} />
               <MenuItem

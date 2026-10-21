@@ -476,15 +476,17 @@ type DraftLine = { ingrediente_id: string; qty: string };
 function NuevaRecetaDrawer({
   productos,
   ingredientes,
+  initialProducto,
   onClose,
   onCreated,
 }: {
   productos: { id: string; name: string; sku: string }[];
   ingredientes: IngredienteOption[];
+  initialProducto?: string;
   onClose: () => void;
   onCreated: (productoId: string) => void;
 }) {
-  const [productoId, setProductoId] = React.useState("");
+  const [productoId, setProductoId] = React.useState(initialProducto ?? "");
   const [lines, setLines] = React.useState<DraftLine[]>([{ ingrediente_id: "", qty: "" }]);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
@@ -709,13 +711,21 @@ function NuevaRecetaDrawer({
 }
 
 // ── shell ──────────────────────────────────────────────────────────────────
-export function RecetasClient({ view }: { view: RecetasView }) {
+export function RecetasClient({ view, producto = null }: { view: RecetasView; producto?: string | null }) {
   const router = useRouter();
   const { recetas, productosSinReceta, ingredientes } = view;
+  const sinReceta = producto !== null && productosSinReceta.some((p) => p.id === producto);
   const [selected, setSelected] = React.useState<string | null>(
-    recetas[0]?.producto_id ?? null,
+    producto !== null && recetas.some((r) => r.producto_id === producto) ? producto : (recetas[0]?.producto_id ?? null),
   );
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [drawerOpen, setDrawerOpen] = React.useState(sinReceta);
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Arriving with ?producto=, bring that recipe into view in the list.
+  React.useEffect(() => {
+    if (producto === null) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-producto="${CSS.escape(producto)}"]`)?.scrollIntoView({ block: "center" });
+  }, [producto]);
 
   // Derive the effective selection so it stays valid as the recipe list
   // changes (create / empty-out) — no effect, no setState-in-effect.
@@ -732,6 +742,7 @@ export function RecetasClient({ view }: { view: RecetasView }) {
         <NuevaRecetaDrawer
           productos={productosSinReceta}
           ingredientes={ingredientes}
+          initialProducto={sinReceta ? (producto ?? undefined) : undefined}
           onClose={() => setDrawerOpen(false)}
           onCreated={(productoId) => {
             setSelected(productoId);
@@ -756,7 +767,7 @@ export function RecetasClient({ view }: { view: RecetasView }) {
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", minHeight: "calc(100vh - 120px)" }}>
-        <div className="cmd-paper-lt" style={{ borderRight: "1.5px solid var(--ink)", overflowY: "auto" }}>
+        <div ref={listRef} className="cmd-paper-lt" style={{ borderRight: "1.5px solid var(--ink)", overflowY: "auto" }}>
           <div style={{ padding: "10px 12px 6px" }}>
             <CmdMiniLabel>Recetas ({recetas.length})</CmdMiniLabel>
           </div>
@@ -773,6 +784,7 @@ export function RecetasClient({ view }: { view: RecetasView }) {
                 <button
                   key={r.producto_id}
                   type="button"
+                  data-producto={r.producto_id}
                   onClick={() => setSelected(r.producto_id)}
                   style={{
                     display: "block",
