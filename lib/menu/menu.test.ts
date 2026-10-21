@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import contenido from "./menu.json";
-import { buildMenu, fraseDePedido, money, perfilCon, precioPartes, type CatalogProduct, type MenuContent } from "./menu";
+import { buildMenu, fraseDePedido, money, perfilCon, precioK, type CatalogProduct, type MenuContent } from "./menu";
 
 const content = contenido as MenuContent;
 const prod = (over: Partial<CatalogProduct> & { sku: string; name: string }): CatalogProduct => ({ price: 7000, stock: "ok", description: null, category: "Frío", options: [], ...over });
@@ -63,12 +63,13 @@ describe("money / fraseDePedido", () => {
   });
 });
 
-describe("precioPartes", () => {
-  it("thousands big, the rest small", () => {
-    expect(precioPartes(7000)).toEqual({ mil: "7", resto: ".000" });
-    expect(precioPartes(8500)).toEqual({ mil: "8", resto: ".500" });
-    expect(precioPartes(10000)).toEqual({ mil: "10", resto: ".000" });
-    expect(precioPartes(1250000)).toEqual({ mil: "1.250", resto: ".000" });
-    expect(precioPartes(500)).toEqual({ mil: "500", resto: "" });
+describe("precioK", () => {
+  it("thousands with a K, decimals only when there are", () => {
+    expect(precioK(8500)).toBe("8.5K");
+    expect(precioK(7000)).toBe("7K");
+    expect(precioK(3000)).toBe("3K");
+    expect(precioK(10000)).toBe("10K");
+    expect(precioK(1250)).toBe("1.25K");
+    expect(precioK(500)).toBe("0.5K");
   });
 });
