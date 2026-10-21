@@ -51,6 +51,17 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
   const [option, setOption] = React.useState(0);
   const [sharing, setSharing] = React.useState(false);
   const opener = React.useRef<HTMLElement | null>(null);
+  /** A category tapped while a mood was filtering: jump there once the full menu is back. */
+  const [irA, setIrA] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!irA || mood) return;
+    // After the full menu has painted, or the jump lands short.
+    const f = requestAnimationFrame(() => {
+      document.getElementById(`cat-${irA}`)?.scrollIntoView({ block: "start" });
+      setIrA(null);
+    });
+    return () => cancelAnimationFrame(f);
+  }, [irA, mood]);
 
   const all = React.useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const bySku = React.useMemo(() => new Map(all.map((i) => [i.sku, i])), [all]);
@@ -128,13 +139,26 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
         </div>
       </section>
 
-      {!mood && (
-        <nav aria-label="Categorías" className="pym-nav">
-          <div className="pym-nav__row">
-            {sections.map((s) => <a key={s.id} href={`#cat-${s.id}`} className="pym-pill">{s.label}</a>)}
-          </div>
-        </nav>
-      )}
+      {/* Always there, also while a mood filters: a category then clears the mood and jumps to it. */}
+      <nav aria-label="Categorías" className="pym-nav">
+        <div className="pym-nav__row">
+          {sections.map((s) => (
+            <a
+              key={s.id}
+              href={`#cat-${s.id}`}
+              className="pym-pill"
+              onClick={(e) => {
+                if (!mood) return;
+                e.preventDefault();
+                setMood(null);
+                setIrA(s.id);
+              }}
+            >
+              {s.label}
+            </a>
+          ))}
+        </div>
+      </nav>
 
       <main className="pym-main">
         {shown.map((sec) => (
