@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCombosView } from "@/lib/db/combos";
 import { getModificadores } from "@/lib/db/modificadores";
 import type { ProductoCategoria } from "@/lib/types";
@@ -13,6 +14,7 @@ import {
   type PosModGroup,
   type PosRecipeLine,
   prepSteps,
+  type PosBarista,
 } from "./types";
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
 
@@ -49,6 +51,7 @@ export async function getPosCatalog({
     combosView,
     modGroupsList,
     { data: orgRow },
+    equipo,
   ] = await Promise.all([
     supabase
       .from("productos")
@@ -84,6 +87,7 @@ export async function getPosCatalog({
       .select("instagram, sticker_url, cup_url, label_art_url")
       .eq("id", organizationId)
       .maybeSingle(),
+    getEquipo(organizationId),
   ]);
 
   // ── categories: resolve each product's top-level tab + sub label ──────────
@@ -253,5 +257,35 @@ export async function getPosCatalog({
     sticker: ((orgRow as { sticker_url?: string | null } | null)?.sticker_url ?? "").trim() || null,
     cupArt: ((orgRow as { cup_url?: string | null } | null)?.cup_url ?? "").trim() || null,
     handArt: ((orgRow as { label_art_url?: string | null } | null)?.label_art_url ?? "").trim() || null,
+    equipo,
   };
+}
+
+/**
+ * Who can be on the bar: staff of the org with an active sede membership.
+ * Read with the service role — a barista's RLS only shows their own
+ * membership, and the register needs the whole team (names only).
+ */
+async function getEquipo(organizationId: string): Promise<PosBarista[]> {
+  const admin = createSupabaseAdminClient();
+  const { data: members, error } = await admin
+    .from("organization_members")
+    .select("user_id, profiles(full_name)")
+    .eq("organization_id", organizationId)
+    .eq("role", "staff");
+  if (error) {
+    console.error("[getEquipo]", error);
+    return [];
+  }
+  const ids = (members ?? []).map((m) => m.user_id as string);
+  if (!ids.length) return [];
+  const { data: activos } = await admin.from("restaurant_members").select("user_id").in("user_id", ids).eq("active", true);
+  const enSede = new Set((activos ?? []).map((r) => r.user_id as string));
+  return (members ?? [])
+    .filter((m) => enSede.has(m.user_id as string))
+    .map((m) => {
+      const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { full_name: string | null } | null;
+      return { id: m.user_id as string, name: (p?.full_name ?? "").trim() || "Sin nombre" };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }

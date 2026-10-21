@@ -20,6 +20,7 @@ import * as React from "react";
 import {
   FAV_CAT,
   type PosCatalog,
+  type PosBarista,
   type PosMenuItem,
   type PosSuggest,
   type PosAct,
@@ -73,6 +74,7 @@ export const EMPTY_CATALOG: PosCatalog = {
   sticker: null,
   cupArt: null,
   handArt: null,
+  equipo: [],
 };
 export const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
 export const StationCtx = React.createContext<string>("Caja 01");
@@ -119,6 +121,10 @@ export interface PosState {
   // ── Square-style screen state ──
   /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
   view: "sale" | "tender" | "done" | "ordenes" | "etiquetas" | "puntos";
+  /** Who is on the bar: every new order is credited to them (ordenes.barista_id). Kept per register. */
+  barista: PosBarista | null;
+  /** The «¿Quién prepara?» picker is open. */
+  baristaPicker: boolean;
   /** Item sheet (modifiers / qty) — add a new product or edit a ticket line. */
   sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | { mode: "receta"; productId: string } | null;
   /** Free-text search over the catalog (name / sku / description). */
@@ -227,6 +233,8 @@ export const POS_INITIAL: PosState = {
   orderNo: "Nuevo",
   catalog: EMPTY_CATALOG,
   view: "sale",
+  barista: null,
+  baristaPicker: false,
   sheet: null,
   search: "",
   aiOpen: false,
@@ -747,6 +755,7 @@ export interface OutboxItem {
     customerName?: string;
     customerNames?: string[];
     note?: string;
+    baristaId?: string;
   };
   payment?: { method: PayMethodId; tendered: number | null };
   /** What the labels and the receipt need, frozen at confirm time. */
@@ -1139,6 +1148,7 @@ export async function completeSale() {
     customerName: s.customerName.trim() || undefined,
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
+    baristaId: s.barista?.id,
   };
   const payment = { method: s.payMethod, tendered };
 
@@ -1238,6 +1248,7 @@ export async function savePending() {
         customerName: s.customerName.trim() || undefined,
         customerNames: s.people.length ? s.people : undefined,
         note: s.note.trim() || undefined,
+        baristaId: s.barista?.id,
       },
       snapshot: { order: s.order, people: s.people, customerName: s.customerName, total, change: 0 },
     };
@@ -1408,6 +1419,30 @@ export function openEtiquetas() {
 export function closeEtiquetas() {
   posStore.set({ view: "sale" });
 }
+// ── Barista on the bar ───────────────────────────────────────────
+const BARISTA_KEY = "pos:barista";
+/** Restore this register's barista, if they're still on the team. */
+export function hydrateBarista() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(BARISTA_KEY) ?? "null") as PosBarista | null;
+    const b = saved && posStore.get().catalog.equipo.find((m) => m.id === saved.id);
+    if (b) posStore.set({ barista: b });
+  } catch { /* private mode */ }
+}
+export function setBarista(b: PosBarista | null) {
+  posStore.set({ barista: b, baristaPicker: false });
+  try {
+    if (b) window.localStorage.setItem(BARISTA_KEY, JSON.stringify(b));
+    else window.localStorage.removeItem(BARISTA_KEY);
+  } catch { /* private mode */ }
+}
+export function openBaristaPicker() {
+  posStore.set({ baristaPicker: true });
+}
+export function closeBaristaPicker() {
+  posStore.set({ baristaPicker: false });
+}
+
 export function openPuntos() {
   posStore.set({ view: "puntos", sheet: null, ticketOpen: false });
 }

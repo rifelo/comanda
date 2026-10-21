@@ -102,6 +102,14 @@ export interface PosCatalog {
   cupArt: string | null;
   /** Brand line art at the foot of the name label (organizations.label_art_url), null = none. */
   handArt: string | null;
+  /** The team who can be on the bar (for «Barista: …»): staff with an active sede membership. */
+  equipo: PosBarista[];
+}
+
+/** A barista the register can credit a sale to (ordenes.barista_id). */
+export interface PosBarista {
+  id: string;
+  name: string;
 }
 
 /** Catalog narrowed by the assistant to what the customer asked for. */
