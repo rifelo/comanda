@@ -154,3 +154,13 @@ html:has(.pym) { scroll-behavior: smooth; }
 /* Prices: «$8.5K» in the same face as the drink names. */
 .pym-precio { display: inline-flex; align-items: flex-start; font-family: var(--f-name); white-space: nowrap; }
 .pym-precio__signo { font-size: .6em; line-height: 1; margin: .1em .08em 0 0; }
+
+/* Floating hand at the left edge, holding the share button on its tray. It
+   sits above the bottom category bar and follows the page's own left edge on
+   wide screens; the sheets' overlay (z 20) covers it when one is open. */
+.pym-mano { position: fixed; z-index: 6; left: max(-38px, calc(50% - 318px)); bottom: calc(82px + env(safe-area-inset-bottom)); width: 84px; height: 130px; pointer-events: none; animation: pym-mano-in .5s ease-out both; }
+.pym-mano__art { position: absolute; left: 0; bottom: 0; width: 76px; height: 130px; object-fit: contain; object-position: left bottom; filter: drop-shadow(0 6px 10px rgba(31, 30, 26, .25)); }
+.pym-mano__btn { position: absolute; left: 32px; top: 0; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--cafe); background: var(--amarillo); color: var(--cafe); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; box-shadow: 0 6px 14px -4px rgba(31, 30, 26, .5); -webkit-tap-highlight-color: transparent; }
+.pym-mano__btn:active { transform: translateY(2px); }
+@keyframes pym-mano-in { from { transform: translateX(-110px); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pym-mano { animation: none; } }

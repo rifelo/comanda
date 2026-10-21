@@ -198,6 +198,12 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
         <Arte arte={arte} name="mano-taza-amarilla.svg" className="pym-footer__art" />
       </footer>
 
+      {/* A hand peeks in from the left with the share button on its tray: one tap, from anywhere on the menu. */}
+      <div className="pym-mano" aria-hidden={false}>
+        <Arte arte={arte} name="mano-platillo.svg" className="pym-mano__art" />
+        <button type="button" className="pym-mano__btn" aria-label="Compartir el menú" onClick={(e) => share(e.currentTarget)}><IconoCompartir size={22} /></button>
+      </div>
+
       {sharing && <Compartir c={compartir} onClose={close} />}
 
       {sel && (
