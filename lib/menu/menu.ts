@@ -80,10 +80,10 @@ export function money(n: number): string {
   return "$" + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-/** A price in thousands for display: $8.500 → "8.5K", $7.000 → "7K", $1.250 → "1.25K". */
+/** A price in thousands for display: $8.500 → "$8.5K", $7.000 → "$7K", $1.250 → "$1.25K". */
 export function precioK(n: number): string {
   const k = Math.max(0, Math.round(n)) / 1000;
-  return String(Math.round(k * 1000) / 1000) + "K";
+  return "$" + String(Math.round(k * 1000) / 1000) + "K";
 }
 
 /** The first sentence, without its final period: a catalog description as a one-liner. */

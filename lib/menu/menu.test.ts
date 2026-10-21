@@ -65,11 +65,11 @@ describe("money / fraseDePedido", () => {
 
 describe("precioK", () => {
   it("thousands with a K, decimals only when there are", () => {
-    expect(precioK(8500)).toBe("8.5K");
-    expect(precioK(7000)).toBe("7K");
-    expect(precioK(3000)).toBe("3K");
-    expect(precioK(10000)).toBe("10K");
-    expect(precioK(1250)).toBe("1.25K");
-    expect(precioK(500)).toBe("0.5K");
+    expect(precioK(8500)).toBe("$8.5K");
+    expect(precioK(7000)).toBe("$7K");
+    expect(precioK(3000)).toBe("$3K");
+    expect(precioK(10000)).toBe("$10K");
+    expect(precioK(1250)).toBe("$1.25K");
+    expect(precioK(500)).toBe("$0.5K");
   });
 });

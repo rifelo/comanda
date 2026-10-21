@@ -151,5 +151,5 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-qr__actions { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; }
 .pym-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* Prices: «8.5K» in the same face as the drink names. */
+/* Prices: «$8.5K» in the same face as the drink names. */
 .pym-precio { font-family: var(--f-name); white-space: nowrap; }
