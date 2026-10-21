@@ -108,6 +108,8 @@ html:has(.pym) { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { .pym-sheet { animation: none; } .pym, html:has(.pym) { scroll-behavior: auto; } }
 .pym-sheet__head { position: relative; overflow: hidden; flex-shrink: 0; background: var(--amarillo); padding: 20px 26px 26px; border-radius: 21px 21px 0 0; display: flex; flex-direction: column; gap: 12px; min-height: 170px; }
 .pym-sheet__head > :not(.pym-art) { position: relative; z-index: 1; }
+/* The handle hints the sheet can be swiped down to close. */
+.pym-sheet__head > .pym-grab { position: absolute; top: 8px; left: 50%; width: 44px; height: 5px; margin-left: -22px; border-radius: 3px; background: var(--cafe); opacity: .35; z-index: 2; }
 .pym-sheet__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .pym-badge { display: inline-flex; align-items: center; padding: 4px 10px; border: 2px solid var(--cafe); border-radius: 999px; font-family: var(--f-display); font-size: 11px; line-height: 12px; text-transform: uppercase; }
 .pym-close { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 2px solid var(--cafe); border-radius: 999px; background: var(--crema); cursor: pointer; padding: 0; }
