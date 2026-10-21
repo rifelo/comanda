@@ -45,7 +45,7 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym .pym-promo__row:focus-visible { outline-color: var(--amarillo); }
 .pym-promo__text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .pym-promo__name { font-family: var(--f-name); font-size: 22px; line-height: 26px; }
-.pym-promo__tagline { font-family: var(--f-display); font-style: italic; font-size: 15px; line-height: 17px; color: var(--amarillo); }
+.pym-promo__tagline { font-family: var(--f-name); font-size: 15px; line-height: 21px; color: var(--amarillo); }
 .pym-promo__side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-top: 4px; }
 .pym-promo__price { font-size: 21px; line-height: 24px; }
 
