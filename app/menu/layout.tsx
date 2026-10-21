@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 // Customers may zoom: the app shell locks the scale, the menu must not.
-export const viewport: Viewport = { themeColor: "#f1a900", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#f1a900", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default function MenuLayout({ children }: { children: React.ReactNode }) {
   return <div className={`pym ${display.variable} ${body.variable}`}>{children}</div>;

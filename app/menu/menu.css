@@ -65,13 +65,16 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-pill[aria-pressed="true"] { background: var(--cafe); color: var(--crema) !important; }
 
 /* 4 · category nav */
-.pym-nav { position: sticky; top: 0; z-index: 5; background: var(--crema); padding: 14px 0 12px; border-bottom: 2px solid var(--cafe); }
+/* Fixed at the bottom, within thumb reach; clears the iPhone home bar. The
+   page leaves room for it so the footer is never hidden behind it. */
+.pym-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-width: 560px; margin: 0 auto; background: var(--crema); padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); border-top: 2px solid var(--cafe); box-shadow: 0 -8px 20px -14px rgba(31, 30, 26, .45); }
+.pym-page:has(.pym-nav) { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 .pym-nav__row { display: flex; gap: 8px; overflow-x: auto; padding: 0 26px; scrollbar-width: none; }
 .pym-nav__row::-webkit-scrollbar { display: none; }
 
 /* 5 · sections */
 .pym-main { padding: 10px 26px 48px; display: flex; flex-direction: column; gap: 40px; }
-.pym-section { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 80px; }
+.pym-section { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 16px; }
 .pym-band { position: relative; overflow: hidden; background: var(--amarillo); border-radius: 21px; padding: 22px 22px 24px; min-height: 128px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }
 /* Nority is wide: the title takes the full band (the art sits behind it) and
    scales down on narrow phones so a category name never breaks mid-word. */
