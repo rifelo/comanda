@@ -19,7 +19,7 @@ const { rows: movs } = await db.query("select type, delta::float, balance_after:
 const { rows: [prev] } = await db.query("select balance_after::float s from ingrediente_movements where ingrediente_id=$1 and created_at < ($2||'T00:00:00-05:00')::timestamptz order by created_at desc limit 1", [ing.id, desde]);
 await db.end();
 const bag = []; const ok = (c, k, t) => (c ? console.log("✓", k) : bag.push({ k, t: String(t).slice(0, 300) }));
-const fmt = (n) => { const r = Math.round(n * 1000) / 1000; const [i, d] = Math.abs(r).toFixed(3).replace(/\.?0+$/, "").split("."); return `${r < 0 ? "−" : ""}${i.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}${d ? "," + d : ""}`; };
+const fmt = (n) => { const r = Math.round(n * 1000) / 1000; const [i, d0 = ""] = Math.abs(r).toFixed(3).split("."); const d = d0.replace(/0+$/, ""); return `${r < 0 ? "−" : ""}${i.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}${d ? "," + d : ""}`; };
 const b = await chromium.launch();
 try {
   const ctx = await b.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
