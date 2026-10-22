@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fraseDePedido, money, perfilCon, porPrecio, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { fraseDePedido, gruposCafe, money, perfilCon, porPrecio, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
 
 interface Props {
   sections: MenuSection[];
@@ -168,8 +168,10 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
               <p className="pym-band__sub">{sec.sub}</p>
               <Arte arte={arte} name={sec.art} className="pym-band__art" />
             </div>
-            <div>
-              {sec.items.map((it) => (
+            {gruposCafe(sec.items).map((g) => (
+              <div key={g.id} role={g.label ? "group" : undefined} aria-label={g.label ? `${sec.label} · ${g.label}` : undefined}>
+              {g.label && <h3 className="pym-grupo">{g.label} <span className="pym-grupo__n">{g.items.length}</span></h3>}
+              {g.items.map((it) => (
                 <button key={it.sku} type="button" className="pym-row" onClick={(e) => show(it.sku, e.currentTarget)}>
                   <span className="pym-row__main">
                     <span className="pym-row__head">
@@ -185,7 +187,8 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
                   </span>
                 </button>
               ))}
-            </div>
+              </div>
+            ))}
           </section>
         ))}
       </main>

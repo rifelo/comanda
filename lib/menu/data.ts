@@ -1,7 +1,7 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import contenido from "./menu.json";
-import { buildMenu, type CatalogProduct, type MenuContent, type MenuSection } from "./menu";
+import { buildMenu, esCafe, type CatalogProduct, type MenuContent, type MenuSection } from "./menu";
 
 export const menuContent = contenido as MenuContent;
 
@@ -14,11 +14,19 @@ export const menuContent = contenido as MenuContent;
 export async function loadMenu(): Promise<MenuSection[]> {
   const db = createSupabaseAdminClient();
   const orgId = menuContent.organizationId;
-  const [{ data: productos }, { data: links }, { data: grupos }] = await Promise.all([
+  const [{ data: productos }, { data: links }, { data: grupos }, { data: receta }] = await Promise.all([
     db.from("productos").select("id, sku, name, price_cop, stock_status, description, categoria:producto_categorias(label)").eq("organization_id", orgId),
     db.from("producto_modifier_groups").select("producto_id, group_id").eq("organization_id", orgId),
     db.from("modifier_groups").select("id, type, required, modifier_options(name, price_delta_cop, available, position)").eq("organization_id", orgId),
+    db.from("receta_items").select("producto_id, ingrediente:ingredientes(name)").eq("organization_id", orgId),
   ]);
+  // «Con café» comes from the recipe, so a new drink lands in the right group by itself.
+  const conCafe = new Set<string>();
+  for (const r of receta ?? []) {
+    const ing = r.ingrediente as unknown as { name: string } | { name: string }[] | null;
+    const name = (Array.isArray(ing) ? ing[0]?.name : ing?.name) ?? "";
+    if (esCafe(name)) conCafe.add(r.producto_id as string);
+  }
   // Only a required single choice changes what the customer asks for ("en agua / en leche").
   const opciones = new Map<string, { name: string; delta: number }[]>();
   for (const g of grupos ?? []) {
@@ -43,6 +51,7 @@ export async function loadMenu(): Promise<MenuSection[]> {
       description: (p.description as string | null) ?? null,
       category: (Array.isArray(cat) ? cat[0]?.label : cat?.label) ?? null,
       options: gid ? opciones.get(gid)! : [],
+      cafe: conCafe.has(p.id as string),
     };
   });
   return buildMenu(menuContent, catalog);
