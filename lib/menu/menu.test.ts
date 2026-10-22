@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import contenido from "./menu.json";
-import { buildMenu, fraseDePedido, money, perfilCon, precioK, type CatalogProduct, type MenuContent } from "./menu";
+import { buildMenu, esCafe, fraseDePedido, gruposCafe, money, perfilCon, precioK, type CatalogProduct, type MenuContent } from "./menu";
 
 const content = contenido as MenuContent;
-const prod = (over: Partial<CatalogProduct> & { sku: string; name: string }): CatalogProduct => ({ price: 7000, stock: "ok", description: null, category: "Frío", options: [], ...over });
+const prod = (over: Partial<CatalogProduct> & { sku: string; name: string }): CatalogProduct => ({ price: 7000, stock: "ok", description: null, category: "Frío", options: [], cafe: false, ...over });
 
 describe("buildMenu", () => {
   const menu = buildMenu(content, [
@@ -71,5 +71,37 @@ describe("precioK", () => {
     expect(precioK(10000)).toBe("10K");
     expect(precioK(1250)).toBe("1.25K");
     expect(precioK(500)).toBe("0.5K");
+  });
+});
+
+describe("con café / sin café", () => {
+  it("recognises coffee ingredients by name", () => {
+    expect(esCafe("Cafe Okana")).toBe(true);
+    expect(esCafe("Café instantáneo Nescafé")).toBe(true);
+    expect(esCafe("Leche entera")).toBe(false);
+    expect(esCafe("Cafetera")).toBe(false);
+  });
+  const menu = buildMenu(
+    { ...content, items: { ...content.items, "BC-011": { cafe: true } } },
+    [
+      prod({ sku: "BF-005", name: "Latte frío", price: 9000, cafe: true }),
+      prod({ sku: "BC-011", name: "Milo frío", price: 8000 }),
+      prod({ sku: "BF-014", name: "Malteada de chai", price: 7000 }),
+      prod({ sku: "JU-001", name: "Jugo de mora", category: "Jugos" }),
+    ],
+  );
+  const frio = menu.find((s) => s.id === "frio")!;
+  it("takes the flag from the catalog, overridable in the JSON", () => {
+    expect(frio.items.map((i) => [i.sku, i.cafe])).toEqual([["BF-014", false], ["BC-011", true], ["BF-005", true]]);
+  });
+  it("splits a mixed section «Con café» first, keeping the price order", () => {
+    expect(gruposCafe(frio.items).map((g) => [g.label, g.items.map((i) => i.sku)])).toEqual([
+      ["Con café", ["BC-011", "BF-005"]],
+      ["Sin café", ["BF-014"]],
+    ]);
+  });
+  it("draws no heading when a section is all one kind", () => {
+    const jugos = menu.find((s) => s.id === "jugos")!;
+    expect(gruposCafe(jugos.items)).toEqual([{ id: "sin", label: null, items: jugos.items }]);
   });
 });

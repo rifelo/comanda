@@ -19,6 +19,8 @@ export interface MenuContentItem {
   p?: number[];
   tags?: string[];
   nuevo?: boolean;
+  /** Overrides what the recipe says about coffee (true = «Con café»). */
+  cafe?: boolean;
 }
 export interface MenuContent {
   organizationId: string;
@@ -50,6 +52,8 @@ export interface CatalogProduct {
   category: string | null;
   /** Options of its required single-choice modifier group, if it has one. */
   options: { name: string; delta: number }[];
+  /** Its recipe has a coffee ingredient (see esCafe). */
+  cafe: boolean;
 }
 
 export interface MenuItem {
@@ -65,6 +69,7 @@ export interface MenuItem {
   nuevo: boolean;
   agotado: boolean;
   options: { name: string; delta: number }[];
+  cafe: boolean;
 }
 export interface MenuSection {
   id: string;
@@ -121,6 +126,7 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
       nuevo: extra.nuevo === true,
       agotado: p.stock === "sin",
       options: p.options,
+      cafe: extra.cafe ?? p.cafe,
     });
   }
   // Cheapest first, so each section reads as a ladder of prices; same price, by name.
@@ -129,6 +135,29 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
   // A pairing that is not on the menu is no pairing.
   const skus = new Set(visibles.flatMap((s) => s.items.map((i) => i.sku)));
   return visibles.map((s) => ({ ...s, pair: s.pair && skus.has(s.pair) ? s.pair : null }));
+}
+
+/** Is this inventory item coffee? «Cafe Okana», «Café instantáneo Nescafé», an espresso or a cold brew. */
+export function esCafe(ingrediente: string): boolean {
+  return /(?<![\p{L}])caf[eé](?![\p{L}])|espresso|cold brew/iu.test(ingrediente);
+}
+
+export interface GrupoCafe {
+  id: "con" | "sin";
+  /** «Con café» / «Sin café»; null when the whole list is one kind, so no heading is drawn. */
+  label: string | null;
+  items: MenuItem[];
+}
+
+/** A list split into «Con café» then «Sin café», keeping its order; one unlabelled group when it is all one kind. */
+export function gruposCafe(items: ReadonlyArray<MenuItem>): GrupoCafe[] {
+  const con = items.filter((i) => i.cafe);
+  const sin = items.filter((i) => !i.cafe);
+  if (!con.length || !sin.length) return [{ id: con.length ? "con" : "sin", label: null, items: [...items] }];
+  return [
+    { id: "con", label: "Con café", items: con },
+    { id: "sin", label: "Sin café", items: sin },
+  ];
 }
 
 /** A product's profile with the chosen option applied, each value kept within 0–5. */
