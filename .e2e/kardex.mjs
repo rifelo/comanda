@@ -15,7 +15,7 @@ await db.query("set default_transaction_read_only = on");
 const { rows: [ing] } = await db.query("select id, name, unit, stock_current::float stock from ingredientes where organization_id=$1 and name like 'Leche entera%' and archived=false", [ORG]);
 const today = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
 const desde = new Date(Date.parse(today + "T00:00:00Z") - 6 * 864e5).toISOString().slice(0, 10);
-const { rows: movs } = await db.query("select delta::float, balance_after::float, note from ingrediente_movements where ingrediente_id=$1 and created_at >= ($2||'T00:00:00-05:00')::timestamptz order by created_at, id", [ing.id, desde]);
+const { rows: movs } = await db.query("select type, delta::float, balance_after::float, unit_cost_cop::float cost, note from ingrediente_movements where ingrediente_id=$1 and created_at >= ($2||'T00:00:00-05:00')::timestamptz order by created_at, id", [ing.id, desde]);
 const { rows: [prev] } = await db.query("select balance_after::float s from ingrediente_movements where ingrediente_id=$1 and created_at < ($2||'T00:00:00-05:00')::timestamptz order by created_at desc limit 1", [ing.id, desde]);
 await db.end();
 const bag = []; const ok = (c, k, t) => (c ? console.log("✓", k) : bag.push({ k, t: String(t).slice(0, 300) }));
@@ -35,6 +35,14 @@ try {
   ok(body.includes(`${visibles.length} de ${movs.length} movimientos`), `${visibles.length} de ${movs.length} movimientos en 7 días`, body.match(/\d+ de \d+ movimientos[^\n]*/)?.[0]);
   if (movs.length) ok(body.includes(fmt(movs[movs.length - 1].balance_after)), "saldo final = balance_after del último movimiento", fmt(movs[movs.length - 1].balance_after));
   ok(body.includes(fmt(ing.stock)) || Math.abs((movs.at(-1)?.balance_after ?? 0) - ing.stock) < 0.001, "stock de hoy visible", fmt(ing.stock));
+  // «Costo de venta» chart: total = Σ −round(delta × cost) of the sale lines.
+  const costoVenta = movs.filter((m) => m.type === "venta" && m.cost != null).reduce((s, m) => s - Math.round(m.delta * m.cost), 0);
+  const copTxt = `${costoVenta < 0 ? "−" : ""}$${Math.abs(costoVenta).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+  const chart = p.getByRole("region", { name: "Costo de venta por día" });
+  ok((await chart.innerText()).includes(copTxt), "gráfico: costo de venta del periodo cuadra con la base", copTxt);
+  ok((await chart.getByRole("button").count()) === 7, "gráfico: una barra por día", await chart.getByRole("button").count());
+  await chart.getByRole("button").last().hover();
+  ok((await chart.innerText()).includes(today.slice(0, 4)), "gráfico: hover muestra el día");
   await p.screenshot({ path: `${OUT}/kardex-7d.png`, fullPage: true });
 
   const [dl] = await Promise.all([p.waitForEvent("download"), p.getByRole("button", { name: "Exportar CSV" }).click()]);

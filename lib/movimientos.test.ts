@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  costoVentaPorDia,
   detalleMovimiento,
   filterMovimientos,
   kardexLineas,
@@ -115,6 +116,23 @@ describe("kardexTotales", () => {
   });
   it("is empty-safe", () => {
     expect(kardexTotales([], 5)).toMatchObject({ saldoInicial: 5, saldoFinal: 5, entradas: 0, salidas: 0, sinCosto: 0 });
+  });
+});
+
+describe("costoVentaPorDia", () => {
+  it("fills every day, counts only sales, nets reversals and buckets by Bogotá day", () => {
+    const ls = kardexLineas([
+      ...movs,
+      // 03:00Z on the 22nd is still the 21st in Bogotá.
+      leche({ id: "e", created_at: "2026-10-22T03:00:00Z", type: "venta", delta: 180, balance_after: 9720, note: "Cambio en A-905" }),
+      leche({ id: "f", created_at: "2026-10-22T15:00:00Z", type: "venta", delta: -180, balance_after: 9540 }),
+    ]);
+    const dias = costoVentaPorDia(ls, "2026-10-20", "2026-10-22");
+    expect(dias.map((d) => d.dia)).toEqual(["2026-10-20", "2026-10-21", "2026-10-22"]);
+    expect(dias[0]).toMatchObject({ cantidad: 0, costo: 0 });
+    expect(dias[1].cantidad).toBe(360 - 180);
+    expect(dias[1].costo).toBe(-Math.round(-360 * 3.89) - Math.round(180 * 3.89));
+    expect(dias[2]).toMatchObject({ cantidad: 180, costo: -Math.round(-180 * 3.89) });
   });
 });
 

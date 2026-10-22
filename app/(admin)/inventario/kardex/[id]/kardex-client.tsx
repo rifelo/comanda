@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import type { KardexItem } from "@/lib/db/movements";
-import { kardexToCsv, TIPO_LABEL, type KardexLinea, type KardexTotales, type MovTipo } from "@/lib/movimientos";
+import { costoVentaPorDia, kardexToCsv, TIPO_LABEL, type KardexLinea, type KardexTotales, type MovTipo } from "@/lib/movimientos";
 import { DIAS_KARDEX, diaCorto, type Periodo } from "@/lib/kardex-periodo";
+import { VentasChart } from "./ventas-chart";
 
 const MESES_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -59,6 +60,7 @@ export function KardexClient({ item, periodo, lineas, totales, truncado }: { ite
   const pruebas = lineas.filter((l) => l.prueba).length;
   const visibles = lineas.filter((l) => (!ocultarPruebas || !l.prueba) && (tipo === "todos" || l.tipo === tipo));
   const valorStock = Math.round(item.stock_current * item.cost_cop);
+  const ventasDia = React.useMemo(() => costoVentaPorDia(lineas, periodo.desde, periodo.hasta), [lineas, periodo.desde, periodo.hasta]);
 
   const exportCsv = () => {
     const csv = kardexToCsv(item, visibles, totales.saldoInicial);
@@ -129,6 +131,8 @@ export function KardexClient({ item, periodo, lineas, totales, truncado }: { ite
           </div>
         </div>
       </div>
+
+      <VentasChart dias={ventasDia} unidad={item.unit} piezaQty={item.pieza_qty} piezaLabel={item.pack_label} />
 
       <div className="flex items-center flex-wrap" style={{ gap: 8 }}>
         {(["todos", "venta", "import", "ajuste", "merma", "gasto"] as const).map((t) => (

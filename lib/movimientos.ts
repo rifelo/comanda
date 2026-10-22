@@ -165,6 +165,44 @@ export function kardexTotales(lineas: ReadonlyArray<KardexLinea>, saldoInicial: 
   return t;
 }
 
+/** One day of the «costo de venta» chart: what sales used of the item that day and what it cost. */
+export interface VentaDia {
+  /** Bogotá day, YYYY-MM-DD. */
+  dia: string;
+  /** Net quantity sold (sales minus reversals of cancelled / changed orders). */
+  cantidad: number;
+  /** Net cost of what was sold, COP, at the unit cost stamped on each movement. */
+  costo: number;
+  /** Sale lines that day with no cost stamped (their value is missing from `costo`). */
+  sinCosto: number;
+}
+
+function bogotaDia(iso: string): string {
+  return new Date(new Date(iso).getTime() - 5 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Cost of sales per day for one item over [desde, hasta] (Bogotá days, both
+ * inclusive), every day present even when nothing sold. Only 'venta' lines
+ * count; a reversal (positive venta delta) subtracts.
+ */
+export function costoVentaPorDia(lineas: ReadonlyArray<KardexLinea>, desde: string, hasta: string): VentaDia[] {
+  const out = new Map<string, VentaDia>();
+  for (let d = new Date(`${desde}T00:00:00Z`); d.toISOString().slice(0, 10) <= hasta; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dia = d.toISOString().slice(0, 10);
+    out.set(dia, { dia, cantidad: 0, costo: 0, sinCosto: 0 });
+  }
+  for (const l of lineas) {
+    if (l.tipo !== "venta") continue;
+    const v = out.get(bogotaDia(l.fecha));
+    if (!v) continue;
+    v.cantidad += l.salida - l.entrada;
+    v.costo -= l.valor;
+    if (l.costo == null) v.sinCosto++;
+  }
+  return [...out.values()].map((v) => ({ ...v, cantidad: Math.round(v.cantidad * 1000) / 1000 }));
+}
+
 /** CSV of a kardex: the classic columns (fecha, detalle, entrada, salida, saldo, costo, valor). */
 export function kardexToCsv(item: { name: string; unit: string }, lineas: ReadonlyArray<KardexLinea>, saldoInicial: number): string {
   const header = ["fecha", "ingrediente", "unidad", "tipo", "detalle", "entrada", "salida", "saldo", "costo_unitario", "valor", "usuario"];
