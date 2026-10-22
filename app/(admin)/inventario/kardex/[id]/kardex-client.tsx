@@ -5,6 +5,7 @@ import type { KardexItem } from "@/lib/db/movements";
 import { costoVentaPorDia, kardexToCsv, TIPO_LABEL, type KardexLinea, type KardexTotales, type MovTipo } from "@/lib/movimientos";
 import { DIAS_KARDEX, diaCorto, type Periodo } from "@/lib/kardex-periodo";
 import { VentasChart } from "./ventas-chart";
+import { fmtCop, fmtNum } from "@/lib/kardex-format";
 
 const MESES_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -15,18 +16,6 @@ function fmtFecha(iso: string): string {
   const hh = String(b.getUTCHours()).padStart(2, "0");
   const mm = String(b.getUTCMinutes()).padStart(2, "0");
   return `${dd} ${MESES_ABBR[b.getUTCMonth()]} ${hh}:${mm}`;
-}
-
-/** 10800 → "10.800", 3.89 → "3,89", 35960.5 → "35.960,5" (es-CO style, no Intl). */
-export function fmtNum(n: number, maxDec = 3): string {
-  const r = Math.round(n * 10 ** maxDec) / 10 ** maxDec;
-  const [int, dec] = Math.abs(r).toFixed(maxDec).replace(/\.?0+$/, "").split(".");
-  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `${r < 0 ? "−" : ""}${grouped}${dec ? `,${dec}` : ""}`;
-}
-
-function fmtCop(n: number): string {
-  return `${n < 0 ? "−" : ""}$${fmtNum(Math.abs(Math.round(n)), 0)}`;
 }
 
 const TIPO_COLOR: Record<MovTipo, string> = {
