@@ -1,0 +1,48 @@
+/* Wall menu for the backlit box, 120 × 80 cm (plus --sangrado per side).
+   Everything in cm so the PDF prints at real size; on screen it is zoomed
+   to fit. Brand tokens come from .pym (menu.css). Text stays ≥ 4 cm inside
+   the visible area: the box's frame covers the edge. */
+.cj {
+  --s: var(--sangrado, 0cm);
+  width: calc(120cm + 2 * var(--s)); height: calc(80cm + 2 * var(--s));
+  padding: var(--s); background: var(--crema); color: var(--cafe); overflow: hidden;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+@media screen { .cj { zoom: .25; margin: 0 auto; } }
+.cj-area { position: relative; width: 120cm; height: 80cm; display: flex; flex-direction: column; }
+
+/* header: amarillo band, bleeding off the top and the sides */
+.cj-head {
+  position: relative; overflow: hidden; flex: 0 0 auto; height: calc(14.5cm + var(--s));
+  margin: calc(-1 * var(--s)) calc(-1 * var(--s)) 0; padding: var(--s) calc(4cm + var(--s)) 0;
+  background: var(--amarillo); border-radius: 0 0 1.4cm 1.4cm;
+  display: flex; align-items: center; gap: 3.5cm;
+}
+.cj-head > :not(.cj-head__art) { position: relative; z-index: 1; }
+.cj-head__logo { width: 21cm; height: auto; flex: 0 0 auto; }
+.cj-head__title { margin: 0; flex: 1 1 auto; max-width: 42cm; font-family: var(--f-display); font-weight: 400; font-size: 3.9cm; line-height: 3.7cm; text-transform: uppercase; }
+.cj-head__art { position: absolute; right: 22cm; bottom: -7.5cm; width: 15cm; height: auto; }
+.cj-qr { margin-left: auto; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .5cm; padding: .9cm .9cm .7cm; background: var(--crema); border-radius: 1.2cm; }
+.cj-qr__img { width: 8.2cm; height: 8.2cm; display: block; }
+.cj-qr__text { margin: 0; font-family: var(--f-name); font-size: .75cm; line-height: .9cm; text-align: center; text-transform: uppercase; }
+
+/* columns */
+.cj-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 3cm; padding: 1.8cm 4cm 0; }
+.cj-col { display: flex; flex-direction: column; gap: 1.5cm; min-height: 0; overflow: hidden; }
+.cj-band { position: relative; overflow: hidden; background: var(--amarillo); border-radius: 1.2cm; padding: 1.1cm 1.5cm 1.2cm; min-height: 5cm; display: flex; flex-direction: column; justify-content: flex-end; gap: .35cm; }
+.cj-band > :not(.cj-band__art) { position: relative; z-index: 1; }
+.cj-band__title { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: 2.7cm; line-height: 2.6cm; text-transform: uppercase; }
+.cj-band__sub { margin: 0; max-width: 76%; font-weight: 700; font-size: .8cm; line-height: 1.05cm; }
+.cj-band__art { position: absolute; right: -1.2cm; bottom: -4.6cm; width: 6.4cm; height: auto; }
+.cj-grupo { margin: .7cm 0 .1cm; padding-bottom: .3cm; border-bottom: .12cm solid var(--cafe); font-family: var(--f-name); font-weight: 400; font-size: .9cm; line-height: 1cm; text-transform: uppercase; }
+.cj-row { padding: .36cm 0 .36cm; border-bottom: .05cm solid rgba(80, 43, 28, .25); }
+.cj-row__line { display: flex; align-items: baseline; gap: .4cm; }
+.cj-row__name { font-family: var(--f-name); font-size: 1.15cm; line-height: 1.3cm; }
+.cj-row__dots { flex: 1 1 auto; min-width: 1cm; border-bottom: .12cm dotted rgba(80, 43, 28, .45); transform: translateY(-.25cm); }
+.cj-precio { display: inline-flex; align-items: flex-start; font-family: var(--f-name); font-size: 1.15cm; line-height: 1.3cm; white-space: nowrap; }
+.cj-precio__signo { font-size: .6em; line-height: 1; margin: .1em .08em 0 0; }
+.cj-row__short { margin: .1cm 0 0; font-weight: 700; font-size: .72cm; line-height: .9cm; }
+
+/* footer line */
+.cj-foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 2cm; padding: .9cm 4cm 3cm; font-family: var(--f-name); font-size: .8cm; line-height: 1cm; text-transform: uppercase; }
+.cj-foot__tag { font-family: var(--f-display); font-style: italic; font-size: 1.3cm; line-height: 1.3cm; text-transform: uppercase; }
