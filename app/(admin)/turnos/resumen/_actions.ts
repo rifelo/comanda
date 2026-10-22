@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { listPuestos } from "@/lib/db/puestos";
+import { normDias } from "@/lib/turno/dias-tarea";
 
 // Result shapes (documented in JSDoc — `"use server"` files cannot export
 // type-only declarations without tripping the RSC encoder):
@@ -26,6 +27,8 @@ const TaskSchema = z.object({
   requires_photo: z.boolean(),
   /** puestos.id; null/omitted = compartida. */
   puesto_id: z.string().uuid().nullable().optional(),
+  /** Weekdays (lun=0…dom=6); null/omitted = every day the turno runs. */
+  dias: z.array(z.boolean()).length(7).nullable().optional(),
 });
 
 const TemplatePuestoSchema = z.object({
@@ -169,6 +172,7 @@ export async function createShift(input: z.infer<typeof CreateSchema>) {
         due_time: t.due_time ? withSeconds(t.due_time) : null,
         requires_photo: t.requires_photo,
         puesto_id: t.puesto_id ?? null,
+        dias: normDias(t.dias),
       })
       .select("id")
       .single();
@@ -247,6 +251,7 @@ export async function updateShift(input: z.infer<typeof UpdateSchema>) {
       due_time: t.due_time ? withSeconds(t.due_time) : null,
       requires_photo: t.requires_photo,
       puesto_id: t.puesto_id ?? null,
+      dias: normDias(t.dias),
     };
     if (t.id) {
       const { error } = await supabase

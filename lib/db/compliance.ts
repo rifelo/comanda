@@ -1,4 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { tareasDelDia } from "@/lib/turno/dias-tarea";
+import type { TemplateTask } from "@/lib/types";
 import { listShifts } from "@/lib/db/shifts";
 import { todayInTz } from "@/lib/utils";
 
@@ -79,16 +81,10 @@ export async function getWeeklyCompliance(
   const shifts = await listShifts(restaurantId);
   const tmpl = new Map<
     string,
-    { name: string; inicio: string; fin: string; total: number; photoTotal: number }
+    { name: string; inicio: string; fin: string; tasks: TemplateTask[] }
   >();
   for (const s of shifts) {
-    tmpl.set(s.id, {
-      name: s.name,
-      inicio: s.inicio,
-      fin: s.fin,
-      total: s.tasks.length,
-      photoTotal: s.tasks.filter((t) => t.requires_photo).length,
-    });
+    tmpl.set(s.id, { name: s.name, inicio: s.inicio, fin: s.fin, tasks: s.tasks });
   }
 
   // Shift instances within the week.
@@ -149,8 +145,11 @@ export async function getWeeklyCompliance(
   let late = 0;
 
   for (const inst of instances) {
-    const t = tmpl.get(inst.template_id);
-    if (!t || t.total === 0) continue; // unknown/empty template → not measurable
+    const tpl = tmpl.get(inst.template_id);
+    // Only the tasks that apply on that weekday (template_tasks.dias).
+    const delDia = tpl ? tareasDelDia(tpl.tasks, inst.date) : [];
+    const t = { total: delDia.length, photoTotal: delDia.filter((x) => x.requires_photo).length };
+    if (!tpl || t.total === 0) continue; // unknown/empty template → not measurable
     const dayIdx = weekDates.indexOf(inst.date);
     if (dayIdx < 0) continue;
 

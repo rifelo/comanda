@@ -4,6 +4,7 @@ import Link from "next/link";
 import * as React from "react";
 import { createShift, deleteShift, updateShift } from "../_actions";
 import { Chip } from "@/app/(admin)/_components/chip";
+import { normDias } from "@/lib/turno/dias-tarea";
 import type { Puesto } from "@/lib/types";
 import { puestoColor } from "@/lib/turno/colors";
 
@@ -35,6 +36,8 @@ type ShiftTaskDraft = {
   requires_photo: boolean;
   /** puestos.id; null = compartida (todos). */
   puesto_id: string | null;
+  /** Weekdays the task applies (lun=0…dom=6); null = every day the turno runs. */
+  dias: boolean[] | null;
 };
 
 /** A puesto enabled on this turno, in order, with its soft handoff gate. */
@@ -57,11 +60,13 @@ export type ShiftFormInitial = {
     due_time: string | null;
     requires_photo: boolean;
     puesto_id: string | null;
+    dias?: boolean[] | null;
   }[];
   puestos: { puesto_id: string; position: number; waits_for_task_id: string | null }[];
 };
 
 const DIAS_SEMANA = ["L", "M", "M", "J", "V", "S", "D"];
+const DIAS_NOMBRE = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 
 let seq = 0;
 function newDraft(puesto_id: string | null = null): ShiftTaskDraft {
@@ -72,6 +77,7 @@ function newDraft(puesto_id: string | null = null): ShiftTaskDraft {
     due_time: "",
     requires_photo: false,
     puesto_id,
+    dias: null,
   };
 }
 
@@ -237,6 +243,7 @@ export function ShiftForm({
       due_time: (t.due_time ?? "").slice(0, 5),
       requires_photo: t.requires_photo,
       puesto_id: t.puesto_id ?? null,
+      dias: normDias(t.dias),
     })),
   );
   const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
@@ -298,6 +305,7 @@ export function ShiftForm({
         due_time: t.due_time.trim() ? t.due_time : null,
         requires_photo: t.requires_photo,
         puesto_id: t.puesto_id,
+        dias: normDias(t.dias),
       }));
     const payloadPuestos = tplPuestos.map((tp, i) => ({
       puesto_id: tp.puesto_id,
@@ -452,6 +460,32 @@ export function ShiftForm({
                   />
                   REQUIERE FOTO DE EVIDENCIA
                 </label>
+
+                {/* row 5 — weekdays: every day the turno runs, or only some (e.g. once a week) */}
+                <div className="flex flex-wrap items-center" style={{ marginTop: 10, gap: 6 }} role="group" aria-label="Días de la tarea">
+                  <span style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--muted)", marginRight: 4 }}>DÍAS</span>
+                  <Chip active={t.dias === null} onClick={() => setTask(i, { dias: null })}>Todos</Chip>
+                  {DIAS_SEMANA.map((d, di) => {
+                    const on = t.dias !== null && t.dias[di];
+                    return (
+                      <Chip
+                        key={di}
+                        active={on}
+                        title={DIAS_NOMBRE[di]}
+                        onClick={() => {
+                          const base = t.dias ?? Array(7).fill(false);
+                          const next = base.map((v, k) => (k === di ? !v : v));
+                          setTask(i, { dias: normDias(next) });
+                        }}
+                      >
+                        {d}
+                      </Chip>
+                    );
+                  })}
+                  {t.dias !== null && t.dias.some((on, di) => on && !dias[di]) ? (
+                    <span style={{ fontSize: 11, color: "var(--red)" }}>el turno no corre ese día</span>
+                  ) : null}
+                </div>
               </div>
     );
   }

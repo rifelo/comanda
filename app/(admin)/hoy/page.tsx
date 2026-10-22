@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { tareasDelDia } from "@/lib/turno/dias-tarea";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { getDashboardSummary } from "@/lib/db/reports";
@@ -78,7 +79,8 @@ export default async function HoyPage() {
       return { id: p.puesto_id, name: p.puesto.name, color: p.puesto.color, who: who?.name ?? null };
     });
     // Photo-evidence tasks of today's instance still without a photo.
-    const photosPending = s ? t.tasks.filter((tk) => tk.requires_photo && !photoTaken.has(`${s.shift_id}:${tk.id}`)).length : 0;
+    const tareasHoy = tareasDelDia(t.tasks, today);
+    const photosPending = s ? tareasHoy.filter((tk) => tk.requires_photo && !photoTaken.has(`${s.shift_id}:${tk.id}`)).length : 0;
     return {
       puestoLines,
       id: t.id,
@@ -94,7 +96,7 @@ export default async function HoyPage() {
       reviewedBy: s?.reviewed_by_name ?? null,
       needsReview: closed && !s?.reviewed_at,
       done: s?.completed_tasks ?? 0,
-      total: s?.total_tasks ?? t.tasks.length,
+      total: s?.total_tasks ?? tareasHoy.length,
       novedades: s?.novedad_count ?? 0,
       folio: s ? `DR-${s.shift_id.slice(0, 4).toUpperCase()}` : "—",
       lastTask: s ? lastMovement.get(s.shift_id) ?? null : null,

@@ -1,4 +1,5 @@
 import "server-only";
+import { tareasDelDia } from "@/lib/turno/dias-tarea";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -352,9 +353,12 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
     .map((r) => {
       const t = r.template as Record<string, unknown> | null;
       if (!t || t.active === false) return null;
-      const tasks = ((t.template_tasks as TemplateTask[] | undefined) ?? [])
-        .map((x) => ({ ...x, puesto_id: x.puesto_id ?? null }))
-        .sort((a, b) => a.order_index - b.order_index);
+      // Only the tasks that apply today (template_tasks.dias), plus any already done.
+      const tasks = tareasDelDia(
+        ((t.template_tasks as TemplateTask[] | undefined) ?? []).map((x) => ({ ...x, puesto_id: x.puesto_id ?? null })),
+        r.date as string,
+        compsByShift.get(r.id as string) ?? {},
+      ).sort((a, b) => a.order_index - b.order_index);
       const { template: _t, opener, closer, ...instance } = r; // eslint-disable-line @typescript-eslint/no-unused-vars
       return {
         instance: instance as unknown as ShiftInstance,
