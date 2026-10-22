@@ -10,6 +10,7 @@
  */
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
 import type { CostosPendientes } from "@/lib/db/costos-pendientes";
 import { CostosPanel } from "../recetas/costos-panel";
@@ -1530,6 +1531,7 @@ export function InventarioClient({
     setCatRaw(id);
     setSearch("");
   }, []);
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Ingrediente | null>(null);
   const [catFormOpen, setCatFormOpen] = React.useState(false);
@@ -2220,6 +2222,16 @@ export function InventarioClient({
               return (
                 <div
                   key={ing.id}
+                  data-testid="inv-row"
+                  // Click anywhere on the row → the item's kardex, unless the click
+                  // was on a control (button, input, link, menu) or the row is busy
+                  // with a count, an adjustment or a delete confirmation.
+                  onClick={(e) => {
+                    if (conteoMode || isAdjusting || isDeleting) return;
+                    if ((e.target as HTMLElement).closest("button, a, input, select, textarea, label, [role=menu]")) return;
+                    router.push(`/inventario/kardex/${ing.id}`);
+                  }}
+                  className={conteoMode || isAdjusting || isDeleting ? undefined : "inv-row-link"}
                   style={{
                     display: "grid",
                     gridTemplateColumns: GRID,
@@ -2228,13 +2240,22 @@ export function InventarioClient({
                     alignItems: "center",
                     borderBottom: "1px dashed var(--rule-soft)",
                     background: i % 2 ? "var(--paper-lt)" : "var(--paper)",
+                    cursor: conteoMode || isAdjusting || isDeleting ? undefined : "pointer",
                   }}
                 >
                   <span style={{ color: "var(--rule)", fontSize: 10 }}>·</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>
-                      {ing.name}
-                    </div>
+                    {conteoMode ? (
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{ing.name}</div>
+                    ) : (
+                      <Link
+                        href={`/inventario/kardex/${ing.id}`}
+                        title={`Ver kardex de ${ing.name}`}
+                        style={{ fontSize: 13, fontWeight: 500, color: "inherit", textDecoration: "none" }}
+                      >
+                        {ing.name}
+                      </Link>
+                    )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
                     {categoryName}

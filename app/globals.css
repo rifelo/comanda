@@ -239,3 +239,8 @@ button, [role="button"], a { min-height: 44px; }
   .trow-meta { grid-column: 2; grid-row: 3; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
   .trow-meta:empty { display: none; }
 }
+
+/* Inventario: rows open the item's kardex on click. The row background is
+   inline (zebra), so the hover needs !important to show. */
+.inv-row-link:hover { background: var(--paper-dk) !important; }
+.inv-row-link:hover a[title^="Ver kardex"] { text-decoration: underline !important; }
