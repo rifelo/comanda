@@ -28,19 +28,22 @@ function addDays(day: string, n: number): string {
 }
 
 /**
- * Resolve `?dias=30` or `?desde=…&hasta=…` into a period. Explicit dates win
- * when both are valid and in order; otherwise the preset (default 30 days
- * ending today). `today` is a Bogotá day (YYYY-MM-DD).
+ * Resolve `?dias=30` or `?desde=…&hasta=…` into a period. A valid preset wins:
+ * the preset buttons live in the same GET form as the date inputs, so a click
+ * on «7 días» also submits the dates currently shown — the preset is the
+ * intent. Without a preset, explicit dates (valid and in order) are used;
+ * otherwise 30 days ending `today` (a Bogotá day, YYYY-MM-DD).
  */
 export function parsePeriodo(sp: { dias?: string; desde?: string; hasta?: string }, today: string): Periodo {
+  const preset = DIAS_KARDEX.find((d) => String(d) === sp.dias) ?? null;
   const okDesde = sp.desde && DAY_RE.test(sp.desde) ? sp.desde : null;
   const okHasta = sp.hasta && DAY_RE.test(sp.hasta) ? sp.hasta : null;
   let desde: string, hasta: string, dias: DiasKardex | null = null;
-  if (okDesde && okHasta && okDesde <= okHasta) {
+  if (!preset && okDesde && okHasta && okDesde <= okHasta) {
     desde = okDesde;
     hasta = okHasta;
   } else {
-    const n = DIAS_KARDEX.find((d) => String(d) === sp.dias) ?? 30;
+    const n = preset ?? 30;
     dias = n;
     hasta = today;
     desde = addDays(today, -(n - 1));

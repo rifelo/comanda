@@ -13,10 +13,17 @@ describe("parsePeriodo", () => {
     expect(parsePeriodo({ dias: "90" }, "2026-10-21")).toMatchObject({ desde: "2026-07-24", dias: 90 });
     expect(parsePeriodo({ dias: "12" }, "2026-10-21").dias).toBe(30);
   });
-  it("prefers explicit dates when valid and ordered", () => {
-    const p = parsePeriodo({ dias: "7", desde: "2026-10-01", hasta: "2026-10-05" }, "2026-10-21");
+  it("uses explicit dates when valid, ordered and no preset was clicked", () => {
+    const p = parsePeriodo({ desde: "2026-10-01", hasta: "2026-10-05" }, "2026-10-21");
     expect(p).toMatchObject({ desde: "2026-10-01", hasta: "2026-10-05", dias: null });
     expect(p.hastaIso).toBe("2026-10-06T00:00:00-05:00");
+  });
+  it("lets a preset button win over the dates the form submits alongside it", () => {
+    // Clicking «7 días» submits ?dias=7&desde=<shown>&hasta=<shown>; the click is the intent.
+    const p = parsePeriodo({ dias: "7", desde: "2026-09-22", hasta: "2026-10-21" }, "2026-10-21");
+    expect(p).toMatchObject({ desde: "2026-10-15", hasta: "2026-10-21", dias: 7 });
+    // An unknown preset value is ignored and the dates still count.
+    expect(parsePeriodo({ dias: "12", desde: "2026-10-01", hasta: "2026-10-05" }, "2026-10-21")).toMatchObject({ desde: "2026-10-01", dias: null });
   });
   it("falls back to the preset on bad or inverted dates", () => {
     expect(parsePeriodo({ desde: "2026-10-09", hasta: "2026-10-01" }, "2026-10-21").dias).toBe(30);

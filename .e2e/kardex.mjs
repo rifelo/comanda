@@ -51,12 +51,20 @@ try {
   await p.getByRole("button", { name: "Ver" }).click();
   await p.waitForLoadState("networkidle");
   ok(p.url().includes("desde=2026-10-01") && (await p.locator("body").innerText()).includes("1 oct 2026 → 7 oct 2026"), "rango por fechas", p.url());
+  // A preset button clicked while dates are shown must win over them (the form submits both).
+  await p.getByRole("button", { name: "7 días" }).click();
+  await p.waitForLoadState("networkidle");
+  const dia = (d) => `${Number(d.slice(8, 10))} ${["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
+  ok((await p.locator("body").innerText()).includes(`${dia(desde)} → ${dia(today)}`), "preset 7 días gana sobre las fechas enviadas", p.url());
 
   // /historial narrowed to the item, link to the kardex.
   await p.goto(`${BASE}/historial?ingrediente=${ing.id}&dias=7`, { waitUntil: "networkidle" });
   const names = await p.locator("a[title='Ver kardex']").allInnerTexts();
   ok(names.length > 0 && names.every((n) => n === ing.name), "historial filtrado muestra solo el ítem", names.slice(0, 3).join("|"));
   ok(await p.getByRole("link", { name: `Kardex de ${ing.name} →` }).isVisible(), "enlace al kardex desde historial");
+  await p.getByRole("button", { name: "30 días" }).click();
+  await p.waitForLoadState("networkidle");
+  ok((await p.locator("body").innerText()).includes(`→ ${dia(today)}`) && !(await p.locator("body").innerText()).includes(`${dia(desde)} →`), "historial: preset 30 días cambia el rango", p.url());
   await p.screenshot({ path: `${OUT}/historial-filtrado.png` });
 
   // Recetas: the «Costos por revisar» panel.
