@@ -1,4 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
+import { tareaToca } from "@/lib/turno/dias-tarea";
 import { getActiveSede } from "@/lib/data/sede";
 import { formatDateLabelEs } from "@/lib/utils";
 import { TurnosHeader } from "../../_components/turnos-header";
@@ -83,10 +84,10 @@ export default async function TurnosHistorialPage() {
   if (firstTemplateId) {
     const { data } = await supabase
       .from("template_tasks")
-      .select("id, title, due_time, requires_photo, order_index")
+      .select("id, title, due_time, requires_photo, order_index, dias")
       .eq("template_id", firstTemplateId)
       .order("order_index");
-    firstTasks = (data ?? []).map((t) => ({
+    firstTasks = (data ?? []).filter((t) => tareaToca(t.dias, rows[0].date)).map((t) => ({
       id: t.id as string,
       title: t.title as string,
       due_time: ((t.due_time as string | null) ?? null)?.slice(0, 5) ?? null,

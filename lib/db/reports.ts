@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { tareasDelDia } from "@/lib/turno/dias-tarea";
 
 /** Per-shift completion percentage for the dashboard. */
 export interface ShiftSummary {
@@ -31,7 +32,7 @@ export async function getDashboardSummary(date: string): Promise<ShiftSummary[]>
        restaurants:restaurants!inner(name),
        templates:checklist_templates!inner(id, name),
        completions:task_completions(count),
-       template_tasks_count:checklist_templates!inner(template_tasks(count))`,
+       template_tasks_count:checklist_templates!inner(template_tasks(id, dias))`,
     )
     .eq("date", date);
 
@@ -55,7 +56,7 @@ export async function getDashboardSummary(date: string): Promise<ShiftSummary[]>
   return shifts.map((s) => {
     // The Supabase typing for nested counts is loose — coerce once.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const total = ((s as any).template_tasks_count?.template_tasks?.[0]?.count ?? 0) as number;
+    const total = tareasDelDia(((s as any).template_tasks_count?.template_tasks ?? []) as { id: string; dias: boolean[] | null }[], s.date as string).length;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const done = ((s as any).completions?.[0]?.count ?? 0) as number;
     return {

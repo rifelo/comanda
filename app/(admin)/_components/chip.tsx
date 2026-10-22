@@ -12,6 +12,7 @@ export function Chip({
   danger = false,
   onClick,
   asLabel = false,
+  title,
 }: {
   children: React.ReactNode;
   active?: boolean;
@@ -19,6 +20,8 @@ export function Chip({
   onClick?: () => void;
   /** When true renders a <span> instead of a button (for non-interactive variants). */
   asLabel?: boolean;
+  /** Tooltip + accessible name, for chips whose text is an abbreviation. */
+  title?: string;
 }) {
   const bd = danger ? "var(--red)" : "var(--ink)";
   const styles: React.CSSProperties = {
@@ -38,7 +41,7 @@ export function Chip({
     return <span style={styles}>{children}</span>;
   }
   return (
-    <button type="button" onClick={onClick} style={styles}>
+    <button type="button" onClick={onClick} style={styles} title={title} aria-label={title} aria-pressed={onClick ? active : undefined}>
       {children}
     </button>
   );

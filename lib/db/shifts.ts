@@ -9,6 +9,7 @@ import type {
   TemplatePuesto,
   TemplateTask,
 } from "@/lib/types";
+import { tareasDelDia } from "@/lib/turno/dias-tarea";
 import { normalizeTemplatePuestoRows } from "./puestos";
 
 /** Hydrated row returned by `getTodayShifts`: shift fields the /today list needs
@@ -73,11 +74,11 @@ export async function getTodayShifts(): Promise<TodayShiftRow[]> {
   const { data: shifts } = await supabase
     .from("shift_instances")
     .select(
-      `id, restaurant_id, status,
+      `id, restaurant_id, status, date,
        restaurant:restaurants(name),
        template:checklist_templates!inner(name),
        completions:task_completions(count),
-       template_tasks_count:checklist_templates!inner(template_tasks(count))`,
+       template_tasks_count:checklist_templates!inner(template_tasks(id, dias))`,
     )
     .in("restaurant_id", restaurantIds)
     .in("date", Array.from(dates));
@@ -90,11 +91,12 @@ export async function getTodayShifts(): Promise<TodayShiftRow[]> {
     restaurant_name: ((s as any).restaurant?.name as string | undefined) ?? null,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     template_name: ((s as any).template?.name as string | undefined) ?? null,
-    total_tasks:
+    // Tasks that apply on the instance's weekday (template_tasks.dias).
+    total_tasks: tareasDelDia(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((s as any).template_tasks_count?.template_tasks?.[0]?.count as
-        | number
-        | undefined) ?? 0,
+      (((s as any).template_tasks_count?.template_tasks ?? []) as { id: string; dias: boolean[] | null }[]),
+      s.date as string,
+    ).length,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     completed_tasks: ((s as any).completions?.[0]?.count as number | undefined) ?? 0,
   }));
@@ -206,7 +208,8 @@ export async function getShiftView(shiftId: string): Promise<ShiftView | null> {
     shift: shiftCols as ShiftInstance,
     template,
     restaurant,
-    tasks: (tasks as TemplateTask[]).map((t) => ({ ...t, puesto_id: t.puesto_id ?? null })),
+    // Only the tasks that apply on this instance's weekday (plus any done here).
+    tasks: tareasDelDia((tasks as TemplateTask[]).map((t) => ({ ...t, puesto_id: t.puesto_id ?? null })), (shiftCols as ShiftInstance).date, completionsMap),
     completions: completionsMap,
     opener,
     adHocTasks,

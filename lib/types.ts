@@ -117,6 +117,8 @@ export interface TemplateTask {
   requires_photo: boolean;
   /** puestos.id; null = compartida (everyone on the turno). */
   puesto_id: string | null;
+  /** Weekdays it applies (lun=0…dom=6); null = every day the turno runs (mig 0059). */
+  dias?: boolean[] | null;
 }
 
 export interface ShiftInstance {

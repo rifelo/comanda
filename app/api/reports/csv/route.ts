@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { tareasDelDia } from "@/lib/turno/dias-tarea";
 import { requireAdmin } from "@/lib/auth";
 
 /**
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
     .select(
       `id, date, status,
        restaurant:restaurants!inner(name),
-       template:checklist_templates!inner(name, template_tasks(count)),
+       template:checklist_templates!inner(name, template_tasks(id, dias)),
        completions:task_completions(count)`,
     )
     .gte("date", start)
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
 
   const lines = (data ?? []).map((r) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const total = (r as any).template?.template_tasks?.[0]?.count ?? 0;
+    const total = tareasDelDia(((r as any).template?.template_tasks ?? []) as { id: string; dias: boolean[] | null }[], r.date as string).length;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const done = (r as any).completions?.[0]?.count ?? 0;
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;

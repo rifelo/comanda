@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { tareaToca } from "@/lib/turno/dias-tarea";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 
@@ -45,7 +46,7 @@ export async function getShiftDetail(shiftInstanceId: string) {
   // exposing any of its detail.
   const { data: shift } = await supabase
     .from("shift_instances")
-    .select("id, restaurant_id, template_id")
+    .select("id, restaurant_id, template_id, date")
     .eq("id", parsed.data.shiftInstanceId)
     .single();
 
@@ -60,7 +61,7 @@ export async function getShiftDetail(shiftInstanceId: string) {
     supabase
       .from("template_tasks")
       .select(
-        `id, title, due_time, requires_photo, order_index,
+        `id, title, due_time, requires_photo, order_index, dias,
          completions:task_completions!left(
            shift_instance_id, completed_at, photo_url, note,
            completer:profiles!task_completions_completed_by_fkey(full_name)
@@ -79,7 +80,13 @@ export async function getShiftDetail(shiftInstanceId: string) {
       .order("submitted_at"),
   ]);
 
-  const tasks = (taskRows ?? []).map((t) => {
+  // Tasks that applied on that day (template_tasks.dias) or were done anyway.
+  const delDia = (taskRows ?? []).filter((t) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tx = t as any;
+    return tareaToca(tx.dias, sh.date as string) || (Array.isArray(tx.completions) && tx.completions.length > 0);
+  });
+  const tasks = delDia.map((t) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tx = t as any;
     const c = Array.isArray(tx.completions) ? tx.completions[0] : null;
