@@ -63,6 +63,8 @@ export interface OrdenItemDia {
   name: string;
   qty: number;
   unitPrice: number;
+  /** group id → chosen option name (a juice «En leche»). */
+  mods?: Record<string, string>;
 }
 
 export interface OrdenPagoDia {
