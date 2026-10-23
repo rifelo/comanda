@@ -12,6 +12,7 @@ import { AutoRefresh } from "../_components/auto-refresh";
 import { FechaPicker } from "../_components/fecha-picker";
 import { VentasHoraChart } from "../_components/ventas-hora-chart";
 import { VerificarConteo } from "../_components/verificar-conteo";
+import { Rentabilidad } from "../_components/rentabilidad";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Hoy · Números · co-manda" };
@@ -119,6 +120,12 @@ export default async function NumerosPage({ params }: { params: Promise<{ fecha?
       </div>
 
       <div className="px-[14px] md:px-8">
+        {/* ── rentabilidad ── */}
+        <SectionLabel right={<Link href="/recetas" className="cmd-link">costos y recetas →</Link>}>
+          ¿El día fue rentable? · utilidad por producto
+        </SectionLabel>
+        <Rentabilidad r={n.rentabilidad} esHoy={n.esHoy} />
+
         {/* ── cobros por método ── */}
         <SectionLabel right={`${plural(r.cobros.pagos, "cobro", "cobros")}`}>Lo que entró · por método de pago</SectionLabel>
         <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: 12 }}>
@@ -392,6 +399,7 @@ export default async function NumerosPage({ params }: { params: Promise<{ fecha?
         <p className="text-muted" style={{ fontSize: 10.5, marginTop: 22, lineHeight: 1.55, maxWidth: 760 }}>
           Ventas = pedidos creados ese día y ya pagados. Lo que entró = todos los cobros del día por método, incluidos los abonos a pedidos abiertos.
           La diferencia de caja compara lo que el arqueo dice que entró (contado − base inicial) con todo el efectivo cobrado hasta ese momento.
+          Costo de venta = el costo actual de la receta de cada producto (y de la opción elegida, como «en leche»); si cambias un precio de insumo, cambia también en los días pasados.
         </p>
       </div>
     </div>

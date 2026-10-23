@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCierresSede } from "@/lib/caja/cierres";
 import { listGastos, type Gasto } from "@/lib/gastos/gastos-db";
+import { CATEGORIAS_FIJAS, fijosPorDia, rentabilidadDia, type CostoProducto, type RentabilidadDia } from "./rentabilidad";
 import { todayInTz } from "@/lib/utils";
 import {
   addDays,
@@ -53,6 +54,16 @@ export interface NumerosDia {
   novedades: NovedadDia[];
   /** Expenses booked on this day (Bold fee, utilities…). */
   gastos: Gasto[];
+  /** Cost of goods, profit per product and the day's real result. */
+  rentabilidad: RentabilidadDia;
+}
+
+/** First and last day of the month of `ymd`, and how many days it has. */
+function mesDe(ymd: string): { desde: string; hasta: string; dias: number; mes: string } {
+  const [y, m] = ymd.split("-").map(Number);
+  const dias = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mes = `${y}-${String(m).padStart(2, "0")}`;
+  return { desde: `${mes}-01`, hasta: `${mes}-${String(dias).padStart(2, "0")}`, dias, mes };
 }
 
 function cliente(o: { customer_name?: unknown; customer_names?: unknown }): string | null {
@@ -72,11 +83,11 @@ export async function loadNumerosDia(
   const previa = addDays(date, -7);
   const diaPrevio = ventanaDia(previa, tz);
 
-  const [ordenesRes, pagosRes, previasRes, abiertosRes, novedadesRes, cierres, gastos] = await Promise.all([
+  const [ordenesRes, pagosRes, previasRes, abiertosRes, novedadesRes, cierres, gastos, rentabilidad] = await Promise.all([
     db
       .from("ordenes")
       .select(
-        "id, folio, status, total_cop, payment_method, created_at, paid_at, merged_into, customer_name, customer_names, notes, orden_items(kind, producto_id, combo_id, name, qty, unit_price_cop), orden_pagos(method, amount_cop, created_at)",
+        "id, folio, status, total_cop, payment_method, created_at, paid_at, merged_into, customer_name, customer_names, notes, orden_items(kind, producto_id, combo_id, name, qty, unit_price_cop, mods), orden_pagos(method, amount_cop, created_at)",
       )
       .eq("organization_id", orgId)
       .gte("created_at", dia.desde)
@@ -115,6 +126,7 @@ export async function loadNumerosDia(
       : Promise.resolve({ data: [], error: null }),
     sedeId ? listCierresSede(db, sedeId, 40) : Promise.resolve([]),
     listGastos(db, orgId, date, date),
+    loadRentabilidad(db, orgId, date),
   ]);
   for (const [name, res] of [["ordenes", ordenesRes], ["pagos", pagosRes], ["previas", previasRes], ["abiertos", abiertosRes], ["novedades", novedadesRes]] as const) {
     if (res.error) console.error(`[loadNumerosDia] ${name}:`, res.error);
@@ -136,6 +148,7 @@ export async function loadNumerosDia(
       name: it.name as string,
       qty: Number(it.qty ?? 0),
       unitPrice: Number(it.unit_price_cop ?? 0),
+      mods: (it.mods as Record<string, string> | null) ?? {},
     })),
     pagos: ((o.orden_pagos ?? []) as Array<Record<string, unknown>>).map((p) => ({
       method: p.method as string,
@@ -217,5 +230,53 @@ export async function loadNumerosDia(
     turno: (n.shift as { template: { name: string } | null } | null)?.template?.name ?? null,
   }));
 
-  return { date, esHoy, previa, resumen, caja, abiertos, novedades, gastos };
+  const r = rentabilidad({ items: ordenes.filter((o) => o.status === "pagada").flatMap((o) => o.items.map((it) => ({ ...it, mods: it.mods ?? {} }))), resumen, gastos });
+  return { date, esHoy, previa, resumen, caja, abiertos, novedades, gastos, rentabilidad: r };
+}
+
+type Rentabilizar = (input: { items: Parameters<typeof rentabilidadDia>[0]["items"]; resumen: ResumenDia; gastos: Gasto[] }) => RentabilidadDia;
+
+/**
+ * Recipe costs of the products and options, and the fixed costs of the month
+ * (or of the previous one while this month has none booked yet). Returns the
+ * function that builds the day's profitability once the orders are mapped.
+ */
+async function loadRentabilidad(db: Db, orgId: string, date: string): Promise<Rentabilizar> {
+  const mes = mesDe(date);
+  const anterior = mesDe(addDays(mes.desde, -1));
+  const [prodRes, optRes, gastos2] = await Promise.all([
+    db.from("productos").select("id, cost_cop, categoria:producto_categorias(label)").eq("organization_id", orgId),
+    db.from("modifier_option_receta").select("qty, ingrediente:ingredientes(cost_cop), opcion:modifier_options(group_id, name)").eq("organization_id", orgId),
+    listGastos(db, orgId, anterior.desde, mes.hasta),
+  ]);
+  const gastosMes = gastos2.filter((g) => g.fecha >= mes.desde);
+  const gastosAnt = gastos2.filter((g) => g.fecha < mes.desde);
+  if (prodRes.error) console.error("[loadNumerosDia] costos:", prodRes.error);
+  if (optRes.error) console.error("[loadNumerosDia] opciones:", optRes.error);
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+  const costos = new Map<string, CostoProducto>();
+  for (const p of (prodRes.data ?? []) as Array<Record<string, unknown>>) {
+    costos.set(p.id as string, { costo: Number(p.cost_cop ?? 0), categoria: one(p.categoria as { label: string } | null)?.label ?? null });
+  }
+  const costosOpcion = new Map<string, number>();
+  for (const r of (optRes.data ?? []) as Array<Record<string, unknown>>) {
+    const o = one(r.opcion as { group_id: string; name: string } | null);
+    const ing = one(r.ingrediente as { cost_cop: number } | null);
+    if (!o) continue;
+    const k = `${o.group_id}|${o.name}`;
+    costosOpcion.set(k, (costosOpcion.get(k) ?? 0) + Number(r.qty ?? 0) * Number(ing?.cost_cop ?? 0));
+  }
+  const tieneFijos = (gs: Gasto[]) => gs.some((g) => CATEGORIAS_FIJAS.has(g.categoria));
+  const fuente = tieneFijos(gastosMes) ? { gs: gastosMes, m: mes } : tieneFijos(gastosAnt) ? { gs: gastosAnt, m: anterior } : null;
+  const f = fuente ? fijosPorDia(fuente.gs, fuente.m.dias) : { mes: 0, dia: 0 };
+  const fijos = { ...f, diasMes: fuente?.m.dias ?? mes.dias, mesFuente: fuente?.m.mes ?? null };
+  return ({ items, resumen, gastos }) =>
+    rentabilidadDia({
+      items,
+      costos,
+      costosOpcion,
+      cobrosNoEfectivo: resumen.cobros.transferencia.monto + resumen.cobros.tarjeta.monto,
+      gastosDia: gastos,
+      fijos,
+    });
 }
