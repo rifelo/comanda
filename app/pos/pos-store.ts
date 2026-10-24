@@ -195,6 +195,8 @@ export interface PosState {
   outbox: OutboxItem[];
   /** The outbox job the receipt screen is showing, until it lands. */
   receiptJobId: string | null;
+  /** The stored order the receipt screen shows, once the server has it: reprinted QR codes are registered on it. */
+  receiptOrdenId: string | null;
   /** Whether the server answers right now (false = selling offline, orders queue up). */
   online: boolean;
   /** AI "frase del día" label: last generated text + request state. */
@@ -265,6 +267,7 @@ export const POS_INITIAL: PosState = {
   receiptKind: "pagada",
   outbox: [],
   receiptJobId: null,
+  receiptOrdenId: null,
   online: true,
   frase: null,
   fraseLoading: false,
@@ -901,7 +904,7 @@ export async function runOutbox(probe = false) {
         posStore.set((st) => ({
           ...st,
           outbox: st.outbox.filter((j) => j.id !== job.id),
-          ...(st.receiptJobId === job.id ? { orderNo: folio, sent: true, lastChange: change, lastTotal: res.total, receiptJobId: null } : {}),
+          ...(st.receiptJobId === job.id ? { orderNo: folio, sent: true, lastChange: change, lastTotal: res.total, receiptJobId: null, receiptOrdenId: res.ordenId } : {}),
         }));
         if (job.printed) {
           if (job.printed.enlaces.length) void registrarEnlacesVenta(res.ordenId, job.printed.enlaces);
@@ -1100,6 +1103,7 @@ export async function paySplit() {
       sending: false,
       sent: true,
       orderNo: res.folio,
+      receiptOrdenId: s.pending.id,
       view: "done",
       receiptKind: "pagada",
       lastTotal: res.total,
@@ -1213,6 +1217,7 @@ export async function completeSale() {
       sent: true,
       sending: false,
       orderNo: res.folio,
+      receiptOrdenId: res.ordenId,
       view: "done",
       lastChange: res.change,
       lastTotal: res.total,
@@ -1261,6 +1266,7 @@ export async function savePending() {
   posStore.set({
     sent: true,
     orderNo: res.folio,
+    receiptOrdenId: res.ordenId,
     view: "done",
     lastChange: 0,
     lastTotal: res.total,
@@ -1502,10 +1508,11 @@ export async function confirmMerge() {
   await refreshOrdenes();
   void refreshPendientes();
 }
-/** Reprint the kitchen label of any stored order. */
+/** Reprint every label of a stored order: per cup its name, rating QR, drink and phrase, as when it was sold. */
 export function printLabelFor(o: PosOrder) {
   const s = posStore.get();
-  printNameLabels(rebuildPeople(o), o.customerName, o.folio, s.catalog.orgName);
+  const { lines } = rebuildLines(o, s.catalog);
+  reprintSaleLabels({ order: lines, people: rebuildPeople(o), customerName: o.customerName, catalog: s.catalog }, o.folio, o.local ? null : o.id, o.local ? o.id.slice(LOCAL_ORDER.length) : null);
 }
 
 function loadPending(o: PendingOrder, mode: "edit" | "charge") {
@@ -1717,12 +1724,6 @@ async function registrarEnlacesVenta(ordenId: string, enlaces: EnlaceVenta[]) {
 /** The cups of the last sale, so «Frase IA» on the receipt writes about one of them. */
 let lastCups: string[] = [];
 
-/** The "Pa' <nombre>" labels of a stored order (one per person, else the order label). */
-function printNameLabels(names: ReadonlyArray<string>, tableName: string, folio: string, orgName: string) {
-  if (names.length === 0) printOrderLabel({ name: tableName, folio, orgName });
-  for (const n of names) printOrderLabel({ name: n, folio, orgName });
-}
-
 /**
  * Ask the AI for one more phrase and print it: about one of the cups of the
  * sale on screen when there was one, a coffee phrase (funny / motivational /
@@ -1744,11 +1745,32 @@ export async function printFrase() {
   }
 }
 
-/** Reprint the name labels of the sale on the receipt screen. */
+/** Reprint every label of the sale on the receipt screen (name, rating QR, drink and phrase per cup). */
 export function reprintLabel() {
   const s = posStore.get();
-  if (!s.sent) return;
-  printNameLabels(s.people, s.customerName.trim(), s.orderNo, s.catalog.orgName);
+  if (!s.sent) {
+    // Still queued (offline): its labels went out with a provisional folio.
+    const job = s.outbox.find((j) => j.id === s.receiptJobId);
+    if (job?.printed) reprintSaleLabels({ ...job.snapshot, catalog: s.catalog }, job.printed.folio, null, job.id);
+    return;
+  }
+  reprintSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, s.orderNo, s.receiptOrdenId, null);
+}
+
+/**
+ * Print a sale's labels again. The QR codes are new ones (each code is used
+ * once; 0058 pays a cup's points only once however many it has): with the
+ * order stored they are registered on it, and an order still queued offline
+ * takes them along so they are registered when it lands.
+ */
+function reprintSaleLabels(sale: Parameters<typeof printSaleLabels>[0], folio: string, ordenId: string | null, jobId: string | null) {
+  const enlaces = printSaleLabels(sale, folio, ordenId);
+  if (ordenId || !jobId || !enlaces.length) return;
+  posStore.set((st) => ({
+    ...st,
+    outbox: st.outbox.map((j) => (j.id === jobId && j.printed ? { ...j, printed: { ...j.printed, enlaces: [...j.printed.enlaces, ...enlaces] } } : j)),
+  }));
+  persistOutbox();
 }
 
 
