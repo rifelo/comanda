@@ -1646,7 +1646,7 @@ function OrdenDetail({ o }: { o: PosOrder }) {
         )}
         {(p.status !== "unsupported" || relaysLabels(p)) && (
           <button onClick={() => printLabelFor(o)} disabled={p.status !== "ready" && !relaysLabels(p)} style={{ width: "100%", height: 40, border: `1.5px solid ${C.rule}`, borderRadius: 3, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", cursor: p.status === "ready" || relaysLabels(p) ? "pointer" : "default", opacity: p.status === "ready" || relaysLabels(p) ? 1 : 0.5 }}>
-            Reimprimir etiqueta
+            Reimprimir etiquetas
           </button>
         )}
       </div>
@@ -2958,7 +2958,7 @@ function ReceiptPrinterLine() {
         disabled={busy && !remote}
         style={{ height: 32, padding: "0 12px", borderRadius: 3, cursor: busy ? "default" : "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
       >
-        {canPrint ? "Reimprimir etiqueta" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
+        {canPrint ? "Reimprimir etiquetas" : p.status === "off" ? "Reintentar" : "Conectar impresora"}
       </button>
       {catalog.instagram && canPrint && (
         <button
