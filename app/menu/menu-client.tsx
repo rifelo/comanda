@@ -197,6 +197,7 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
         <Logo arte={arte} name="logoSticker" className="pym-footer__logo" />
         <p className="pym-footer__tagline">{footer.tagline}</p>
         <p className="pym-footer__text">{footer.texto} <strong>{footer.instagram}</strong></p>
+        <a href="/menu/puntos" className="pym-pill pym-footer__puntos">Ver mis puntos</a>
         <button type="button" className="pym-pill pym-footer__share" onClick={(e) => share(e.currentTarget)}><IconoCompartir size={16} /> Compartir el menú</button>
         <Arte arte={arte} name="mano-taza-amarilla.svg" className="pym-footer__art" />
       </footer>
