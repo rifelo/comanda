@@ -104,3 +104,12 @@ export function estadoDe(fila: { usada_at: string | null; expira_at: string } | 
 export function tuPedido(items: ReadonlyArray<ItemCalificado>): string {
   return items.length === 1 && items[0].qty === 1 ? `tu ${items[0].name}` : "tu pedido";
 }
+
+/** The day of a customer's last visit as the points page says it: "23 de octubre", with the year only when it is not this one (Bogotá time). */
+export function diaDeVisita(iso: string, ahora: Date = new Date()): string {
+  const tz = "America/Bogota";
+  const fecha = new Date(iso);
+  const anio = (d: Date) => new Intl.DateTimeFormat("es-CO", { timeZone: tz, year: "numeric" }).format(d);
+  const mismoAnio = anio(fecha) === anio(ahora);
+  return new Intl.DateTimeFormat("es-CO", { timeZone: tz, day: "numeric", month: "long", ...(mismoAnio ? {} : { year: "numeric" }) }).format(fecha);
+}

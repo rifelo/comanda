@@ -13,6 +13,12 @@ export async function proxy(request: NextRequest) {
     // else of the app (panel, POS, login) answers here — any other page goes
     // back to the menu.
     const path = request.nextUrl.pathname;
+    // "/puntos" is where customers check their points (app/menu/puntos).
+    if (path === "/puntos") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/menu/puntos";
+      return NextResponse.rewrite(url);
+    }
     if (path === "/" || path === "/menu") {
       const url = request.nextUrl.clone();
       url.pathname = "/menu";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estadoDe, leerCodigo, lineasDe, lineasDeQr, normalizarInstagram, nuevoCodigo, puntosDe, tuPedido, urlCalificacion } from "./calificaciones";
+import { diaDeVisita, estadoDe, leerCodigo, lineasDe, lineasDeQr, normalizarInstagram, nuevoCodigo, puntosDe, tuPedido, urlCalificacion } from "./calificaciones";
 
 describe("codes", () => {
   it("ten characters, none that read alike", () => {
@@ -84,5 +84,17 @@ describe("lineasDeQr", () => {
   });
   it("a line that no longer exists (edited order) is worth nothing but the rest", () => {
     expect(lineasDeQr(lineas, "Juan", people, { linea: 7, resto: false }, new Set([7]))).toEqual([]);
+  });
+});
+
+describe("diaDeVisita", () => {
+  const ahora = new Date("2026-10-24T18:00:00Z");
+  it("day and month in Bogotá time, without the year when it is this one", () => {
+    expect(diaDeVisita("2026-10-23T15:00:00Z", ahora)).toBe("23 de octubre");
+    // 01:00 UTC on the 24th is still the 23rd in Bogotá.
+    expect(diaDeVisita("2026-10-24T01:00:00Z", ahora)).toBe("23 de octubre");
+  });
+  it("adds the year for another one", () => {
+    expect(diaDeVisita("2025-12-31T20:00:00Z", ahora)).toBe("31 de diciembre de 2025");
   });
 });

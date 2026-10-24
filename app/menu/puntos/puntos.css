@@ -1,0 +1,6 @@
+/* The customers' points page (cafepayo.com/puntos). Builds on the menu's tokens (.pym) and the rating page (.pyc). */
+.pyp-logo { display: inline-block; align-self: flex-start; border-radius: 8px; }
+.pyp-saldo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 22px 22px 20px; border-radius: 21px; background: var(--cafe); color: var(--crema); }
+.pyp-saldo__n { font-family: var(--f-display); font-size: clamp(56px, 18vw, 76px); line-height: .9; color: var(--amarillo); }
+.pyp-saldo__t { font-family: var(--f-display); font-size: 22px; line-height: 24px; text-transform: uppercase; }
+.pyp-saldo__meta { flex-basis: 100%; margin-top: 8px; font-size: 14px; line-height: 20px; color: var(--crema-72); overflow-wrap: anywhere; }

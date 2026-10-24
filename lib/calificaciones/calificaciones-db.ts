@@ -175,3 +175,11 @@ export async function enviarCalificacion(codigo: string, input: { estrellas: num
   await db.from("calificaciones").update({ cliente_id: c.id }).eq("id", row.id);
   return { ok: true, puntos, total: Number(c.puntos) };
 }
+
+/** A customer's points, by handle (already normalized), for the public points page. Null when the @ never earned any. */
+export async function consultarPuntos(orgId: string, instagram: string): Promise<{ puntos: number; ultimaVisita: string } | null> {
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db.from("clientes").select("puntos, ultima_visita_at").eq("organization_id", orgId).eq("instagram", instagram).maybeSingle();
+  if (error) throw error;
+  return data ? { puntos: Number(data.puntos), ultimaVisita: data.ultima_visita_at as string } : null;
+}
