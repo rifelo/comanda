@@ -94,6 +94,7 @@
     "PO-003": { "tags": ["dulce"] },
     "PO-004": { "short": "Masa suave y canela", "desc": "Rollo de masa suave con canela. El compañero clásico del café caliente.", "lleva": ["Canela"], "tags": ["dulce"] },
     "PO-005": { "tags": ["dulce"] },
+    "PO-008": { "short": "El rollo de canela, en pequeño", "desc": "Mini rollo de masa suave con canela. Justo para acompañar un tinto.", "lleva": ["Canela"], "tags": ["dulce"] },
     "PO-006": { "short": "Cítrica, húmeda y con fruta", "desc": "Torta de limón con arándanos. Cítrica y húmeda: va perfecto con un espresso.", "lleva": ["Limón", "Arándanos"], "tags": ["dulce"] },
     "PO-007": { "tags": ["dulce"] },
     "SA-001": { "short": "Hojaldre relleno de pollo", "desc": "Pastel horneado relleno de pollo. Para cuando el café pide algo de sal.", "lleva": ["Pollo"] },
