@@ -231,8 +231,7 @@ export interface OrderPayment {
   change: number;
   createdAt: string;
 }
-/** «por_entregar» = today's live orders (pendiente or pagada) not yet handed over. */
-export type OrdersTab = OrderStatus | "todas" | "por_entregar";
+export type OrdersTab = OrderStatus | "todas";
 
 /** A stored order as the register lists it (pending queue and history). */
 export interface PosOrder {

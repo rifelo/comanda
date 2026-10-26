@@ -43,7 +43,6 @@ import { fraseRespaldo } from "@/lib/pos/frase";
 import {
   cancelarPendiente,
   cobrarPendiente,
-  contarPorEntregar,
   marcarEntrega,
   crearOrden,
   generarFrase,
@@ -175,8 +174,6 @@ export interface PosState {
   splitTarget: SplitTarget | null;
   pendientes: PendingOrder[];
   pendientesLoading: boolean;
-  /** Today's live orders not handed over yet (the Pedidos badge). */
-  porEntregar: number;
   pendientesError: string | null;
   // ── Pedidos view (Square-style cards: open queue + per-day history) ──
   ordenesTab: OrdersTab;
@@ -255,7 +252,6 @@ export const POS_INITIAL: PosState = {
   splitTarget: null,
   pendientes: [],
   pendientesLoading: false,
-  porEntregar: 0,
   pendientesError: null,
   ordenesTab: "pendiente",
   ordenesDay: bogotaDay(),
@@ -1362,23 +1358,10 @@ export async function refreshPendientes() {
     refreshing = false;
     posStore.set({ pendientesLoading: false });
   }
-  void refreshPorEntregar();
-}
-/** Bumped by every delivery tap: a count that started before it is stale. */
-let entregaSeq = 0;
-/** Recount today's orders still to deliver. Quiet on failure: the badge keeps its last number. */
-export async function refreshPorEntregar() {
-  const seq = entregaSeq;
-  try {
-    const res = await contarPorEntregar();
-    if (res.ok && seq === entregaSeq) posStore.set({ porEntregar: res.n });
-  } catch {
-    // Offline — the next refresh catches up.
-  }
 }
 // ── Pedidos view (queue + history) ──────────────────────────────
 let ordenesReq = 0;
-const ordenesKey = (s: Pick<PosState, "ordenesTab" | "ordenesDay">) => `pos:ordenes:${s.ordenesTab}:${s.ordenesTab === "pendiente" || s.ordenesTab === "por_entregar" ? "" : s.ordenesDay}`;
+const ordenesKey = (s: Pick<PosState, "ordenesTab" | "ordenesDay">) => `pos:ordenes:${s.ordenesTab}:${s.ordenesTab === "pendiente" ? "" : s.ordenesDay}`;
 /** Reload the Pedidos view for the current tab/day. Latest request wins. */
 export async function refreshOrdenes() {
   const s = posStore.get();
@@ -1582,9 +1565,8 @@ export async function cancelPending(id: string) {
   if (posStore.get().view === "ordenes") void refreshOrdenes();
 }
 /**
- * Mark an order delivered (or undo). Optimistic: the card flips and the badge
- * moves at once; a refusal flips it back with the reason. In «Por entregar» the
- * card stays until the next reload, so a wrong tap can be undone in place.
+ * Mark a pending order delivered (or undo) — the green check on its card.
+ * Optimistic: the card flips at once; a refusal flips it back with the reason.
  */
 export async function marcarEntregada(id: string, entregada: boolean) {
   const before = posStore.get();
@@ -1592,12 +1574,10 @@ export async function marcarEntregada(id: string, entregada: boolean) {
   const flip = (list: PosOrder[], v: string | null) => list.map((o) => (o.id === id ? { ...o, entregadaAt: v } : o));
   const prev = [...before.ordenes, ...before.pendientes].find((o) => o.id === id)?.entregadaAt ?? null;
   if (!!prev === entregada) return;
-  entregaSeq++;
   posStore.set((st) => ({
     ...st,
     ordenes: flip(st.ordenes, at),
     pendientes: flip(st.pendientes, at),
-    porEntregar: Math.max(0, st.porEntregar + (entregada ? -1 : 1)),
     ordenesError: null,
   }));
   let res: Awaited<ReturnType<typeof marcarEntrega>>;
@@ -1607,14 +1587,11 @@ export async function marcarEntregada(id: string, entregada: boolean) {
     res = { ok: false, error: "Sin conexión: no se marcó la entrega." };
   }
   if (!res.ok) {
-    entregaSeq++;
     posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, prev), pendientes: flip(st.pendientes, prev), ordenesError: res.ok ? null : res.error }));
-    void refreshPorEntregar();
     return;
   }
   const fixed = res.entregadaAt;
   posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, fixed), pendientes: flip(st.pendientes, fixed) }));
-  void refreshPorEntregar();
   nudge("ordenes");
 }
 /** Drop the loaded pending order from the ticket without saving. */
