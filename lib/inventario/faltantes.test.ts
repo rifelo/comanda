@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRapido, fraseFaltantes, resumenReporte } from "./faltantes";
+import { buildRapido, fraseFaltantes, momentoReporte, resumenReporte } from "./faltantes";
 
 const ings = [
   { id: "cafe", name: "Café", unit: "g", prioridad: 1, stock_current: 500, stock_min: 200 },
@@ -50,5 +50,21 @@ describe("resumenReporte / fraseFaltantes", () => {
     expect(fraseFaltantes({ agotado: 2, bajo: 1 })).toBe("2 agotados · 1 poco");
     expect(fraseFaltantes({ agotado: 1, bajo: 0 })).toBe("1 agotado");
     expect(fraseFaltantes({ agotado: 0, bajo: 0 })).toBe("");
+  });
+});
+
+describe("momentoReporte", () => {
+  const now = new Date("2026-10-26T15:00:00Z");
+  it("keeps a recent tap time from the tablet", () => {
+    expect(momentoReporte("2026-10-26T14:10:00Z", now)).toBe("2026-10-26T14:10:00.000Z");
+  });
+  it("falls back to the server clock for a missing, future or stale time", () => {
+    expect(momentoReporte(undefined, now)).toBe(now.toISOString());
+    expect(momentoReporte("no es fecha", now)).toBe(now.toISOString());
+    expect(momentoReporte("2026-10-26T15:30:00Z", now)).toBe(now.toISOString());
+    expect(momentoReporte("2026-10-25T23:00:00Z", now)).toBe(now.toISOString());
+  });
+  it("clamps a few seconds of clock skew to now", () => {
+    expect(momentoReporte("2026-10-26T15:00:30Z", now)).toBe(now.toISOString());
   });
 });

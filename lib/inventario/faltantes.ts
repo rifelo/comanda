@@ -139,3 +139,10 @@ export function fraseFaltantes(counts: { agotado: number; bajo: number }): strin
   if (counts.bajo) parts.push(`${counts.bajo} poco`);
   return parts.join(" · ");
 }
+
+/** A tablet's own clock is trusted only for the recent past: no future, nothing older than 12 h. */
+export function momentoReporte(at: string | undefined, now: Date): string {
+  const t = at ? Date.parse(at) : NaN;
+  if (!Number.isFinite(t) || t > now.getTime() + 60_000 || t < now.getTime() - 12 * 3_600_000) return now.toISOString();
+  return new Date(Math.min(t, now.getTime())).toISOString();
+}
