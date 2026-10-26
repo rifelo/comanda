@@ -387,7 +387,8 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
 }
 
 const ListarOrdenesSchema = z.object({
-  status: z.enum(["pendiente", "pagada", "cancelada", "todas"]).default("pendiente"),
+  // «pendiente» = not completed (unpaid, or paid and not delivered); «completada» = paid and delivered.
+  status: z.enum(["pendiente", "completada", "cancelada", "todas"]).default("pendiente"),
   /** Bogotá calendar day (YYYY-MM-DD); ignored for the pending queue. */
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
@@ -408,7 +409,9 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
     )
     .eq("organization_id", orgId);
-  if (status !== "todas") q = q.eq("status", status);
+  if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
+  else if (status === "completada") q = q.eq("status", "pagada").not("entregada_at", "is", null);
+  else if (status !== "todas") q = q.eq("status", status);
   if (status !== "pendiente") {
     const d = day ?? bogotaDay();
     q = q.gte("created_at", `${d}T05:00:00Z`).lt("created_at", `${shiftDay(d, 1)}T05:00:00Z`);
@@ -471,7 +474,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   return { ok: true, orders };
 }
 
-/** Open (unpaid) orders of the org, oldest first — the kitchen queue / badge. */
+/** Orders not completed yet (unpaid, or paid and not delivered), oldest first — the queue / badge. */
 export async function listarPendientes(): Promise<ListarPendientesResult> {
   return listarOrdenes({ status: "pendiente" });
 }

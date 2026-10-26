@@ -725,6 +725,8 @@ export function resetConversation() {
     ordenesDay: s.ordenesDay,
     outbox: s.outbox,
     online: s.online,
+    // Who is on the bar outlives every sale; only the chip changes it.
+    barista: s.barista,
   }));
 }
 
@@ -1565,7 +1567,8 @@ export async function cancelPending(id: string) {
   if (posStore.get().view === "ordenes") void refreshOrdenes();
 }
 /**
- * Mark a pending order delivered (or undo) — the green check on its card.
+ * Mark an order delivered (or undo) — the green check on its card. Paid and
+ * delivered = «completado».
  * Optimistic: the card flips at once; a refusal flips it back with the reason.
  */
 export async function marcarEntregada(id: string, entregada: boolean) {
@@ -1592,6 +1595,8 @@ export async function marcarEntregada(id: string, entregada: boolean) {
   }
   const fixed = res.entregadaAt;
   posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, fixed), pendientes: flip(st.pendientes, fixed) }));
+  // A paid order that is now delivered is complete: it leaves the badge (its card stays until the list reloads).
+  void refreshPendientes();
   nudge("ordenes");
 }
 /** Drop the loaded pending order from the ticket without saving. */
