@@ -231,7 +231,11 @@ export interface OrderPayment {
   change: number;
   createdAt: string;
 }
-export type OrdersTab = OrderStatus | "todas";
+/**
+ * Pedidos tabs. «pendiente» = not completed yet: unpaid, or paid but not
+ * handed over. «completada» = paid and delivered.
+ */
+export type OrdersTab = "pendiente" | "completada" | "cancelada" | "todas";
 
 /** A stored order as the register lists it (pending queue and history). */
 export interface PosOrder {
