@@ -46,7 +46,7 @@ export default async function SugerenciasPage() {
     <div>
       <TurnosHeader kicker="OPERACIÓN · INVENTARIO" title="Sugerencias del equipo">
         <Link href="/inventario" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Inventario</Link>
-        <Link href="/turno/inventario/sugerir" className="cmd-btn sm" style={{ textDecoration: "none" }}>Sugerir →</Link>
+        <Link href="/turno/inventario" className="cmd-btn sm" style={{ textDecoration: "none" }}>Sugerir →</Link>
       </TurnosHeader>
       <SugerenciasClient
         sugerencias={views}

@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FaltanteAbierto, FaltanteEstado, RapidoIngrediente } from "./faltantes";
+import { momentoReporte, type FaltanteAbierto, type FaltanteEstado, type RapidoIngrediente } from "./faltantes";
 
 // DB helpers for the quick inventory (inventario_faltantes, 0038). Same
 // shape as lib/caja/cierres.ts: they take either the RLS client (admin
@@ -123,7 +123,10 @@ export interface RegistrarItem {
   ingredienteId: string;
   estado: FaltanteEstado;
   note?: string;
+  /** When it was tapped, for a tap the tablet kept while offline; ignored unless it is within the last 12 h. */
+  at?: string;
 }
+
 
 /**
  * Record a batch of taps. Every tapped ingredient gets one new row that is
@@ -137,7 +140,8 @@ export async function registrarEstados(db: Db, actor: RegistrarActor, items: Reg
   const { data: ings } = await db.from("ingredientes").select("id, stock_current").eq("organization_id", actor.orgId).in("id", ids);
   const stockById = new Map((ings ?? []).map((i) => [i.id as string, Number(i.stock_current ?? 0)]));
   if (stockById.size !== ids.length) return { ok: false, error: "Un ingrediente de la lista ya no existe." };
-  const now = new Date().toISOString();
+  const clock = new Date();
+  const now = clock.toISOString();
   const { error: closeErr } = await db
     .from("inventario_faltantes")
     .update({ resolved_at: now, resolved_by: actor.profileId, resolved_note: "actualizado" })
@@ -157,7 +161,7 @@ export async function registrarEstados(db: Db, actor: RegistrarActor, items: Reg
     stock_sistema: stockById.get(it.ingredienteId) ?? null,
     note: it.note?.trim() || null,
     reported_by: actor.profileId,
-    reported_at: now,
+    reported_at: momentoReporte(it.at, clock),
     resolved_at: it.estado === "ok" ? now : null,
     resolved_by: it.estado === "ok" ? actor.profileId : null,
     resolved_note: it.estado === "ok" ? "revisado: hay" : null,

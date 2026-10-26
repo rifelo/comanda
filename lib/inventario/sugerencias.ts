@@ -2,7 +2,7 @@
  * Suggestions from the team, section by section: an item of the list that
  * belongs in this section, or something that is there and the list doesn't
  * have. Pure helpers — no I/O; unit-tested in sugerencias.test.ts. Writes:
- * app/turno/inventario/sugerir (tablet) and app/(admin)/inventario/sugerencias.
+ * app/turno/inventario (tablet, «algo que no está en la lista») and app/(admin)/inventario/sugerencias.
  */
 import { ZONAS } from "./niveles";
 import { mismoNombre, parecidos } from "./propuestas";

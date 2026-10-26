@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { listFaltantesAbiertos } from "@/lib/inventario/faltantes-db";
+import { listFaltantesAbiertos, type FaltanteReporte } from "@/lib/inventario/faltantes-db";
 import { fechaMas, porPedir, type LineaPedir, type PedirItem, type ProveedorPedido, type SolicitudAbierta } from "./compras";
 
 // DB helpers for purchasing (0047). Same shape as lib/inventario/faltantes-db.ts:
@@ -58,6 +58,8 @@ export interface PorPedirData {
   lineas: LineaPedir[];
   proveedores: ProveedorPedido[];
   solicitudes: Awaited<ReturnType<typeof listSolicitudesAbiertas>>;
+  /** The open marks behind the lines (who, when, how short). */
+  faltantes: FaltanteReporte[];
 }
 
 /** Everything the "por pedir" list is made of, read once. */
@@ -90,7 +92,7 @@ export async function loadPorPedir(db: Db, orgId: string): Promise<PorPedirData>
   const enCamino: Record<string, number> = {};
   for (const c of camino ?? []) if (c.ingrediente_id) enCamino[c.ingrediente_id as string] = (enCamino[c.ingrediente_id as string] ?? 0) + Number(c.qty_pedida);
   const lineas = porPedir({ items, faltantes: faltantes.map((f) => ({ id: f.id, ingrediente_id: f.ingrediente_id, estado: f.estado, note: f.note })), solicitudes, enCamino });
-  return { items, lineas, proveedores, solicitudes };
+  return { items, lineas, proveedores, solicitudes, faltantes };
 }
 
 export interface CompraItem {
