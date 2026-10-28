@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cobrosDirectos,
   DENOMINACIONES_COP,
   diferenciaCaja,
   entregaCaja,
@@ -80,5 +81,18 @@ describe("ventanaTurno", () => {
     const now = new Date("2026-09-23T20:00:00.000Z"); // before the 17:00 local start
     const w = ventanaTurno({ date: "2026-09-23", inicio: "17:00", tz: "America/Bogota", opened_at: null, closed_at: null, now });
     expect(w.desde).toBe(w.hasta);
+  });
+});
+
+describe("cobrosDirectos", () => {
+  it("turns orders paid with «Cobrar» (no payment rows) into payments", () => {
+    const rows = cobrosDirectos([
+      { payment_method: "efectivo", total_cop: 12000, pagos: 0 },
+      { payment_method: "tarjeta", total_cop: 9000, pagos: 0 },
+      { payment_method: "efectivo", total_cop: 15000, pagos: 2 },
+      { payment_method: null, total_cop: 5000, pagos: 0 },
+    ]);
+    expect(rows).toEqual([{ method: "efectivo", amount_cop: 12000 }, { method: "tarjeta", amount_cop: 9000 }]);
+    expect(resumenPagos(rows)).toEqual({ efectivo: 12000, tarjeta: 9000, transferencia: 0, count: 2 });
   });
 });

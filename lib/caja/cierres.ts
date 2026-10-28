@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { CajaCierre, CajaDenominacion } from "@/lib/types";
 import {
+  cobrosDirectos,
   DENOMINACIONES_COP,
   diferenciaCaja,
   entregaCaja,
@@ -163,25 +164,43 @@ export async function listCierresSede(db: Db, restaurantId: string, limit = 14):
 /**
  * POS payments of the sede inside a window, split by method. `orden_pagos`
  * has no restaurant column, so the sede comes through the order; cancelled
- * orders are left out.
+ * orders are left out. Direct «Cobrar» sales write no payment row: those
+ * orders count by their own method and total, at the time they were paid.
  */
 export async function sumPagosVentana(
   db: Db,
   input: { orgId: string; restaurantId: string; desde: string; hasta: string },
 ): Promise<ResumenPagos> {
-  const { data, error } = await db
-    .from("orden_pagos")
-    .select("method, amount_cop, ordenes!inner(restaurant_id, status)")
-    .eq("organization_id", input.orgId)
-    .eq("ordenes.restaurant_id", input.restaurantId)
-    .neq("ordenes.status", "cancelada")
-    .gte("created_at", input.desde)
-    .lt("created_at", input.hasta);
-  if (error) {
-    console.error("[sumPagosVentana]", error);
+  const [pagos, directas] = await Promise.all([
+    db
+      .from("orden_pagos")
+      .select("method, amount_cop, ordenes!inner(restaurant_id, status)")
+      .eq("organization_id", input.orgId)
+      .eq("ordenes.restaurant_id", input.restaurantId)
+      .neq("ordenes.status", "cancelada")
+      .gte("created_at", input.desde)
+      .lt("created_at", input.hasta),
+    db
+      .from("ordenes")
+      .select("payment_method, total_cop, orden_pagos(id)")
+      .eq("organization_id", input.orgId)
+      .eq("restaurant_id", input.restaurantId)
+      .eq("status", "pagada")
+      .gte("paid_at", input.desde)
+      .lt("paid_at", input.hasta),
+  ]);
+  if (pagos.error || directas.error) {
+    console.error("[sumPagosVentana]", pagos.error ?? directas.error);
     return { efectivo: 0, tarjeta: 0, transferencia: 0, count: 0 };
   }
-  return resumenPagos((data ?? []) as Array<{ method: string; amount_cop: number }>);
+  const sinFilas = cobrosDirectos(
+    ((directas.data ?? []) as Array<{ payment_method: string | null; total_cop: number; orden_pagos: unknown[] | null }>).map((o) => ({
+      payment_method: o.payment_method,
+      total_cop: Number(o.total_cop),
+      pagos: o.orden_pagos?.length ?? 0,
+    })),
+  );
+  return resumenPagos([...((pagos.data ?? []) as Array<{ method: string; amount_cop: number }>), ...sinFilas]);
 }
 
 export interface CajaInstance {
@@ -410,5 +429,43 @@ export async function validarBase(db: Db, scope: { restaurantId: string; by: str
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!data?.length) return { ok: false, error: "Esta base ya fue validada." };
+  return { ok: true };
+}
+
+/**
+ * «No me alcanzan las piezas · ajustar base»: change the base that stays
+ * after sending, while it isn't confirmed yet. The plan is recomputed from
+ * the pieces counted; the entrega follows.
+ */
+export async function ajustarBase(db: Db, scope: { restaurantId: string }, cierreId: string, baseDejada: number): Promise<{ ok: true; plan: PlanBase } | { ok: false; error: string }> {
+  const { data: row } = await db
+    .from("caja_cierres")
+    .select("id, denominaciones, base_confirmada_at, status")
+    .eq("id", cierreId)
+    .eq("restaurant_id", scope.restaurantId)
+    .maybeSingle();
+  if (!row || row.status === "rechazado") return { ok: false, error: "Cierre no encontrado." };
+  if (row.base_confirmada_at) return { ok: false, error: "La base ya quedó confirmada." };
+  const plan = planBase(mapLineas(row.denominaciones), baseDejada);
+  const { error } = await db
+    .from("caja_cierres")
+    .update({ base_dejada_cop: baseDejada, base_denominaciones: plan.lineas, base_exacta: plan.exacto })
+    .eq("id", cierreId)
+    .is("base_confirmada_at", null);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, plan };
+}
+
+/** The note on a difference, written on the result step (after the count was sent). */
+export async function notaCierre(db: Db, scope: { restaurantId: string }, cierreId: string, nota: string): Promise<BaseActionResult> {
+  const { data, error } = await db
+    .from("caja_cierres")
+    .update({ note: nota.trim() })
+    .eq("id", cierreId)
+    .eq("restaurant_id", scope.restaurantId)
+    .eq("status", "pendiente")
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Este cierre ya fue revisado." };
   return { ok: true };
 }

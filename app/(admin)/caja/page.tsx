@@ -8,7 +8,9 @@ import { baseEstado, describirLineas } from "@/lib/caja/base";
 import { SectionCrumb } from "../_components/shared";
 import { CajaCard } from "../hoy/[date]/caja-card";
 import { listMovimientos } from "@/lib/caja/movimientos-db";
-import { MOTIVO_CAJA, resumenCaja } from "@/lib/caja/movimientos";
+import { MOTIVO_CAJA, MOTIVOS_CAJA, porConfirmar, resumenCaja, type MotivoCaja } from "@/lib/caja/movimientos";
+import { CAJA_FOTOS } from "@/lib/caja/movimientos-db";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { inicioDia } from "@/lib/inventario/mermas-db";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +28,9 @@ const STATUS: Record<string, { label: string; color: string }> = {
  * Aprobar / Rechazar), the base currently in the drawer and the trail of
  * base inicial → base que queda across days.
  */
-export default async function CajaAdminPage() {
-  const [{ profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+export default async function CajaAdminPage({ searchParams }: { searchParams: Promise<{ motivo?: string }> }) {
+  const [{ profile, supabase }, sede, sp] = await Promise.all([requireAdmin(), getActiveSede(), searchParams]);
+  const filtro = (MOTIVOS_CAJA as readonly string[]).includes(sp.motivo ?? "") ? (sp.motivo as MotivoCaja) : null;
   const tz = sede?.tz ?? "America/Bogota";
   const today = todayInTz(tz);
   const [cierres, movs, base] = await Promise.all([
@@ -35,6 +38,14 @@ export default async function CajaAdminPage() {
     listMovimientos(supabase, { orgId: profile.organization_id, restaurantId: sede?.id }, inicioDia(today, 6), 100),
     sede ? baseSugerida(supabase, sede.id) : Promise.resolve({ monto: 0, fecha: null, turno: null, counted_by_name: null }),
   ]);
+  // Photos are in a private bucket: sign them for an hour.
+  const paths = movs.map((m) => m.fotoPath).filter((p): p is string => !!p);
+  const { data: signed } = paths.length ? await createSupabaseAdminClient().storage.from(CAJA_FOTOS).createSignedUrls(paths, 3600) : { data: [] };
+  const fotoUrl = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
+  const vivos = movs.filter((m) => !m.anuladoAt);
+  const porMotivo = MOTIVOS_CAJA.map((m) => ({ motivo: m, monto: vivos.filter((v) => v.motivo === m).reduce((a, v) => a + v.monto, 0), n: vivos.filter((v) => v.motivo === m).length })).filter((x) => x.n > 0);
+  const sinComprobante = vivos.filter((m) => porConfirmar({ motivo: m.motivo, fotoPath: m.fotoPath, compraConFactura: m.compraConFactura }));
+  const lista = filtro ? movs.filter((m) => m.motivo === filtro) : movs;
   const pendientes = cierres.filter((c) => c.status === "pendiente");
   const aprobados = cierres.filter((c) => c.status === "aprobado");
   const diffTotal = aprobados.reduce((s, c) => s + (c.pagos_count > 0 ? c.diferencia_cop : 0), 0);
@@ -55,7 +66,7 @@ export default async function CajaAdminPage() {
         right={
           <>
             <Link href={`/hoy/${today}`} className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>Detalle de hoy</Link>
-            <Link href="/turno/caja" className="cmd-btn sm" style={{ textDecoration: "none" }}>Contar ahora →</Link>
+            <Link href="/turno/caja" className="cmd-btn sm" style={{ textDecoration: "none" }}>Caja en la tablet →</Link>
           </>
         }
       />
@@ -67,29 +78,54 @@ export default async function CajaAdminPage() {
           {stat("Entregado", posMoney(entregas), undefined, "suma de las entregas aprobadas")}
         </div>
 
-        <section aria-label="Ingresos y salidas" style={{ marginTop: 24 }}>
+        <section aria-label="Entradas y salidas" style={{ marginTop: 24 }}>
           {(() => {
-            const t = resumenCaja(movs);
+            const t = resumenCaja(movs.map((m) => ({ ...m, anulado: !!m.anuladoAt })));
             return (
               <div className="text-muted" style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", marginBottom: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                <span>Ingresos y salidas · 7 días · {movs.length}</span>
+                <span>Entradas y salidas · 7 días · {vivos.length}</span>
                 <span>entró <b className="cmd-num" style={{ color: "var(--green)" }}>{posMoney(t.ingresos)}</b></span>
                 <span>salió <b className="cmd-num" style={{ color: "var(--red)" }}>{posMoney(t.salidas)}</b></span>
-                <Link href="/turno/caja/movimientos" style={{ color: "var(--ink)" }}>registrar →</Link>
+                <Link href="/turno/caja" style={{ color: "var(--ink)" }}>abrir Caja en la tablet →</Link>
               </div>
             );
           })()}
-          {movs.length === 0 && <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0" }}>Nada registrado. El sencillo que se deposita y lo que se paga desde la caja se anota en la tablet (Caja → Ingresos y salidas) y el arqueo lo cuenta.</div>}
-          {movs.map((m) => (
-            <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 12.5 }}>
-              <span className="cmd-num text-muted" style={{ fontSize: 11, whiteSpace: "nowrap", minWidth: 120 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/compras" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}</Link></> : null}
-                <span className="text-muted"> · «{m.justificacion}» · {m.by ?? "—"}</span>
-              </span>
-              <span className="cmd-num" style={{ fontWeight: 700, whiteSpace: "nowrap", color: m.tipo === "ingreso" ? "var(--green)" : "var(--red)" }}>{m.tipo === "ingreso" ? "+" : "−"}{posMoney(m.monto)}</span>
+          {porMotivo.length > 0 && (
+            <div className="flex flex-wrap" style={{ gap: 8, margin: "8px 0 10px" }}>
+              {porMotivo.map((x) => stat(MOTIVO_CAJA[x.motivo].label, posMoney(x.monto), MOTIVO_CAJA[x.motivo].tipo === "ingreso" ? "var(--green)" : MOTIVO_CAJA[x.motivo].tipo === "salida" ? "var(--red)" : undefined, `${x.n} movimiento${x.n === 1 ? "" : "s"}`))}
             </div>
-          ))}
+          )}
+          {sinComprobante.length > 0 && (
+            <div style={{ border: "1.5px solid var(--amber)", padding: "8px 12px", fontSize: 12.5, margin: "0 0 10px" }}>
+              <b style={{ color: "var(--amber)" }}>{sinComprobante.length} por confirmar</b> · {sinComprobante.map((m) => `${MOTIVO_CAJA[m.motivo].label} ${posMoney(m.monto)} (${fechaCorta(todayInTz(tz, new Date(m.createdAt)))})`).join(" · ")} — falta la foto; el equipo la sube desde el detalle del movimiento en la tablet.
+            </div>
+          )}
+          {/* A GET form: a router.push to the same route with only a new query would no-op. */}
+          <form method="get" className="flex flex-wrap" style={{ gap: 6, alignItems: "center", margin: "0 0 6px" }}>
+            <button type="submit" name="motivo" value="" className={`cmd-btn sm ${filtro ? "ghost" : ""}`}>Todos</button>
+            {MOTIVOS_CAJA.filter((m) => movs.some((v) => v.motivo === m)).map((m) => (
+              <button key={m} type="submit" name="motivo" value={m} className={`cmd-btn sm ${filtro === m ? "" : "ghost"}`}>{MOTIVO_CAJA[m].label}</button>
+            ))}
+          </form>
+          {lista.length === 0 && <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0" }}>Nada registrado. Domicilios, consignaciones, pagos a proveedor y el sencillo se registran en la tablet (Caja) con su ¿por qué?, y el arqueo los cuenta.</div>}
+          {lista.map((m) => {
+            const falta = porConfirmar({ motivo: m.motivo, fotoPath: m.fotoPath, compraConFactura: m.compraConFactura, anulado: !!m.anuladoAt });
+            const extra = [m.detalle.plataforma, m.detalle.orden && `orden ${m.detalle.orden}`, m.detalle.quien && `la lleva ${m.detalle.quien}`, m.detalle.denominaciones?.length ? describirLineas(m.detalle.denominaciones, posMoney) : null].filter(Boolean).join(" · ");
+            const url = m.fotoPath ? fotoUrl.get(m.fotoPath) : null;
+            return (
+              <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 12.5, opacity: m.anuladoAt ? 0.6 : 1 }}>
+                <span className="cmd-num text-muted" style={{ fontSize: 11, whiteSpace: "nowrap", minWidth: 120 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/compras" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}{m.compraProveedor ? ` ${m.compraProveedor}` : ""}</Link></> : null}
+                  <span className="text-muted"> · «{m.justificacion}»{extra ? ` · ${extra}` : ""} · {m.by ?? "—"}</span>
+                  {url && <> · <a href={url} target="_blank" rel="noreferrer" style={{ color: "var(--ink)" }}>foto</a></>}
+                  {falta && <span style={{ color: "var(--amber)", fontWeight: 700 }}> · por confirmar: {falta}</span>}
+                  {m.anuladoAt && <span style={{ color: "var(--red)", fontWeight: 700 }}> · anulado{m.anuladoBy ? ` por ${m.anuladoBy}` : ""}{m.anuladoMotivo ? `: «${m.anuladoMotivo}»` : ""}</span>}
+                </span>
+                <span className="cmd-num" style={{ fontWeight: 700, whiteSpace: "nowrap", color: m.tipo === "ingreso" ? "var(--green)" : "var(--red)", textDecoration: m.anuladoAt ? "line-through" : undefined }}>{m.tipo === "ingreso" ? "+" : "−"}{posMoney(m.monto)}</span>
+              </div>
+            );
+          })}
         </section>
 
         {pendientes.length > 0 && (
