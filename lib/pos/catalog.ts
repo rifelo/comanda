@@ -17,6 +17,7 @@ import {
   type PosBarista,
 } from "./types";
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
+import { rankTopSellers, TOP_SELLERS_DAYS, type SoldLine } from "./top-sellers";
 
 /**
  * Build the live POS catalog for an org from the catálogo/combos/modificadores
@@ -52,6 +53,7 @@ export async function getPosCatalog({
     modGroupsList,
     { data: orgRow },
     equipo,
+    vendidas,
   ] = await Promise.all([
     supabase
       .from("productos")
@@ -88,6 +90,7 @@ export async function getPosCatalog({
       .eq("id", organizationId)
       .maybeSingle(),
     getEquipo(organizationId),
+    getVendidas(supabase, organizationId),
   ]);
 
   // ── categories: resolve each product's top-level tab + sub label ──────────
@@ -244,9 +247,12 @@ export async function getPosCatalog({
   const catLabel: Record<string, string> = {};
   for (const c of catalogCats) catLabel[c.id] = c.label;
 
+  const names = new Map(menu.map((m) => [m.id, m.name]));
+
   return {
     cats: catalogCats,
     menu,
+    top: rankTopSellers(vendidas, names),
     combos,
     modGroups,
     byId,
@@ -259,6 +265,33 @@ export async function getPosCatalog({
     handArt: ((orgRow as { label_art_url?: string | null } | null)?.label_art_url ?? "").trim() || null,
     equipo,
   };
+}
+
+/**
+ * Product lines rung up in the last TOP_SELLERS_DAYS days, for Más vendidos.
+ * Merged orders are cancelled in favour of their target, so skipping
+ * cancelled ones counts every sale once.
+ */
+async function getVendidas(supabase: SupabaseClient, organizationId: string): Promise<SoldLine[]> {
+  const desde = new Date(Date.now() - TOP_SELLERS_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("ordenes")
+    .select("created_at, orden_items(producto_id, qty)")
+    .eq("organization_id", organizationId)
+    .neq("status", "cancelada")
+    .gte("created_at", desde)
+    .limit(10000);
+  if (error) {
+    console.error("[getVendidas]", error);
+    return [];
+  }
+  return (data ?? []).flatMap((o) =>
+    ((o.orden_items as { producto_id: string | null; qty: number }[] | null) ?? []).map((i) => ({
+      productoId: i.producto_id,
+      qty: Number(i.qty),
+      at: o.created_at as string,
+    })),
+  );
 }
 
 /**

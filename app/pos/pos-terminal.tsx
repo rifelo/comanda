@@ -399,11 +399,11 @@ export function PosTerminal({
   /** `device` = paired tablet (no account); `user` = signed-in org member. */
   mode?: "device" | "user";
 }) {
-  // Seed the store's catalog once so imperative actions can read it. When the
-  // catalog has no favorites (a paired device has no user to own them), start
-  // on the first real category instead of an empty Favoritos tab.
+  // Seed the store's catalog once so imperative actions can read it. When
+  // Favoritos would be empty (no stars and nothing sold yet), start on the
+  // first real category instead.
   React.useEffect(() => {
-    const hasFavs = catalog.menu.some((p) => p.fav);
+    const hasFavs = catalog.top.length > 0 || catalog.menu.some((p) => p.fav);
     const firstReal = catalog.cats.find((c) => c.id !== FAV_CAT)?.id;
     const cur = posStore.get().cat;
     posStore.set({
@@ -855,7 +855,15 @@ function Catalog() {
     const set = new Set(filter.ids);
     sections = [{ label: null, items: catalog.menu.filter((p) => set.has(p.id)) }];
   } else if (cat === COMBO_CAT) sections = [{ label: null, combos: catalog.combos }];
-  else if (cat === FAV_CAT) sections = [{ label: null, items: catalog.menu.filter((p) => p.fav) }];
+  else if (cat === FAV_CAT) {
+    // Starred products first, then the best sellers that aren't starred.
+    const mine = catalog.menu.filter((p) => p.fav);
+    const starred = new Set(mine.map((p) => p.id));
+    const top = catalog.top.filter((id) => !starred.has(id)).map((id) => catalog.byId[id]).filter(Boolean);
+    sections = mine.length && top.length
+      ? [{ label: "Tus favoritos", items: mine }, { label: "Más vendidos", items: top }]
+      : [{ label: null, items: mine.length ? mine : top }];
+  }
   else {
     const items = catalog.menu.filter((p) => p.catId === cat);
     const subs = [...new Set(items.map((p) => p.sub))];
@@ -913,7 +921,7 @@ function Catalog() {
         {catalog.menu.length === 0 && catalog.combos.length === 0 ? (
           <Empty>No hay productos en el catálogo todavía.<br />Créalos en Catálogo para venderlos aquí.</Empty>
         ) : empty ? (
-          <Empty>{q ? <>Nada coincide con «{s.search.trim()}».</> : cat === FAV_CAT ? <>Aún no hay favoritos.<br />Márcalos con ★ en Catálogo.</> : <>Sin productos en esta categoría.</>}</Empty>
+          <Empty>{q ? <>Nada coincide con «{s.search.trim()}».</> : cat === FAV_CAT ? <>Aún no hay ventas recientes ni favoritos.<br />Los más vendidos aparecerán aquí; también puedes marcarlos con ★ en Catálogo.</> : <>Sin productos en esta categoría.</>}</Empty>
         ) : null}
         {sections.map((sec, si) => (
           <div key={si} style={{ marginTop: si === 0 ? 0 : 18 }}>

@@ -8,7 +8,7 @@ const latte: PosMenuItem = {
 };
 const tinto: PosMenuItem = { ...latte, id: "p-tinto", name: "Tinto", price: 3000, mods: [] };
 const catalog: PosCatalog = {
-  cats: [], menu: [latte, tinto], combos: [{ id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 }],
+  cats: [], menu: [latte, tinto], top: [], combos: [{ id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 }],
   modGroups: {
     "g-size": { id: "g-size", name: "Tamaño", type: "single", required: true, options: [{ name: "Mediano", delta: 0 }, { name: "Grande", delta: 1500 }] },
     "g-extras": { id: "g-extras", name: "Extras", type: "multi", required: false, options: [{ name: "Canela", delta: 0 }, { name: "Shot extra", delta: 2000 }] },

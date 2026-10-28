@@ -88,6 +88,8 @@ export interface PosCatalog {
   /** Tab order: synthetic "fav" first, real top-level cats, "combo" last. */
   cats: PosCat[];
   menu: PosMenuItem[];
+  /** Best-selling product ids of the last 30 days, most sold first (Favoritos tab). */
+  top: string[];
   combos: PosCombo[];
   modGroups: Record<string, PosModGroup>;
   byId: Record<string, PosMenuItem>;

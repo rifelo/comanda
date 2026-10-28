@@ -63,6 +63,7 @@ import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificacione
 export const EMPTY_CATALOG: PosCatalog = {
   cats: [],
   menu: [],
+  top: [],
   combos: [],
   modGroups: {},
   byId: {},
