@@ -66,6 +66,17 @@ export function resumenPagos(pagos: ReadonlyArray<{ method: MetodoPago | string;
   return out;
 }
 
+/**
+ * Direct «Cobrar» sales: paid in the POS in one go, they write no
+ * orden_pagos row — only the order's own method and total. Turned into
+ * payment rows so the expected cash counts them (same rule as /numeros).
+ */
+export function cobrosDirectos(ordenes: ReadonlyArray<{ payment_method: string | null; total_cop: number; pagos: number }>): Array<{ method: string; amount_cop: number }> {
+  return ordenes
+    .filter((o) => o.pagos === 0 && o.payment_method && Number(o.total_cop) > 0)
+    .map((o) => ({ method: o.payment_method as string, amount_cop: Number(o.total_cop) }));
+}
+
 /** Offset (minutes east of UTC) of `tz` at the instant `at`. */
 function tzOffsetMinutes(tz: string, at: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
