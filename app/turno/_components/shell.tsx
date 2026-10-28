@@ -16,7 +16,7 @@ export function dateLabel(yyyyMMdd: string, todayIdx: number): string {
   return `${DIAS[todayIdx]} ${d} · ${MESES[m - 1]}`;
 }
 
-export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, onNovedades, conteoPendiente }: {
+export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, onNovedades, conteoPendiente, cajaPendiente }: {
   sedeName: string;
   date: string;
   todayIdx: number;
@@ -27,6 +27,8 @@ export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, on
   onNovedades: () => void;
   /** Today's inventory count is still owed (lib/inventario/rutina.ts). */
   conteoPendiente?: boolean;
+  /** The base the last close left is still to be validated. */
+  cajaPendiente?: boolean;
 }) {
   return (
     <div className="turno-topbar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)", minWidth: 0, overflowX: "auto", overflowY: "hidden", fontFamily: "var(--font-mono)" }}>
@@ -50,7 +52,10 @@ export function TopBar({ sedeName, date, todayIdx, now, me, actor, novedades, on
         Inventario
         {conteoPendiente && <span aria-label="conteo pendiente" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--red)" }} />}
       </Link>
-      <Link href="/turno/caja" style={linkChip}>Caja</Link>
+      <Link href="/turno/caja" style={{ ...linkChip, gap: 6 }} title={cajaPendiente ? "Valida la base de la caja" : "Caja"}>
+        Caja
+        {cajaPendiente && <span aria-label="base por validar" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--amber)" }} />}
+      </Link>
       <Link href="/pos" style={linkChip}>POS →</Link>
       {actor.role === "admin" && !actor.viaDevice && <Link href="/" style={linkChip}>← Panel</Link>}
     </div>

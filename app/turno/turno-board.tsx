@@ -43,7 +43,7 @@ function writeSession(key: string, value: unknown) {
   }
 }
 
-export function TurnoBoard({ data, actor, serverNow, rutina }: { data: TurnoBoardData; actor: TurnoActor; serverNow: string; rutina: Rutina }) {
+export function TurnoBoard({ data, actor, serverNow, rutina, cajaPendiente }: { data: TurnoBoardData; actor: TurnoActor; serverNow: string; rutina: Rutina; cajaPendiente?: boolean }) {
   const router = useRouter();
   const [shiftId, setShiftId] = React.useState<string | null>(() => {
     const open = data.turnos.find((t) => t.instance.status === "open") ?? data.turnos[0];
@@ -167,6 +167,7 @@ export function TurnoBoard({ data, actor, serverNow, rutina }: { data: TurnoBoar
         novedades={shift?.novedades.length ?? 0}
         onNovedades={() => setPanel("novedades")}
         conteoPendiente={conteoPending !== null && shift?.instance.status === "open"}
+        cajaPendiente={cajaPendiente}
       />
 
       <div className="flex flex-col lg:flex-row" style={{ minHeight: 0, minWidth: 0 }}>
