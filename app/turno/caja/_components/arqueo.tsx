@@ -18,8 +18,9 @@ function readDraft(key: string): Draft | null {
   try {
     const raw = window.localStorage.getItem(key);
     const d = raw ? (JSON.parse(raw) as Draft) : null;
-    // Drafts of the old screen kept the counts as text.
-    if (d?.cantidades) for (const k of Object.keys(d.cantidades)) d.cantidades[k] = Number(d.cantidades[k]) || 0;
+    // Drafts of the old screen kept the counts and the base as text.
+    if (d?.cantidades) for (const k of Object.keys(d.cantidades)) d.cantidades[k] = Math.max(0, Math.round(Number(d.cantidades[k]) || 0));
+    if (d && d.baseInicial != null) d.baseInicial = Number.isFinite(Number(d.baseInicial)) ? Math.max(0, Math.round(Number(d.baseInicial))) : null;
     return d;
   } catch {
     return null;
@@ -150,7 +151,7 @@ function Conteo({ today, actorName, online, instanceId, instanceName, baseInicia
     if (contado === 0 && !window.confirm("No contaste nada: la caja quedaría en $ 0. ¿Enviar de todos modos?")) return;
     setSending(true);
     setError(null);
-    const r = await enviar({ shiftInstanceId: instanceId, denominaciones: lines.filter((l) => l.cantidad > 0), baseInicial: baseIni, baseDejada: baseDejadaSugerida });
+    const r = await enviar({ shiftInstanceId: instanceId, denominaciones: lines.filter((l) => l.cantidad > 0).map((l) => ({ valor: l.valor, cantidad: Math.round(Number(l.cantidad)) })), baseInicial: Math.max(0, Math.round(Number(baseIni) || 0)), baseDejada: Math.max(0, Math.round(Number(baseDejadaSugerida) || 0)) });
     setSending(false);
     if (!r.ok) setError(r.error);
   }
