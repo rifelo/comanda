@@ -56,6 +56,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
     path.startsWith("/api/cron") ||
+    // Meta's WhatsApp webhook: authenticated by its HMAC signature, not a session.
+    path === "/api/whatsapp" ||
     path.startsWith("/_next") ||
     path.startsWith("/icons") ||
     path === "/manifest.json" ||
