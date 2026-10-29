@@ -5,8 +5,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Context for the tools a person opens from their own shift screen
- * (/shift/[id]/caja, /shift/[id]/inventario): the arqueo and the quick
- * inventory of the sede that turno belongs to.
+ * (/shift/[id]/inventario): the quick inventory of the sede that turno
+ * belongs to.
  *
  * Access is proven with the person's RLS session (they can only see
  * instances of sedes they are a member of, or of their org as admin); the
