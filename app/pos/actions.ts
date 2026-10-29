@@ -25,20 +25,9 @@ import type {
 import { bogotaDay, shiftDay } from "@/lib/pos/pending";
 import { summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
+import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lineas";
 
-// ── price recomputation (server is the source of truth, never the client) ────
-const ModSelectionSchema = z.record(
-  z.string(),
-  z.union([z.string(), z.array(z.string())]).nullable(),
-);
-const LineSchema = z.object({
-  kind: z.enum(["item", "combo"]),
-  id: z.string(),
-  qty: z.coerce.number().int().min(1).max(99),
-  mods: ModSelectionSchema.optional(),
-  /** Person at the table this line is for (snapshot text; prints on the cup). */
-  customer: z.string().trim().max(40).optional(),
-});
+// ── payloads (lines are re-priced in lib/pos/lineas.ts, never trusted) ──────
 const PaymentSchema = z.object({
   method: z.enum(["efectivo", "tarjeta", "transferencia"]),
   /** Cash received; only meaningful for efectivo. */
@@ -71,52 +60,12 @@ function orderTime(createdAt: number | undefined): string {
   return new Date(now).toISOString();
 }
 
-function lineUnitPrice(
-  catalog: PosCatalog,
-  line: z.infer<typeof LineSchema>,
-): { name: string; unit: number } | null {
-  if (line.kind === "combo") {
-    const c = catalog.comboById[line.id];
-    return c ? { name: c.name, unit: c.price } : null;
-  }
-  const p = catalog.byId[line.id];
-  if (!p) return null;
-  let extra = 0;
-  for (const gid in line.mods ?? {}) {
-    const g = catalog.modGroups[gid];
-    if (!g) continue;
-    const sel = line.mods![gid];
-    const names = Array.isArray(sel) ? sel : sel ? [sel] : [];
-    for (const n of names) {
-      const opt = g.options.find((o) => o.name === n);
-      if (opt) extra += opt.delta;
-    }
-  }
-  return { name: p.name, unit: p.price + extra };
-}
-
 export type CrearOrdenResult =
   | { ok: true; folio: string; ordenId: string; total: number; change: number }
   | { ok: false; error: string };
 
 type OrdenBase = Omit<z.infer<typeof CrearOrdenSchema>, "payment">;
-type PricedItem = { line: z.infer<typeof LineSchema>; name: string; unit: number; position: number };
 type PosCtx = Awaited<ReturnType<typeof requirePosContext>>;
-
-/** Re-price every line from the live catalog; the client never sends money. */
-function priceLines(
-  catalog: PosCatalog,
-  lines: z.infer<typeof LineSchema>[],
-): { ok: true; items: PricedItem[]; subtotal: number } | { ok: false; error: string } {
-  const items: PricedItem[] = [];
-  for (const [i, l] of lines.entries()) {
-    const priced = lineUnitPrice(catalog, l);
-    if (!priced) return { ok: false, error: "Un producto del pedido ya no existe." };
-    items.push({ line: l, ...priced, position: i });
-  }
-  const subtotal = items.reduce((s, it) => s + it.unit * it.line.qty, 0);
-  return { ok: true, items, subtotal };
-}
 
 /**
  * Tender: change is computed here from the recomputed total, never trusted
@@ -131,22 +80,6 @@ function settleTender(
     return { ok: false, error: "El efectivo recibido es menor que el total." };
   }
   return { ok: true, tendered, change: tendered !== null ? tendered - total : 0 };
-}
-
-function itemRows(orgId: string, ordenId: string, items: PricedItem[]) {
-  return items.map((it) => ({
-    organization_id: orgId,
-    orden_id: ordenId,
-    kind: it.line.kind,
-    producto_id: it.line.kind === "item" ? it.line.id : null,
-    combo_id: it.line.kind === "combo" ? it.line.id : null,
-    name: it.name,
-    qty: it.line.qty,
-    unit_price_cop: it.unit,
-    mods: it.line.mods ?? {},
-    position: it.position,
-    customer_name: it.line.customer || null,
-  }));
 }
 
 /** Profile behind the sale for the movement log (null for a paired device). */
