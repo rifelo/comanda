@@ -17,7 +17,10 @@ import { todayInTz } from "@/lib/utils";
  */
 export async function enviarCierreCaja(input: unknown): Promise<EnviarCierreResult> {
   const parsed = CierreInputSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Cierre inválido." };
+  if (!parsed.success) {
+    console.error("[enviarCierreCaja] invalid", JSON.stringify(parsed.error.issues));
+    return { ok: false, error: "No se pudo leer el conteo. Recarga la página e intenta otra vez; lo contado sigue guardado." };
+  }
   let ctx;
   try {
     ctx = await requireTurnoContext();
