@@ -1,14 +1,15 @@
 import { after, NextResponse, type NextRequest } from "next/server";
-import { isValidSignature, leerWebhook } from "@/lib/whatsapp/cloud-api";
+import { isAuthorizedWebhook, leerWebhook } from "@/lib/whatsapp/cloud-api";
 import { registrar, responder } from "@/lib/whatsapp/atender";
 
 /**
- * WhatsApp Cloud API webhook (Meta). Register https://<dominio>/api/whatsapp in
- * the Meta app with WHATSAPP_VERIFY_TOKEN, subscribed to `messages` and, for a
- * number shared with the WhatsApp Business app, `smb_message_echoes`.
+ * WhatsApp Cloud API webhook, from 360dialog (registered with our Bearer
+ * secret, see lib/whatsapp/cloud-api.ts) or straight from Meta (signed; GET
+ * answers Meta's verification). For a number shared with the WhatsApp
+ * Business app, `smb_message_echoes` arrive here too.
  *
- * Meta wants a 200 fast and retries otherwise, so the messages are stored
- * during the request and the agent answers in `after()`.
+ * Both want a 200 within seconds and retry otherwise, so the messages are
+ * stored during the request and the agent answers in `after()`.
  */
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -25,8 +26,8 @@ export function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const raw = await req.text();
-  if (!isValidSignature(raw, req.headers.get("x-hub-signature-256"), process.env.WHATSAPP_APP_SECRET ?? "")) {
-    return new NextResponse("Invalid signature", { status: 401 });
+  if (!isAuthorizedWebhook(raw, req.headers)) {
+    return new NextResponse("Unauthorized", { status: 401 });
   }
   let body: unknown;
   try {

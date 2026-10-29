@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { isValidSignature, leerWebhook } from "./cloud-api";
+import { isValidBearer, isValidSignature, leerWebhook } from "./cloud-api";
 
 const meta = { display_phone_number: "573001112233", phone_number_id: "PNID" };
 
@@ -15,6 +15,19 @@ describe("isValidSignature", () => {
     expect(isValidSignature(body + " ", sig, "secreto")).toBe(false);
     expect(isValidSignature(body, null, "secreto")).toBe(false);
     expect(isValidSignature(body, "sha256=zz", "secreto")).toBe(false);
+  });
+});
+
+describe("isValidBearer", () => {
+  const secret = "s3cr3t-de-360dialog-largo";
+  it("accepts the header the webhook was registered with", () => {
+    expect(isValidBearer(`Bearer ${secret}`, secret)).toBe(true);
+  });
+  it("rejects anything else, and a secret too short to trust", () => {
+    expect(isValidBearer(`Bearer ${secret}x`, secret)).toBe(false);
+    expect(isValidBearer(secret, secret)).toBe(false);
+    expect(isValidBearer(null, secret)).toBe(false);
+    expect(isValidBearer("Bearer corto", "corto")).toBe(false);
   });
 });
 

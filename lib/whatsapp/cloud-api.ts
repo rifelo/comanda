@@ -5,11 +5,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * checking that a webhook really comes from Meta, reading what it carries, and
  * sending replies. No Supabase or Claude in here, so the parsing is unit-tested.
  *
- * Env: WHATSAPP_TOKEN (system-user access token), WHATSAPP_APP_SECRET (signs
- * the webhooks), WHATSAPP_VERIFY_TOKEN (any string, typed in the Meta app when
- * the webhook URL is registered), WHATSAPP_GRAPH_VERSION (optional).
+ * Two ways in, same payloads (360dialog forwards Meta's webhooks as they are):
+ *   · 360dialog (BSP): D360_API_KEY. It doesn't sign webhooks, so the URL is
+ *     registered with an `Authorization: Bearer <WHATSAPP_WEBHOOK_SECRET>`
+ *     header (POST /v1/configs/webhook) and checked here.
+ *   · Meta directly: WHATSAPP_TOKEN (system-user token), WHATSAPP_APP_SECRET
+ *     (signs the webhooks), WHATSAPP_VERIFY_TOKEN, WHATSAPP_GRAPH_VERSION.
  */
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v23.0";
+const D360_URL = "https://waba-v2.360dialog.io/messages";
 
 /** `X-Hub-Signature-256: sha256=<hex>` is an HMAC of the raw body with the app secret. */
 export function isValidSignature(rawBody: string, header: string | null, appSecret: string): boolean {
@@ -17,6 +21,22 @@ export function isValidSignature(rawBody: string, header: string | null, appSecr
   const expected = createHmac("sha256", appSecret).update(rawBody, "utf8").digest();
   const got = Buffer.from(header.slice("sha256=".length), "hex");
   return got.length === expected.length && timingSafeEqual(got, expected);
+}
+
+/** `Authorization: Bearer <secret>` — the header the webhook was registered with at 360dialog. */
+export function isValidBearer(header: string | null, secret: string): boolean {
+  if (!header?.startsWith("Bearer ") || secret.length < 16) return false;
+  const got = Buffer.from(header.slice("Bearer ".length));
+  const expected = Buffer.from(secret);
+  return got.length === expected.length && timingSafeEqual(got, expected);
+}
+
+/** A webhook comes from 360dialog (our secret header) or from Meta (its signature). */
+export function isAuthorizedWebhook(rawBody: string, headers: { get(name: string): string | null }): boolean {
+  const secret = process.env.WHATSAPP_WEBHOOK_SECRET ?? "";
+  if (secret && isValidBearer(headers.get("authorization"), secret)) return true;
+  const appSecret = process.env.WHATSAPP_APP_SECRET ?? "";
+  return Boolean(appSecret) && isValidSignature(rawBody, headers.get("x-hub-signature-256"), appSecret);
 }
 
 /** Something a customer wrote to the business. */
@@ -109,12 +129,17 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
   return { entrantes, ecos };
 }
 
+/** POST to the messages endpoint of whichever provider is configured. */
 async function graph(phoneNumberId: string, payload: object): Promise<Obj> {
+  const d360 = process.env.D360_API_KEY;
   const token = process.env.WHATSAPP_TOKEN;
-  if (!token) throw new Error("Falta WHATSAPP_TOKEN en el entorno.");
-  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`, {
+  if (!d360 && !token) throw new Error("Falta D360_API_KEY (o WHATSAPP_TOKEN) en el entorno.");
+  // A 360dialog key belongs to one number, so its URL carries no phone number id.
+  const url = d360 ? D360_URL : `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`;
+  const auth: Record<string, string> = d360 ? { "D360-API-KEY": d360 } : { Authorization: `Bearer ${token}` };
+  const res = await fetch(url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: { ...auth, "Content-Type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
   });
   const json = obj(await res.json().catch(() => ({})));
