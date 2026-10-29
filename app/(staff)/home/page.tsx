@@ -4,15 +4,17 @@ import { getTodayShifts } from "@/lib/db/shifts";
 import { listMyTasks } from "@/lib/db/tasks";
 import { loadRutina } from "@/lib/inventario/conteos";
 import { NOMBRE_CONTEO } from "@/lib/inventario/rutina";
+import { baseSugerida } from "@/lib/caja/cierres";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ComandaPlate } from "@/components/comanda/primitives";
 import { todayInTz, formatTime, formatDateLabelEs } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Staff home — where a team member lands after signing in. Three doors: the
- * day's turnos (checklists), the register and the inventory (the tablet's
- * own screens, signed by this person). Each one says what is waiting
+ * Staff home — where a team member lands after signing in. Four doors: the
+ * day's turnos (checklists), the register, the inventory and the caja (the
+ * tablet's own screens, signed by this person). Each one says what is waiting
  * behind it, so the person knows where they are needed before tapping.
  */
 export default async function StaffHomePage() {
@@ -21,7 +23,14 @@ export default async function StaffHomePage() {
     getTodayShifts(),
     listMyTasks(),
   ]);
-  const { rutina } = await loadRutina(supabase, profile.organization_id, "America/Bogota");
+  const sedeId = shifts[0]?.restaurant_id ?? null;
+  const [{ rutina }, base] = await Promise.all([
+    loadRutina(supabase, profile.organization_id, "America/Bogota"),
+    sedeId ? baseSugerida(createSupabaseAdminClient(), sedeId) : null,
+  ]);
+  // Same rule as the dot on the tablet's Caja tab: the last close's base, unchecked by a later turno.
+  const abiertos = shifts.filter((s) => s.status === "open").map((s) => s.id);
+  const basePorValidar = !!base?.cierre && !base.cierre.base_validada_at && !abiertos.includes(base.cierre.shift_instance_id ?? "");
   const dateLabel = formatDateLabelEs(todayInTz());
   const firstName = profile.full_name.trim().split(/\s+/)[0] || profile.full_name;
 
@@ -48,7 +57,7 @@ export default async function StaffHomePage() {
         time={formatTime(new Date())}
       />
 
-      <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-4 px-4 py-5 sm:grid-cols-2 sm:py-8 lg:max-w-6xl lg:grid-cols-3">
+      <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-4 px-4 py-5 sm:grid-cols-2 sm:py-8 lg:max-w-6xl lg:grid-cols-4">
         <Door
           href="/today"
           kicker="01"
@@ -79,6 +88,15 @@ export default async function StaffHomePage() {
           accent="var(--amber)"
           status={rutina.hecho ? `${NOMBRE_CONTEO[rutina.toca]} · enviado` : `${NOMBRE_CONTEO[rutina.toca]} · al cierre`}
           alert={null}
+        />
+        <Door
+          href="/turno/caja"
+          kicker="04"
+          title="Caja"
+          text="Entradas y salidas de plata con su ¿por qué?, el arqueo al cerrar y la base al abrir."
+          accent="var(--ink)"
+          status="Entradas · salidas · arqueo"
+          alert={basePorValidar ? "Valida la base al abrir" : null}
         />
       </div>
     </div>

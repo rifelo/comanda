@@ -36,7 +36,7 @@ export function ShiftTools({ shiftId, cierre, faltantes, hasCajaTask, basePorVal
     <div className="px-4 py-3" style={{ borderBottom: "1px dashed var(--rule)" }}>
       <div className="text-muted mb-2" style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase" }}>Herramientas del turno</div>
       <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-        <Tile href={`/shift/${shiftId}/caja`} title="Caja · arqueo" state={cajaState} tone={cajaTone} hint={basePorValidar ? "Cuenta la base que dejaron y confirma que está correcta." : "Cuenta el efectivo, deja la base de mañana."} />
+        <Tile href="/turno/caja" title="Caja · arqueo" state={cajaState} tone={cajaTone} hint={basePorValidar ? "Cuenta la base que dejaron y confirma que está correcta." : "Entradas y salidas con su ¿por qué?, el arqueo y la base de mañana."} />
         <Tile
           href={`/shift/${shiftId}/inventario`}
           title="Faltantes · inventario rápido"
