@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { todayInTz } from "@/lib/utils";
 import { todayIdxOf } from "@/lib/turno/state";
 
@@ -22,11 +22,7 @@ export async function GET(req: NextRequest) {
 
   // Service role bypasses RLS — needed because we generate rows for every
   // restaurant across every org.
-  const supa = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } },
-  );
+  const supa = createSupabaseAdminClient();
 
   // Restaurants + active templates are independent — fan out in parallel.
   const [

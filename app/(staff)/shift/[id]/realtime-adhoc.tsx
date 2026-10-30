@@ -14,6 +14,11 @@ export function RealtimeAdHoc({ shiftId }: { shiftId: string }) {
   const router = useRouter();
 
   useEffect(() => {
+    // Neon has no realtime: refresh on a timer instead.
+    if (process.env.NEXT_PUBLIC_BACKEND === "neon") {
+      const id = window.setInterval(() => router.refresh(), 20_000);
+      return () => window.clearInterval(id);
+    }
     const supabase = createSupabaseBrowserClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;
