@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createNeonAdminClient } from "@/lib/neon/client";
 
 /**
  * Server-only Supabase client running with the `service_role` key.
@@ -10,6 +11,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  */
 let _admin: SupabaseClient | null = null;
 export function createSupabaseAdminClient(): SupabaseClient {
+  if (process.env.BACKEND === "neon") return createNeonAdminClient() as unknown as SupabaseClient;
   if (_admin) return _admin;
   _admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

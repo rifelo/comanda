@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/neon/auth-client";
 
 /**
  * Single sign-in surface for the app: kicks off the Supabase OAuth PKCE
@@ -17,6 +18,15 @@ export function GoogleSignInButton({ next }: { next?: string }) {
   function onClick() {
     setError(null);
     startTransition(async () => {
+      if (process.env.NEXT_PUBLIC_BACKEND === "neon") {
+        const { error } = await authClient.signIn.social({
+          provider: "google",
+          callbackURL: next && next.startsWith("/") && !next.startsWith("//") ? next : "/",
+          errorCallbackURL: "/login",
+        });
+        if (error) setError(error.message ?? "No se pudo iniciar con Google.");
+        return;
+      }
       const supabase = createSupabaseBrowserClient();
       const redirectTo = new URL("/auth/callback", window.location.origin);
       if (next) redirectTo.searchParams.set("next", next);

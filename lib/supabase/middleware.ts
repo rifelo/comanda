@@ -1,5 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createNeonServerClient, sessionUser } from "@/lib/neon/client";
 
 /**
  * Middleware-side Supabase session refresh.
@@ -9,6 +11,11 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+
+  if (process.env.BACKEND === "neon") {
+    const user = await sessionUser(request.headers);
+    return gate(request, response, user, createNeonServerClient(request.headers) as unknown as SupabaseClient);
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,7 +42,10 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  return gate(request, response, user, supabase);
+}
 
+async function gate(request: NextRequest, response: NextResponse, user: { id: string } | null, supabase: SupabaseClient) {
   // Auth gate: anyone hitting an app route without a session bounces to /login.
   // Public paths: /login, /auth/* (OAuth callback), /api/cron/*, static assets.
   const path = request.nextUrl.pathname;
@@ -55,6 +65,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/c/") ||
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
+    // Better Auth's endpoints (sign-in, OAuth callback) when BACKEND=neon.
+    path.startsWith("/api/auth/") ||
     path.startsWith("/api/cron") ||
     // Meta's WhatsApp webhook: authenticated by its HMAC signature, not a session.
     path === "/api/whatsapp" ||
