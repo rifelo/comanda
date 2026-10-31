@@ -251,7 +251,7 @@ export default async function TurnosResumenPage() {
                 <div className="flex" style={{ gap: 8, flexShrink: 0 }}>
                   {c.instanceId ? (
                     <Link
-                      href={`/hoy/${today}?turno=${c.instanceId}`}
+                      href={`/hoy/${today}/turnos?turno=${c.instanceId}`}
                       className="cmd-btn sm"
                       style={{ textDecoration: "none" }}
                     >
@@ -600,7 +600,7 @@ export default async function TurnosResumenPage() {
                       }}
                     >
                       <Link
-                        href={`/hoy/${today}?turno=${inst.id}`}
+                        href={`/hoy/${today}/turnos?turno=${inst.id}`}
                         className="cmd-link"
                         style={{ fontSize: 14, color: open ? "var(--red)" : "var(--ink)" }}
                       >

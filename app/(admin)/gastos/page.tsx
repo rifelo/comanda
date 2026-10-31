@@ -75,7 +75,7 @@ export default async function GastosPage({ searchParams }: { searchParams: Promi
             [...porDia.entries()].map(([fecha, gs]) => (
               <div key={fecha} style={{ marginTop: 14 }}>
                 <div className="flex items-center" style={{ gap: 10, fontSize: 14, borderBottom: "1px solid var(--ink)" }}>
-                  <Link href={fecha === today ? "/numeros" : `/numeros/${fecha}`} className="cmd-link" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center" }}>{fechaCorta(fecha)}</Link>
+                  <Link href={fecha === today ? "/hoy" : `/hoy/${fecha}`} className="cmd-link" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center" }}>{fechaCorta(fecha)}</Link>
                   <b className="cmd-num" style={{ marginLeft: "auto" }}>{moneyGasto(resumenGastos(gs).total)}</b>
                 </div>
                 {gs.map((g) => (

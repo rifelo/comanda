@@ -178,7 +178,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
                       <tr key={c.id} style={{ borderTop: "1px solid var(--rule-soft, var(--rule))", opacity: dim ? 0.55 : 1 }}>
                         <td className="cmd-num" style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>
                           {c.shift_date ? (
-                            <Link href={`/hoy/${c.shift_date}${c.shift_instance_id ? `?turno=${c.shift_instance_id}` : ""}`} className="cmd-link">{fechaCorta(c.shift_date)}</Link>
+                            <Link href={`/hoy/${c.shift_date}/turnos${c.shift_instance_id ? `?turno=${c.shift_instance_id}` : ""}`} className="cmd-link">{fechaCorta(c.shift_date)}</Link>
                           ) : fechaCorta(c.submitted_at.slice(0, 10))}
                           <span className="text-muted"> {formatTime(c.submitted_at, tz)}</span>
                         </td>

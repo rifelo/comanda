@@ -30,6 +30,7 @@ async function review(input: unknown, status: "aprobado" | "rechazado"): Promise
   const date = Array.isArray(shift) ? shift[0]?.date : shift?.date;
   revalidatePath("/hoy");
   if (date) revalidatePath(`/hoy/${date}`);
+  if (date) revalidatePath(`/hoy/${date}/turnos`);
   revalidatePath("/turno/caja");
   return { ok: true };
 }
