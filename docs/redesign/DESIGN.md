@@ -36,13 +36,13 @@ Contrato completo: `docs/redesign/PLAN.md` §5. Esta guía dice **qué usar y c�
 ## Shells
 
 - **Dueño** (`app/(admin)/layout.tsx`): `AppShell variant="dueno"` con `DUENO_TABS`, `MAS_ITEMS`, `AVANZADO_ITEMS`. Teléfono/tablet: header + tira de subsecciones + tabs abajo. Escritorio (`desk:`): rail de 240 px con las subsecciones del tab activo y «Más» desplegado. Las subsecciones salen de `sections` en `lib/nav/items.ts`; agregar una ruta = agregar una línea ahí.
-- **Equipo** (P1): `AppShell variant="equipo" nav={EQUIPO_TABS} header={<TopBar … clock />}` — tabs abajo a todo ancho; los flujos `/turno/abrir` y `/turno/cerrar` no usan shell (pantalla completa con `FlowHeader`).
+- **Equipo** (P1): `AppShell variant="equipo" nav={EQUIPO_TABS} header={(profileButton) => <TopBar … whoSlot={profileButton} clock />}` (el shell es dueño de la hoja de perfil) — tabs abajo a todo ancho; los flujos `/turno/abrir` y `/turno/cerrar` no usan shell (pantalla completa con `FlowHeader`).
 - Perfil (toque en el avatar): apariencia Claro/Oscuro/Automático, ver como equipo / ir al panel, POS, instalar, y las acciones que pase el layout (`actions.signOut`, `actions.switchPerson` = `signOutLocal` de F2).
-- `lib/nav/items.ts` apunta hoy a las rutas viejas (siguen vivas como redirect cuando P3/P4 las muevan); `match` ya incluye las nuevas. Ola 3 cambia los `href`.
+- `lib/nav/items.ts` apunta a las rutas nuevas; las viejas son páginas de redirect y siguen en `match`. Una sección puede llevar query (`/inventario?vista=acabando`): sólo se activa si la query coincide. Badges: `lib/nav/badges.ts` (dueño: «Por revisar» en Inventario; equipo: atrasadas en Tareas vía `EquipoShell`).
 
 ## Tema
 
-Cookie `comanda-theme` = `claro | oscuro | auto` (`lib/theme.ts`; valores viejos `papel/sepia/indigo/rojo` → claro, `carbon` → oscuro). `<html data-theme>` lo pone `app/layout.tsx`. Sin cookie = **claro** mientras haya pantallas sin migrar (un teléfono en modo oscuro pintaría tokens oscuros bajo colores fijos claros); en la Ola 3 pasar `DEFAULT_THEME` a `auto`. Las variables viejas (`--paper`, `--ink`, `--rule`, `--red`, `--amber`…) son **alias** de los tokens nuevos: no usarlas en código nuevo.
+Cookie `comanda-theme` = `claro | oscuro | auto` (`lib/theme.ts`; valores viejos `papel/sepia/indigo/rojo` → claro, `carbon` → oscuro). `<html data-theme>` lo pone `app/layout.tsx`. Sin cookie = **auto** (sigue al sistema) desde la Ola 3: toda pantalla pinta con tokens; no metas colores fijos claros. Las variables viejas (`--paper`, `--ink`, `--rule`, `--red`, `--amber`…) son **alias** de los tokens nuevos: no usarlas en código nuevo.
 
 ## PWA
 

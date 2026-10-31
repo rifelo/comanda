@@ -24,10 +24,10 @@ export interface CaminoView {
 export type ItemUnidad = NivelItem & { unit: string };
 
 const CSS = `
-.pp { --pp-poco: #f1a900; --pp-agot: #c8321e; --pp-ok: #2f7a3e; --pp-ok-ink: #24582d;
-  --pp-row: color-mix(in srgb, #fffdf7 70%, var(--paper-lt));
+.pp { --pp-poco: #f1a900; --pp-agot: #c8321e; --pp-ok: #2f7a3e; --pp-ok-ink: var(--ok);
+  --pp-row: var(--surface);
   --pp-row-agot: color-mix(in srgb, var(--pp-agot) 16%, var(--paper-lt));
-  --pp-camino: color-mix(in srgb, #502b1c 9%, var(--paper-lt));
+  --pp-camino: color-mix(in srgb, var(--text) 6%, var(--surface));
   background: var(--bg); color: var(--text); font-family: var(--font-sans); display: flex; flex-direction: column; }
 .pp button { font-family: inherit; color: inherit; cursor: pointer; }
 .pp button:focus-visible { outline: 3px solid var(--pp-poco); outline-offset: 2px; }
@@ -51,12 +51,12 @@ const CSS = `
 .pp-prov[aria-pressed="true"] { background: var(--ink); color: var(--paper-lt); }
 .pp-camino { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--pp-camino); }
 .pp-recibido { min-height: 48px; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 5px; background: var(--pp-ok); color: #fff !important; font-size: 13px; font-weight: 800; }
-.pp-error { border: 1.5px solid var(--pp-agot); border-radius: 6px; padding: 10px 12px; font-size: 13px; font-weight: 700; color: #a3261a; background: var(--pp-row-agot); }
+.pp-error { border: 1.5px solid var(--pp-agot); border-radius: 6px; padding: 10px 12px; font-size: 13px; font-weight: 700; color: var(--late); background: var(--pp-row-agot); }
 .pp-flash { border: 1.5px solid var(--pp-ok); border-radius: 6px; padding: 10px 12px; font-size: 13px; font-weight: 700; color: var(--pp-ok-ink); background: color-mix(in srgb, var(--pp-ok) 10%, var(--paper-lt)); }
 `;
 
 const Camion = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#502b1c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h11v10H3z" /><path d="M14 9h4l3 3v4h-7" /><circle cx="7" cy="17.5" r="1.5" /><circle cx="17" cy="17.5" r="1.5" /></svg>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h11v10H3z" /><path d="M14 9h4l3 3v4h-7" /><circle cx="7" cy="17.5" r="1.5" /><circle cx="17" cy="17.5" r="1.5" /></svg>
 );
 const WhatsApp = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.6-5.2A8.5 8.5 0 1 1 21 11.5z" /></svg>
@@ -211,7 +211,7 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
               <div style={{ padding: "12px 14px", background: "var(--pp-row-agot)", borderBottom: "1.5px dashed var(--ink)", display: "flex", flexDirection: "column", gap: 4 }}>
                 <span style={{ alignSelf: "flex-start", padding: "2px 6px", borderRadius: 3, fontSize: 11, fontWeight: 800, letterSpacing: ".04em", background: "var(--ink)", color: "var(--paper-lt)" }}>NUEVO · NO ESTÁ EN LA LISTA</span>
                 <span style={{ fontSize: 16, fontWeight: 800 }}>{n.nombre}</span>
-                <span style={{ fontSize: 12, color: "#a3261a", fontWeight: 700 }}>{n.meta}</span>
+                <span style={{ fontSize: 12, color: "var(--late)", fontWeight: 700 }}>{n.meta}</span>
                 {n.nota && <span style={{ fontSize: 12, color: "var(--ink-2)" }}>“{n.nota}”</span>}
               </div>
               <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -278,7 +278,7 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
                 <Camion />
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>{c.nombre} <span style={{ fontWeight: 400, color: "var(--muted)" }}>· {c.qty}</span></span>
-                  <span style={{ fontSize: 11, color: "#502b1c" }}>{c.meta}</span>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{c.meta}</span>
                 </div>
                 <button type="button" className="pp-recibido" disabled={!!busy} onClick={() => void recibir(c)}>{busy === `rec:${c.id}` ? "…" : "Recibido"}</button>
               </div>
