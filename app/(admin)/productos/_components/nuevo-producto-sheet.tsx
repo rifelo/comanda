@@ -65,14 +65,9 @@ export function NuevoProductoSheet({
       onClose={onClose}
       title="Nuevo producto"
       footer={
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={onClose} type="button">
-            Cancelar
-          </Button>
-          <Button type="submit" form="nuevo-producto" block loading={saving}>
-            Crear y añadir receta
-          </Button>
-        </div>
+        <Button type="submit" form="nuevo-producto" block loading={saving}>
+          Crear y añadir receta
+        </Button>
       }
     >
       <form id="nuevo-producto" onSubmit={save} className="flex flex-col gap-4" noValidate>

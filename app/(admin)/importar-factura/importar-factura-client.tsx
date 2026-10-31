@@ -7,6 +7,7 @@
  * "comprado por paquete" rule as the inventario form.
  */
 import * as React from "react";
+import Link from "next/link";
 import { unitCostFromPack } from "@/lib/cost";
 import { UNITS, type InvoiceItem, type Unit } from "@/lib/ai/invoice-types";
 import { extractInvoiceAction, importIngredientesBatch } from "./actions";
@@ -314,7 +315,7 @@ export function ImportarFacturaClient({
             </div>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-            <a className="cmd-btn" href="/inventario" style={{ textDecoration: "none" }}>Ver inventario</a>
+            <Link className="cmd-btn" href="/inventario" style={{ textDecoration: "none" }}>Ver inventario</Link>
             <button className="cmd-btn ghost" onClick={() => {
               setPhase("upload"); setFile(null); setPreview(null); setRows([]); setResult(null);
             }}>Importar otra</button>

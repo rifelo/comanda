@@ -3,11 +3,10 @@
 /**
  * Movimientos — filterable audit log of stock changes, backed by
  * `ingrediente_movements`. Filtering/search is client-side over the fetched
- * page; "Exportar CSV" downloads the current view; "+ Ajuste manual" records
- * a real signed adjustment.
+ * page; "Exportar CSV" downloads the current view; stock fixes go
+ * through «Corregir» in /inventario (classified by reason).
  */
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import {
   filterMovimientos,
   movimientosToCsv,
@@ -17,9 +16,8 @@ import {
 } from "@/lib/movimientos";
 import Link from "next/link";
 import { DIAS_KARDEX, diaCorto, type Periodo } from "@/lib/kardex-periodo";
-import { SectionCrumb } from "../_components/shared";
-import { Chip } from "../_components/chip";
-import { registrarAjuste } from "./actions";
+import { SectionCrumb } from "../../_components/shared";
+import { Chip } from "../../_components/chip";
 
 const GRID = "150px 1.4fr 130px 90px 1fr 90px";
 
@@ -67,118 +65,6 @@ function TipoBadge({ tipo }: { tipo: MovTipo }) {
 
 type IngredienteOpt = { id: string; name: string; unit: string };
 
-function AjusteDrawer({
-  ingredientes,
-  onClose,
-}: {
-  ingredientes: IngredienteOpt[];
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [pending, start] = React.useTransition();
-  const [ingId, setIngId] = React.useState("");
-  const [delta, setDelta] = React.useState("");
-  const [note, setNote] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
-
-  const save = () => {
-    const n = Number(delta);
-    if (!ingId) return setError("Elige un ingrediente.");
-    if (!Number.isFinite(n) || n === 0) return setError("El ajuste no puede ser 0.");
-    setError(null);
-    start(async () => {
-      const r = await registrarAjuste({ ingrediente_id: ingId, delta: n, note });
-      if (r?.error) setError(r.error);
-      else {
-        onClose();
-        router.refresh();
-      }
-    });
-  };
-
-  const inputSt: React.CSSProperties = {
-    display: "block",
-    width: "100%",
-    boxSizing: "border-box",
-    fontFamily: "var(--font-mono)",
-    fontSize: 12,
-    color: "var(--ink)",
-    background: "var(--paper)",
-    padding: "8px 10px",
-    border: "1.5px solid var(--ink)",
-    outline: "none",
-    minHeight: 0,
-  };
-  const labelSt: React.CSSProperties = {
-    display: "block",
-    fontSize: 9,
-    letterSpacing: "0.18em",
-    textTransform: "uppercase",
-    color: "var(--muted)",
-    marginBottom: 4,
-  };
-
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(30,25,18,.32)" }} />
-      <div
-        className="cmd-paper-lt"
-        style={{ position: "relative", zIndex: 1, width: 420, maxWidth: "100%", height: "100%", borderLeft: "1.5px solid var(--ink)", display: "flex", flexDirection: "column" }}
-      >
-        <div className="bg-paper" style={{ padding: "18px 22px 14px", borderBottom: "1.5px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <div>
-            <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase" }}>
-              Movimientos · 04
-            </div>
-            <div className="font-slab" style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2 }}>
-              Ajuste manual
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="text-muted" style={{ background: "none", border: "1px solid var(--rule)", fontSize: 12, padding: "4px 9px", cursor: "pointer", minHeight: 0 }}>
-            ✕ cerrar
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 22px" }}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelSt}>Ingrediente *</label>
-            <select aria-label="Ingrediente" value={ingId} onChange={(e) => setIngId(e.target.value)} style={{ ...inputSt, appearance: "none", cursor: "pointer" }}>
-              <option value="">Elige un ingrediente…</option>
-              {ingredientes.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name} ({i.unit})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelSt}>Δ Cantidad (negativo = merma / salida) *</label>
-            <input aria-label="Delta" type="number" step="any" value={delta} onChange={(e) => setDelta(e.target.value)} placeholder="-2.5" style={inputSt} />
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelSt}>Nota</label>
-            <input aria-label="Nota" value={note} onChange={(e) => setNote(e.target.value)} placeholder="motivo del ajuste" style={inputSt} />
-          </div>
-          {error ? (
-            <div role="alert" style={{ color: "var(--red)", fontSize: 12 }}>
-              {error}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="bg-paper" style={{ padding: "14px 22px 18px", borderTop: "1.5px solid var(--ink)", display: "flex", gap: 10 }}>
-          <button type="button" onClick={onClose} className="cmd-btn ghost" style={{ flex: 1 }} disabled={pending}>
-            Cancelar
-          </button>
-          <button type="button" onClick={save} className="cmd-btn" style={{ flex: 2 }} disabled={pending}>
-            {pending ? "Registrando…" : "Registrar ajuste"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function HistorialClient({
   movimientos,
   ingredientes,
@@ -195,7 +81,6 @@ export function HistorialClient({
 }) {
   const [filter, setFilter] = React.useState<MovFiltro>("todos");
   const [q, setQ] = React.useState("");
-  const [drawer, setDrawer] = React.useState(false);
 
   const filtered = filterMovimientos(movimientos, { tipo: filter, query: q });
   const acotado = Boolean(ingredienteId || periodo);
@@ -214,7 +99,6 @@ export function HistorialClient({
 
   return (
     <div>
-      {drawer ? <AjusteDrawer ingredientes={ingredientes} onClose={() => setDrawer(false)} /> : null}
       <SectionCrumb
         section="historial"
         right={
@@ -222,9 +106,10 @@ export function HistorialClient({
             <button type="button" className="cmd-btn ghost sm" onClick={exportCsv} disabled={filtered.length === 0}>
               Exportar CSV
             </button>
-            <button type="button" className="cmd-btn sm" onClick={() => setDrawer(true)} disabled={ingredientes.length === 0}>
-              + Ajuste manual
-            </button>
+            {/* Stock fixes go through «Corregir» so each one is classified (conteo, merma, compra, receta). */}
+            <Link href="/inventario" className="cmd-btn sm" style={{ textDecoration: "none" }}>
+              Corregir stock
+            </Link>
           </>
         }
       />
@@ -245,10 +130,10 @@ export function HistorialClient({
           <input type="date" name="hasta" defaultValue={periodo?.hasta ?? ""} aria-label="Hasta" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "5px 8px", border: "1.5px solid var(--ink)", minHeight: 0 }} />
           <button type="submit" className="cmd-btn ghost sm">Ver</button>
           {acotado ? (
-            <Link href="/historial" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>Quitar filtros</Link>
+            <Link href="/inventario/movimientos" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>Quitar filtros</Link>
           ) : null}
           {itemActual ? (
-            <Link href={`/inventario/kardex/${itemActual.id}${periodo ? `?desde=${periodo.desde}&hasta=${periodo.hasta}` : ""}`} className="cmd-btn sm" style={{ textDecoration: "none" }}>
+            <Link href={`/inventario/${itemActual.id}${periodo ? `?desde=${periodo.desde}&hasta=${periodo.hasta}` : ""}`} className="cmd-btn sm" style={{ textDecoration: "none" }}>
               Kardex de {itemActual.name} →
             </Link>
           ) : null}
@@ -304,7 +189,7 @@ export function HistorialClient({
                 <div className="cmd-num" style={{ fontSize: 11, color: "var(--ink-2)" }}>{fmtFecha(m.created_at)}</div>
                 <div style={{ fontSize: 13, fontWeight: 500 }}>
                   {m.ingrediente_id ? (
-                    <Link href={`/inventario/kardex/${m.ingrediente_id}`} title="Ver kardex" style={{ color: "inherit", textDecoration: "none", borderBottom: "1px dotted var(--rule)" }}>
+                    <Link href={`/inventario/${m.ingrediente_id}`} title="Ver kardex" style={{ color: "inherit", textDecoration: "none", borderBottom: "1px dotted var(--rule)" }}>
                       {m.ingrediente_name}
                     </Link>
                   ) : (

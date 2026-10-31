@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Wordmark } from "@/components/comanda/primitives";
+import Link from "next/link";
 import { ajustar, qtyLegible, vistaMensaje, type PorPedirGrupo } from "@/lib/compras/por-pedir";
 import type { NivelItem } from "@/lib/inventario/niveles";
-import { descartarSugerencia } from "../inventario/sugerencias/actions";
+import { descartarSugerencia } from "../sugerencias/actions";
 import { armarPedido, nuevoALista, recibirRapido } from "./actions";
 
 export interface NuevoView {
@@ -63,7 +63,7 @@ const WhatsApp = () => (
 );
 
 /**
- * «Por pedir» on the owner's phone (the md:hidden layer of /compras): what
+ * «Por pedir» on the owner's phone (the md:hidden layer of /inventario/pedidos): what
  * the team marked on the tablet, by supplier, each with a quantity to nudge
  * and the WhatsApp ready; the orders on their way with «Recibido»; and what
  * the team added that is not on the list yet.
@@ -172,8 +172,8 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
       <style>{CSS}</style>
       <header className="pp-head">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Wordmark size={24} />
-          <h1 className="font-slab" style={{ margin: 0, flex: 1, fontWeight: 400, fontSize: 28, lineHeight: 1 }}>Por pedir</h1>
+          <h1 className="ui-h1" style={{ margin: 0, flex: 1 }}>Por pedir</h1>
+          <Link href="/importar-factura" style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Desde una foto</Link>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>{hora}</span>
         </div>
         <div className="pp-sum" role="status" aria-live="polite">
