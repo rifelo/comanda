@@ -187,13 +187,18 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
   return (
     <div className="pos-root cmd-paper" onContextMenu={(e) => { e.preventDefault(); }} style={{ height: "100dvh", display: "flex", flexDirection: "column", background: C.paper, fontFamily: F.mono, color: C.ink, overflow: "hidden" }}>
       <style>{POS_CSS}</style>
-      <TopBar mode={mode} />
-      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
-        <Catalog />
-        {/* Narrow layout only: dims the catalog behind the open ticket; a tap closes it. */}
-        <div aria-hidden className={"pos-scrim" + (s.ticketOpen ? " open" : "")} onClick={() => posStore.set({ ticketOpen: false })} />
-        <Ticket />
-        {s.aiOpen && <AiDrawer />}
+      {/* A full-screen view (cobro, recibo, pedidos…) covers the sale: make
+          what is underneath inert so taps, focus and screen readers only
+          reach the view on top. */}
+      <div inert={s.view !== "sale"} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <TopBar mode={mode} />
+        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+          <Catalog />
+          {/* Narrow layout only: dims the catalog behind the open ticket; a tap closes it. */}
+          <div aria-hidden className={"pos-scrim" + (s.ticketOpen ? " open" : "")} onClick={() => posStore.set({ ticketOpen: false })} />
+          <Ticket />
+          {s.aiOpen && <AiDrawer />}
+        </div>
       </div>
       {s.sheet && (s.sheet.mode === "receta"
         ? <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />
