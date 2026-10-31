@@ -1,103 +1,153 @@
 @import "tailwindcss";
 
-/* ── Comanda · paper-ticket palette ──────────────────────────────
- * Values mirror `comanda-system.jsx:5-40` (COMANDA_THEMES). Default
- * theme is `papel`; the other four override on `[data-theme="…"]`.
- * The cookie-driven attribute is set in `app/layout.tsx` so the
- * paint matches without a client-side flash.
- * ───────────────────────────────────────────────────────────── */
-:root,
-:root[data-theme="papel"] {
-  --paper: #f4ecdc;
-  --paper-dk: #ebe2cf;
-  --paper-lt: #faf5e8;
-  --ink: #1f1a14;
-  --ink-2: #3d342a;
-  --muted: #7d6f5d;
-  --rule: #cabea4;
-  --rule-soft: #dfd3b8;
-  --red: #b03a2e;
-  --red-dk: #7e2419;
-  --green: #3f6b3a;
-  --amber: #b9871f;
-  --stamp: #aa3322;
+/* ── Comanda · PA'YO design system (docs/redesign/PLAN.md §5) ───────────
+ * Neutral white/gray app style: brand yellow only on the primary action,
+ * the active tab and the logo; green = done/ok, red = late.
+ *
+ * Theme: `<html data-theme="claro|oscuro|auto">` comes from the
+ * `comanda-theme` cookie (lib/theme.ts) in app/layout.tsx, so the first
+ * paint already matches — no flash. `auto` follows prefers-color-scheme.
+ * ─────────────────────────────────────────────────────────────────── */
+
+/* Rail (owner panel) only on a real desktop: wide AND a fine pointer.
+   A 1280-px touch tablet keeps the bottom tab bar. */
+@custom-variant desk (@media (min-width: 1024px) and (pointer: fine));
+
+:root {
+  color-scheme: light;
+
+  --bg: #f5f5f4;
+  --surface: #ffffff;
+  --surface-2: #f0f0ef;
+  --line: #e4e4e2;
+  --text: #171717;
+  --muted: #666666;
+  --brand: #f1a900;
+  --on-brand: #171717;
+  --brand-soft: #fdf3d6;
+  --ok: #1f7a3a;
+  --ok-soft: #e7f4ea;
+  --late: #c0392b;
+  --late-soft: #fbeae8;
+  --strong: #171717;
+  --on-strong: #ffffff;
+  --focus: #171717;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.14);
+
+  /* Sizes */
+  --r-card: 16px;
+  --r-btn: 12px;
+  --r-sheet: 20px;
+  --r-chip: 999px;
+  --h-control: 56px;
+  --h-control-sm: 48px;
+  --h-control-lg: 72px;
+  --h-row: 76px;
+  --h-head: 56px;
+  --h-tabs: 64px;
+
+  /* Compatibility aliases: screens not yet redesigned keep reading the old
+     paper-ticket variables and render neutral from day one. Remove in Ola 3. */
+  --paper: var(--bg);
+  --paper-lt: var(--surface);
+  --paper-dk: var(--surface-2);
+  --ink: var(--text);
+  --ink-2: var(--text);
+  --rule: var(--line);
+  --rule-soft: var(--line);
+  --red: var(--late);
+  --red-dk: var(--late);
+  --green: var(--ok);
+  --amber: var(--brand);
+  --stamp: var(--late);
 }
 
-:root[data-theme="sepia"] {
-  --paper: #ece0c8;
-  --paper-dk: #e0d2b4;
-  --paper-lt: #f6ecd6;
-  --ink: #2b2013;
-  --ink-2: #473721;
-  --muted: #857149;
-  --rule: #c3b189;
-  --rule-soft: #d7c6a0;
-  --red: #a23b22;
-  --red-dk: #742612;
-  --green: #4a6b30;
-  --amber: #b07d18;
-  --stamp: #9c3618;
+@media (min-width: 640px) {
+  :root {
+    --h-head: 76px;
+    --h-tabs: 84px;
+  }
 }
 
-:root[data-theme="carbon"] {
-  --paper: #221e18;
-  --paper-dk: #1a1712;
-  --paper-lt: #2b261e;
-  --ink: #f1e9d9;
-  --ink-2: #d6cbb5;
-  --muted: #9b8c74;
-  --rule: #4a4030;
-  --rule-soft: #39312562;
-  --red: #e2674f;
-  --red-dk: #c54a34;
-  --green: #7bb061;
-  --amber: #d8a53a;
-  --stamp: #e2674f;
+/* Dark tokens — one block, applied by cookie or by the OS when `auto`. */
+:root[data-theme="oscuro"] {
+  color-scheme: dark;
+  --bg: #121212;
+  --surface: #1c1c1c;
+  --surface-2: #262626;
+  --line: #2e2e2e;
+  --text: #f2f2f2;
+  --muted: #a3a3a3;
+  --brand-soft: rgba(241, 169, 0, 0.14);
+  --ok: #5fcf7a;
+  --ok-soft: rgba(95, 207, 122, 0.12);
+  --late: #ff7b6b;
+  --late-soft: rgba(255, 123, 107, 0.12);
+  --strong: #f2f2f2;
+  --on-strong: #121212;
+  --focus: #f1a900;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.6);
 }
-
-:root[data-theme="indigo"] {
-  --paper: #eceef4;
-  --paper-dk: #dfe2ec;
-  --paper-lt: #f6f7fb;
-  --ink: #1b1f2e;
-  --ink-2: #333a4d;
-  --muted: #6b7283;
-  --rule: #bcc2d2;
-  --rule-soft: #d3d8e4;
-  --red: #3a4fb0;
-  --red-dk: #26367e;
-  --green: #2f7d5b;
-  --amber: #b07d18;
-  --stamp: #3346a0;
-}
-
-:root[data-theme="rojo"] {
-  --paper: #faf6f5;
-  --paper-dk: #f0e7e5;
-  --paper-lt: #ffffff;
-  --ink: #1a1411;
-  --ink-2: #3a302d;
-  --muted: #8a7b77;
-  --rule: #e4d7d4;
-  --rule-soft: #efe4e2;
-  --red: #cc3a2c;
-  --red-dk: #a32619;
-  --green: #3f6b3a;
-  --amber: #b9871f;
-  --stamp: #cc3a2c;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="claro"]):not([data-theme="oscuro"]) {
+    color-scheme: dark;
+    --bg: #121212;
+    --surface: #1c1c1c;
+    --surface-2: #262626;
+    --line: #2e2e2e;
+    --text: #f2f2f2;
+    --muted: #a3a3a3;
+    --brand-soft: rgba(241, 169, 0, 0.14);
+    --ok: #5fcf7a;
+    --ok-soft: rgba(95, 207, 122, 0.12);
+    --late: #ff7b6b;
+    --late-soft: rgba(255, 123, 107, 0.12);
+    --strong: #f2f2f2;
+    --on-strong: #121212;
+    --focus: #f1a900;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.6);
+  }
 }
 
 @theme inline {
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-mono);
   --font-slab: var(--font-slab);
   --font-script: var(--font-script);
+  --font-frase: var(--font-frase);
 
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-late: var(--late);
+  --color-late-soft: var(--late-soft);
+  --color-strong: var(--strong);
+  --color-on-strong: var(--on-strong);
+
+  --radius-card: var(--r-card);
+  --radius-btn: var(--r-btn);
+  --radius-sheet: var(--r-sheet);
+
+  /* Old names (aliased above) — kept so `bg-paper`, `text-ink`… still work. */
   --color-paper: var(--paper);
   --color-paper-dk: var(--paper-dk);
   --color-paper-lt: var(--paper-lt);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
-  --color-muted: var(--muted);
   --color-rule: var(--rule);
   --color-rule-soft: var(--rule-soft);
   --color-red: var(--red);
@@ -110,15 +160,20 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
   /* The display face ships one weight; never let the browser smear a fake
-     bold over it. The mono face has real 400–700 weights. */
+     bold over it. Inter and the mono have real weights. */
   font-synthesis: none;
 }
 
-/* iOS Safari: prevent input zoom + maintain tap-target floor for kitchen staff. */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* iOS Safari: prevent input zoom + keep a tap-target floor. */
 input, textarea, select { font-size: 16px; }
 button, [role="button"], a { min-height: 44px; }
 
@@ -126,87 +181,81 @@ button, [role="button"], a { min-height: 44px; }
   html, body { overscroll-behavior-y: none; }
 }
 
-/* ── Paper background w/ ruled-paper hairlines + warm-light vignette */
-.cmd-paper {
-  background: var(--paper);
-  background-image:
-    repeating-linear-gradient(0deg, rgba(120, 90, 40, 0.04) 0 1px, transparent 1px 28px),
-    radial-gradient(ellipse at top left, rgba(255, 240, 200, 0.5), transparent 60%);
+/* ── Type scale (§5.1) ───────────────────────────────────────────── */
+.ui-h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.ui-h2 { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.ui-big { font-size: 48px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.ui-title { font-size: 17px; font-weight: 600; line-height: 1.3; }
+.ui-sub { font-size: 14px; color: var(--muted); }
+.ui-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.ui-num { font-variant-numeric: tabular-nums; }
+/* Task description: 2 lines in lists, full in the «Ahora» card. */
+.ui-desc {
+  font-size: 14px; color: var(--muted); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ui-desc-full { font-size: 16px; color: var(--text); line-height: 1.45; }
+
+/* Safe areas (iOS notch / home indicator). */
+.ui-safe-top { padding-top: env(safe-area-inset-top); }
+.ui-safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Horizontal scrollers (section strip, segmented on phones) without a bar. */
+.ui-scroll-x { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.ui-scroll-x::-webkit-scrollbar { display: none; }
+
+@keyframes ui-sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+.ui-anim-sheet { animation: ui-sheet-up 0.18s ease-out; }
+.ui-anim-fade { animation: ui-fade 0.15s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-anim-sheet, .ui-anim-fade { animation: none; }
 }
 
-.cmd-paper-lt { background: var(--paper-lt); }
-
-/* ── Subtle multiply-noise overlay for ticket cards */
+/* ── Legacy helpers (paper era), flattened to the neutral system ───── */
+.cmd-paper { background: var(--bg); }
+.cmd-paper-lt { background: var(--surface); }
 .cmd-noise { position: relative; }
-.cmd-noise::before {
-  content: "";
-  position: absolute; inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(rgba(60, 40, 10, 0.06) 1px, transparent 1.2px);
-  background-size: 3px 3px;
-  mix-blend-mode: multiply;
-  opacity: 0.4;
-}
 
-/* ── Tabular numerics on demand */
+/* Tabular numerics on demand */
 .cmd-num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
 
-/* ── Lined notepaper texture for novedad textarea */
-.cmd-lined {
-  background: var(--paper-lt);
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent 0 23px,
-    var(--rule-soft) 23px 24px
-  );
-}
+.cmd-lined { background: var(--surface); }
 
-/* ── Striped photo-placeholder fill */
 .cmd-photo-stripe {
-  background: repeating-linear-gradient(
-    45deg,
-    var(--rule-soft) 0 6px,
-    var(--paper) 6px 12px
-  );
+  background: repeating-linear-gradient(45deg, var(--surface-2) 0 6px, var(--bg) 6px 12px);
 }
 
-/* ── Shared button reset for monospace ticket buttons */
 .cmd-btn {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 12px;
-  padding: 10px 14px;
-  border-radius: 2px;
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--paper-lt);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 0 20px;
+  border-radius: var(--r-btn);
+  border: 1px solid var(--strong);
+  background: var(--strong);
+  color: var(--on-strong);
   cursor: pointer;
   transition: transform 0.08s, background 0.12s, color 0.12s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 44px;
+  gap: 8px;
+  min-height: var(--h-control);
 }
 .cmd-btn:active { transform: translateY(1px); }
-.cmd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.cmd-btn.ghost {
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--ink);
-}
-.cmd-btn.ghost:hover { background: var(--ink); color: var(--paper-lt); }
-.cmd-btn.red { background: var(--red); border-color: var(--red); color: var(--paper-lt); }
-.cmd-btn.red:hover { background: var(--red-dk); border-color: var(--red-dk); }
-.cmd-btn.sm { font-size: 10px; padding: 7px 10px; min-height: 32px; }
+.cmd-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.cmd-btn.ghost { background: var(--surface); color: var(--text); border-color: var(--line); }
+.cmd-btn.ghost:hover { background: var(--surface-2); color: var(--text); }
+.cmd-btn.red { background: var(--late); border-color: var(--late); color: #fff; }
+.cmd-btn.red:hover { filter: brightness(0.92); }
+.cmd-btn.sm { font-size: 14px; padding: 0 14px; min-height: 44px; }
 
 .cmd-link {
-  color: var(--ink);
+  color: var(--text);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
@@ -216,10 +265,9 @@ button, [role="button"], a { min-height: 44px; }
   font-family: inherit;
 }
 
-/* ── Shift tablet (/turno): reading typography + responsive task rows ─── */
-.turno-ui { font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* ── Shift tablet (/turno) — kept until P1 rewrites those screens ───── */
+.turno-ui { /* no-op: Inter is now the app face */ }
 .turno-topbar > * { flex-shrink: 0; }
-.turno-ui .font-mono, .turno-ui .cmd-num, .turno-ui .cmd-btn { font-family: var(--font-mono), ui-monospace, monospace; }
 .trow {
   display: grid;
   grid-template-columns: 84px 48px minmax(0, 1fr) auto;
@@ -230,7 +278,7 @@ button, [role="button"], a { min-height: 44px; }
 .trow-meta { grid-column: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .tsteps { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .tsteps li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; }
-.tsteps li > b { font-family: var(--font-mono), monospace; font-size: 13px; line-height: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--ink); color: var(--paper-lt); }
+.tsteps li > b { font-size: 13px; line-height: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--strong); color: var(--on-strong); }
 @media (max-width: 900px) {
   .trow { grid-template-columns: 48px minmax(0, 1fr); column-gap: 12px; }
   .trow-time { grid-column: 1 / -1; grid-row: 1; }
@@ -242,5 +290,5 @@ button, [role="button"], a { min-height: 44px; }
 
 /* Inventario: rows open the item's kardex on click. The row background is
    inline (zebra), so the hover needs !important to show. */
-.inv-row-link:hover { background: var(--paper-dk) !important; }
+.inv-row-link:hover { background: var(--surface-2) !important; }
 .inv-row-link:hover a[title^="Ver kardex"] { text-decoration: underline !important; }

@@ -143,46 +143,13 @@ export function SectionCrumb({
   section: string;
   right?: React.ReactNode;
 }) {
+  // Redesign (PageHeader look): the old «Operación · 01» kicker is gone —
+  // the shell's tab and section strip already say where you are.
   const s = PROD_SECTIONS.find((x) => x.id === section);
   return (
-    <div
-      className="bg-paper"
-      style={{
-        padding: "16px 28px 14px",
-        borderBottom: "1.5px solid var(--ink)",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "space-between",
-        position: "relative",
-      }}
-    >
-      <div>
-        <div
-          className="text-muted"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-          }}
-        >
-          Operación · {s?.n}
-        </div>
-        <h1
-          className="font-slab"
-          style={{
-            fontSize: 30,
-            margin: "2px 0 0",
-            letterSpacing: "-0.01em",
-            color: "var(--ink)",
-            lineHeight: 1.05,
-          }}
-        >
-          {s?.label}
-        </h1>
-      </div>
-      {right ? (
-        <div className="flex items-center gap-2.5">{right}</div>
-      ) : null}
+    <div className="relative flex flex-wrap items-center gap-3 px-4 sm:px-7 pt-5 pb-4 border-b border-line bg-bg">
+      <h1 className="ui-h1 m-0 flex-1 min-w-[200px]">{s?.label}</h1>
+      {right ? <div className="flex flex-wrap items-center gap-2.5">{right}</div> : null}
     </div>
   );
 }

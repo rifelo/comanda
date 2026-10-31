@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ThemeName } from "@/lib/types";
+import { toAppTheme, type AppTheme } from "@/lib/theme";
 
 /**
  * Single-sede helper.
@@ -21,7 +22,10 @@ export type ActiveSede = {
   tz: string;
   logo_url: string | null;
   currency: string;
+  /** Legacy paper theme as stored in `restaurants.theme` (Preferencias still reads it). */
   theme: ThemeName;
+  /** The same value mapped to the new appearance (claro | oscuro | auto). */
+  appearance: AppTheme;
 };
 
 const THEMES: ThemeName[] = ["papel", "sepia", "carbon", "indigo", "rojo"];
@@ -58,5 +62,6 @@ export async function getActiveSede(): Promise<ActiveSede | null> {
     logo_url: r.logo_url ?? null,
     currency: r.currency ?? "COP",
     theme: isTheme(r.theme) ? r.theme : "papel",
+    appearance: toAppTheme(r.theme),
   };
 }

@@ -1,132 +1,35 @@
-import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
-import { Wordmark } from "@/components/comanda/primitives";
-import { todayInTz } from "@/lib/utils";
-import { AdminSidebarNav } from "./_components/admin-sidebar-nav";
-import { AdminMobileHeader } from "./_components/admin-mobile-header";
+import { AVANZADO_ITEMS, DUENO_TABS, MAS_ITEMS, MAS_MATCH } from "@/lib/nav/items";
+import { AppShell } from "@/components/ui/app-shell";
 
+/**
+ * Owner panel frame: AppShell `dueno` — bottom tabs on phone/tablet, a rail
+ * on a real desktop (docs/redesign/PLAN.md §2.3). Pages render inside the
+ * shell's scrolling <main>.
+ */
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // requireAdmin gates auth + admin role; getActiveSede races against it to
-  // pick the single restaurant we show across Hoy / Turnos / Productos /
-  // Configuración.
+  // requireAdmin gates auth + admin role; getActiveSede runs alongside to
+  // name the sede in the header / rail.
   const [{ profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
-  const sedeName = sede?.name ?? "Daniel's Burger";
-  const initial = (sedeName[0] ?? "D").toUpperCase();
 
   return (
-    <div className="cmd-paper flex h-screen overflow-hidden text-ink">
-      <aside
-        className="hidden md:flex flex-col cmd-paper-lt"
-        style={{
-          width: 220,
-          borderRight: "1.5px solid var(--ink)",
-          padding: "20px 14px",
-          gap: 16,
-          flexShrink: 0,
-        }}
-      >
-        <Link href="/hoy">
-          <Wordmark size={28} />
-        </Link>
-
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-          <AdminSidebarNav sedeTz={sede?.tz} />
-        </div>
-
-        {/* Sede footer — 34×34 logo box + name + UTC-5 · COP per the design.
-            Mirrors `comanda-turnos.jsx:147-157`. */}
-        <div
-          className="pt-3"
-          style={{ borderTop: "1px dashed var(--rule)" }}
-        >
-          <div
-            className="flex items-center"
-            style={{ gap: 10 }}
-          >
-            <div
-              className="flex items-center justify-center overflow-hidden flex-shrink-0"
-              style={{
-                width: 34,
-                height: 34,
-                border: "1.5px solid var(--ink)",
-                background: "var(--paper-lt)",
-              }}
-            >
-              {sede?.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={sede.logo_url}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : (
-                <span
-                  className="font-slab"
-                  style={{ fontSize: 16, color: "var(--muted)" }}
-                >
-                  {initial}
-                </span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {sedeName}
-              </div>
-              <div
-                className="text-muted"
-                style={{ fontSize: 10, marginTop: 1 }}
-              >
-                UTC-5 · {sede?.currency ?? "COP"}
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="mt-3 pt-3"
-            style={{ borderTop: "1px dashed var(--rule)" }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 500 }}>{profile.full_name}</div>
-            <form action={signOut} className="mt-1">
-              <button
-                type="submit"
-                className="cmd-link"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Salir
-              </button>
-            </form>
-          </div>
-        </div>
-      </aside>
-
-      <main className="flex-1 overflow-auto">
-        <AdminMobileHeader
-          userName={profile.full_name}
-          role={profile.role}
-          sedeName={sedeName}
-          sedeCurrency={sede?.currency ?? "COP"}
-          today={todayInTz(sede?.tz)}
-        />
-        {children}
-      </main>
-    </div>
+    <AppShell
+      variant="dueno"
+      nav={DUENO_TABS}
+      extraMatch={{ mas: MAS_MATCH }}
+      moreItems={MAS_ITEMS}
+      advancedItems={AVANZADO_ITEMS}
+      profile={{ name: profile.full_name || "Dueño", role: profile.role }}
+      sedeName={sede?.name ?? undefined}
+      actions={{ signOut }}
+    >
+      {children}
+    </AppShell>
   );
 }

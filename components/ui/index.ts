@@ -1,0 +1,20 @@
+// Comanda design system — see docs/redesign/DESIGN.md.
+export { Button, IconButton, buttonClass, type ButtonVariant, type ButtonSize } from "./button";
+export { Card, LinkCard } from "./card";
+export { Row, Check } from "./row";
+export { Pill, CountBadge, type PillTone } from "./pill";
+export { Segmented, type SegmentedOption } from "./segmented";
+export { Steps, StepItem, StepDots, FlowHeader, ProgressBar, type StepItemData, type StepState } from "./steps";
+export { Field, TextArea, SearchField } from "./field";
+export { Chip, Chips } from "./chips";
+export { Counter } from "./counter";
+export { Keypad, applyKey, KEYPAD_DEFAULT_KEYS } from "./keypad";
+export { Sheet, useIsClient } from "./sheet";
+export { BigNumber, StatTile, Money } from "./stats";
+export { Avatar, PersonTile, initialsOf } from "./avatar";
+export { EmptyState, Banner, Toaster, toast, useToast, type Tone } from "./feedback";
+export { Clock, formatClock } from "./clock";
+export { TopBar, PageHeader, AppLogo } from "./top-bar";
+export { TabBar } from "./tab-bar";
+export { NavIcon, NAV_ICONS } from "./icon";
+export { AppShell, ProfileSheet, type ShellProfile, type ShellActions } from "./app-shell";
