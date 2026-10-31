@@ -22,6 +22,8 @@ function create() {
     database: new Pool({ connectionString: process.env.NEON_DATABASE_URL, max: 3 }),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
+    // A deployment is also reachable on its own *.vercel.app addresses.
+    trustedOrigins: [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL].filter(Boolean).map((h) => `https://${h}`),
     user: { modelName: "ba_user" },
     session: { modelName: "ba_session", expiresIn: 60 * 60 * 24 * 30, cookieCache: { enabled: true, maxAge: 60 * 5 } },
     account: { modelName: "ba_account", accountLinking: { enabled: true, trustedProviders: ["google"] } },
