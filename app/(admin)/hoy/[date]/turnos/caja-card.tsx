@@ -71,7 +71,7 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
           contó {cierre.counted_by_name ?? "—"}{ventana ? ` · ventana ${ventana}` : ""}
         </span>
       </div>
-      <div className="grid" style={{ gridTemplateColumns: compact ? "1fr 1fr" : "repeat(3, 1fr)", gap: 6, marginTop: 10 }}>
+      <div className="grid" style={{ gridTemplateColumns: compact ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(96px, 1fr))", gap: 6, marginTop: 10 }}>
         {cell("Contado", posMoney(cierre.contado_cop))}
         {cell("Esperado", noPos ? "—" : posMoney(cierre.esperado_cop))}
         {cell("Diferencia", noPos ? "—" : money(cierre.diferencia_cop), noPos ? undefined : tone)}

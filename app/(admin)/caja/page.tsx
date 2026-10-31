@@ -52,7 +52,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
   const entregas = aprobados.reduce((s, c) => s + (c.contado_cop - c.base_dejada_cop), 0);
 
   const stat = (label: string, value: string, color?: string, hint?: string) => (
-    <div style={{ padding: "10px 12px", border: "1px solid var(--rule)", background: "var(--paper-lt)", minWidth: 150 }}>
+    <div key={label} style={{ padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 16, background: "var(--surface)", minWidth: 150, flex: "1 1 150px" }}>
       <div className="text-muted" style={{ fontSize: 15 }}>{label}</div>
       <div className="cmd-num font-bold" style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2, color: color ?? "var(--ink)" }}>{value}</div>
       {hint && <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{hint}</div>}
@@ -115,7 +115,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
             const url = m.fotoPath ? fotoUrl.get(m.fotoPath) : null;
             return (
               <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 15, opacity: m.anuladoAt ? 0.6 : 1 }}>
-                <span className="cmd-num text-muted" style={{ fontSize: 14, whiteSpace: "nowrap", minWidth: 120 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
+                <span className="cmd-num text-muted" style={{ fontSize: 14, whiteSpace: "nowrap", minWidth: 0 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/compras" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}{m.compraProveedor ? ` ${m.compraProveedor}` : ""}</Link></> : null}
                   <span className="text-muted"> · «{m.justificacion}»{extra ? ` · ${extra}` : ""} · {m.by ?? "—"}</span>
@@ -132,7 +132,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
         {pendientes.length > 0 && (
           <section style={{ marginTop: 24 }}>
             <div className="text-muted" style={{ fontSize: 13, marginBottom: 10 }}>Por aprobar · {pendientes.length}</div>
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(340px, 100%), 1fr))", gap: 12 }}>
               {pendientes.map((c) => (
                 <div key={c.id}>
                   <div style={{ fontSize: 15, marginBottom: 6 }}>
