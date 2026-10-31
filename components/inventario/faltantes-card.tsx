@@ -5,15 +5,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ESTADOS, fraseFaltantes } from "@/lib/inventario/faltantes";
 import type { FaltanteReporte } from "@/lib/inventario/faltantes-db";
-import { formatTime } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Pill } from "@/components/ui/pill";
 import { resolverFaltanteAction } from "@/app/(admin)/inventario/faltantes/actions";
 
 const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, ""));
 
 /**
  * The open faltantes the team reported from the tablet, for the panel
- * (/hoy/[date], /notificaciones, /inventario/faltantes). Each row has a
- * "Repuesto" button that closes the report. `tz` formats the report time.
+ * (/hoy/[date]/turnos, /notificaciones, /inventario?vista=acabando). Each row
+ * has a «Repuesto» button that closes the report. `tz` formats the report time.
  */
 export function FaltantesCard({ items, tz, compact, showLink = true }: { items: FaltanteReporte[]; tz: string; compact?: boolean; showLink?: boolean }) {
   const router = useRouter();
@@ -36,40 +38,53 @@ export function FaltantesCard({ items, tz, compact, showLink = true }: { items: 
 
   if (items.length === 0) {
     return (
-      <div className="text-muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
-        Nada reportado como faltante. El equipo lo marca desde el tablet en Inventario → Avisar faltante.
-        {showLink && <> <Link href="/inventario/faltantes" className="cmd-link">Lista prioritaria →</Link></>}
-      </div>
+      <p className="m-0 ui-sub">
+        Nada reportado como faltante. El equipo lo marca desde la tablet en Inventario.{" "}
+        {showLink ? (
+          <Link href="/inventario?vista=acabando" className="font-semibold text-text">
+            Lista prioritaria →
+          </Link>
+        ) : null}
+      </p>
     );
   }
   return (
-    <div style={{ border: `1.5px solid ${counts.agotado ? "var(--red)" : "var(--amber)"}`, background: "var(--paper-lt)", padding: compact ? 12 : 14 }}>
-      <div className="flex items-center justify-between" style={{ gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: counts.agotado ? "var(--red)" : "var(--amber)", fontWeight: 700 }}>{fraseFaltantes(counts)}</span>
-        {showLink && <Link href="/inventario/faltantes" className="cmd-link" style={{ fontSize: 11 }}>Ver todo →</Link>}
+    <section className={cn("bg-surface border border-line rounded-card", compact ? "p-3" : "p-4", counts.agotado ? "border-l-4 border-l-late" : "border-l-4 border-l-brand")}>
+      <div className="flex items-center justify-between gap-2.5 flex-wrap">
+        <span className={cn("ui-label", counts.agotado ? "text-late" : "text-text")}>{fraseFaltantes(counts)}</span>
+        {showLink ? (
+          <Link href="/inventario?vista=acabando" className="text-[14px] font-semibold text-text">
+            Ver todo →
+          </Link>
+        ) : null}
       </div>
-      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+      <ul className="m-0 mt-2 p-0 list-none">
         {items.map((f) => {
           const e = ESTADOS[f.estado];
           return (
-            <li key={f.id} className="flex items-center" style={{ gap: 10, padding: "7px 0", borderTop: "1px dashed var(--rule)" }}>
-              <span style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: e.color, border: `1px solid ${e.color}`, padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap" }}>{e.short}</span>
+            <li key={f.id} className="flex items-center gap-3 py-2.5 border-t border-line first:border-t-0">
+              <Pill tone={f.estado === "agotado" ? "late" : f.estado === "bajo" ? "brand" : "ok"}>{e.short}</Pill>
               <div className="flex-1 min-w-0">
-                <div style={{ fontSize: compact ? 13 : 14, fontWeight: 600 }}>{f.ingrediente_name}</div>
-                <div className="text-muted" style={{ fontSize: 11 }}>
-                  {formatTime(f.reported_at, tz)}{f.reported_by_name ? ` · ${f.reported_by_name}` : ""}
+                <div className={cn("font-semibold truncate", compact ? "text-[15px]" : "text-base")}>{f.ingrediente_name}</div>
+                <div className="text-[13px] text-muted">
+                  {formatTime(f.reported_at, tz)}
+                  {f.reported_by_name ? ` · ${f.reported_by_name}` : ""}
                   {f.stock_sistema != null ? ` · sistema ${fmtQty(f.stock_sistema)} ${f.unit}` : ""}
                   {f.note ? ` · “${f.note}”` : ""}
                 </div>
               </div>
-              <button type="button" className="cmd-btn ghost sm" disabled={busy !== null} onClick={() => void resolver(f.id)} style={{ whiteSpace: "nowrap" }}>
-                {busy === f.id ? "…" : "Repuesto"}
-              </button>
+              <Button variant="ghost" size="sm" disabled={busy !== null} loading={busy === f.id} onClick={() => void resolver(f.id)}>
+                Repuesto
+              </Button>
             </li>
           );
         })}
       </ul>
-      {error && <div role="alert" style={{ fontSize: 11.5, color: "var(--red)", marginTop: 6 }}>{error}</div>}
-    </div>
+      {error ? (
+        <p role="alert" className="m-0 mt-1.5 text-[14px] text-late">
+          {error}
+        </p>
+      ) : null}
+    </section>
   );
 }
