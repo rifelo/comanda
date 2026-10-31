@@ -23,7 +23,6 @@ export async function emparejarDispositivo(_prev: EmparejarState, formData: Form
   if (!parsed.success) return { error: "Escribe el código de 8 caracteres." };
   const res = await registerPosDevice(parsed.data.code, parsed.data.name);
   if (!res.ok) return { error: res.error };
-  // TODO(P3): revalidate /ajustes/dispositivos too once it exists.
-  revalidatePath("/configuracion/pos");
+  revalidatePath("/ajustes/dispositivos");
   redirect("/login");
 }

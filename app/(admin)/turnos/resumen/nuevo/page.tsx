@@ -1,13 +1,6 @@
-import { requireAdmin } from "@/lib/auth";
-import { getActiveSede } from "@/lib/data/sede";
-import { listPuestos } from "@/lib/db/puestos";
-import { ShiftForm } from "../_components/shift-form";
+import { forward, type ForwardProps } from "@/app/(admin)/equipo/_lib/forward";
 
-export const dynamic = "force-dynamic";
-
-export default async function NuevoTurnoPage() {
-  await requireAdmin();
-  const sede = await getActiveSede();
-  const puestoOptions = sede ? await listPuestos(sede.id) : [];
-  return <ShiftForm puestoOptions={puestoOptions} />;
+/** Moved in the redesign (docs/redesign/PLAN.md §2.4): /equipo/turnos/nuevo. */
+export default async function Moved({ searchParams }: ForwardProps) {
+  forward("/equipo/turnos/nuevo", await searchParams);
 }

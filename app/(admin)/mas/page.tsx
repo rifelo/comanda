@@ -11,9 +11,16 @@ import { InstallLinkCard } from "@/components/pwa/install-banner";
 export const metadata: Metadata = { title: "Más · Comanda" };
 
 /**
+ * P3 moved Clientes and Ajustes; lib/nav/items.ts (F1) still points at the
+ * old routes, which redirect. Link straight to the new ones here.
+ * TODO(Ola 3): set these hrefs in MAS_ITEMS and drop this map.
+ */
+const NUEVA_RUTA: Record<string, string> = { clientes: "/clientes", ajustes: "/ajustes", caja: "/caja", gastos: "/gastos" };
+
+/**
  * «Más» tab of the owner panel (docs/redesign/PLAN.md §2.3): everything
  * that is not one of the four main tabs, as link-cards. Static; hrefs come
- * from lib/nav/items (today's routes — Ola 3 points them at the new ones).
+ * from lib/nav/items, with P3's new routes for Clientes and Ajustes.
  */
 export default function MasPage() {
   return (
@@ -29,7 +36,7 @@ export default function MasPage() {
             {MAS_ITEMS.map((it) => (
               <LinkCard
                 key={it.id}
-                href={it.href}
+                href={NUEVA_RUTA[it.id] ?? it.href}
                 title={it.label}
                 sub={it.sub}
                 external={it.external}

@@ -16,7 +16,7 @@ import {
 } from "@/lib/gastos/gastos";
 import { eliminarGasto, registrarGasto } from "./actions";
 
-const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--muted)" };
+const label: React.CSSProperties = { fontSize: 13, color: "var(--muted)" };
 const input: React.CSSProperties = { height: 40, padding: "0 10px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 14, outline: "none", minWidth: 0, width: "100%" };
 
 /** Every amount in a pasted list ("23.000 7.000\n11.500") — what came in through Bold that day. */
@@ -91,7 +91,7 @@ export function NuevoGasto({ today }: { today: string }) {
   }
 
   return (
-    <form onSubmit={enviar} style={{ border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: 16, display: "grid", gap: 12 }}>
+    <form onSubmit={enviar} style={{ border: "1px solid var(--line)", background: "var(--paper-lt)", padding: 16, display: "grid", gap: 12 }}>
       <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: 12 }}>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={label}>Día</span>
@@ -130,7 +130,7 @@ export function NuevoGasto({ today }: { today: string }) {
       </label>
 
       {bold === null ? (
-        <button type="button" className="cmd-link" onClick={() => setBold("")} style={{ justifySelf: "start", fontSize: 12 }}>
+        <button type="button" className="cmd-link" onClick={() => setBold("")} style={{ justifySelf: "start", fontSize: 15 }}>
           Calcular comisión Bold desde los depósitos →
         </button>
       ) : (
@@ -143,7 +143,7 @@ export function NuevoGasto({ today }: { today: string }) {
             placeholder={"23.000\n7.000\n11.500"}
             style={{ ...input, height: "auto", padding: 10, fontSize: 13 }}
           />
-          <div className="flex flex-wrap items-center" style={{ gap: 10, fontSize: 12 }}>
+          <div className="flex flex-wrap items-center" style={{ gap: 10, fontSize: 15 }}>
             {bold.trim() && ingresos === null ? <span style={{ color: "var(--red)" }}>Hay algo que no es un monto.</span> : null}
             {calc && ingresos ? (
               <span className="cmd-num">
@@ -160,8 +160,8 @@ export function NuevoGasto({ today }: { today: string }) {
 
       <div className="flex flex-wrap items-center" style={{ gap: 12 }}>
         <button type="submit" className="cmd-btn" disabled={busy} style={{ height: 44 }}>{busy ? "Guardando…" : "＋ Registrar gasto"}</button>
-        {error ? <span style={{ color: "var(--red)", fontSize: 12.5 }}>{error}</span> : null}
-        {ok && !error ? <span style={{ color: "var(--green)", fontSize: 12.5 }}>{ok}</span> : null}
+        {error ? <span style={{ color: "var(--red)", fontSize: 15 }}>{error}</span> : null}
+        {ok && !error ? <span style={{ color: "var(--green)", fontSize: 15 }}>{ok}</span> : null}
       </div>
     </form>
   );
@@ -177,7 +177,7 @@ export function BorrarGasto({ id, concepto }: { id: string; concepto: string }) 
       disabled={busy}
       aria-label={`Borrar «${concepto}»`}
       title="Borrar"
-      style={{ fontSize: 12, color: "var(--muted)" }}
+      style={{ fontSize: 15, color: "var(--muted)" }}
       onClick={async () => {
         if (!window.confirm(`¿Borrar el gasto «${concepto}»?`)) return;
         setBusy(true);
