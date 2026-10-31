@@ -8,9 +8,9 @@ import { tokens } from "@/lib/inventario/propuestas";
 import { errorMerma, JUSTIFICACION_MIN, MOTIVOS_MERMA, MOTIVO_MERMA, type MotivoMerma } from "@/lib/inventario/mermas";
 import { registrarMerma } from "./actions";
 
-const chip: React.CSSProperties = { height: 36, padding: "0 12px", borderRadius: 3, border: "1.5px solid var(--rule)", color: "var(--ink)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none", display: "inline-flex", alignItems: "center", fontFamily: "var(--font-mono)", background: "transparent", cursor: "pointer" };
-const field: React.CSSProperties = { height: 48, padding: "0 12px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 15, outline: "none", minWidth: 0 };
-const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" };
+const chip: React.CSSProperties = { height: 36, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line)", color: "var(--ink)", fontSize: 11, letterSpacing: ".1em", textTransform: "none", textDecoration: "none", display: "inline-flex", alignItems: "center", fontFamily: "inherit", background: "transparent", cursor: "pointer" };
+const field: React.CSSProperties = { height: 48, padding: "0 12px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "inherit", fontSize: 15, outline: "none", minWidth: 0 };
+const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", textTransform: "none", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" };
 const pick = (on: boolean): React.CSSProperties => ({ ...chip, height: 46, textTransform: "none", letterSpacing: 0, fontSize: 13.5, border: `1.5px solid ${on ? "var(--ink)" : "var(--rule)"}`, background: on ? "var(--ink)" : "transparent", color: on ? "var(--paper-lt)" : "var(--ink)" });
 
 type Kind = "producto" | "insumo";
@@ -75,10 +75,10 @@ export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
   const step = (d: number) => setQty((q) => String(Math.max(1, Math.min(50, (parseCount(q) ?? 1) + d))));
 
   return (
-    <div className="cmd-paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
-      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)", flexShrink: 0 }}>
-        <span className="font-slab" style={{ fontSize: 22 }}>Merma<span style={{ color: "var(--red)" }}>.</span></span>
-        <span className="hidden sm:inline" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "uppercase" }}>{sedeName}</span>
+    <div className="cmd-paper" style={{ minHeight: "100%", display: "flex", flexDirection: "column", fontFamily: "inherit", color: "var(--ink)" }}>
+      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0 }}>
+        <span className="font-bold" style={{ fontSize: 22 }}>Merma</span>
+        <span className="hidden sm:inline" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "none" }}>{sedeName}</span>
         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{actorName}</span>
         <Link href="/turno/inventario" style={chip}>← Inventario</Link>
       </div>
@@ -96,7 +96,7 @@ export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
             </div>
 
             {elegido ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 48, padding: "0 12px", border: "1.5px solid var(--ink)", borderRadius: 4, background: "var(--paper-lt)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 48, padding: "0 12px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--paper-lt)" }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700 }}>{elegido.name}</span>
                 <button type="button" onClick={() => setElegido(null)} style={{ ...chip, height: 34 }}>Cambiar</button>
               </div>
@@ -113,7 +113,7 @@ export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
             )}
 
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ink-2)" }}>Cantidad{kind === "insumo" && elegido?.enQue ? ` (${elegido.enQue})` : ""}</span>
+              <span style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "none", color: "var(--ink-2)" }}>Cantidad{kind === "insumo" && elegido?.enQue ? ` (${elegido.enQue})` : ""}</span>
               <span style={{ display: "flex", gap: 8 }}>
                 {kind === "producto" && <button type="button" onClick={() => step(-1)} aria-label="Uno menos" style={{ ...chip, width: 48, height: 48, justifyContent: "center", fontSize: 18 }}>−</button>}
                 <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" aria-label="Cantidad" placeholder={kind === "insumo" ? (elegido?.enQue ?? "") : ""} style={{ ...field, width: 120, textAlign: "center", fontWeight: 700 }} />
@@ -122,7 +122,7 @@ export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
             </label>
 
             <div>
-              <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ink-2)", marginBottom: 6 }}>¿Qué pasó?</div>
+              <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "none", color: "var(--ink-2)", marginBottom: 6 }}>¿Qué pasó?</div>
               <div role="radiogroup" aria-label="Qué pasó" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {MOTIVOS_MERMA.map((m) => (
                   <button key={m} type="button" role="radio" aria-checked={motivo === m} title={MOTIVO_MERMA[m].hint} onClick={() => setMotivo(m)} style={pick(motivo === m)}>{MOTIVO_MERMA[m].label}</button>
@@ -131,7 +131,7 @@ export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
             </div>
 
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ink-2)" }}>Justificación · obligatoria</span>
+              <span style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "none", color: "var(--ink-2)" }}>Justificación · obligatoria</span>
               <textarea value={just} onChange={(e) => setJust(e.target.value)} rows={3} maxLength={300} aria-label="Justificación" placeholder="Ej.: se le cayó al cliente al recogerlo en la barra; se repuso sin cobrar." style={{ ...field, height: "auto", padding: "10px 12px", lineHeight: 1.45, resize: "vertical" }} />
               <span style={{ fontSize: 11, color: just.trim().length >= JUSTIFICACION_MIN ? "var(--muted)" : "var(--amber)" }}>{just.trim().length}/300</span>
             </label>

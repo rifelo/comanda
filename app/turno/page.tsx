@@ -1,27 +1,40 @@
-import { redirect } from "next/navigation";
-import { ensureTodayInstances, getTurnoBoard, loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
-import { loadRutina } from "@/lib/inventario/conteos";
-import { baseSugerida } from "@/lib/caja/cierres";
+import { ensureTodayInstances, getTurnoBoard } from "@/lib/turno/server";
+import { loadHoyExtras } from "@/lib/turno/reads";
+import { turnoActual } from "@/lib/turno/hoy";
+import { assignedFor } from "@/lib/turno/state";
 import { nowInTz, todayInTz } from "@/lib/utils";
-import { TurnoBoard } from "./turno-board";
+import { ahoraMs, actorOf, param, requireEquipo, withQuery, type SearchParams } from "./_components/gate";
+import { HoyScreen } from "./hoy-screen";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Turno · co-manda" };
+export const metadata = { title: "Hoy · Comanda" };
 
 /**
- * Shared shift tablet. A paired device (POS pairing cookie) fixes the sede;
- * the person in charge signs in with email + password and works today's
- * checklist under their own name. A signed-in admin on a laptop lands here
- * too, with their org's first sede.
+ * «Hoy» of the team app (reference board 1): what to do now, the cash the
+ * drawer should hold, what is running out and when the turno closes. The
+ * sede comes from the paired device (or the person's membership on their
+ * phone); every tick is signed by the person in session.
  */
-export default async function TurnoPage() {
-  const gate = await loadTurnoGate();
-  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno"));
-  const { ctx } = gate;
+export default async function TurnoPage({ searchParams }: { searchParams: SearchParams }) {
+  const sp = await searchParams;
+  const ctx = await requireEquipo(withQuery("/turno", sp, ["turno", "novedad"]));
   await ensureTodayInstances(ctx, todayInTz(ctx.sede.tz));
-  const [data, { rutina }, base] = await Promise.all([getTurnoBoard(ctx), loadRutina(ctx.admin, ctx.organizationId, ctx.sede.tz), baseSugerida(ctx.admin, ctx.restaurantId)]);
-  // The base the last close left, still unchecked by whoever opened after it: Caja shows a dot.
-  const abiertos = data.turnos.filter((t) => t.instance.status === "open").map((t) => t.instance.id);
-  const cajaPendiente = !!base.cierre && !base.cierre.base_validada_at && !abiertos.includes(base.cierre.shift_instance_id ?? "");
-  return <TurnoBoard data={data} actor={ctx.actor} serverNow={nowInTz(ctx.sede.tz)} rutina={rutina} cajaPendiente={cajaPendiente} />;
+  const [data, hoyExtras] = await Promise.all([getTurnoBoard(ctx), loadHoyExtras(ctx)]);
+  const now = nowInTz(ctx.sede.tz);
+  const shift = turnoActual(data.turnos, now, {
+    preferId: param(sp, "turno"),
+    asignado: (t) => assignedFor(data.assignments, t.template.id, data.todayIdx, null) === ctx.actor.profileId,
+  });
+  const extras = await hoyExtras.enfocar(shift?.instance.id ?? null);
+  return (
+    <HoyScreen
+      data={data}
+      shiftId={shift?.instance.id ?? null}
+      now={now}
+      serverNow={ahoraMs()}
+      extras={extras}
+      actor={actorOf(ctx)}
+      novedadAbierta={param(sp, "novedad") === "1"}
+    />
+  );
 }

@@ -25,7 +25,7 @@ import { EntradaFlow } from "./entrada";
 import { IcoCheck, IcoNube } from "./icons";
 import { Inicio, type LineaEstado } from "./inicio";
 import { faltaPara, guardarCola, hora, leerCola, nuevoRef, plata, sumaVentana, unirMovimientos, type MovPendiente } from "./model";
-import { CajaHead, subirDataUrl } from "./parts";
+import { subirDataUrl } from "./parts";
 import { SalidaFlow, type NuevoMovimiento } from "./salida";
 import { ValidarBase } from "./validar";
 
@@ -56,9 +56,19 @@ function guardarCierrePend(c: CierreInput | null) {
  * same way. Server data comes from lib/caja/estado.ts and refreshes after
  * every write.
  */
-export function CajaApp({ estado, sedeName, tz, actor }: { estado: CajaEstado; sedeName: string; tz: string; actor: { name: string; isAdmin: boolean } }) {
+/** Embedded in a guided flow (/turno/abrir step 1, /turno/cerrar steps 3–4): where «done» and «cancel» go. */
+export type CajaFlow = { doneHref: string; cancelHref: string; doneLabel: string };
+
+export function CajaApp({ estado, tz, actor, inicial, flow }: {
+  estado: CajaEstado;
+  tz: string;
+  actor: { name: string; isAdmin: boolean };
+  /** First screen: home, a new movement (Hoy's «+ Entrada / − Salida») or the arqueo. */
+  inicial?: View;
+  flow?: CajaFlow;
+}) {
   const router = useRouter();
-  const [view, setView] = React.useState<View>("inicio");
+  const [view, setView] = React.useState<View>(inicial ?? "inicio");
   const [detalle, setDetalle] = React.useState<string | null>(null);
   const [validarLuego, setValidarLuego] = React.useState(false);
   const [validada, setValidada] = React.useState(false);
@@ -258,13 +268,12 @@ export function CajaApp({ estado, sedeName, tz, actor }: { estado: CajaEstado; s
 
   const verFoto = React.useCallback((id: string) => fotoMovimientoCaja({ id }), []);
   const mov = detalle ? rows.find((r) => r.key === detalle) ?? null : null;
-  const crumb = view === "salida" ? "Nueva salida" : view === "entrada" ? "Nueva entrada" : view === "arqueo" ? "Arqueo" : undefined;
-  const dot = !!porValidar || porConfirmarN > 0 || (!!inst && !vivo && cerca) || (!!vivo && !vivo.base_confirmada_at);
+  // Inside a flow, leaving the arqueo moves the flow on once something was sent; otherwise it goes back.
+  const salirFlow = (f: CajaFlow) => router.push(resultado || vivo ? f.doneHref : f.cancelHref);
 
   return (
     <div className="cj">
       <style>{CAJA_CSS}</style>
-      <CajaHead sedeName={sedeName} today={estado.today} tz={tz} actorName={actor.name} crumb={crumb} cajaDot={dot} />
       {!online && (
         <div className="cj-band" role="status">
           <IcoNube size={26} />
@@ -296,10 +305,14 @@ export function CajaApp({ estado, sedeName, tz, actor }: { estado: CajaEstado; s
           }}
           onDone={() => {
             setValidada(true);
+            if (flow) {
+              router.push(flow.doneHref);
+              return;
+            }
             setFlash({ text: "Base validada. Ya puedes abrir la caja.", tone: "ok" });
             router.refresh();
           }}
-          onLater={() => setValidarLuego(true)}
+          onLater={() => (flow ? router.push(flow.cancelHref) : setValidarLuego(true))}
         />
       ) : view === "inicio" ? (
         <Inicio
@@ -345,7 +358,12 @@ export function CajaApp({ estado, sedeName, tz, actor }: { estado: CajaEstado; s
               .catch(() => ({ ok: false as const, error: "Sin conexión. Intenta otra vez." }))
           }
           ajustar={(cierreId, baseDejada) => ajustarBaseCaja({ cierreId, baseDejada }).catch(() => ({ ok: false as const, error: "Sin conexión. Intenta otra vez." }))}
+          salirLabel={flow?.doneLabel}
           onSalir={() => {
+            if (flow) {
+              salirFlow(flow);
+              return;
+            }
             setResultado(null);
             setView("inicio");
             router.refresh();

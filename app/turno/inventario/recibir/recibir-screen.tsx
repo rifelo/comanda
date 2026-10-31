@@ -9,10 +9,10 @@ import { parseMonto } from "@/lib/caja/movimientos";
 import { errorRecepcion, PAGO_RECEPCION, PAGOS_RECEPCION, type PagoRecepcion } from "@/lib/compras/recepcion";
 import { recibirPedido, subirFotoCompra } from "./actions";
 
-const chip: React.CSSProperties = { height: 36, padding: "0 12px", borderRadius: 3, border: "1.5px solid var(--rule)", color: "var(--ink)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none", display: "inline-flex", alignItems: "center", fontFamily: "var(--font-mono)", background: "transparent", cursor: "pointer" };
-const field: React.CSSProperties = { height: 48, padding: "0 12px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 15, outline: "none", minWidth: 0 };
-const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" };
-const label: React.CSSProperties = { fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ink-2)" };
+const chip: React.CSSProperties = { height: 36, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line)", color: "var(--ink)", fontSize: 11, letterSpacing: ".1em", textTransform: "none", textDecoration: "none", display: "inline-flex", alignItems: "center", fontFamily: "inherit", background: "transparent", cursor: "pointer" };
+const field: React.CSSProperties = { height: 48, padding: "0 12px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "inherit", fontSize: 15, outline: "none", minWidth: 0 };
+const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", textTransform: "none", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" };
+const label: React.CSSProperties = { fontSize: 11, letterSpacing: ".1em", textTransform: "none", color: "var(--ink-2)" };
 const pick = (on: boolean): React.CSSProperties => ({ ...chip, height: 46, textTransform: "none", letterSpacing: 0, fontSize: 13.5, border: `1.5px solid ${on ? "var(--ink)" : "var(--rule)"}`, background: on ? "var(--ink)" : "transparent", color: on ? "var(--paper-lt)" : "var(--ink)" });
 
 interface Linea { id: string; nombre: string; pedida: number; enQue: string; enInventario: boolean }
@@ -26,10 +26,10 @@ export function RecibirScreen({ sedeName, actorName, pedidos }: { sedeName: stri
   const sel = pedidos.find((p) => p.id === abierto) ?? null;
 
   return (
-    <div className="cmd-paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
-      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)", flexShrink: 0 }}>
-        <span className="font-slab" style={{ fontSize: 22 }}>Pedidos por llegar<span style={{ color: "var(--red)" }}>.</span></span>
-        <span className="hidden sm:inline" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "uppercase" }}>{sedeName}</span>
+    <div className="cmd-paper" style={{ minHeight: "100%", display: "flex", flexDirection: "column", fontFamily: "inherit", color: "var(--ink)" }}>
+      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0 }}>
+        <span className="font-bold" style={{ fontSize: 22 }}>Pedidos por llegar</span>
+        <span className="hidden sm:inline" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "none" }}>{sedeName}</span>
         <span className="hidden sm:inline" style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600 }}>{actorName}</span>
         {sel
           ? <button type="button" onClick={() => setAbierto(null)} style={{ ...chip, marginLeft: 8 }}>← Pedidos</button>
@@ -44,9 +44,9 @@ export function RecibirScreen({ sedeName, actorName, pedidos }: { sedeName: stri
             <div style={kicker}>Por llegar · {pedidos.length}</div>
             {pedidos.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>No hay pedidos por llegar. Cuando el dueño registre uno aparece aquí para recibirlo.</div>}
             {pedidos.map((p) => (
-              <button key={p.id} type="button" onClick={() => { setAbierto(p.id); setHecho(null); }} aria-label={`Pedido ${p.folio} de ${p.proveedor}`} style={{ textAlign: "left", border: `1.5px solid ${p.atrasado ? "var(--red)" : "var(--ink)"}`, borderRadius: 8, background: "var(--paper-lt)", padding: "14px 16px", cursor: "pointer", color: "var(--ink)", fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 14 }}>
+              <button key={p.id} type="button" onClick={() => { setAbierto(p.id); setHecho(null); }} aria-label={`Pedido ${p.folio} de ${p.proveedor}`} style={{ textAlign: "left", border: `1.5px solid ${p.atrasado ? "var(--red)" : "var(--ink)"}`, borderRadius: 8, background: "var(--paper-lt)", padding: "14px 16px", cursor: "pointer", color: "var(--ink)", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 14 }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span className="font-slab" style={{ display: "block", fontSize: 20 }}>#{p.folio} · {p.proveedor}</span>
+                  <span className="font-bold" style={{ display: "block", fontSize: 20 }}>#{p.folio} · {p.proveedor}</span>
                   <span style={{ display: "block", fontSize: 12, marginTop: 3, color: p.atrasado ? "var(--red)" : "var(--ink-2)", fontWeight: p.atrasado ? 700 : 500 }}>
                     {p.llega ? `${p.atrasado ? "debía llegar" : "llega"} ${p.llega}` : "sin fecha"} · pedido el {p.pedido} · {p.lineas.length} {p.lineas.length === 1 ? "producto" : "productos"}
                   </span>
@@ -95,7 +95,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   return (
     <form onSubmit={enviar} aria-label={`Recibir pedido ${p.folio}`} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <div className="font-slab" style={{ fontSize: 26, lineHeight: 1.1 }}>Recibir #{p.folio} · {p.proveedor}</div>
+        <div className="font-bold" style={{ fontSize: 26, lineHeight: 1.1 }}>Recibir #{p.folio} · {p.proveedor}</div>
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4 }}>Pedido el {p.pedido}{p.llega ? ` · ${p.atrasado ? "debía llegar" : "llega"} ${p.llega}` : ""}{p.estimado ? ` · estimado ${posMoney(p.estimado)}` : ""}</div>
         {p.nota && <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>«{p.nota}»</div>}
       </div>

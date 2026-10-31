@@ -1,12 +1,12 @@
-import { redirect } from "next/navigation";
-import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
+import { ahoraMs, actorOf, requireEquipo } from "@/app/turno/_components/gate";
+import { EquipoShell } from "@/app/turno/_components/equipo";
 import { formatTime, todayInTz } from "@/lib/utils";
 import { nombrePaquete, piezaDe } from "@/lib/inventario/niveles";
 import { inicioDia, listMermas } from "@/lib/inventario/mermas-db";
 import { MermaScreen } from "./merma-screen";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Merma · co-manda" };
+export const metadata = { title: "Merma · Comanda" };
 
 /**
  * "Registrar merma" on the shared tablet: something was lost without being
@@ -14,9 +14,7 @@ export const metadata = { title: "Merma · co-manda" };
  * what happened and why. Today's mermas are listed below, without costs.
  */
 export default async function MermaPage() {
-  const gate = await loadTurnoGate();
-  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/inventario/merma"));
-  const { ctx } = gate;
+  const ctx = await requireEquipo("/turno/inventario/merma");
   const { admin, organizationId: orgId, sede } = ctx;
   const today = todayInTz(sede.tz);
   const [{ data: prods }, { data: receta }, { data: ings }, hoy] = await Promise.all([
@@ -28,6 +26,7 @@ export default async function MermaPage() {
   // Only products with a recipe can take it out of the inventory.
   const conReceta = new Set((receta ?? []).map((r) => r.producto_id as string));
   return (
+    <EquipoShell title="Registrar merma" sub="Algo que se perdió sin venderse" actor={actorOf(ctx)} tz={ctx.sede.tz} serverNow={ahoraMs()}>
     <MermaScreen
       sedeName={sede.name}
       actorName={ctx.actor.fullName}
@@ -38,5 +37,6 @@ export default async function MermaPage() {
       })}
       hoy={hoy.map((m) => ({ id: m.id, nombre: m.nombre, cantidad: `${String(m.qty).replace(".", ",")} ${m.kind === "producto" ? "und" : m.unidad}`, motivo: m.motivo, justificacion: m.justificacion, quien: m.reportedBy, hora: formatTime(new Date(m.reportedAt), sede.tz) }))}
     />
+    </EquipoShell>
   );
 }
