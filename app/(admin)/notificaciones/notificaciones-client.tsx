@@ -7,7 +7,12 @@
  */
 import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ConteosCard } from "@/components/inventario/conteos-card";
+import { FaltantesCard } from "@/components/inventario/faltantes-card";
+import type { ConteosPanel } from "@/lib/inventario/conteos";
+import type { FaltanteReporte } from "@/lib/inventario/faltantes-db";
 import type { AlertasView, AlertaRow } from "@/lib/notificaciones";
 import type { StockLevel } from "@/lib/cost";
 import { updateStockMin } from "./actions";
@@ -112,7 +117,25 @@ function Kpi({ label, value, color }: { label: string; value: number; color: str
   );
 }
 
-export function NotificacionesClient({ view, reportados }: { view: AlertasView; reportados?: React.ReactNode }) {
+/** «Reportado por el equipo»: counts to approve + open faltantes. */
+function Reportados({ conteos, faltantes, tz }: ReportadosData) {
+  return (
+    <section className="flex flex-col gap-3 mb-6">
+      <ConteosCard panel={conteos} tz={tz} />
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="ui-label">Reportado por el equipo · {faltantes.length}</span>
+        <Link href="/inventario?vista=acabando" className="text-[14px] font-semibold text-text">
+          Lista prioritaria e historial →
+        </Link>
+      </div>
+      <FaltantesCard items={faltantes} tz={tz} showLink={false} />
+    </section>
+  );
+}
+
+export type ReportadosData = { conteos: ConteosPanel; faltantes: FaltanteReporte[]; tz: string };
+
+export function NotificacionesClient({ view, reportados }: { view: AlertasView; reportados?: ReportadosData }) {
   const { rows, counts } = view;
   const [onlyAlerts, setOnlyAlerts] = React.useState(false);
   const shown = onlyAlerts ? rows.filter((r) => r.level !== "ok") : rows;
@@ -135,7 +158,7 @@ export function NotificacionesClient({ view, reportados }: { view: AlertasView; 
       />
 
       <div style={{ padding: "20px 28px" }}>
-        {reportados}
+        {reportados ? <Reportados {...reportados} /> : null}
         <div className="flex" style={{ gap: 14, marginBottom: 18 }}>
           <Kpi label="Sin stock" value={counts.sin} color="var(--red)" />
           <Kpi label="Stock bajo" value={counts.bajo} color="var(--amber)" />
