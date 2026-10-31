@@ -9,7 +9,7 @@
 import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { fmtCOP } from "@/lib/mock/productos";
+import { fmtCOP } from "@/lib/utils";
 import { effectivePrice, priceDeltaPct } from "@/lib/precios";
 import type { PreciosView, PrecioProductoRow, PriceListMeta } from "@/lib/db/precios";
 import {

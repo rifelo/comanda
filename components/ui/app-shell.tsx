@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronDown, LogOut } from "lucide-react";
 import type { NavItem, NavSection } from "@/lib/nav/items";
 import { activeItemIn, activeSectionFor, activeTabFor } from "@/lib/nav/active";
@@ -58,20 +58,25 @@ export function AppShell({
   advancedItems?: NavItem[];
   profile: ShellProfile;
   variant: "equipo" | "dueno";
-  /** Replaces the built-in header (equipo screens bring their own). */
-  header?: React.ReactNode;
+  /**
+   * Replaces the built-in header (equipo screens bring their own). As a
+   * function it receives the avatar → profile button to place in its TopBar
+   * (`whoSlot`), so the shell keeps owning the profile sheet.
+   */
+  header?: React.ReactNode | ((profileButton: React.ReactNode) => React.ReactNode);
   sedeName?: string;
   actions?: ShellActions;
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "";
+  const search = useSearchParams()?.toString() ?? "";
   const [profileOpen, setProfileOpen] = React.useState(false);
 
   const tab = activeTabFor(pathname, nav, extraMatch);
   // Under «Más», the entry that owns the page (Ajustes, Clientes…) brings its sections.
   const owner = tab?.id === "mas" ? activeItemIn(pathname, moreItems, advancedItems) : tab;
   const sections = owner?.sections ?? [];
-  const section = sections.length ? activeSectionFor(pathname, sections) : null;
+  const section = sections.length ? activeSectionFor(pathname, sections, search) : null;
   const title = section && section.label !== owner?.label ? section.label : (owner?.label ?? tab?.label ?? "Comanda");
 
   const dueno = variant === "dueno";
@@ -83,7 +88,9 @@ export function AppShell({
       className="flex items-center gap-2.5 text-[15px] font-semibold shrink-0 bg-transparent border-0 p-0 text-text cursor-pointer"
     >
       <Avatar name={profile.name} initials={profile.initials} />
-      <span className="hidden sm:inline max-w-[160px] truncate">{profile.name}</span>
+      <span className={cn("hidden max-w-[160px] truncate", dueno ? "sm:inline" : "md:inline")}>
+        {dueno ? profile.name : profile.name.split(" ")[0]}
+      </span>
     </button>
   );
 
@@ -105,10 +112,12 @@ export function AppShell({
       ) : null}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        {header ??
+        {typeof header === "function"
+          ? header(profileButton)
+          : (header ??
           (dueno ? (
             <TopBar className="desk:hidden" title={title} sub={sedeName} logoHref="/hoy" whoSlot={profileButton} />
-          ) : null)}
+          ) : null))}
 
         {dueno && sections.length > 1 ? (
           <SectionStrip sections={sections} active={section} className="desk:hidden" />

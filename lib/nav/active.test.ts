@@ -28,6 +28,15 @@ describe("activeTabFor · dueño", () => {
     expect(dueno("/productos/123")).toBe("productos");
     expect(dueno("/turnos/asignacion")).toBe("equipo");
     expect(dueno("/equipo/horario")).toBe("equipo");
+    expect(dueno("/equipo")).toBe("equipo");
+    expect(dueno("/inventario/movimientos")).toBe("inventario");
+    expect(dueno("/inventario/pedidos")).toBe("inventario");
+  });
+
+  it("points every tab and section at a new route", () => {
+    const OLD = ["/catalogo", "/recetas", "/numeros", "/turnos", "/configuracion", "/calificaciones", "/baristas", "/historial", "/compras", "/inventario/faltantes"];
+    const hrefs = [...DUENO_TABS, ...MAS_ITEMS].flatMap((t) => [t.href, ...(t.sections ?? []).map((s) => s.href)]);
+    for (const h of hrefs) for (const o of OLD) expect(h === o || h.startsWith(o + "/"), h).toBe(false);
   });
 
   it("gives the most specific prefix priority", () => {
@@ -37,7 +46,7 @@ describe("activeTabFor · dueño", () => {
   });
 
   it("sends «Más» pages to the Más tab", () => {
-    for (const p of ["/mas", "/caja", "/gastos", "/calificaciones", "/baristas", "/combos", "/precios", "/importacion"]) {
+    for (const p of ["/mas", "/caja", "/gastos", "/clientes", "/clientes/puntos", "/ajustes/sede", "/calificaciones", "/baristas", "/combos", "/precios", "/importacion"]) {
       expect(dueno(p)).toBe("mas");
     }
   });
@@ -66,10 +75,29 @@ describe("sections", () => {
     expect(activeSectionFor("/inventario", inv)?.label).toBe("Existencias");
     expect(activeSectionFor("/inventario/conteos/1", inv)?.label).toBe("Conteos");
     expect(activeSectionFor("/inventario/kardex/1", inv)?.label).toBe("Movimientos");
+    expect(activeSectionFor("/inventario/movimientos", inv)?.label).toBe("Movimientos");
+    expect(activeSectionFor("/inventario/pedidos", inv)?.label).toBe("Pedidos");
+    expect(activeSectionFor("/inventario/0b5c", inv)?.label).toBe("Existencias");
+  });
+
+  it("activates a query section only when its query matches", () => {
+    const inv = DUENO_TABS.find((t) => t.id === "inventario")!.sections!;
+    expect(activeSectionFor("/inventario", inv, "vista=acabando")?.label).toBe("Faltantes");
+    expect(activeSectionFor("/inventario", inv, "vista=otra")?.label).toBe("Existencias");
+    expect(activeSectionFor("/inventario", inv, "")?.label).toBe("Existencias");
+  });
+
+  it("keeps Personas exact under /equipo", () => {
+    const eq = DUENO_TABS.find((t) => t.id === "equipo")!.sections!;
+    expect(activeSectionFor("/equipo", eq)?.label).toBe("Personas");
+    expect(activeSectionFor("/equipo/turnos/nuevo", eq)?.label).toBe("Turnos");
+    expect(activeSectionFor("/equipo/horario", eq)?.label).toBe("Horario");
   });
 
   it("finds the Más entry that owns a page", () => {
     expect(activeItemIn("/configuracion/pos", MAS_ITEMS, AVANZADO_ITEMS)?.id).toBe("ajustes");
     expect(activeItemIn("/baristas", MAS_ITEMS, AVANZADO_ITEMS)?.id).toBe("clientes");
+    expect(activeItemIn("/ajustes/dispositivos", MAS_ITEMS, AVANZADO_ITEMS)?.id).toBe("ajustes");
+    expect(activeItemIn("/clientes/puntos", MAS_ITEMS, AVANZADO_ITEMS)?.id).toBe("clientes");
   });
 });

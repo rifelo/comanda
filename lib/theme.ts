@@ -12,12 +12,11 @@ export const THEME_COOKIE = "comanda-theme";
 export const APP_THEMES: readonly AppTheme[] = ["claro", "oscuro", "auto"];
 
 /**
- * Theme used when there is no cookie. `claro` (not `auto`) while screens are
- * still being restyled: a phone in OS dark mode would otherwise paint
- * dark tokens under hard-coded light colours of not-yet-migrated screens.
- * TODO(Ola 3): switch to "auto" once P1–P4 have landed.
+ * Theme used when there is no cookie: follow the OS. Every screen paints
+ * with tokens since the redesign (Ola 3 checked for hard-coded light
+ * colours); the public menu keeps its own palette.
  */
-export const DEFAULT_THEME: AppTheme = "claro";
+export const DEFAULT_THEME: AppTheme = "auto";
 
 const LEGACY: Record<string, AppTheme> = {
   papel: "claro",

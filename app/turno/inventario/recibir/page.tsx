@@ -21,8 +21,6 @@ export default async function RecibirPage() {
   return (
     <EquipoShell title="Pedidos por llegar" sub="Recibir lo que pidió el dueño" actor={actorOf(ctx)} tz={ctx.sede.tz} serverNow={ahoraMs()}>
     <RecibirScreen
-      sedeName={ctx.sede.name}
-      actorName={ctx.actor.fullName}
       pedidos={pedidos
         .sort((a, b) => (a.entrega_esperada ?? "9").localeCompare(b.entrega_esperada ?? "9") || a.folio - b.folio)
         .map((c) => ({

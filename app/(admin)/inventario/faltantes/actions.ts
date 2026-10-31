@@ -22,7 +22,7 @@ export async function guardarPrioridades(input: unknown): Promise<{ ok: true; co
     const { error } = await supabase.from("ingredientes").update({ prioridad }).eq("organization_id", orgId).in("id", ids);
     if (error) return { ok: false, error: "No se pudo guardar la lista." };
   }
-  revalidatePath("/inventario/faltantes");
+  revalidatePath("/inventario");
   revalidatePath("/turno/inventario", "layout");
   return { ok: true, count: parsed.data.items.filter((i) => i.prioridad > 0).length };
 }
@@ -36,7 +36,7 @@ export async function resolverFaltanteAction(input: unknown): Promise<{ ok: true
   const { user, profile, supabase } = await requireUser();
   const r = await resolverFaltante(supabase, profile.organization_id, parsed.data.id, user.id, parsed.data.note);
   if (r.ok) {
-    revalidatePath("/inventario/faltantes");
+    revalidatePath("/inventario");
     revalidatePath("/notificaciones");
     revalidatePath("/hoy");
     revalidatePath("/turno/inventario", "layout");

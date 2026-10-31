@@ -190,8 +190,8 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
         {step.kind === "count" && (
           <span className="cmd-num" style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: filled === list.length ? "var(--green)" : "var(--ink)" }}>{filled} de {list.length}</span>
         )}
-        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }} title={actor.name}>{actor.name}</span>
-        <div style={{ display: "flex", gap: 8 }}>
+        {/* Who counts shows in the shell header and in «Cuenta …» below — not repeated here. */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <Link href="/turno/inventario" style={chip}>← Inventario</Link>
           {actor.isAdmin && <Link href="/inventario/conteos" style={chip}>Panel</Link>}
         </div>

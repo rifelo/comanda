@@ -1,6 +1,7 @@
 import { todayInTz } from "@/lib/utils";
 import { loadCajaEstado } from "@/lib/caja/estado";
-import { contarAtrasadas } from "@/lib/turno/reads";
+import { getTurnoBoard } from "@/lib/turno/server";
+import { cajaDelTurno, contarAtrasadas, turnoDeLaPersona } from "@/lib/turno/reads";
 import { ahoraMs, actorOf, param, requireEquipo, withQuery, type SearchParams } from "../_components/gate";
 import { EquipoShell } from "../_components/equipo";
 import { CajaApp } from "./_components/caja-app";
@@ -14,15 +15,20 @@ export const metadata = { title: "Caja · Comanda" };
  * the blind arqueo and the base check — one client screen
  * (./_components/caja-app.tsx) so it keeps working without internet. The
  * owner reviews it all at /caja. `?mov=entrada|salida` opens a new movement
- * straight away (Hoy's buttons).
+ * straight away (Hoy's buttons); `?turno=<id>` pins the turno.
  */
 export default async function CajaPage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
-  const ctx = await requireEquipo(withQuery("/turno/caja", sp, ["mov"]));
-  const [estado, atrasadas] = await Promise.all([
+  const ctx = await requireEquipo(withQuery("/turno/caja", sp, ["mov", "turno"]));
+  const [data, estadoSede, atrasadas] = await Promise.all([
+    getTurnoBoard(ctx),
     loadCajaEstado(ctx.admin, { orgId: ctx.organizationId, restaurantId: ctx.restaurantId, tz: ctx.sede.tz, today: todayInTz(ctx.sede.tz) }),
     contarAtrasadas(ctx),
   ]);
+  // The drawer of the turno this person is on (same pick as Hoy/Abrir/Cerrar),
+  // not «the open turno that started last» (could be a task-only turno).
+  const shift = turnoDeLaPersona(ctx, data, param(sp, "turno"));
+  const estado = await cajaDelTurno(ctx, estadoSede, shift?.instance.id ?? null);
   const mov = param(sp, "mov");
   const inst = estado.instances.find((i) => i.id === estado.instanceId) ?? null;
   const validada = estado.base.cierre?.base_validada_at ? "Base validada" : estado.porValidar ? "Falta validar la base" : null;

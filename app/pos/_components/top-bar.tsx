@@ -291,7 +291,8 @@ function PersonSheet({ open, onClose, mode }: { open: boolean; onClose: () => vo
         </p>
       )}
       <form action={signOutLocal}>
-        {/* TODO(P2→F2): signOutLocal always lands on /login → /turno; a `next` field would bring the next person straight back to /pos. */}
+        {/* The next person signs in and lands back on the register. */}
+        <input type="hidden" name="next" value="/pos" />
         <Button type="submit" variant="strong" block icon={<UserRound size={20} aria-hidden />}>Cambiar persona</Button>
       </form>
       {p.role === "admin" && mode === "user" ? (

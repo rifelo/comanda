@@ -117,7 +117,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
               <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 15, opacity: m.anuladoAt ? 0.6 : 1 }}>
                 <span className="cmd-num text-muted" style={{ fontSize: 14, whiteSpace: "nowrap", minWidth: 0 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/compras" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}{m.compraProveedor ? ` ${m.compraProveedor}` : ""}</Link></> : null}
+                  <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/inventario/pedidos" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}{m.compraProveedor ? ` ${m.compraProveedor}` : ""}</Link></> : null}
                   <span className="text-muted"> · «{m.justificacion}»{extra ? ` · ${extra}` : ""} · {m.by ?? "—"}</span>
                   {url && <> · <a href={url} target="_blank" rel="noreferrer" style={{ color: "var(--ink)" }}>foto</a></>}
                   {falta && <span style={{ color: "var(--amber)", fontWeight: 700 }}> · por confirmar: {falta}</span>}

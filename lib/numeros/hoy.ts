@@ -90,8 +90,6 @@ const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many
 /**
  * What the owner should look at, most urgent first (red before neutral).
  * Only items with something pending are returned; empty = «todo al día».
- * Hrefs use today's routes (old ones redirect after P4 moves them).
- * TODO(Ola 3): /inventario/faltantes → /inventario?vista=acabando, /recetas → /productos.
  */
 export function porAtender(c: PorAtenderInput, fmt: (cop: number) => string): PorAtenderItem[] {
   const late: PorAtenderItem[] = [];
@@ -104,11 +102,11 @@ export function porAtender(c: PorAtenderInput, fmt: (cop: number) => string): Po
       id: "agotado",
       title: `${n(c.agotado, "cosa se acabó", "cosas se acabaron")}`,
       sub: c.bajo > 0 ? `y ${n(c.bajo, "queda poco de otra", "quedan pocas de otras")}` : "Reportado por el equipo",
-      href: "/inventario/faltantes",
+      href: "/inventario?vista=acabando",
       tone: "late",
     });
   } else if (c.bajo > 0) {
-    rest.push({ id: "agotado", title: `${n(c.bajo, "se está acabando", "se están acabando")}`, sub: "Reportado por el equipo", href: "/inventario/faltantes", tone: "neutral" });
+    rest.push({ id: "agotado", title: `${n(c.bajo, "se está acabando", "se están acabando")}`, sub: "Reportado por el equipo", href: "/inventario?vista=acabando", tone: "neutral" });
   }
   if (c.pedidosViejos > 0) {
     late.push({ id: "pedidos-viejos", title: n(c.pedidosViejos, "pedido de otro día sin cobrar", "pedidos de otros días sin cobrar"), sub: "Cóbralos o cancélalos en el POS", href: "/pos", tone: "late" });
@@ -126,7 +124,7 @@ export function porAtender(c: PorAtenderInput, fmt: (cop: number) => string): Po
     rest.push({ id: "conteos", title: n(c.conteosPorAprobar, "conteo por aprobar", "conteos por aprobar"), sub: "Conteo de inventario del equipo", href: "/inventario/conteos", tone: "neutral" });
   }
   if (c.costosPorRevisar > 0) {
-    rest.push({ id: "costos", title: n(c.costosPorRevisar, "costo por revisar", "costos por revisar"), sub: "Insumos sin costo, precios en 0 o margen bajo", href: "/recetas", tone: "neutral" });
+    rest.push({ id: "costos", title: n(c.costosPorRevisar, "costo por revisar", "costos por revisar"), sub: "Insumos sin costo, precios en 0 o margen bajo", href: "/productos?vista=revisar", tone: "neutral" });
   }
   if (c.sugerencias > 0) {
     rest.push({ id: "sugerencias", title: n(c.sugerencias, "sugerencia del equipo", "sugerencias del equipo"), sub: "Ítems que faltan o van en otra zona", href: "/inventario/sugerencias", tone: "neutral" });

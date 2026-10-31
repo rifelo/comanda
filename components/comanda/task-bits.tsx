@@ -85,54 +85,6 @@ export function ScheduleTag({
   );
 }
 
-export type WhoKind = "you" | "all" | "other";
-
-// ── Who chip — "Para ti" / "Para todos" / "Asignada · Nombre" ────────────────
-export function WhoChip({ kind, text }: { kind: WhoKind; text: string }) {
-  const tone =
-    kind === "you"
-      ? "var(--ink)"
-      : kind === "all"
-        ? "var(--ink-2)"
-        : "var(--muted)";
-  return (
-    <span
-      className="font-mono uppercase whitespace-nowrap"
-      style={{
-        fontSize: 9.5,
-        letterSpacing: "0.08em",
-        color: tone,
-        border: `1px solid ${kind === "you" ? "var(--ink)" : "var(--rule)"}`,
-        padding: "2px 6px",
-        borderRadius: 2,
-        background: kind === "you" ? "rgba(31,26,20,0.05)" : "transparent",
-      }}
-    >
-      {text}
-    </span>
-  );
-}
-
-// ── Locked checkbox stand-in — for tasks assigned to someone else ────────────
-export function LockBox() {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex items-center justify-center shrink-0"
-      style={{
-        width: 26,
-        height: 26,
-        minWidth: 26,
-        border: "1.5px solid var(--rule)",
-        borderRadius: 4,
-        background: "transparent",
-      }}
-    >
-      <span style={{ width: 9, height: 2, background: "var(--muted)", borderRadius: 1 }} />
-    </span>
-  );
-}
-
 // ── Avatar chip — initials in a ring, used by the admin assignee label ───────
 export function AssigneeChip({ name }: { name: string | null }) {
   const assigned = !!name;
@@ -162,23 +114,8 @@ export function AssigneeChip({ name }: { name: string | null }) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Who-label + lock state for a task relative to the viewing staffer. */
-export function whoForViewer(
-  assignedTo: string | null,
-  userId: string,
-  assigneeName?: string | null,
-): { kind: WhoKind; text: string; locked: boolean } {
-  if (assignedTo === userId) return { kind: "you", text: "Para ti", locked: false };
-  if (assignedTo === null) return { kind: "all", text: "Para todos", locked: false };
-  return {
-    kind: "other",
-    text: `Asignada · ${assigneeName ?? "otra persona"}`,
-    locked: true,
-  };
-}
-
 /** First letters of the first two name parts, uppercase. */
-export function taskInitials(name: string | null): string {
+function taskInitials(name: string | null): string {
   if (!name) return "··";
   return (
     name

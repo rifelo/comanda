@@ -16,7 +16,7 @@ import {
 } from "@/lib/movimientos";
 import Link from "next/link";
 import { DIAS_KARDEX, diaCorto, type Periodo } from "@/lib/kardex-periodo";
-import { SectionCrumb } from "../../_components/shared";
+import { PageHeader } from "@/components/ui/top-bar";
 import { Chip } from "../../_components/chip";
 
 const GRID = "150px 1.4fr 130px 90px 1fr 90px";
@@ -99,9 +99,10 @@ export function HistorialClient({
 
   return (
     <div>
-      <SectionCrumb
-        section="historial"
-        right={
+      <PageHeader
+        title="Movimientos"
+        className="border-b border-line"
+        actions={
           <>
             <button type="button" className="cmd-btn ghost sm" onClick={exportCsv} disabled={filtered.length === 0}>
               Exportar CSV

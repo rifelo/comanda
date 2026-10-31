@@ -42,7 +42,7 @@ const UpdateSchema = z.object({
  * `organization_id` + `role: 'staff'` metadata the `handle_new_user` trigger
  * reads to provision the profile in the right org. Once the auth user exists
  * (the trigger runs synchronously), we add the per-sede `restaurant_members`
- * row so the person shows in the roster and sees their shifts in `/today`.
+ * row so the person shows in the roster and sees their shifts in `/turno`.
  *
  * The invitee accepts via the email link, which lands them on `/auth/callback`
  * with an active session. (They sign in afterwards with Google or by setting a

@@ -16,9 +16,7 @@ const pick = (on: boolean): React.CSSProperties => ({ ...chip, height: 46, textT
 type Kind = "producto" | "insumo";
 interface Opcion { id: string; name: string; /** What its quantity is typed in ("bolsas", "g"); products are units. */ enQue?: string }
 
-export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
-  sedeName: string;
-  actorName: string;
+export function MermaScreen({ productos, insumos, hoy }: {
   productos: Opcion[];
   insumos: Opcion[];
   hoy: { id: string; nombre: string; cantidad: string; motivo: MotivoMerma; justificacion: string; quien: string | null; hora: string }[];
@@ -77,9 +75,7 @@ export function MermaScreen({ sedeName, actorName, productos, insumos, hoy }: {
   return (
     <div className="cmd-paper" style={{ minHeight: "100%", display: "flex", flexDirection: "column", fontFamily: "inherit", color: "var(--ink)" }}>
       <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0 }}>
-        <span className="font-bold" style={{ fontSize: 22 }}>Merma</span>
-        <span className="hidden sm:inline" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "none" }}>{sedeName}</span>
-        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{actorName}</span>
+        {/* Title, sede and person are in the shell header; this bar only goes back. */}
         <Link href="/turno/inventario" style={chip}>← Inventario</Link>
       </div>
 

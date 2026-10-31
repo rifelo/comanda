@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { MessageSquarePlus } from "lucide-react";
-import { AppShell, Avatar, Banner, Button, Chip, Chips, ProfileSheet, Sheet, TextArea, TopBar, toast } from "@/components/ui";
+import { AppShell, Banner, Button, Chip, Chips, Sheet, TextArea, TopBar, toast } from "@/components/ui";
 import { EQUIPO_TABS, type NavItem } from "@/lib/nav/items";
 import { TIPOS_NOVEDAD, cuerpoNovedad, type TipoNovedad } from "@/lib/turno/hoy";
 import { signOut, signOutLocal } from "@/app/login/actions";
@@ -50,12 +50,9 @@ export function EquipoShell({
   novedadAbierta?: boolean;
   children: React.ReactNode;
 }) {
-  const [profileOpen, setProfileOpen] = React.useState(false);
   const [novOpen, setNovOpen] = React.useState(!!novedadAbierta && !!novedad);
   const nav: NavItem[] = React.useMemo(() => EQUIPO_TABS.map((t) => (t.id === "tareas" && atrasadas > 0 ? { ...t, badge: atrasadas } : t)), [atrasadas]);
   const profile = { name: actor.name || "—", role: actor.role };
-  // TODO(P1→F1): AppShell builds its avatar → profile button only for the
-  // «dueno» header; with a custom equipo header we render ProfileSheet here.
   const actionsForSheet = {
     switchPerson: signOutLocal,
     // A personal phone ends the session everywhere; the shop tablet only drops this person.
@@ -68,7 +65,7 @@ export function EquipoShell({
         nav={nav}
         profile={profile}
         actions={actionsForSheet}
-        header={
+        header={(profileButton) => (
           <TopBar
             title={title}
             sub={sub}
@@ -84,23 +81,12 @@ export function EquipoShell({
                 ) : null}
               </>
             }
-            whoSlot={
-              <button
-                type="button"
-                onClick={() => setProfileOpen(true)}
-                aria-label={`Perfil de ${profile.name}`}
-                className="flex items-center gap-2.5 text-[15px] font-semibold shrink-0 bg-transparent border-0 p-0 text-text cursor-pointer"
-              >
-                <Avatar name={profile.name} />
-                <span className="hidden md:inline max-w-[160px] truncate">{profile.name.split(" ")[0]}</span>
-              </button>
-            }
+            whoSlot={profileButton}
           />
-        }
+        )}
       >
         {children}
       </AppShell>
-      <ProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} profile={profile} variant="equipo" actions={actionsForSheet} />
       {novedad ? <NovedadSheet open={novOpen} onClose={() => setNovOpen(false)} ctx={novedad} /> : null}
     </>
   );

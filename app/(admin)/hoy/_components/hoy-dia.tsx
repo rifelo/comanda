@@ -134,8 +134,7 @@ export async function HoyDia({
               <h2 id="rentable" className="ui-h2 m-0">
                 ¿El día fue rentable?
               </h2>
-              {/* TODO(Ola 3): /recetas → /productos */}
-              <Link href="/recetas" className="text-[15px] font-semibold text-text">
+              <Link href="/productos" className="text-[15px] font-semibold text-text">
                 Costos y recetas →
               </Link>
             </div>

@@ -28,8 +28,6 @@ export default async function MermaPage() {
   return (
     <EquipoShell title="Registrar merma" sub="Algo que se perdió sin venderse" actor={actorOf(ctx)} tz={ctx.sede.tz} serverNow={ahoraMs()}>
     <MermaScreen
-      sedeName={sede.name}
-      actorName={ctx.actor.fullName}
       productos={(prods ?? []).filter((p) => conReceta.has(p.id as string)).map((p) => ({ id: p.id as string, name: p.name as string }))}
       insumos={(ings ?? []).map((i) => {
         const pieza = piezaDe({ unit: i.unit as string, pack_qty: i.pack_qty === null ? null : Number(i.pack_qty), pieza_qty: i.pieza_qty === null ? null : Number(i.pieza_qty) });
