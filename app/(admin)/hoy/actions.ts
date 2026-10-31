@@ -11,7 +11,7 @@ const Schema = z.object({ template_id: z.string().uuid() });
 /**
  * "Llenar turno" for the owner/admin: make sure today's shift instance of the
  * turno exists (the nightly cron may not have created it yet) and open the
- * checklist at /shift/[id] — the same screen staff use; completions are
+ * checklist on the team app (/turno?turno=<id>) — the same screen staff use; completions are
  * recorded under the admin's own profile (RLS: completed_by = auth.uid()).
  * A <form action> + redirect, never router.push inside a transition.
  */
@@ -45,5 +45,5 @@ export async function llenarTurno(formData: FormData): Promise<void> {
     .eq("date", date)
     .maybeSingle();
   if (!inst) redirect("/hoy");
-  redirect(`/shift/${inst.id}`);
+  redirect(`/turno?turno=${inst.id}`);
 }

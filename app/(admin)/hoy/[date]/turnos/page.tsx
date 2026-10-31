@@ -166,18 +166,18 @@ export default async function HoyDetailPage({
             {view.shift.opened_at ? `abrió ${formatTime(view.shift.opened_at)}` : "sin abrir"}
           </div>
           <div className="flex" style={{ gap: 8, marginTop: 12 }}>
-            <Link href={`/hoy/${prevDate}`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
+            <Link href={`/hoy/${prevDate}/turnos`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
               ‹ día ant.
             </Link>
             <span className="cmd-btn ghost sm" style={{ flex: 1.4, textAlign: "center", cursor: "default" }}>
               {formatDateLabelEs(date)}
             </span>
-            <Link href={`/hoy/${nextDate}`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
+            <Link href={`/hoy/${nextDate}/turnos`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
               día sig. ›
             </Link>
           </div>
           {view.shift.status !== "closed" && (
-            <Link href={`/shift/${shiftId}`} className="cmd-btn red" style={{ display: "block", marginTop: 10, textAlign: "center", textDecoration: "none" }}>
+            <Link href={`/turno?turno=${shiftId}`} className="cmd-btn red" style={{ display: "block", marginTop: 10, textAlign: "center", textDecoration: "none" }}>
               ✎ Llenar turno
             </Link>
           )}
@@ -453,7 +453,7 @@ export default async function HoyDetailPage({
         <div className="flex items-center gap-2">
           {view.shift.status !== "closed" && (
             <Link
-              href={`/shift/${shiftId}`}
+              href={`/turno?turno=${shiftId}`}
               className="cmd-btn red sm"
               style={{ textDecoration: "none", marginRight: 12 }}
             >

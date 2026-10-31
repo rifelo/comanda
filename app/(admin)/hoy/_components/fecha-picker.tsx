@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 
-/** Jump to any past day. The date lives in the path, so it is a plain push. */
+/**
+ * Jump to any past day. The date lives in the path (a different route, not
+ * just a changed query), so a plain push works — never inside a transition.
+ */
 export function FechaPicker({ date, today }: { date: string; today: string }) {
   const router = useRouter();
   return (
@@ -16,16 +19,7 @@ export function FechaPicker({ date, today }: { date: string; today: string }) {
         if (!v || v > today) return;
         router.push(v === today ? "/hoy" : `/hoy/${v}`);
       }}
-      className="cmd-num"
-      style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace",
-        height: 32,
-        padding: "0 8px",
-        border: "1px solid var(--ink)",
-        borderRadius: 2,
-        background: "transparent",
-        color: "var(--ink)",
-      }}
+      className="ui-num h-11 min-h-11 rounded-btn border border-line bg-surface text-text px-3 text-[15px] font-semibold"
     />
   );
 }

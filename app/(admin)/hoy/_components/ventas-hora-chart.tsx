@@ -5,7 +5,7 @@ import { posMoney } from "@/lib/pos/types";
 import type { HoraDia } from "@/lib/numeros/dia";
 
 const PLOT_H = 168;
-const PREVIO = "color-mix(in srgb, var(--muted) 45%, var(--paper-lt))";
+const PREVIO = "color-mix(in srgb, var(--muted) 45%, var(--surface))";
 
 /** A round axis step that leaves at most four gridlines above zero. */
 function axisStep(max: number): number {
@@ -47,9 +47,9 @@ export function VentasHoraChart({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center" style={{ gap: 14, fontSize: 11, marginBottom: 10 }}>
+      <div className="flex flex-wrap items-center" style={{ gap: 14, fontSize: 13, marginBottom: 10 }}>
         <span className="inline-flex items-center" style={{ gap: 6 }}>
-          <span aria-hidden style={{ width: 10, height: 10, background: "var(--ink)", borderRadius: 2 }} />
+          <span aria-hidden style={{ width: 10, height: 10, background: "var(--text)", borderRadius: 2 }} />
           {diaLabel}
         </span>
         <span className="inline-flex items-center text-muted" style={{ gap: 6 }}>
@@ -60,7 +60,7 @@ export function VentasHoraChart({
 
       <div className="flex" style={{ gap: 8 }}>
         {/* y axis */}
-        <div className="cmd-num text-muted" style={{ position: "relative", width: 62, height: PLOT_H, fontSize: 10, flexShrink: 0 }}>
+        <div className="ui-num text-muted" style={{ position: "relative", width: 62, height: PLOT_H, fontSize: 12, flexShrink: 0 }}>
           {ticks.map((v) => (
             <span key={v} style={{ position: "absolute", right: 0, bottom: px(v) - 6, lineHeight: "12px" }}>
               {posMoney(v)}
@@ -75,7 +75,7 @@ export function VentasHoraChart({
               <div
                 key={v}
                 aria-hidden
-                style={{ position: "absolute", left: 0, right: 0, bottom: px(v), borderTop: `1px solid ${v === 0 ? "var(--ink)" : "var(--rule-soft)"}` }}
+                style={{ position: "absolute", left: 0, right: 0, bottom: px(v), borderTop: `1px solid ${v === 0 ? "var(--text)" : "var(--line)"}` }}
               />
             ))}
             <div className="flex" style={{ position: "absolute", inset: 0 }}>
@@ -99,7 +99,7 @@ export function VentasHoraChart({
                       gap: 2,
                       padding: 0,
                       border: "none",
-                      background: on ? "color-mix(in srgb, var(--ink) 7%, transparent)" : "transparent",
+                      background: on ? "color-mix(in srgb, var(--text) 7%, transparent)" : "transparent",
                       cursor: "default",
                       position: "relative",
                     }}
@@ -111,15 +111,15 @@ export function VentasHoraChart({
                         width: "42%",
                         maxWidth: 22,
                         height: px(h.total),
-                        background: "var(--ink)",
+                        background: "var(--text)",
                         opacity: horaActual === h.hora ? 0.6 : 1,
                         borderRadius: "3px 3px 0 0",
                       }}
                     />
                     {peak && peak.hora === h.hora && peak.total > 0 && !cur ? (
                       <span
-                        className="cmd-num"
-                        style={{ position: "absolute", bottom: px(h.total) + 4, left: "50%", transform: "translateX(-50%)", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", color: "var(--ink)" }}
+                        className="ui-num"
+                        style={{ position: "absolute", bottom: px(h.total) + 4, left: "50%", transform: "translateX(-50%)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", color: "var(--text)" }}
                       >
                         {posMoney(h.total)}
                       </span>
@@ -130,9 +130,9 @@ export function VentasHoraChart({
             </div>
           </div>
           {/* x axis */}
-          <div className="flex cmd-num text-muted" style={{ fontSize: 10, marginTop: 5 }}>
+          <div className="flex ui-num text-muted" style={{ fontSize: 12, marginTop: 5 }}>
             {horas.map((h) => (
-              <span key={h.hora} style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: active === h.hora ? 700 : 400, color: active === h.hora ? "var(--ink)" : undefined }}>
+              <span key={h.hora} style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: active === h.hora ? 700 : 400, color: active === h.hora ? "var(--text)" : undefined }}>
                 {h.hora}
               </span>
             ))}
@@ -141,13 +141,13 @@ export function VentasHoraChart({
       </div>
 
       {/* readout: the hovered hour, or how to read the chart */}
-      <div aria-live="polite" style={{ minHeight: 34, marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--rule)", fontSize: 11.5 }}>
+      <div aria-live="polite" style={{ minHeight: 34, marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--line)", fontSize: 13.5 }}>
         {cur ? (
           <span>
-            <span className="cmd-num text-muted">{hh(cur.hora)}–{hh(cur.hora + 1)}</span>{" "}
-            <b className="cmd-num">{posMoney(cur.total)}</b> en {cur.pedidos} pedido{cur.pedidos === 1 ? "" : "s"}
+            <span className="ui-num text-muted">{hh(cur.hora)}–{hh(cur.hora + 1)}</span>{" "}
+            <b className="ui-num">{posMoney(cur.total)}</b> en {cur.pedidos} pedido{cur.pedidos === 1 ? "" : "s"}
             {horaActual === cur.hora ? " (hora en curso)" : ""}
-            <span className="text-muted"> · {previoLabel}: <span className="cmd-num">{posMoney(cur.previo)}</span></span>
+            <span className="text-muted"> · {previoLabel}: <span className="ui-num">{posMoney(cur.previo)}</span></span>
           </span>
         ) : (
           <span className="text-muted">
@@ -157,12 +157,12 @@ export function VentasHoraChart({
       </div>
 
       <details style={{ marginTop: 6 }}>
-        <summary className="text-muted" style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
+        <summary className="text-muted" style={{ fontSize: 12.5, cursor: "pointer" }}>
           Ver tabla
         </summary>
-        <table className="cmd-num" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, marginTop: 6 }}>
+        <table className="ui-num" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, marginTop: 6 }}>
           <thead>
-            <tr className="text-muted" style={{ textAlign: "right", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <tr className="text-muted" style={{ textAlign: "right", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase" }}>
               <th style={{ textAlign: "left", fontWeight: 500, padding: "4px 0" }}>Hora</th>
               <th style={{ fontWeight: 500, padding: "4px 0" }}>Pedidos</th>
               <th style={{ fontWeight: 500, padding: "4px 0" }}>{diaLabel}</th>
@@ -171,7 +171,7 @@ export function VentasHoraChart({
           </thead>
           <tbody>
             {horas.map((h) => (
-              <tr key={h.hora} style={{ borderTop: "1px solid var(--rule-soft)", textAlign: "right" }}>
+              <tr key={h.hora} style={{ borderTop: "1px solid var(--line)", textAlign: "right" }}>
                 <td style={{ textAlign: "left", padding: "4px 0" }}>{hh(h.hora)}</td>
                 <td style={{ padding: "4px 0" }}>{h.pedidos}</td>
                 <td style={{ padding: "4px 0" }}>{posMoney(h.total)}</td>
