@@ -1,6 +1,7 @@
 /**
- * Shared section header used by the 5 Turnos sub-pages.
- * Mirrors `TurnosHeader` from `comanda-turnos.jsx:74-85`.
+ * Page header shared by the Turnos / Configuración / Caja… admin pages.
+ * Redesign: Inter 28/700 title with the kicker as a small muted line above
+ * (PageHeader look, docs/redesign/DESIGN.md). Same props as before.
  */
 export function TurnosHeader({
   kicker,
@@ -12,30 +13,12 @@ export function TurnosHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div
-      className="flex items-end justify-between"
-      style={{
-        padding: "20px 32px 16px",
-        borderBottom: "1.5px solid var(--ink)",
-      }}
-    >
-      <div>
-        <div
-          className="text-muted"
-          style={{ fontSize: 10, letterSpacing: "0.16em" }}
-        >
-          {kicker}
-        </div>
-        <h1
-          className="font-slab"
-          style={{ fontSize: 30, margin: "4px 0 0" }}
-        >
-          {title}
-        </h1>
+    <div className="flex flex-wrap items-end justify-between gap-3 px-4 sm:px-7 pt-5 pb-4 border-b border-line">
+      <div className="min-w-0">
+        <div className="ui-label">{kicker}</div>
+        <h1 className="ui-h1 m-0 mt-1">{title}</h1>
       </div>
-      <div className="flex items-center" style={{ gap: 8 }}>
-        {children}
-      </div>
+      {children ? <div className="flex flex-wrap items-center gap-2">{children}</div> : null}
     </div>
   );
 }
