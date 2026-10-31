@@ -11,7 +11,7 @@ import { authClient } from "@/lib/neon/auth-client";
  * to our `/auth/callback` route with `?code=…`, which exchanges the code
  * for a session and lands the user on the right home.
  */
-export function GoogleSignInButton({ next }: { next?: string }) {
+export function GoogleSignInButton({ next, label = "Entrar con Google" }: { next?: string; label?: string }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -47,30 +47,13 @@ export function GoogleSignInButton({ next }: { next?: string }) {
   }
 
   return (
-    <div className="space-y-3">
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={pending}
-        className="cmd-btn w-full"
-        style={{
-          padding: "14px",
-          fontSize: 13,
-          background: "var(--paper-lt)",
-          color: "var(--ink)",
-          borderColor: "var(--ink)",
-          gap: 10,
-        }}
-      >
+    <div className="flex flex-col gap-3">
+      <button type="button" onClick={onClick} disabled={pending} className="lg-btn ghost">
         <GoogleGlyph />
-        {pending ? "Conectando…" : "Continuar con Google"}
+        {pending ? "Conectando…" : label}
       </button>
-
       {error ? (
-        <p
-          role="alert"
-          style={{ color: "var(--red)", fontSize: 12, letterSpacing: "0.04em" }}
-        >
+        <p role="alert" className="lg-alert">
           {error}
         </p>
       ) : null}
@@ -81,8 +64,8 @@ export function GoogleSignInButton({ next }: { next?: string }) {
 function GoogleGlyph() {
   return (
     <svg
-      width="16"
-      height="16"
+      width="20"
+      height="20"
       viewBox="0 0 18 18"
       aria-hidden
       style={{ flexShrink: 0 }}
