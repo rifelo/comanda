@@ -63,6 +63,8 @@ async function gate(request: NextRequest, response: NextResponse, user: { id: st
     path.startsWith("/menu/") ||
     // …and the rating page behind the QR on the cup.
     path.startsWith("/c/") ||
+    // Privacy policy: Google's sign-in consent screen links to it.
+    path === "/privacidad" ||
     path.startsWith("/login") ||
     path.startsWith("/auth/") ||
     // Better Auth's endpoints (sign-in, OAuth callback) when BACKEND=neon.
