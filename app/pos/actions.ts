@@ -24,7 +24,7 @@ import type {
   ModSelection,
 } from "@/lib/pos/types";
 import { bogotaDay, shiftDay } from "@/lib/pos/pending";
-import { summarizeMethod } from "@/lib/pos/pagos";
+import { cancelNotes, summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
 import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lineas";
 
@@ -246,7 +246,11 @@ const CobrarPendienteSchema = z.object({
   ordenId: z.string().uuid(),
   payment: PaymentSchema,
 });
-const CancelarPendienteSchema = z.object({ ordenId: z.string().uuid() });
+const CancelarPendienteSchema = z.object({
+  ordenId: z.string().uuid(),
+  /** Chip from the POS cancel sheet (CANCEL_REASONS); prepended to the notes. */
+  motivo: z.string().trim().max(60).optional(),
+});
 
 export type GuardarPendienteResult =
   | { ok: true; folio: string; ordenId: string; total: number }
@@ -625,10 +629,7 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
     .maybeSingle();
   if (!cur) return { ok: false, error: YA_NO_PENDIENTE };
   const paid = Number(cur.paid_cop ?? 0);
-  const prev = ((cur.notes as string | null) ?? "").trim();
-  const notes = paid > 0
-    ? `${prev ? `${prev} · ` : ""}Cancelado con $${paid.toLocaleString("es-CO")} ya pagados (reembolso manual)`
-    : cur.notes;
+  const notes = cancelNotes(cur.notes as string | null, parsed.data.motivo, paid);
   const { data: updated, error } = await supabase
     .from("ordenes")
     .update({ status: "cancelada", notes })

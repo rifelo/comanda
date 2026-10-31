@@ -272,3 +272,11 @@ export interface PosOrder {
 }
 /** An unpaid order the register can reopen, charge or cancel. */
 export type PendingOrder = PosOrder;
+
+/**
+ * Why a pending order was voided — chips on the POS «Cancelar» sheet. The
+ * reason is prepended to `ordenes.notes` (no schema change) so the 16 % of
+ * cancelled orders can be read by cause.
+ */
+export const CANCEL_REASONS = ["Error al marcar", "Cliente se fue", "Duplicado", "Prueba"] as const;
+export type CancelReason = (typeof CANCEL_REASONS)[number];
