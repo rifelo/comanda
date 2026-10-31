@@ -1638,20 +1638,18 @@ export function discardPendingEdit() {
 /** A rating link that went out on a QR label: whose it is and which cup (ticket line) it is worth. */
 type EnlaceVenta = { codigo: string; customer: string | null; linea: number; resto: boolean };
 
-/** How long a cup's set waits for its AI phrase before printing a fallback one. */
-const FRASE_WAIT_MS = 8_000;
-/** Sales print one after the other: a sale waiting on its phrases never interleaves with the next. */
+/** Sales print one after the other: a sale's labels never interleave with the next. */
 let labelChain: Promise<void> = Promise.resolve();
 
 /**
  * Everything that prints when an order is registered. Every prepared drink
- * gets the same four labels in a row — its name ("Pa' Juan" or the order
- * label), its rating QR, the drink label and its phrase (planSaleLabels) —
- * whether it is alone or one of many in the order. The phrases are asked
- * for all at once up front; a cup whose phrase is late or failed (AI down,
- * offline) prints a fallback phrase, so a set is never short. Each QR is a
- * one-use link made here and registered in the background. Nothing blocks
- * the sale.
+ * gets its labels in a row — its name ("Pa' Juan" or the table label, only
+ * when there is a name: the order number is never printed on its own), its
+ * rating QR, the drink label and a house phrase (planSaleLabels) — whether
+ * it is alone or one of many in the order. The phrases are the fixed house
+ * phrases, rotated so two cups don't repeat; no AI and no waiting. Each QR
+ * is a one-use link made here and registered in the background. Nothing
+ * blocks the sale.
  */
 function printSaleLabels(
   s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog },
@@ -1668,13 +1666,9 @@ function printSaleLabels(
     codes.set(j, codigo);
     enlaces.push({ codigo, customer: j.customer || null, linea: j.line, resto: j.resto });
   }
-  const cups = jobs.flatMap((j) => (j.kind === "frase" ? [j.productId] : []));
   // Offline (no ordenId yet) the codes ride with the queued order and are registered when it lands.
   if (enlaces.length > 0 && ordenId) void registrarEnlacesVenta(ordenId, enlaces);
-  if (cups.length > 0) lastCups = cups;
-  const frases = cups.map((id) => askFrase(id));
-  if (frases.length) markFraseBatch(+1);
-  // Fallback phrases start at a random one and then rotate, so two cups don't repeat.
+  // House phrases start at a random one and then rotate, so two cups don't repeat.
   const base = Math.floor(Math.random() * 1000);
   labelChain = labelChain.then(async () => {
     let k = 0;
@@ -1683,38 +1677,12 @@ function printSaleLabels(
       else if (j.kind === "califica") printCalificaLabel(urlCalificacion(codes.get(j)!), cupArt);
       else if (j.kind === "drink") printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
       else {
-        const text = await frases[k];
-        printMessageLabel(text ?? fraseRespaldo(base + k), instagram);
+        printMessageLabel(fraseRespaldo(base + k), instagram);
         k += 1;
       }
     }
-  }).catch((err) => console.error("[pos] label run failed:", err)).finally(() => {
-    if (frases.length) markFraseBatch(-1);
-  });
+  }).catch((err) => console.error("[pos] label run failed:", err));
   return enlaces;
-}
-
-/** The AI phrase for one cup, or null if it fails or takes longer than FRASE_WAIT_MS. Never throws. */
-function askFrase(productId: string): Promise<string | null> {
-  const ai = generarFrase(undefined, productId)
-    .then((r) => {
-      if (r.ok) {
-        posStore.set({ frase: r.texto, fraseError: null });
-        return r.texto;
-      }
-      posStore.set({ fraseError: r.error });
-      return null;
-    })
-    .catch(() => null);
-  const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), FRASE_WAIT_MS));
-  return Promise.race([ai, late]);
-}
-
-let fraseBatches = 0;
-/** The receipt's «escribiendo frase…» spinner stays on while any sale is still waiting on phrases. */
-function markFraseBatch(delta: 1 | -1) {
-  fraseBatches = Math.max(0, fraseBatches + delta);
-  posStore.set({ fraseLoading: fraseBatches > 0 });
 }
 
 /**
@@ -1734,21 +1702,17 @@ async function registrarEnlacesVenta(ordenId: string, enlaces: EnlaceVenta[]) {
   console.warn("[pos] rating links not registered for", ordenId);
 }
 
-/** The cups of the last sale, so «Frase IA» on the receipt writes about one of them. */
-let lastCups: string[] = [];
-
 /**
- * Ask the AI for one more phrase and print it: about one of the cups of the
- * sale on screen when there was one, a coffee phrase (funny / motivational /
- * a nod to today's Colombian news) otherwise.
+ * Ask the AI for one more phrase and print it (the receipt's «Frase IA»): a
+ * coffee phrase — funny, motivational or a nod to today's Colombian news —
+ * never about the drink in the cup.
  */
 export async function printFrase() {
   const s = posStore.get();
   if (s.fraseLoading) return;
   posStore.set({ fraseLoading: true, fraseError: null });
   try {
-    const cup = lastCups.length ? lastCups[Math.floor(Math.random() * lastCups.length)] : undefined;
-    const res = await generarFrase(undefined, cup);
+    const res = await generarFrase();
     if (res.ok) {
       posStore.set({ frase: res.texto, fraseLoading: false });
       printMessageLabel(res.texto, s.catalog.instagram);

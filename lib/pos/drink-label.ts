@@ -19,7 +19,10 @@ export function energiaLine(rand: number = Math.random()): string {
   return `+${n} DE ENERGÍA`;
 }
 
-/** Labels every prepared drink carries: name, rating QR, the drink, its phrase. */
+/**
+ * Labels a named drink carries: name, rating QR, the drink, its phrase.
+ * A drink with no name skips the name label (the order number is not printed).
+ */
 export const LABELS_PER_DRINK = 4;
 
 /** One job in the label run of a sale, in print order. */
@@ -32,17 +35,17 @@ export type SaleLabelJob =
    */
   | { kind: "califica"; customer: string; line: number; resto: boolean }
   | { kind: "drink"; item: DrinkLabelPlanItem }
-  /** The AI phrase about this cup's drink — printed when it answers. */
+  /** The phrase label of this cup (a house phrase, not about the drink). */
   | { kind: "frase"; productId: string };
 
 /**
- * The whole label run of a sale. Every prepared drink gets the same four
- * labels, one after the other so each cup's set comes out together: its
- * name ("Pa' <nombre>", or the table / order label), its rating QR, the
- * drink label and its phrase — whether it is alone or one of ten in the
- * order. Sets follow the roster order, cups that belong to nobody last.
+ * The whole label run of a sale. Every prepared drink gets its labels one
+ * after the other so each cup's set comes out together: its name ("Pa'
+ * <nombre>" or the table label) — only when there is a name, the order
+ * number alone is never printed — then its rating QR, the drink label and
+ * its phrase. Sets follow the roster order, cups that belong to nobody last.
  * Someone with only food or a bottle gets nothing; an order with no drink
- * at all still gets its order label (it is the pickup number).
+ * prints its name label only when it has a name.
  */
 export function planSaleLabels(input: {
   order: ReadonlyArray<OrderLine>;
@@ -54,13 +57,14 @@ export function planSaleLabels(input: {
   const cups = planDrinkLabels(input.order, input.people, input.byId);
   const jobs: SaleLabelJob[] = [];
   const group = (name: string, items: DrinkLabelPlanItem[], always: boolean) => {
+    const named = name.trim() !== "";
     if (!items.length) {
-      if (always) jobs.push({ kind: "name", name });
+      if (always && named) jobs.push({ kind: "name", name });
       return;
     }
     const customer = input.people.includes(name) ? name : "";
     items.forEach((item, i) => {
-      jobs.push({ kind: "name", name });
+      if (named) jobs.push({ kind: "name", name });
       jobs.push({ kind: "califica", customer, line: item.line, resto: i === 0 });
       jobs.push({ kind: "drink", item });
       jobs.push({ kind: "frase", productId: item.productId });
