@@ -10,7 +10,7 @@ import { createServerClient } from "@supabase/ssr";
  *   3. Supabase → here with `?code=<one-time-code>` (+ optional `next`)
  *   4. We exchange `code` for a session, which sets the auth cookies, and
  *      redirect to `next` (default `/`, the role-aware landing: the panel for
- *      an admin, /home for the team). An explicit `next` deep-link is still
+ *      an admin, /turno for the team). An explicit `next` deep-link is still
  *      honored.
  *
  * Errors bounce back to /login with a readable message.

@@ -189,7 +189,7 @@ export async function recibirPedido(input: unknown): Promise<RecibirResult> {
 
   revalidatePath("/turno/inventario", "layout");
   revalidatePath("/turno/caja", "layout");
-  revalidatePath("/compras");
+  revalidatePath("/inventario/pedidos");
   revalidatePath("/caja");
   revalidatePath("/inventario", "layout");
   if (d.pago === "efectivo_caja" && !movimientoId) return { ok: false, error: `El pedido n.º ${folio} quedó recibido, pero la salida de caja no se guardó: regístrala en Caja → Ingresos y salidas.` };

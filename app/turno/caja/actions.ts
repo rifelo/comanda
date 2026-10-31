@@ -222,7 +222,7 @@ export async function registrarMovimientoCaja(input: unknown): Promise<Registrar
   if (d.compraId) await marcarCompraPagada(ctx.admin, ctx.organizationId, d.compraId, r.id);
   revalidatePath("/turno/caja");
   revalidatePath("/caja");
-  if (d.compraId) revalidatePath("/compras");
+  if (d.compraId) revalidatePath("/inventario/pedidos");
   return r;
 }
 
@@ -283,7 +283,7 @@ export async function anularMovimientoCaja(input: unknown): Promise<BaseActionRe
   if (r.ok) {
     revalidatePath("/turno/caja");
     revalidatePath("/caja");
-    revalidatePath("/compras");
+    revalidatePath("/inventario/pedidos");
   }
   return r;
 }

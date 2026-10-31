@@ -103,7 +103,7 @@ export function Rentabilidad({ r, esHoy }: { r: RentabilidadDia; esHoy: boolean 
             {bajos.length ? (
               <li>
                 <b style={{ color: "var(--brand)" }}>{bajos.length} {bajos.length === 1 ? "producto" : "productos"} bajo {MARGEN_OBJETIVO} %:</b> {bajos.slice(0, 4).map((p) => `${p.name} (${p.margen} %)`).join(", ")}
-                {bajos.length > 4 ? ` y ${bajos.length - 4} más` : ""}. Revisa precio o receta en <Link href="/recetas" className="underline text-text">Recetas</Link>.
+                {bajos.length > 4 ? ` y ${bajos.length - 4} más` : ""}. Revisa precio o receta en <Link href="/productos?vista=revisar" className="underline text-text">Productos</Link>.
               </li>
             ) : (
               <li>Todo lo vendido (sin contar postres) está en {MARGEN_OBJETIVO} % de margen o más.</li>

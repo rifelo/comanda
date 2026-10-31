@@ -962,14 +962,14 @@ export async function registrarPos(input: unknown): Promise<RegistrarPosResult> 
 
   const res = await registerPosDevice(parsed.data.code, parsed.data.name);
   if (!res.ok) return res;
-  revalidatePath("/configuracion/pos");
+  revalidatePath("/ajustes/dispositivos");
   return { ok: true, station: res.device.name };
 }
 
 /** Unpair this device (revokes it server-side and clears the cookie). */
 export async function desvincularPos(): Promise<{ ok: true }> {
   await unlinkCurrentPosDevice();
-  revalidatePath("/configuracion/pos");
+  revalidatePath("/ajustes/dispositivos");
   return { ok: true };
 }
 
