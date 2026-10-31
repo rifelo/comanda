@@ -62,3 +62,36 @@ export function summarizeMethod(methods: ReadonlyArray<PayMethodId>): PayMethodI
   if (set.length === 0) return null;
   return set.length === 1 ? set[0] : "mixto";
 }
+
+/**
+ * Cash shortcuts beside «Exacto» on the cash tender: the next round amount
+ * (multiple of $5.000) and the bills a customer usually hands over ($10.000,
+ * $20.000, $50.000, $100.000) — only amounts above the total, ascending,
+ * at most `max`.
+ */
+export function cashShortcuts(total: number, max = 4): number[] {
+  if (!(total > 0)) return [];
+  const out = new Set<number>();
+  const round = Math.ceil(total / 5000) * 5000;
+  if (round > total) out.add(round);
+  for (const bill of [10000, 20000, 50000, 100000]) {
+    const up = Math.ceil(total / bill) * bill;
+    if (up > total) out.add(up);
+  }
+  return [...out].sort((a, b) => a - b).slice(0, max);
+}
+
+/**
+ * The notes a voided order keeps: «Cancelado: <motivo>» first, then what it
+ * already had, then the manual-refund warning when part was paid. No reason
+ * and nothing paid leaves the notes as they were.
+ */
+export function cancelNotes(prev: string | null | undefined, motivo: string | null | undefined, paid: number): string | null {
+  const parts: string[] = [];
+  const m = motivo?.trim();
+  if (m) parts.push(`Cancelado: ${m}`);
+  const p = prev?.trim();
+  if (p) parts.push(p);
+  if (paid > 0) parts.push(`Cancelado con $${paid.toLocaleString("es-CO")} ya pagados (reembolso manual)`);
+  return parts.length ? parts.join(" · ") : (prev ?? null);
+}

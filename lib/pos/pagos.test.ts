@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shareStatus, splitByPerson, summarizeMethod, type PersonShare } from "./pagos";
+import { cancelNotes, cashShortcuts, shareStatus, splitByPerson, summarizeMethod, type PersonShare } from "./pagos";
 import type { OrderPayment } from "./types";
 
 const it_ = (name: string, qty: number, unitPrice: number, customer = "") => ({ name, qty, unitPrice, customer });
@@ -46,5 +46,32 @@ describe("summarizeMethod", () => {
     expect(summarizeMethod(["efectivo", "efectivo"])).toBe("efectivo");
     expect(summarizeMethod(["efectivo", "transferencia"])).toBe("mixto");
     expect(summarizeMethod([])).toBeNull();
+  });
+});
+
+describe("cashShortcuts", () => {
+  it("offers the round-up and the usual bills above the total", () => {
+    expect(cashShortcuts(3500)).toEqual([5000, 10000, 20000, 50000]);
+    expect(cashShortcuts(12700)).toEqual([15000, 20000, 50000, 100000]);
+  });
+  it("never offers the exact total (that is «Exacto») and dedupes", () => {
+    expect(cashShortcuts(20000)).toEqual([50000, 100000]);
+    expect(cashShortcuts(5000)).toEqual([10000, 20000, 50000, 100000]);
+  });
+  it("is empty for nothing to charge", () => {
+    expect(cashShortcuts(0)).toEqual([]);
+  });
+});
+
+describe("cancelNotes", () => {
+  it("prepends the reason to the existing notes", () => {
+    expect(cancelNotes("sin azúcar", "Cliente se fue", 0)).toBe("Cancelado: Cliente se fue · sin azúcar");
+  });
+  it("adds the refund warning when part was paid", () => {
+    expect(cancelNotes(null, "Duplicado", 5000)).toMatch(/^Cancelado: Duplicado · Cancelado con \$5\.000 ya pagados/);
+  });
+  it("keeps the notes untouched without a reason or payments", () => {
+    expect(cancelNotes("nota", null, 0)).toBe("nota");
+    expect(cancelNotes(null, "  ", 0)).toBeNull();
   });
 });

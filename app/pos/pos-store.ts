@@ -738,6 +738,8 @@ export function resetConversation() {
     online: s.online,
     // Who is on the bar outlives every sale; only the chip changes it.
     barista: s.barista,
+    // So does the person in session: every next sale still carries `creadoPor`.
+    person: s.person,
   }));
 }
 
@@ -999,11 +1001,24 @@ function newJobId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Go to the tender screen (Square "Charge"). */
-export function startTender() {
+/** Go to the tender screen (Square "Charge"), optionally with the method preselected. */
+export function startTender(method?: PayMethod) {
   const s = posStore.get();
   if (!s.order.length) return;
-  posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null });
+  posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null, ...(method ? { payMethod: method } : {}) });
+}
+
+/**
+ * One-tap charge from the ticket («Transferencia»): open the tender with the
+ * method set and complete the sale at once (cash would need the amount, so
+ * it goes through the tender screen instead). Same path as confirming on the
+ * tender screen — completeSale owns the outbox / pending logic.
+ */
+export function payNow(method: Exclude<PayMethod, "efectivo">) {
+  const s = posStore.get();
+  if (!s.order.length || s.sending) return;
+  startTender(method);
+  void completeSale();
 }
 export function cancelTender() {
   const s = posStore.get();
@@ -1557,7 +1572,7 @@ export function chargePendingSplit(o: PendingOrder) {
   void refreshPendientes();
 }
 /** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
-export async function cancelPending(id: string) {
+export async function cancelPending(id: string, motivo?: string) {
   // Optimistic: the card leaves at once; the server confirms behind, and a
   // refusal puts it back with the reason.
   const before = posStore.get();
@@ -1573,7 +1588,7 @@ export async function cancelPending(id: string) {
   if (before.pending?.id === id) discardPendingEdit();
   let res: Awaited<ReturnType<typeof cancelarPendiente>>;
   try {
-    res = await cancelarPendiente({ ordenId: id });
+    res = await cancelarPendiente({ ordenId: id, motivo });
   } catch {
     res = { ok: false, error: "Sin conexión con el servidor." };
   }
