@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import type { RosterMember } from "@/lib/types";
+import { Plus } from "lucide-react";
+import { Button, Field, Segmented, TextArea } from "@/components/ui";
 import { createAdHocTask } from "./_actions";
 
 /**
@@ -12,11 +14,13 @@ import { createAdHocTask } from "./_actions";
 export function AsignarTareaForm({
   shiftInstanceId,
   roster,
+  defaultOpen = false,
 }: {
   shiftInstanceId: string;
   roster: RosterMember[];
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(defaultOpen);
   const [titulo, setTitulo] = React.useState("");
   const [detalle, setDetalle] = React.useState("");
   const [asignado, setAsignado] = React.useState("");
@@ -68,14 +72,9 @@ export function AsignarTareaForm({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="cmd-btn ghost"
-        style={{ marginBottom: 16 }}
-      >
-        + Asignar tarea
-      </button>
+      <Button type="button" variant="ghost" icon={<Plus size={20} aria-hidden />} onClick={() => setOpen(true)}>
+        Asignar tarea inmediata
+      </Button>
     );
   }
 
@@ -87,55 +86,34 @@ export function AsignarTareaForm({
           setOpen(false);
         }
       }}
-      style={{
-        border: "1.5px solid var(--ink)",
-        background: "var(--paper)",
-        padding: "12px 12px 14px",
-        marginBottom: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
+      className="flex flex-col gap-3.5 rounded-card bg-surface-2 p-4"
     >
-      <div
-        className="text-muted"
-        style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase" }}
-      >
-        Nueva tarea del turno
-      </div>
-
-      <Field label="Título *">
-        <input
-          autoFocus
-          value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
-          placeholder="Ej. Llamar al técnico de la máquina de hielo"
-          disabled={pending}
-          className="block w-full bg-transparent outline-none"
-          style={inputStyle(!!error && !titulo.trim())}
-        />
-      </Field>
-
-      <Field label="Detalle (opcional)">
-        <textarea
-          value={detalle}
-          onChange={(e) => setDetalle(e.target.value)}
-          placeholder="Contexto o instrucciones"
-          rows={2}
-          maxLength={500}
-          disabled={pending}
-          className="block w-full bg-transparent outline-none"
-          style={{ ...inputStyle(false), resize: "vertical" }}
-        />
-      </Field>
-
-      <Field label="Asignar a">
+      <Field
+        label="¿Qué hay que hacer?"
+        autoFocus
+        value={titulo}
+        onChange={(e) => setTitulo(e.target.value)}
+        placeholder="Ej. Llamar al técnico de la máquina de hielo"
+        disabled={pending}
+        error={error && !titulo.trim() ? error : undefined}
+        maxLength={160}
+      />
+      <TextArea
+        label="Detalle (opcional)"
+        value={detalle}
+        onChange={(e) => setDetalle(e.target.value)}
+        placeholder="Contexto o instrucciones"
+        rows={2}
+        maxLength={500}
+        disabled={pending}
+      />
+      <label className="flex flex-col gap-1.5">
+        <span className="ui-label">Para quién</span>
         <select
           value={asignado}
           onChange={(e) => setAsignado(e.target.value)}
           disabled={pending}
-          className="block w-full bg-transparent outline-none"
-          style={inputStyle(false)}
+          className="h-14 rounded-btn border border-line bg-surface px-4 text-[16px] text-text"
         >
           <option value="">Cualquiera en el turno</option>
           {activeRoster.map((m) => (
@@ -144,100 +122,44 @@ export function AsignarTareaForm({
             </option>
           ))}
         </select>
-      </Field>
-
-      <Field label="Cuándo">
-        <div className="flex items-center gap-4" style={{ marginTop: 2 }}>
-          <label className="flex items-center gap-1.5" style={{ fontSize: 12 }}>
-            <input
-              type="radio"
-              name="cuando"
-              checked={cuando === "inmediata"}
-              onChange={() => setCuando("inmediata")}
-              disabled={pending}
-            />
-            Inmediata
-          </label>
-          <label className="flex items-center gap-1.5" style={{ fontSize: 12 }}>
-            <input
-              type="radio"
-              name="cuando"
-              checked={cuando === "programar"}
-              onChange={() => setCuando("programar")}
-              disabled={pending}
-            />
-            Programar
-          </label>
+      </label>
+      <div className="flex flex-col gap-1.5">
+        <span className="ui-label">Cuándo</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented<"inmediata" | "programar">
+            label="Cuándo"
+            value={cuando}
+            onChange={setCuando}
+            options={[
+              { value: "inmediata", label: "Ya" },
+              { value: "programar", label: "A una hora" },
+            ]}
+          />
           {cuando === "programar" ? (
             <input
               type="time"
+              aria-label="Hora"
               value={hora}
               onChange={(e) => setHora(e.target.value)}
               disabled={pending}
-              className="bg-transparent outline-none"
-              style={{
-                borderBottom: "1.5px solid var(--ink)",
-                padding: "2px 0",
-                fontSize: 13,
-              }}
+              className="h-12 rounded-btn border border-line bg-surface px-3 text-[16px] text-text ui-num"
             />
           ) : null}
         </div>
-      </Field>
-
-      {error ? (
-        <p style={{ color: "var(--red)", fontSize: 11 }}>{error}</p>
+      </div>
+      {error && titulo.trim() ? (
+        <p role="alert" className="m-0 text-late font-semibold">
+          {error}
+        </p>
       ) : null}
-
-      <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          disabled={pending}
-          className="cmd-btn ghost sm"
-          style={{ flex: 1 }}
-        >
+      <div className="flex gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={pending} className="flex-1">
           Cancelar
-        </button>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={pending}
-          className="cmd-btn sm"
-          style={{ flex: 2 }}
-        >
-          {pending ? "Asignando…" : "Asignar tarea"}
-        </button>
+        </Button>
+        <Button type="button" size="sm" onClick={submit} loading={pending} className="flex-[2]">
+          Asignar tarea
+        </Button>
       </div>
     </div>
   );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label
-        className="text-muted block"
-        style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase" }}
-      >
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function inputStyle(invalid: boolean): React.CSSProperties {
-  return {
-    borderBottom: `1.5px solid ${invalid ? "var(--red)" : "var(--ink)"}`,
-    padding: "4px 0",
-    marginTop: 2,
-    fontSize: 13,
-  };
 }

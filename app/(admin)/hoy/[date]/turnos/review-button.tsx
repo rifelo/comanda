@@ -2,20 +2,25 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Stamp } from "@/components/comanda/primitives";
+import { Check } from "lucide-react";
+import { Button, Pill } from "@/components/ui";
 import { reviewShift } from "./_actions";
 
 /**
- * "Marcar revisado" for a closed turno, or the REVISADO stamp with an undo.
- * The owner reviews after looking at the evidence grid right below.
+ * «Marcar revisado» for a closed turno, or the «Revisado» pill with an undo.
+ * The owner reviews after looking at the tasks and photos on this page.
  */
-export function ReviewButton({ shiftId, status, reviewedAt, reviewedBy, compact }: {
+export function ReviewButton({
+  shiftId,
+  status,
+  reviewedAt,
+  reviewedBy,
+}: {
   shiftId: string;
   status: "open" | "closed";
   /** Pre-formatted "HH:MM" in the sede tz, or null when not reviewed. */
   reviewedAt: string | null;
   reviewedBy: string | null;
-  compact?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -32,30 +37,32 @@ export function ReviewButton({ shiftId, status, reviewedAt, reviewedBy, compact 
 
   if (reviewedAt) {
     return (
-      <span className="inline-flex items-center" style={{ gap: 10, flexWrap: "wrap" }}>
-        <Stamp rotate={-4} size={compact ? 9 : 10} color="var(--green)">
-          revisado · {reviewedBy ?? "admin"} · {reviewedAt}
-        </Stamp>
-        <button type="button" onClick={() => set(false)} disabled={pending} className="cmd-link" style={{ fontSize: 10.5 }}>
-          {pending ? "…" : "deshacer"}
-        </button>
-        {error && <span style={{ color: "var(--red)", fontSize: 11 }}>{error}</span>}
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Pill tone="ok">
+          ✓ Revisado · {reviewedBy ?? "dueño"} · {reviewedAt}
+        </Pill>
+        <Button type="button" variant="ghost" size="sm" onClick={() => set(false)} loading={pending}>
+          Deshacer
+        </Button>
+        {error ? <span className="text-late text-[14px]">{error}</span> : null}
       </span>
     );
   }
   const closed = status === "closed";
   return (
-    <span className="inline-flex items-center" style={{ gap: 10, flexWrap: "wrap" }}>
-      <button
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Button
         type="button"
+        size="sm"
         onClick={() => set(true)}
-        disabled={!closed || pending}
+        disabled={!closed}
+        loading={pending}
         title={closed ? "Revisé la evidencia de este turno" : "Cierra el turno primero"}
-        className="cmd-btn red sm"
+        icon={<Check size={18} aria-hidden />}
       >
-        {pending ? "Guardando…" : "✓ Marcar revisado"}
-      </button>
-      {error && <span style={{ color: "var(--red)", fontSize: 11 }}>{error}</span>}
+        Marcar revisado
+      </Button>
+      {error ? <span className="text-late text-[14px]">{error}</span> : null}
     </span>
   );
 }

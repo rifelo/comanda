@@ -32,7 +32,7 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
 
   if (!cierre) {
     return (
-      <div className="text-muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+      <div className="text-muted" style={{ fontSize: 15, lineHeight: 1.5 }}>
         Sin cierre de caja para este turno.
         {hasCajaTask ? " Se envía desde la tablet en Turno → Caja." : ""}
       </div>
@@ -58,16 +58,16 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
   const entrega = cierre.contado_cop - cierre.base_dejada_cop;
   const cell = (label: string, value: string, color?: string) => (
     <div style={{ padding: "8px 10px", border: "1px solid var(--rule)", background: "var(--paper)" }}>
-      <div className="text-muted" style={{ fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase" }}>{label}</div>
-      <div className="cmd-num font-slab" style={{ fontSize: compact ? 18 : 22, lineHeight: 1.1, marginTop: 2, color: color ?? "var(--ink)" }}>{value}</div>
+      <div className="text-muted" style={{ fontSize: 15 }}>{label}</div>
+      <div className="cmd-num font-bold" style={{ fontSize: compact ? 18 : 22, lineHeight: 1.1, marginTop: 2, color: color ?? "var(--ink)" }}>{value}</div>
     </div>
   );
 
   return (
     <div style={{ border: `1.5px solid ${cierre.status === "pendiente" ? "var(--ink)" : "var(--rule)"}`, background: "var(--paper-lt)", padding: compact ? 12 : 14 }}>
       <div className="flex items-center justify-between" style={{ gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: st.color, fontWeight: 700 }}>{st.label}</span>
-        <span className="text-muted" style={{ fontSize: 11 }}>
+        <span style={{ fontSize: 13, color: st.color, fontWeight: 700 }}>{st.label}</span>
+        <span className="text-muted" style={{ fontSize: 14 }}>
           contó {cierre.counted_by_name ?? "—"}{ventana ? ` · ventana ${ventana}` : ""}
         </span>
       </div>
@@ -79,7 +79,7 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
         {cell("Base que queda", posMoney(cierre.base_dejada_cop))}
         {cell("Entrega", money(entrega), entrega < 0 ? "var(--red)" : undefined)}
       </div>
-      <div className="text-muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.5 }}>
+      <div className="text-muted" style={{ fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>
         {noPos
           ? "Sin pagos registrados en el POS en la ventana."
           : `POS: efectivo ${posMoney(cierre.efectivo_cop)} · tarjeta ${posMoney(cierre.tarjeta_cop)} · transferencia ${posMoney(cierre.transferencia_cop)} · ${cierre.pagos_count} pago${cierre.pagos_count === 1 ? "" : "s"}`}
@@ -87,24 +87,24 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
       {cierre.denominaciones.length > 0 && (
         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {cierre.denominaciones.map((d) => (
-            <span key={d.valor} className="cmd-num" style={{ fontSize: 10.5, border: "1px solid var(--rule)", padding: "2px 6px", background: "var(--paper)" }}>
+            <span key={d.valor} className="cmd-num" style={{ fontSize: 13, border: "1px solid var(--rule)", padding: "2px 6px", background: "var(--paper)" }}>
               {d.cantidad} × {posMoney(d.valor)}
             </span>
           ))}
         </div>
       )}
-      <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5 }}>
-        <span style={{ color: baseEstado(cierre).color, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", fontSize: 9.5 }}>Base {baseEstado(cierre).label}</span>
+      <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.5 }}>
+        <span style={{ color: baseEstado(cierre).color, fontWeight: 700, fontSize: 15 }}>Base {baseEstado(cierre).label}</span>
         {cierre.base_denominaciones.length > 0 && <span className="text-muted"> · {describirLineas(cierre.base_denominaciones, posMoney)}</span>}
         {cierre.base_validada_at && !cierre.base_validada_ok && (
           <div style={{ color: "var(--red)" }}>Al abrir se encontró {cierre.base_encontrada_cop != null ? posMoney(cierre.base_encontrada_cop) : "otra cantidad"}{cierre.base_validada_nota ? ` · “${cierre.base_validada_nota}”` : ""}{cierre.base_validada_by_name ? ` · ${cierre.base_validada_by_name}` : ""}</div>
         )}
       </div>
       {cierre.note && (
-        <p className="text-ink-2 whitespace-pre-wrap" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.45 }}>“{cierre.note}”</p>
+        <p className="text-ink-2 whitespace-pre-wrap" style={{ fontSize: 15, marginTop: 8, lineHeight: 1.45 }}>“{cierre.note}”</p>
       )}
       {cierre.status !== "pendiente" && cierre.review_note && (
-        <p className="text-muted" style={{ fontSize: 11.5, marginTop: 6 }}>Revisión: {cierre.review_note}</p>
+        <p className="text-muted" style={{ fontSize: 14, marginTop: 6 }}>Revisión: {cierre.review_note}</p>
       )}
       {cierre.status === "pendiente" && (
         <div style={{ marginTop: 10 }}>
@@ -114,7 +114,7 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
             maxLength={300}
             placeholder="Nota de revisión (opcional)"
             aria-label="Nota de revisión"
-            style={{ width: "100%", height: 34, padding: "0 8px", border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none" }}
+            style={{ width: "100%", height: 34, padding: "0 8px", border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 15, outline: "none" }}
           />
           <div className="flex" style={{ gap: 8, marginTop: 8 }}>
             <button type="button" className="cmd-btn sm" onClick={() => void act("aprobar")} disabled={busy !== null} style={{ flex: 1 }}>
@@ -124,7 +124,7 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
               {busy === "rechazar" ? "Rechazando…" : "Rechazar"}
             </button>
           </div>
-          {error && <div role="alert" style={{ fontSize: 11.5, color: "var(--red)", marginTop: 6 }}>{error}</div>}
+          {error && <div role="alert" style={{ fontSize: 14, color: "var(--red)", marginTop: 6 }}>{error}</div>}
         </div>
       )}
     </div>

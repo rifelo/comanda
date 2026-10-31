@@ -1,17 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Check, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { getShiftView } from "@/lib/db/shifts";
 import { listRoster } from "@/lib/db/roster";
-import {
-  CmdCheck,
-  CmdProgress,
-  Folio,
-  PhotoPlaceholder,
-} from "@/components/comanda/primitives";
-import { formatTime, formatDateLabelEs } from "@/lib/utils";
+import { cn, formatTime, todayInTz } from "@/lib/utils";
+import { fechaLarga } from "@/lib/numeros/hoy";
+import { Button, Card, EmptyState, IconButton, PageHeader, Pill, ProgressBar } from "@/components/ui";
 import { AsignarTareaForm } from "./asignar-tarea-form";
 import { ReviewButton } from "./review-button";
 import { CajaCard } from "./caja-card";
@@ -22,13 +19,15 @@ import { ConteosCard } from "@/components/inventario/conteos-card";
 import { FaltantesCard } from "@/components/inventario/faltantes-card";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Turnos del día · Comanda" };
 
 /**
- * Hoy · Detalle — adapts the design's `AdminDrilldown` (`comanda-admin.jsx:231-316`).
- *
- * Keyed by `date` (YYYY-MM-DD) instead of `shift_id`: we look up the active
- * sede's shift_instance for that date and render the same task list + evidencia
- * + novedades panes as the old `/shifts/[id]` page.
+ * Turnos del día (ex /hoy/[date]): one turno of the sede on `date` —
+ * `?turno=<shift id>` picks it (chips switch between the day's turnos),
+ * otherwise the open one. Inmediatas (assign while it runs), the checklist
+ * with times and photos, novedades, the cash close, counts and faltantes,
+ * and «Marcar revisado» once it is closed. One responsive layout: a column
+ * on the phone, main + 380 px aside from lg.
  */
 export default async function HoyDetailPage({
   params,
@@ -50,7 +49,7 @@ export default async function HoyDetailPage({
   // ongoing (open) turno, and finally fall back to the first by id.
   const { data: shiftRows } = await supabase
     .from("shift_instances")
-    .select("id, status")
+    .select("id, status, template:checklist_templates(name)")
     .eq("restaurant_id", sede.id)
     .eq("date", date)
     .order("id");
@@ -115,7 +114,6 @@ export default async function HoyDetailPage({
   const puestoName = new Map(view.puestos.map((p) => [p.puesto_id, p.puesto.name]));
   const puestoOf = (t: { puesto_id: string | null }) => (t.puesto_id ? puestoName.get(t.puesto_id) ?? null : view.puestos.length ? "Compartida" : null);
   const photos = (completionDetails ?? []).filter((c) => c.photo_url);
-  const opener = view.opener?.full_name ?? "—";
   // Admin review (0032): the reviewer is an org admin, so the roster has the name.
   const review = {
     status: view.shift.status,
@@ -148,750 +146,251 @@ export default async function HoyDetailPage({
     return ch * 60 + cm - (dh * 60 + dm);
   };
 
+  const novs = novedades ?? [];
+  const nombreTurno = (r: { template?: unknown }) => {
+    const t = r.template as { name: string } | { name: string }[] | null | undefined;
+    return (Array.isArray(t) ? t[0]?.name : t?.name) ?? "Turno";
+  };
+
   return (
-    <>
-      {/* ── Mobile · detalle de hoy ───────────────────────────── */}
-      <div className="md:hidden" style={{ paddingBottom: 28 }}>
-        {/* turno header */}
-        <div style={{ padding: "14px 14px", borderBottom: "1px dashed var(--rule)" }}>
-          <div className="text-muted" style={{ fontSize: 9.5, letterSpacing: "0.12em" }}>
-            HOY · {formatDateLabelEs(date)} · {view.template.name.toUpperCase()} · DR-
-            {shiftId.slice(0, 4).toUpperCase()}
-          </div>
-          <div className="font-slab" style={{ fontSize: 24, margin: "4px 0 0" }}>
-            {sede.name}
-          </div>
-          <div className="text-muted" style={{ fontSize: 11.5, marginTop: 5 }}>
-            {opener} ·{" "}
-            {view.shift.opened_at ? `abrió ${formatTime(view.shift.opened_at)}` : "sin abrir"}
-          </div>
-          <div className="flex" style={{ gap: 8, marginTop: 12 }}>
-            <Link href={`/hoy/${prevDate}/turnos`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
-              ‹ día ant.
-            </Link>
-            <span className="cmd-btn ghost sm" style={{ flex: 1.4, textAlign: "center", cursor: "default" }}>
-              {formatDateLabelEs(date)}
-            </span>
-            <Link href={`/hoy/${nextDate}/turnos`} className="cmd-btn ghost sm" style={{ flex: 1, textAlign: "center", textDecoration: "none" }}>
-              día sig. ›
-            </Link>
-          </div>
-          {view.shift.status !== "closed" && (
-            <Link href={`/turno?turno=${shiftId}`} className="cmd-btn red" style={{ display: "block", marginTop: 10, textAlign: "center", textDecoration: "none" }}>
-              ✎ Llenar turno
-            </Link>
-          )}
-          {view.shift.status === "closed" && (
-            <div style={{ marginTop: 12 }}>
-              <ReviewButton shiftId={shiftId} status={review.status} reviewedAt={review.reviewedAt} reviewedBy={review.reviewedBy} compact />
-            </div>
-          )}
-        </div>
+    <div className="mx-auto w-full max-w-[1240px] pb-12">
+      <PageHeader
+        back={`/hoy${date === todayInTz(sede.tz) ? "" : `/${date}`}`}
+        title={view.template.name}
+        sub={`${fechaLarga(date)} · ${view.shift.opened_at ? `${view.opener?.full_name ? `${view.opener.full_name} abrió` : "abrió"} ${formatTime(view.shift.opened_at, sede.tz)}` : "sin abrir"}`}
+        actions={
+          <nav aria-label="Cambiar de día" className="flex items-center gap-2">
+            <IconButton label="Día anterior" size="sm" href={`/hoy/${prevDate}/turnos`}>
+              <ChevronLeft size={20} aria-hidden />
+            </IconButton>
+            <IconButton label="Día siguiente" size="sm" href={`/hoy/${nextDate}/turnos`}>
+              <ChevronRight size={20} aria-hidden />
+            </IconButton>
+          </nav>
+        }
+      />
 
-        {/* tareas inmediatas */}
-        <HMLabel>Tareas inmediatas</HMLabel>
-        <div style={{ padding: "0 14px" }}>
-          <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} />
-          {adHoc.length === 0 ? (
-            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Sin tareas asignadas en el turno.
-            </div>
-          ) : (
-            <div style={{ marginTop: 8 }}>
-              {adHoc.map((t) => {
-                const isDone = t.status === "done";
-                const whenLabel = t.due_time ? t.due_time.slice(0, 5) : "Inmediata";
-                const whoLabel = t.assigned_to ? (t.assignee_name ?? "Asignada") : "Para todos";
-                return (
-                  <div
-                    key={t.id}
-                    className="flex"
-                    style={{ gap: 10, padding: "10px 0", borderBottom: "1px solid var(--rule-soft)" }}
-                  >
-                    <CmdCheck checked={isDone} mode="check" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between" style={{ gap: 8 }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 500 }}>{t.title}</span>
-                        <span
-                          className="whitespace-nowrap"
-                          style={{
-                            fontSize: 9,
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
-                            color: t.due_time ? "var(--muted)" : "var(--red)",
-                          }}
-                        >
-                          {whenLabel}
-                        </span>
-                      </div>
-                      <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>
-                        {whoLabel}
-                        {isDone && t.completed_at ? ` · ✓ ${formatTime(t.completed_at)}` : " · pendiente"}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* tareas template */}
-        <HMLabel right={`${done}/${total}`}>Tareas · {view.template.name}</HMLabel>
-        <div style={{ padding: "0 14px" }}>
-          <div style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)" }}>
-            {view.tasks.map((task, i) => {
-              const c = completionsByTask[task.id];
-              const isDone = !!c;
-              const dueLabel = task.due_time?.slice(0, 5);
-              const late = isDone ? lateMin(task.due_time, c.completed_at) : 0;
-              return (
-                <div
-                  key={task.id}
-                  className="flex items-start"
-                  style={{
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderBottom: i < view.tasks.length - 1 ? "1px solid var(--rule-soft)" : "none",
-                    opacity: isDone ? 1 : 0.65,
-                  }}
-                >
-                  <span
-                    className="inline-flex items-center justify-center"
-                    style={{
-                      width: 18,
-                      height: 18,
-                      minWidth: 18,
-                      marginTop: 1,
-                      borderRadius: 4,
-                      border: `1.5px solid ${isDone ? "var(--green)" : "var(--rule)"}`,
-                      background: isDone ? "var(--green)" : "transparent",
-                      color: "var(--paper-lt)",
-                      fontSize: 11,
-                    }}
-                  >
-                    {isDone ? "✓" : ""}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div style={{ fontSize: 12.5, fontWeight: 500 }}>{task.title}</div>
-                    {isDone ? (
-                      <div
-                        className="text-muted flex flex-wrap"
-                        style={{ fontSize: 10, marginTop: 2, gap: 10 }}
-                      >
-                        <span>✓ {formatTime(c.completed_at)} · {c.who}</span>
-                        {task.requires_photo && c.photo_url ? (
-                          <span style={{ color: "var(--green)" }}>📷 verificada</span>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="cmd-num text-muted" style={{ fontSize: 10, marginTop: 2 }}>
-                        {puestoOf(task) ? `${puestoOf(task)} · ` : ""}{dueLabel ? `programada ${dueLabel}` : "pendiente"}
-                      </div>
-                    )}
-                  </div>
-                  {!isDone && task.requires_photo ? (
-                    <span
-                      className="self-start whitespace-nowrap"
-                      style={{ border: "1px solid var(--red)", color: "var(--red)", padding: "2px 5px", fontSize: 8, letterSpacing: "0.12em" }}
-                    >
-                      FOTO PEND.
-                    </span>
-                  ) : null}
-                  {isDone && late > 0 ? (
-                    <span className="cmd-num self-start" style={{ fontSize: 9.5, color: "var(--amber)", flexShrink: 0 }}>
-                      +{late}m
-                    </span>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* cierre de caja */}
-        {(cierre || hasCajaTask) && (
-          <>
-            <HMLabel>Cierre de caja</HMLabel>
-            <div style={{ padding: "0 14px" }}>
-              <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} compact />
-            </div>
-          </>
-        )}
-
-        {/* conteos de inventario */}
-        {conteos && hayConteos && (
-          <>
-            <HMLabel>Inventario</HMLabel>
-            <div style={{ padding: "0 14px" }}>
-              <ConteosCard panel={conteos} tz={sede.tz} compact />
-            </div>
-          </>
-        )}
-
-        {/* faltantes reportados */}
-        {faltantes.length > 0 && (
-          <>
-            <HMLabel right={faltantes.length}>Faltantes reportados</HMLabel>
-            <div style={{ padding: "0 14px" }}>
-              <FaltantesCard items={faltantes} tz={sede.tz} compact />
-            </div>
-          </>
-        )}
-
-        {/* evidencia */}
-        <HMLabel right={`${photos.length} fotos`}>Evidencia fotográfica</HMLabel>
-        {photos.length === 0 ? (
-          <div className="text-muted" style={{ padding: "0 14px", fontSize: 12 }}>
-            Sin fotos todavía.
-          </div>
-        ) : (
-          <div className="grid" style={{ padding: "0 14px", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {photos.map((p) => {
-              const tt = view.tasks.find((x) => x.id === p.template_task_id);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const who = ((p as any).profiles?.full_name ?? "—")
-                .split(" ")
-                .map((s: string) => s[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase();
-              return (
-                <div key={p.id} style={{ border: "1px solid var(--ink)" }}>
-                  {p.photo_url ? (
-                    <a href={p.photo_url} target="_blank" rel="noreferrer" className="relative block" style={{ width: "100%", height: 84 }}>
-                      <Image
-                        src={p.photo_url}
-                        alt={tt?.title ?? "Foto de evidencia"}
-                        fill
-                        sizes="50vw"
-                        unoptimized
-                        style={{ objectFit: "cover" }}
-                      />
-                    </a>
-                  ) : (
-                    <PhotoPlaceholder w="100%" h={84} label={tt?.title ?? ""} />
-                  )}
-                  <div
-                    className="text-muted flex items-center justify-between"
-                    style={{ padding: 5, fontSize: 8.5, letterSpacing: "0.12em" }}
-                  >
-                    <span className="cmd-num">{formatTime(p.completed_at)}</span>
-                    <span>{who}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* novedades */}
-        <HMLabel right={(novedades ?? []).length}>Novedades</HMLabel>
-        <div style={{ padding: "0 14px" }}>
-          {(novedades ?? []).length === 0 ? (
-            <div className="text-muted" style={{ fontSize: 12 }}>
-              Sin novedades reportadas.
-            </div>
-          ) : (
-            (novedades ?? []).map((n, idx) => (
-              <div
-                key={n.id}
-                style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)", padding: 11, marginBottom: 8 }}
+      <div className="px-4 sm:px-7 flex flex-col gap-5">
+        {(shiftRows ?? []).length > 1 ? (
+          <nav aria-label="Turnos del día" className="ui-scroll-x flex gap-2">
+            {(shiftRows ?? []).map((r) => (
+              <Link
+                key={r.id}
+                href={`/hoy/${date}/turnos?turno=${r.id}`}
+                aria-current={r.id === shiftId ? "page" : undefined}
+                className={cn(
+                  "shrink-0 inline-flex items-center h-11 px-4 rounded-full text-[15px] font-semibold no-underline",
+                  r.id === shiftId ? "bg-strong text-on-strong" : "bg-surface border border-line text-text",
+                )}
               >
-                <div className="flex justify-between" style={{ marginBottom: 5 }}>
-                  <Folio n={`N-${44 + idx}`} />
-                  <span className="cmd-num text-muted" style={{ fontSize: 10 }}>
-                    {formatTime(n.submitted_at)}
-                  </span>
-                </div>
-                <p className="text-ink-2 whitespace-pre-wrap" style={{ fontSize: 12.5, lineHeight: 1.4 }}>
-                  {n.body}
-                </p>
-                <div className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {(n as any).profiles?.full_name ?? "—"}
-                </div>
+                {nombreTurno(r)}
+                {r.status === "open" ? <span aria-label="en curso" className="ml-2 size-2 rounded-full bg-ok" /> : null}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+
+        <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+          <div className="flex flex-col gap-5 min-w-0">
+            {/* estado + revisión */}
+            <Card tight aria-label="Estado del turno">
+              <div className="flex flex-wrap items-center gap-3">
+                <Pill tone={view.shift.status === "open" ? "ok" : review.reviewedAt ? "ok" : "brand"}>
+                  {view.shift.status === "open" ? "En curso" : review.reviewedAt ? "Revisado" : "Cerrado · por revisar"}
+                </Pill>
+                <span className="ui-num text-[15px] font-semibold">
+                  {done}/{total} tareas
+                </span>
+                <ProgressBar value={total ? done / total : 0} label={`${done} de ${total} tareas`} className="flex-1 min-w-[120px]" />
               </div>
-            ))
-          )}
-        </div>
-      </div>
+              <div className="flex flex-wrap gap-2">
+                {view.shift.status !== "closed" ? (
+                  <Button href={`/turno?turno=${shiftId}`} variant="ghost" size="sm" icon={<ClipboardList size={18} aria-hidden />}>
+                    Llenar turno
+                  </Button>
+                ) : (
+                  <ReviewButton shiftId={shiftId} status={review.status} reviewedAt={review.reviewedAt} reviewedBy={review.reviewedBy} />
+                )}
+              </div>
+            </Card>
 
-      {/* ── Desktop (unchanged) ──────────────────────────────── */}
-      <div className="hidden md:block">
-      <header
-        className="flex items-end justify-between"
-        style={{
-          padding: "20px 32px 16px",
-          borderBottom: "1.5px solid var(--ink)",
-        }}
-      >
-        <div>
-          <div
-            className="text-muted"
-            style={{ fontSize: 10, letterSpacing: "0.16em" }}
-          >
-            HOY · {formatDateLabelEs(date)} · TURNO · FOLIO DR-
-            {shiftId.slice(0, 4).toUpperCase()}
-          </div>
-          <h1
-            className="font-slab"
-            style={{ fontSize: 30, margin: "4px 0 0" }}
-          >
-            {sede.name}
-          </h1>
-          <div
-            className="text-muted"
-            style={{ fontSize: 12, marginTop: 6 }}
-          >
-            {opener} ·{" "}
-            {view.shift.opened_at
-              ? `abrió ${formatTime(view.shift.opened_at)}`
-              : "sin abrir"}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {view.shift.status !== "closed" && (
-            <Link
-              href={`/turno?turno=${shiftId}`}
-              className="cmd-btn red sm"
-              style={{ textDecoration: "none", marginRight: 12 }}
-            >
-              ✎ Llenar turno
-            </Link>
-          )}
-          {view.shift.status === "closed" && (
-            <span style={{ marginRight: 12 }}>
-              <ReviewButton shiftId={shiftId} status={review.status} reviewedAt={review.reviewedAt} reviewedBy={review.reviewedBy} />
-            </span>
-          )}
-          <span
-            className="cmd-num"
-            style={{ fontSize: 10, color: "var(--muted)" }}
-          >
-            {done}/{total}
-          </span>
-          <CmdProgress
-            done={done}
-            total={total}
-            color={
-              view.shift.status === "closed"
-                ? "var(--green)"
-                : "var(--ink)"
-            }
-          />
-        </div>
-      </header>
-
-      <div
-        className="grid"
-        style={{ gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)" }}
-      >
-        <section
-          style={{
-            padding: "24px 32px",
-            borderRight: "1px dashed var(--rule)",
-          }}
-        >
-          <div id="asignar" style={{ scrollMarginTop: 16 }}>
-            <SectionLabel>Tareas inmediatas</SectionLabel>
-            <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} />
-          </div>
-          {adHoc.length === 0 ? (
-            <div
-              className="text-muted"
-              style={{ fontSize: 12, marginBottom: 20 }}
-            >
-              Sin tareas asignadas en el turno.
-            </div>
-          ) : (
-            <div style={{ marginBottom: 24 }}>
-              {adHoc.map((t) => {
-                const isDone = t.status === "done";
-                const whenLabel = t.due_time
-                  ? t.due_time.slice(0, 5)
-                  : "Inmediata";
-                const whoLabel = t.assigned_to
-                  ? (t.assignee_name ?? "Asignada")
-                  : "Para todos";
-                return (
-                  <div
-                    key={t.id}
-                    className="flex gap-3"
-                    style={{
-                      padding: "10px 0",
-                      borderBottom: "1px solid var(--rule-soft)",
-                    }}
-                  >
-                    <CmdCheck checked={isDone} mode="check" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between gap-3">
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>
-                          {t.title}
-                        </span>
-                        <span
-                          className="whitespace-nowrap"
-                          style={{
-                            fontSize: 9,
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
-                            color: t.due_time ? "var(--muted)" : "var(--red)",
-                          }}
-                        >
-                          {whenLabel}
-                        </span>
-                      </div>
-                      {t.instructions ? (
-                        <div
-                          className="text-muted"
-                          style={{ fontSize: 11, marginTop: 2 }}
-                        >
-                          {t.instructions}
+            {/* inmediatas */}
+            <section id="asignar" aria-labelledby="inmediatas" className="flex flex-col gap-3 scroll-mt-4">
+              <h2 id="inmediatas" className="ui-h2 m-0">
+                Tareas inmediatas
+              </h2>
+              {view.shift.status !== "closed" ? <AsignarTareaForm shiftInstanceId={shiftId} roster={roster} /> : null}
+              {adHoc.length === 0 ? (
+                <p className="ui-sub m-0">Sin tareas inmediatas en este turno.</p>
+              ) : (
+                <ul className="m-0 p-0 list-none bg-surface border border-line rounded-card overflow-hidden">
+                  {adHoc.map((t) => {
+                    const isDone = t.status === "done";
+                    return (
+                      <li key={t.id} className="flex items-start gap-3 px-4 py-3 border-b border-line last:border-b-0">
+                        <Hecho done={isDone} />
+                        <div className="flex-1 min-w-0">
+                          <p className="ui-title m-0">{t.title}</p>
+                          <p className="ui-sub m-0 text-[13px]">
+                            {t.assigned_to ? (t.assignee_name ?? "Asignada") : "Para todos"}
+                            {isDone && t.completed_at ? ` · ✓ ${formatTime(t.completed_at, sede.tz)}` : " · pendiente"}
+                          </p>
                         </div>
-                      ) : null}
-                      <div
-                        className="text-muted"
-                        style={{ fontSize: 11, marginTop: 2 }}
-                      >
-                        {whoLabel}
-                        {isDone && t.completed_at
-                          ? ` · ✓ ${formatTime(t.completed_at)}`
-                          : " · pendiente"}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                        {t.due_time ? <Pill>{t.due_time.slice(0, 5)}</Pill> : <Pill tone="late">Inmediata</Pill>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
 
-          <SectionLabel>Tareas · {view.template.name}</SectionLabel>
-          {view.tasks.map((task) => {
-            const c = completionsByTask[task.id];
-            const dueLabel = task.due_time?.slice(0, 5);
-            return (
-              <div
-                key={task.id}
-                className="flex gap-3"
-                style={{
-                  padding: "10px 0",
-                  borderBottom: "1px solid var(--rule-soft)",
-                }}
-              >
-                <CmdCheck checked={!!c} mode="check" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between gap-3">
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>
-                      {task.title}
-                    </span>
-                    <span
-                      className="cmd-num text-muted whitespace-nowrap"
-                      style={{ fontSize: 11 }}
-                    >
-                      {puestoOf(task) ? `${puestoOf(task)} · ` : ""}{dueLabel ?? ""}
-                    </span>
-                  </div>
-                  {c ? (
-                    <div
-                      className="text-muted"
-                      style={{
-                        fontSize: 11,
-                        marginTop: 2,
-                        display: "flex",
-                        gap: 12,
-                      }}
-                    >
-                      <span>
-                        ✓ {formatTime(c.completed_at)} · {c.who}
-                      </span>
-                      {task.requires_photo && c.photo_url ? (
-                        <span style={{ color: "var(--green)" }}>
-                          📷 verificada
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : task.due_time ? (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        marginTop: 2,
-                        color: "var(--amber)",
-                      }}
-                    >
-                      Pendiente · vence {dueLabel}
-                    </div>
-                  ) : (
-                    <div
-                      className="text-muted"
-                      style={{ fontSize: 11, marginTop: 2 }}
-                    >
-                      Pendiente
-                    </div>
-                  )}
-                </div>
-                {task.requires_photo && c?.photo_url ? (
-                  <a
-                    href={c.photo_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="relative block"
-                    style={{
-                      width: 56,
-                      height: 42,
-                      border: "1px solid var(--ink)",
-                      overflow: "hidden",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Image
-                      src={c.photo_url}
-                      alt="Foto de evidencia"
-                      width={56}
-                      height={42}
-                      sizes="56px"
-                      unoptimized
-                      className="h-full w-full object-cover"
-                    />
-                  </a>
-                ) : task.requires_photo && !c ? (
-                  <span
-                    className="self-start"
-                    style={{
-                      border: "1px solid var(--red)",
-                      color: "var(--red)",
-                      padding: "2px 6px",
-                      fontSize: 9,
-                      letterSpacing: "0.14em",
-                    }}
-                  >
-                    FOTO PEND.
-                  </span>
-                ) : null}
+            {/* tareas de la plantilla */}
+            <section aria-labelledby="tareas" className="flex flex-col gap-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 id="tareas" className="ui-h2 m-0">
+                  Tareas
+                </h2>
+                <span className="ui-sub ui-num">
+                  {done}/{total}
+                </span>
               </div>
-            );
-          })}
-
-          {(cierre || hasCajaTask) && (
-            <div style={{ marginTop: 28 }}>
-              <SectionLabel>Cierre de caja</SectionLabel>
-              <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} />
-            </div>
-          )}
-          {conteos && hayConteos && (
-            <div style={{ marginTop: 28 }}>
-              <SectionLabel>Inventario</SectionLabel>
-              <ConteosCard panel={conteos} tz={sede.tz} />
-            </div>
-          )}
-          {faltantes.length > 0 && (
-            <div style={{ marginTop: 28 }}>
-              <SectionLabel>Faltantes reportados · {faltantes.length}</SectionLabel>
-              <FaltantesCard items={faltantes} tz={sede.tz} />
-            </div>
-          )}
-        </section>
-
-        <section style={{ padding: "24px 32px" }}>
-          <SectionLabel>
-            Evidencia fotográfica · {photos.length}
-          </SectionLabel>
-          {photos.length === 0 ? (
-            <div
-              className="text-muted"
-              style={{ fontSize: 12, marginBottom: 24 }}
-            >
-              Sin fotos todavía.
-            </div>
-          ) : (
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: "repeat(2, 1fr)" }}
-            >
-              {photos.map((p) => {
-                const tt = view.tasks.find(
-                  (x) => x.id === p.template_task_id,
-                );
-                return (
-                  <div
-                    key={p.id}
-                    style={{ border: "1px solid var(--ink)" }}
-                  >
-                    {p.photo_url ? (
-                      <div
-                        className="relative"
-                        style={{ width: "100%", height: 92 }}
-                      >
-                        <Image
-                          src={p.photo_url}
-                          alt={tt?.title ?? "Foto de evidencia"}
-                          fill
-                          sizes="(max-width: 768px) 50vw, 240px"
-                          unoptimized
-                          style={{ objectFit: "cover" }}
-                        />
+              <ul className="m-0 p-0 list-none bg-surface border border-line rounded-card overflow-hidden">
+                {view.tasks.map((task) => {
+                  const c = completionsByTask[task.id];
+                  const isDone = !!c;
+                  const due = task.due_time?.slice(0, 5);
+                  const late = isDone ? lateMin(task.due_time, c.completed_at) : 0;
+                  return (
+                    <li key={task.id} className="flex items-start gap-3 px-4 py-3 border-b border-line last:border-b-0">
+                      {due ? <span className="ui-num text-muted text-[14px] w-11 shrink-0 pt-0.5">{due}</span> : <span className="w-11 shrink-0" />}
+                      <div className={cn("flex-1 min-w-0", !isDone && "opacity-80")}>
+                        <p className="m-0 text-[16px] font-semibold leading-snug">{task.title}</p>
+                        <p className="ui-sub m-0 text-[13px]">
+                          {isDone
+                            ? `✓ ${formatTime(c.completed_at, sede.tz)} · ${c.who}${c.note ? ` · «${c.note}»` : ""}`
+                            : `${puestoOf(task) ? `${puestoOf(task)} · ` : ""}pendiente`}
+                        </p>
                       </div>
-                    ) : (
-                      <PhotoPlaceholder w="100%" h={92} label={tt?.title ?? ""} />
-                    )}
-                    <div
-                      className="text-muted flex items-center justify-between"
-                      style={{
-                        padding: 6,
-                        fontSize: 9,
-                        letterSpacing: "0.14em",
-                      }}
-                    >
-                      <span className="cmd-num">
-                        {formatTime(p.completed_at)}
-                      </span>
-                      <span>
-                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                        {((p as any).profiles?.full_name ?? "—")
-                          .split(" ")
-                          .map((s: string) => s[0])
-                          .join("")
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isDone && late > 0 ? <Pill tone="late">+{late} min</Pill> : null}
+                        {task.requires_photo && c?.photo_url ? (
+                          <a href={c.photo_url} target="_blank" rel="noreferrer" className="relative block size-12 rounded-btn overflow-hidden border border-line">
+                            <Image src={c.photo_url} alt={task.title} fill sizes="48px" unoptimized className="object-cover" />
+                          </a>
+                        ) : task.requires_photo && !isDone ? (
+                          <Pill tone="late">Foto</Pill>
+                        ) : null}
+                        <Hecho done={isDone} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
 
-          <div className="mt-7">
-            <SectionLabel>
-              Novedades · {(novedades ?? []).length}
-            </SectionLabel>
-            {(novedades ?? []).length === 0 ? (
-              <div className="text-muted" style={{ fontSize: 12 }}>
-                Sin novedades reportadas.
+            {/* evidencia */}
+            <section aria-labelledby="fotos" className="flex flex-col gap-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 id="fotos" className="ui-h2 m-0">
+                  Fotos
+                </h2>
+                <span className="ui-sub">{photos.length}</span>
               </div>
-            ) : (
-              (novedades ?? []).map((n, idx) => (
-                <div
-                  key={n.id}
-                  style={{
-                    border: "1px solid var(--rule)",
-                    background: "var(--paper-lt)",
-                    padding: 10,
-                    marginBottom: 8,
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <Folio n={`N-${44 + idx}`} />
-                    <span
-                      className="cmd-num text-muted"
-                      style={{ fontSize: 10 }}
-                    >
-                      {formatTime(n.submitted_at)}
-                    </span>
-                  </div>
-                  <p
-                    className="text-ink-2 whitespace-pre-wrap"
-                    style={{ fontSize: 12, lineHeight: 1.4 }}
-                  >
-                    {n.body}
-                  </p>
-                  <div
-                    className="text-muted"
-                    style={{ fontSize: 10, marginTop: 4 }}
-                  >
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {(n as any).profiles?.full_name ?? "—"}
-                  </div>
+              {photos.length === 0 ? (
+                <p className="ui-sub m-0">Sin fotos todavía.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {photos.map((p) => {
+                    const tt = view.tasks.find((x) => x.id === p.template_task_id);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const who = ((p as any).profiles?.full_name as string | undefined) ?? "—";
+                    return (
+                      <figure key={p.id} className="m-0 rounded-card overflow-hidden border border-line bg-surface">
+                        <a href={p.photo_url ?? "#"} target="_blank" rel="noreferrer" className="relative block w-full aspect-[4/3] bg-surface-2">
+                          {p.photo_url ? <Image src={p.photo_url} alt={tt?.title ?? "Foto de evidencia"} fill sizes="(min-width: 1024px) 220px, 50vw" unoptimized className="object-cover" /> : null}
+                        </a>
+                        <figcaption className="px-3 py-2">
+                          <p className="m-0 text-[13px] font-semibold truncate">{tt?.title ?? "Tarea"}</p>
+                          <p className="m-0 text-[12.5px] text-muted ui-num">
+                            {formatTime(p.completed_at, sede.tz)} · {who}
+                          </p>
+                        </figcaption>
+                      </figure>
+                    );
+                  })}
                 </div>
-              ))
-            )}
+              )}
+            </section>
           </div>
-        </section>
-      </div>
-      </div>
-    </>
-  );
-}
 
-/** YYYY-MM-DD shifted by `delta` days (UTC, so it never drifts). */
-function addDays(yyyyMMdd: string, delta: number): string {
-  const [y, m, d] = yyyyMMdd.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + delta);
-  return dt.toISOString().slice(0, 10);
-}
+          <div className="flex flex-col gap-5 min-w-0">
+            {/* novedades */}
+            <Card aria-labelledby="novedades">
+              <h2 id="novedades" className="ui-title m-0">
+                Novedades · {novs.length}
+              </h2>
+              {novs.length === 0 ? (
+                <p className="ui-sub m-0">Sin novedades reportadas.</p>
+              ) : (
+                <ul className="m-0 p-0 list-none flex flex-col">
+                  {novs.map((n) => (
+                    <li key={n.id} className="py-2.5 border-b border-line last:border-b-0">
+                      <p className="m-0 text-[15px] leading-snug whitespace-pre-wrap">{n.body}</p>
+                      <p className="m-0 mt-0.5 text-[13px] text-muted ui-num">
+                        {formatTime(n.submitted_at, sede.tz)}
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {` · ${(n as any).profiles?.full_name ?? "—"}`}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
 
-function HMLabel({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <div className="flex items-center" style={{ gap: 8, padding: "16px 14px 8px" }}>
-      <span
-        className="text-muted"
-        style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}
-      >
-        {children}
-      </span>
-      <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
-      {right != null ? <span className="text-muted" style={{ fontSize: 10 }}>{right}</span> : null}
+            {cierre || hasCajaTask ? <CajaCard cierre={cierre} window={cajaWindow} hasCajaTask={hasCajaTask} compact /> : null}
+            {conteos && hayConteos ? <ConteosCard panel={conteos} tz={sede.tz} compact /> : null}
+            {faltantes.length > 0 ? <FaltantesCard items={faltantes} tz={sede.tz} compact /> : null}
+          </div>
+        </div>
+      </div>
     </div>
   );
+}
+
+function Hecho({ done }: { done: boolean }) {
+  return (
+    <span
+      aria-label={done ? "Hecha" : "Pendiente"}
+      className={cn(
+        "size-7 shrink-0 rounded-full flex items-center justify-center",
+        done ? "bg-ok text-white" : "border-2 border-line bg-surface",
+      )}
+    >
+      {done ? <Check size={16} strokeWidth={3} aria-hidden /> : null}
+    </span>
+  );
+}
+
+function addDays(yyyyMMdd: string, delta: number): string {
+  const [y, m, d] = yyyyMMdd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + delta));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
 }
 
 function EmptyDetail({ date, sedeName }: { date: string; sedeName: string }) {
   return (
-    <div>
-      <header
-        className="flex items-end justify-between"
-        style={{
-          padding: "20px 32px 16px",
-          borderBottom: "1.5px solid var(--ink)",
-        }}
-      >
-        <div>
-          <div
-            className="text-muted"
-            style={{ fontSize: 10, letterSpacing: "0.16em" }}
-          >
-            HOY · {formatDateLabelEs(date)}
-          </div>
-          <h1
-            className="font-slab"
-            style={{ fontSize: 30, margin: "4px 0 0" }}
-          >
-            {sedeName}
-          </h1>
-        </div>
-      </header>
-      <div style={{ padding: "48px 32px" }}>
-        <div
-          className="cmd-paper-lt text-center"
-          style={{ padding: 32, border: "1.5px solid var(--ink)" }}
-        >
-          <p className="text-muted" style={{ fontSize: 13 }}>
-            No hay turnos registrados para {formatDateLabelEs(date)}.
-          </p>
-          <Link
-            href="/hoy"
-            className="cmd-link"
-            style={{ fontSize: 12, marginTop: 12, display: "inline-block" }}
-          >
-            ← volver a hoy
-          </Link>
-        </div>
+    <div className="mx-auto w-full max-w-[880px] pb-12">
+      <PageHeader back="/hoy" title="Turnos" sub={`${fechaLarga(date)} · ${sedeName}`} />
+      <div className="px-4 sm:px-7">
+        <EmptyState
+          title="No hay turnos registrados ese día"
+          action={
+            <Button href="/hoy" variant="ghost" size="sm">
+              Volver a hoy
+            </Button>
+          }
+        />
       </div>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="text-muted mb-3"
-      style={{
-        fontSize: 10,
-        letterSpacing: "0.18em",
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
     </div>
   );
 }
