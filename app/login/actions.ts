@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosDeviceFromCookie } from "@/lib/pos/devices";
-import { landingFor, listRosterForSede, type PersonRole } from "@/lib/auth-person";
+import { landingFor, listRosterForSede, safeNext, type PersonRole } from "@/lib/auth-person";
 
 /**
  * The single login (/login). Two ways in, both through the auth provider's
@@ -138,9 +138,13 @@ export async function signOut() {
  * owner out of their phone); on Better Auth `signOut` revokes only the
  * current session. The device pairing (its own cookie) is untouched, so on a
  * paired device the next screen is the team's tiles.
+ * A form may send a `next` field (the register sends "/pos") so the next
+ * person lands back where the previous one left; only safe relative paths.
  */
-export async function signOutLocal(): Promise<void> {
+export async function signOutLocal(formData?: FormData): Promise<void> {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut({ scope: "local" });
-  redirect("/login");
+  const raw = formData?.get("next");
+  const next = safeNext(typeof raw === "string" ? raw : null);
+  redirect(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
 }
