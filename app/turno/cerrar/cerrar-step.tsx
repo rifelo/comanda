@@ -102,8 +102,9 @@ export function CerrarStep({
   const { toggle, busyId, camera } = useTareas(shift, restaurantId);
   const segs = React.useMemo(
     () => [
-      ...(pendientesAntes.length ? [{ key: "antes", titulo: "Pendientes", tasks: pendientesAntes }] : []),
       ...zonas,
+      // What is still open from earlier in the turno comes after the closing blocks.
+      ...(pendientesAntes.length ? [{ key: "antes", titulo: "Pendientes de antes", tasks: pendientesAntes }] : []),
     ],
     [zonas, pendientesAntes],
   );
