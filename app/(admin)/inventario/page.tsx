@@ -12,6 +12,9 @@ import { todayInTz } from "@/lib/utils";
 import { InventarioScreen } from "./_components/inventario-screen";
 import type { PorRevisarData } from "./_components/por-revisar";
 
+// TODO(P4→Ola 3): lib/nav/items.ts Inventario sections — Movimientos href "/historial" → "/inventario/movimientos",
+// Pedidos "/compras" → "/inventario/pedidos", Faltantes "/inventario/faltantes" → "/inventario?vista=acabando"
+// (label «Se acaba»), and «Existencias» should also match /inventario/<id> (today it lights no section there).
 export const metadata: Metadata = { title: "Inventario · Comanda" };
 export const dynamic = "force-dynamic";
 
