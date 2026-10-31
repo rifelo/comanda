@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Ingrediente, IngredienteCategoria } from "@/lib/types";
 import type { CostosPendientes } from "@/lib/db/costos-pendientes";
-import { CostosPanel } from "../recetas/costos-panel";
+import { CostosPanel } from "../productos/_components/costos-panel";
 import { unitCostFromPack } from "@/lib/cost";
 import { SectionCrumb, StockBar, CmdMiniLabel } from "../_components/shared";
 import {
@@ -1966,7 +1966,7 @@ export function InventarioClient({
         }
       />
 
-      {costos ? <CostosPanel c={costos} compact /> : null}
+      {costos ? <CostosPanel c={costos} /> : null}
 
       <div
         style={{

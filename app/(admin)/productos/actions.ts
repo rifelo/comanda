@@ -4,6 +4,87 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin, requireUser } from "@/lib/auth";
 
+// =============================================================================
+// /productos (P4): quick create + modifier groups per product
+// =============================================================================
+
+const RapidoSchema = z.object({
+  name: z.string().trim().min(1, "Escribe el nombre.").max(160),
+  category_id: z.string().uuid().nullable(),
+  price_cop: z.coerce.number().int("El precio va sin decimales.").min(0, "Precio inválido.").max(10_000_000),
+  sku: z.string().trim().min(1, "Falta el SKU.").max(60),
+});
+
+/**
+ * «Nuevo producto» in four fields. The recipe comes after (the ficha opens on
+ * «Receta»): cost starts at 0 and is rolled up from the recipe lines.
+ */
+export async function crearProductoRapido(input: unknown): Promise<{ ok: true; id: string } | { ok: false; error: string; field?: string }> {
+  const parsed = RapidoSchema.safeParse(input);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: issue?.message ?? "Datos inválidos.", field: typeof issue?.path[0] === "string" ? issue.path[0] : undefined };
+  }
+  const { profile, supabase } = await requireAdmin();
+  const d = parsed.data;
+  if (d.category_id) {
+    const { data: cat } = await supabase.from("producto_categorias").select("id").eq("id", d.category_id).eq("organization_id", profile.organization_id).maybeSingle();
+    if (!cat) return { ok: false, error: "La categoría no existe.", field: "category_id" };
+  }
+  const { data, error } = await supabase
+    .from("productos")
+    .insert({
+      organization_id: profile.organization_id,
+      category_id: d.category_id,
+      name: d.name,
+      description: null,
+      sku: d.sku.toUpperCase(),
+      price_cop: d.price_cop,
+      cost_cop: 0,
+      stock_status: "ok",
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    if (error?.code === "23505") return { ok: false, error: "Ya existe un producto con ese SKU.", field: "sku" };
+    console.error("[crearProductoRapido]", error);
+    return { ok: false, error: error?.message ?? "No se pudo crear el producto." };
+  }
+  revalidatePath("/productos", "layout");
+  return { ok: true, id: data.id as string };
+}
+
+const GrupoSchema = z.object({
+  producto_id: z.string().uuid(),
+  group_id: z.string().uuid(),
+  on: z.boolean(),
+});
+
+/** Apply (or remove) a modifier group to a product — what the POS asks when the product is tapped. */
+export async function toggleGrupoModificador(input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = GrupoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Datos inválidos." };
+  const { profile, supabase } = await requireAdmin();
+  const orgId = profile.organization_id;
+  const d = parsed.data;
+  const [{ data: p }, { data: g }] = await Promise.all([
+    supabase.from("productos").select("id").eq("organization_id", orgId).eq("id", d.producto_id).maybeSingle(),
+    supabase.from("modifier_groups").select("id").eq("organization_id", orgId).eq("id", d.group_id).maybeSingle(),
+  ]);
+  if (!p || !g) return { ok: false, error: "No encontrado." };
+  if (d.on) {
+    const { error } = await supabase
+      .from("producto_modifier_groups")
+      .upsert({ organization_id: orgId, producto_id: d.producto_id, group_id: d.group_id, position: 0 }, { onConflict: "producto_id,group_id" });
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await supabase.from("producto_modifier_groups").delete().eq("organization_id", orgId).eq("producto_id", d.producto_id).eq("group_id", d.group_id);
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/productos", "layout");
+  return { ok: true };
+}
+
 // `"use server"` files can only export async functions in Next 16 — see the
 // note in `app/(admin)/restaurants/new/actions.ts`. Result shapes are
 // documented inline.
@@ -92,7 +173,7 @@ export async function createProductoCategoria(
     };
   }
 
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
   return { ok: true, id: row.id };
 }
 
@@ -145,7 +226,7 @@ export async function deleteProductoCategoria(
     };
   }
 
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
   return { ok: true };
 }
 
@@ -313,7 +394,7 @@ export async function createProducto(
     }
   }
 
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
 
   return {
     ok: true,
@@ -493,7 +574,7 @@ export async function updateProducto(
     }
   }
 
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
 
   return {
     ok: true,
@@ -566,7 +647,7 @@ export async function deleteProducto(
     }
   }
 
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
   return { ok: true };
 }
 
@@ -627,6 +708,6 @@ export async function toggleProductoFavorite(
     }
   }
 
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
   return { ok: true };
 }
