@@ -1,10 +1,9 @@
-import { loadTurnoGate } from "@/lib/turno/server";
+import { redirect } from "next/navigation";
+import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
 import { todayInTz } from "@/lib/utils";
 import { loadRutina } from "@/lib/inventario/conteos";
 import { loadAcabando } from "@/lib/inventario/acabando-db";
 import { NOMBRE_CONTEO } from "@/lib/inventario/rutina";
-import { TurnoLogin } from "../_components/turno-login";
-import { TurnoUnpaired } from "../unpaired";
 import { AcabandoScreen } from "./acabando-screen";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +18,7 @@ export const metadata = { title: "¿Qué se está acabando? · co-manda" };
  */
 export default async function TurnoInventarioPage() {
   const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired next="/turno/inventario" />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
+  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/inventario"));
   const { ctx } = gate;
   const { admin, organizationId, sede } = ctx;
   const [data, estado, { count: porLlegar }] = await Promise.all([

@@ -1,9 +1,8 @@
-import { loadTurnoGate } from "@/lib/turno/server";
+import { redirect } from "next/navigation";
+import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
 import { formatTime, todayInTz } from "@/lib/utils";
 import { nombrePaquete, piezaDe } from "@/lib/inventario/niveles";
 import { inicioDia, listMermas } from "@/lib/inventario/mermas-db";
-import { TurnoLogin } from "../../_components/turno-login";
-import { TurnoUnpaired } from "../../unpaired";
 import { MermaScreen } from "./merma-screen";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +15,7 @@ export const metadata = { title: "Merma · co-manda" };
  */
 export default async function MermaPage() {
   const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired next="/turno/inventario/merma" />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
+  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/inventario/merma"));
   const { ctx } = gate;
   const { admin, organizationId: orgId, sede } = ctx;
   const today = todayInTz(sede.tz);

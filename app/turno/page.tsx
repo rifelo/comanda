@@ -1,10 +1,9 @@
-import { ensureTodayInstances, getTurnoBoard, loadTurnoGate } from "@/lib/turno/server";
+import { redirect } from "next/navigation";
+import { ensureTodayInstances, getTurnoBoard, loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
 import { loadRutina } from "@/lib/inventario/conteos";
 import { baseSugerida } from "@/lib/caja/cierres";
 import { nowInTz, todayInTz } from "@/lib/utils";
-import { TurnoLogin } from "./_components/turno-login";
 import { TurnoBoard } from "./turno-board";
-import { TurnoUnpaired } from "./unpaired";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Turno · co-manda" };
@@ -17,8 +16,7 @@ export const metadata = { title: "Turno · co-manda" };
  */
 export default async function TurnoPage() {
   const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
+  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno"));
   const { ctx } = gate;
   await ensureTodayInstances(ctx, todayInTz(ctx.sede.tz));
   const [data, { rutina }, base] = await Promise.all([getTurnoBoard(ctx), loadRutina(ctx.admin, ctx.organizationId, ctx.sede.tz), baseSugerida(ctx.admin, ctx.restaurantId)]);
