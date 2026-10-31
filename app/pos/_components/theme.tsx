@@ -139,12 +139,13 @@ export const POS_CSS = `
   .pos-cat.ia[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
   .pos-gridwrap{flex:1;overflow-y:auto;padding:4px 20px 24px}
   .pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:12px;align-content:start}
-  .pos-tile{min-height:116px;padding:14px 14px 12px;border-radius:16px}
+  /* button.pos-tile: beats ".pos-root button:not(.cmd-btn){min-height:0}". */
+  .pos-root button.pos-tile{min-height:116px;padding:14px 14px 12px;border-radius:16px}
   .pos-tile-name{font-size:16px;font-weight:600;line-height:1.25;overflow-wrap:anywhere;hyphens:auto}
   .pos-tile-price{font-size:16px;font-weight:700}
   @media (min-width:1500px){
     .pos-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
-    .pos-tile{min-height:132px}
+    .pos-root button.pos-tile{min-height:132px}
     .pos-tile-name{font-size:17px}
   }
 
@@ -235,7 +236,7 @@ export const POS_CSS = `
     .pos-paymore{margin-top:8px}
     .pos-paymore button{height:44px}
     .pos-cats{padding:10px 20px 8px}
-    .pos-tile{min-height:104px}
+    .pos-root button.pos-tile{min-height:104px}
     .pos-tender-total{padding:14px 20px 12px}
     .pos-tender-amt{font-size:40px}
     .pos-tender-pay{padding:16px 24px}
@@ -288,7 +289,7 @@ export const POS_CSS = `
     .pos-cat{height:44px;padding:0 16px}
     .pos-gridwrap{padding:4px 12px 16px}
     .pos-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-    .pos-tile{min-height:104px;padding:10px 10px 9px;border-radius:14px}
+    .pos-root button.pos-tile{min-height:104px;padding:10px 10px 9px;border-radius:14px}
     .pos-tile-name{font-size:14px}
     .pos-tile-price{font-size:14px}
     .pos-cash{flex-direction:column;flex:none}
