@@ -1,14 +1,14 @@
 import "server-only";
-import { esperadoCaja, localToUtc, ventanaTurno } from "@/lib/caja/arqueo";
-import { sumPagosVentana } from "@/lib/caja/cierres";
-import { loadCajaEstado, type CajaEstado } from "@/lib/caja/estado";
+import { esperadoCaja } from "@/lib/caja/arqueo";
+import { loadCajaEstado, recentrarCaja, type CajaEstado } from "@/lib/caja/estado";
 import { loadAcabando } from "@/lib/inventario/acabando-db";
 import { buildInsumos, marcado } from "@/lib/inventario/acabando";
 import { tareasDelDia } from "@/lib/turno/dias-tarea";
 import { nowInTz, todayInTz } from "@/lib/utils";
 import type { AdHocTask, TemplateTask } from "@/lib/types";
 import { listaTareas, turnoActual } from "./hoy";
-import type { TurnoContext } from "./server";
+import { assignedFor } from "./state";
+import type { TurnoBoardData, TurnoContext, TurnoShift } from "./server";
 
 /**
  * Extra reads for the team app (P1). lib/turno/server.ts stays the gate +
@@ -29,27 +29,21 @@ export function esperadoDe(estado: CajaEstado): number {
 }
 
 /**
- * The caja state re-centred on one turno. loadCajaEstado picks «the open
- * turno that started last» (lib/caja is read-only for P1), which on a day
- * with overlapping turnos — or task-only turnos like «Regar las plantas» —
- * is not the one being closed. The close flow needs *its* drawer: same
- * window, payments and expected end as loadCajaEstado computes, for `instanceId`.
+ * The caja state re-centred on one turno — the one the person is on
+ * (lib/caja/estado `recentrarCaja`). Without it the caja would guess «the
+ * open turno that started last», which on a day with overlapping turnos or
+ * task-only ones («Limpieza semanal máquina») is not the drawer in play.
  */
-export async function cajaDelTurno(ctx: TurnoContext, estado: CajaEstado, instanceId: string): Promise<CajaEstado> {
-  if (estado.instanceId === instanceId) return estado;
-  const inst = estado.instances.find((i) => i.id === instanceId);
-  if (!inst) return estado;
-  const ventana = ventanaTurno({ date: estado.today, inicio: inst.inicio, tz: ctx.sede.tz, opened_at: inst.opened_at, closed_at: inst.closed_at });
-  const pagos = await sumPagosVentana(ctx.admin, { orgId: ctx.organizationId, restaurantId: ctx.restaurantId, desde: ventana.desde, hasta: ventana.hasta });
-  const prev = estado.base.cierre;
-  return {
-    ...estado,
-    instanceId,
-    ventana,
-    pagos,
-    finAt: localToUtc(estado.today, inst.fin.slice(0, 5), ctx.sede.tz).toISOString(),
-    porValidar: prev && !prev.base_validada_at && prev.shift_instance_id !== instanceId ? prev : null,
-  };
+export function cajaDelTurno(ctx: TurnoContext, estado: CajaEstado, instanceId: string | null): Promise<CajaEstado> {
+  return recentrarCaja(ctx.admin, { orgId: ctx.organizationId, restaurantId: ctx.restaurantId, tz: ctx.sede.tz, today: estado.today }, estado, instanceId);
+}
+
+/** The turno the person is on (same pick as Hoy, Abrir and Cerrar). */
+export function turnoDeLaPersona(ctx: TurnoContext, data: TurnoBoardData, preferId?: string | null): TurnoShift | null {
+  return turnoActual(data.turnos, nowInTz(ctx.sede.tz), {
+    preferId,
+    asignado: (t) => assignedFor(data.assignments, t.template.id, data.todayIdx, null) === ctx.actor.profileId,
+  });
 }
 
 export interface HoyExtras {
