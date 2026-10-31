@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { updateSede } from "../_actions";
+import { Button, Field } from "@/components/ui";
 
 type Initial = {
   name: string;
@@ -49,152 +50,54 @@ export function SedeForm({ initial }: { initial: Initial }) {
     });
   }
 
-  const formInput: React.CSSProperties = {
-    fontSize: 13,
-    border: "1px solid var(--ink)",
-    background: "var(--paper)",
-    padding: "9px 11px",
-    color: "var(--ink)",
-    outline: "none",
-    borderRadius: 2,
-    width: "100%",
-  };
-  const labelStyle: React.CSSProperties = {
-    fontSize: 9,
-    letterSpacing: "0.18em",
-    textTransform: "uppercase",
-    color: "var(--muted)",
-    marginBottom: 8,
-    display: "block",
-  };
-
-  const initial1 = (name[0] ?? "D").toUpperCase();
+  const initial1 = (name[0] ?? "C").toUpperCase();
 
   return (
-    <div>
-      <label style={labelStyle}>Nombre del restaurante</label>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Nombre de la sede"
-        style={{ ...formInput, fontSize: 16 }}
-      />
+    <div className="flex flex-col gap-5">
+      <Field label="Nombre de la sede" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la sede" />
 
-      <div style={{ marginTop: 26 }}>
-        <label style={labelStyle}>Logo / imagen</label>
-        <div className="flex items-center" style={{ gap: 18 }}>
-          <div
-            className="flex items-center justify-center overflow-hidden flex-shrink-0"
-            style={{
-              width: 84,
-              height: 84,
-              border: "1.5px solid var(--ink)",
-              background: "var(--paper-lt)",
-            }}
-          >
+      <div className="flex flex-col gap-2">
+        <span className="ui-label">Logo</span>
+        <div className="flex items-center gap-4">
+          <div className="size-[84px] shrink-0 rounded-card border border-line bg-surface-2 overflow-hidden flex items-center justify-center">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoUrl}
-                alt="logo"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
+              <img src={logoUrl} alt="Logo de la sede" className="size-full object-cover" />
             ) : (
-              <span
-                className="font-slab"
-                style={{ fontSize: 34, color: "var(--muted)" }}
-              >
-                {initial1}
-              </span>
+              <span className="text-[34px] font-bold text-muted">{initial1}</span>
             )}
           </div>
-          <div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg"
-              onChange={onLogo}
-              style={{ display: "none" }}
-            />
-            <div className="flex" style={{ gap: 8 }}>
-              <button
-                type="button"
-                className="cmd-btn sm"
-                onClick={() => fileRef.current?.click()}
-              >
+          <div className="flex flex-col gap-2 min-w-0">
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg" onChange={onLogo} className="hidden" />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => fileRef.current?.click()}>
                 {logoUrl ? "Cambiar imagen" : "Subir imagen"}
-              </button>
+              </Button>
               {logoUrl ? (
-                <button
-                  type="button"
-                  className="cmd-btn ghost sm"
-                  onClick={() => setLogoUrl(null)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => setLogoUrl(null)}>
                   Quitar
-                </button>
+                </Button>
               ) : null}
             </div>
-            <div
-              className="text-muted"
-              style={{ fontSize: 10, marginTop: 8, lineHeight: 1.5 }}
-            >
-              PNG o JPG, cuadrada.
-              <br />
-              Aparece en el menú lateral y en los reportes.
-            </div>
+            <p className="ui-sub m-0 text-[13px]">PNG o JPG, cuadrada. Aparece en los reportes.</p>
           </div>
         </div>
       </div>
 
-      <div
-        className="grid"
-        style={{
-          marginTop: 26,
-          paddingTop: 20,
-          borderTop: "1px dashed var(--rule)",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-        }}
-      >
-        <div>
-          <label style={labelStyle}>Zona horaria</label>
-          <input
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            placeholder="America/Bogota"
-            style={formInput}
-          />
-        </div>
-        <div>
-          <label style={labelStyle}>Moneda</label>
-          <input
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            placeholder="COP"
-            style={formInput}
-          />
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-line pt-5">
+        <Field label="Zona horaria" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/Bogota" autoCapitalize="none" />
+        <Field label="Moneda" value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="COP" autoCapitalize="characters" />
       </div>
 
-      <div
-        className="flex items-center"
-        style={{ marginTop: 22, gap: 14, minHeight: 22 }}
-      >
-        <button
-          type="button"
-          className="cmd-btn red sm"
-          onClick={save}
-          disabled={pending}
-        >
-          {pending ? "Guardando…" : "Guardar"}
-        </button>
-        {saved ? (
-          <span style={{ color: "var(--green)", fontSize: 12 }}>
-            ✓ Cambios guardados
-          </span>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" onClick={save} loading={pending}>
+          Guardar
+        </Button>
+        {saved ? <span className="text-ok font-semibold">✓ Cambios guardados</span> : null}
         {error ? (
-          <span style={{ color: "var(--red)", fontSize: 12 }}>{error}</span>
+          <span role="alert" className="text-late font-semibold">
+            {error}
+          </span>
         ) : null}
       </div>
     </div>

@@ -15,6 +15,8 @@ import {
   startupBatch,
   type DesktopBrowser,
 } from "@/lib/pwa/launch";
+import { Button, Card, EmptyState, Field, Pill, Segmented } from "@/components/ui";
+import { fechaCorta } from "@/lib/utils";
 
 export type PosDeviceRow = {
   id: string;
@@ -31,39 +33,6 @@ export type PosCodeRow = {
   label: string | null;
   createdAt: string;
   expiresAt: string;
-};
-
-const label: React.CSSProperties = {
-  fontSize: 9,
-  letterSpacing: "0.18em",
-  textTransform: "uppercase",
-  display: "block",
-  marginBottom: 8,
-};
-const formInput: React.CSSProperties = {
-  fontSize: 13,
-  border: "1px solid var(--ink)",
-  background: "var(--paper)",
-  padding: "9px 11px",
-  color: "var(--ink)",
-  outline: "none",
-  borderRadius: 2,
-  width: "100%",
-};
-const th: React.CSSProperties = {
-  fontSize: 9,
-  letterSpacing: "0.16em",
-  textTransform: "uppercase",
-  textAlign: "left",
-  padding: "8px 10px",
-  borderBottom: "1.5px solid var(--ink)",
-  fontWeight: 400,
-};
-const td: React.CSSProperties = {
-  fontSize: 13,
-  padding: "10px 10px",
-  borderBottom: "1px solid var(--rule)",
-  verticalAlign: "middle",
 };
 
 function relTime(iso: string): string {
@@ -155,180 +124,113 @@ export function PosConfigClient({
   const revoked = devices.filter((d) => d.revoked);
 
   return (
-    <div style={{ display: "grid", gap: 36 }}>
-      {/* ── 1 · registration code ─────────────────────────────────────── */}
-      <section>
-        <span className="text-muted" style={label}>Vincular una caja nueva</span>
-        <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: "0 0 14px", maxWidth: 560 }}>
-          Genera un código, ábrelo en la tablet en <b style={{ color: "var(--ink)" }}>/pos</b> y escríbelo.
-          Cada código sirve una sola vez y expira en 24 horas. La caja queda asociada a esta cuenta
-          hasta que la desvincules aquí.
-        </p>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", maxWidth: 560 }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <span className="text-muted" style={label}>Nombre sugerido (opcional)</span>
-            <input
-              value={draftLabel}
-              onChange={(e) => setDraftLabel(e.target.value)}
-              maxLength={60}
-              placeholder="Caja 2 · Barra · Domicilios"
-              style={formInput}
-              onKeyDown={(e) => e.key === "Enter" && !pending && generate()}
-            />
-          </div>
-          <button className="cmd-btn" type="button" onClick={generate} disabled={pending}>
-            {pending ? "Generando…" : "Generar código"}
-          </button>
+    <div className="flex flex-col gap-6">
+      {/* ── 1 · código de emparejamiento ── */}
+      <Card aria-labelledby="vincular">
+        <div>
+          <h2 id="vincular" className="ui-title m-0">
+            Emparejar una tablet o una caja
+          </h2>
+          <p className="ui-sub m-0 mt-1 leading-snug">
+            Genera un código y, en el dispositivo nuevo, abre <b className="text-text">/emparejar</b> y escríbelo. Cada código sirve una sola
+            vez y vence en 24 horas. El dispositivo queda en esta sede hasta que lo desvincules aquí; después cada persona entra con su ficha.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <Field
+            label="Nombre sugerido (opcional)"
+            className="flex-1"
+            value={draftLabel}
+            onChange={(e) => setDraftLabel(e.target.value)}
+            maxLength={60}
+            placeholder="Tablet barra · Caja 2"
+            onKeyDown={(e) => e.key === "Enter" && !pending && generate()}
+          />
+          <Button type="button" onClick={generate} loading={pending}>
+            Generar código
+          </Button>
         </div>
 
         {fresh ? (
-          <div
-            style={{
-              marginTop: 18,
-              border: "1.5px solid var(--ink)",
-              background: "var(--paper-lt)",
-              padding: "18px 22px",
-              maxWidth: 560,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="rounded-card bg-brand-soft px-5 py-4 flex flex-wrap items-center justify-between gap-4" data-testid="codigo-nuevo">
             <div>
-              <span className="text-muted" style={{ ...label, marginBottom: 4 }}>Código de registro</span>
-              <div
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 34,
-                  letterSpacing: "0.22em",
-                  color: "var(--ink)",
-                  lineHeight: 1.1,
-                }}
-              >
-                {fresh.code}
-              </div>
-              <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-                Válido por {untilTime(fresh.expiresAt)} · un solo uso
-              </div>
+              <span className="ui-label">Código</span>
+              <div className="font-mono text-[34px] tracking-[0.22em] leading-tight">{fresh.code}</div>
+              <p className="ui-sub m-0 text-[13px]">Vence en {untilTime(fresh.expiresAt)} · un solo uso · se escribe en /emparejar</p>
             </div>
-            <button className="cmd-btn ghost sm" type="button" onClick={copy}>
+            <Button type="button" variant="ghost" size="sm" onClick={copy}>
               {copied ? "Copiado ✓" : "Copiar"}
-            </button>
+            </Button>
           </div>
         ) : null}
 
         {codes.length > 0 ? (
-          <div style={{ marginTop: 22, maxWidth: 560 }}>
-            <span className="text-muted" style={label}>Códigos pendientes</span>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th className="text-muted" style={th}>Código</th>
-                  <th className="text-muted" style={th}>Nombre</th>
-                  <th className="text-muted" style={th}>Expira en</th>
-                  <th style={th} />
-                </tr>
-              </thead>
-              <tbody>
-                {codes.map((c) => (
-                  <tr key={c.id}>
-                    <td style={{ ...td, fontFamily: "var(--font-mono)", letterSpacing: "0.12em" }}>{c.code}</td>
-                    <td style={td} className={c.label ? undefined : "text-muted"}>{c.label ?? "—"}</td>
-                    <td style={td}>{untilTime(c.expiresAt)}</td>
-                    <td style={{ ...td, textAlign: "right" }}>
-                      <button className="cmd-link" type="button" onClick={() => cancel(c.id)} disabled={pending} style={{ fontSize: 11 }}>
-                        Anular
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-2">
+            <span className="ui-label">Códigos sin usar</span>
+            <ul className="m-0 p-0 list-none border border-line rounded-card overflow-hidden">
+              {codes.map((c) => (
+                <li key={c.id} className="flex items-center gap-3 min-h-14 px-4 border-b border-line last:border-b-0">
+                  <span className="font-mono tracking-[0.12em] text-[16px]">{c.code}</span>
+                  <span className={c.label ? "flex-1 min-w-0 truncate" : "flex-1 text-muted"}>{c.label ?? "—"}</span>
+                  <span className="ui-sub text-[13px] whitespace-nowrap">vence en {untilTime(c.expiresAt)}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => cancel(c.id)} disabled={pending}>
+                    Anular
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
-      </section>
+      </Card>
 
-      {/* ── 2 · paired devices ────────────────────────────────────────── */}
-      <section>
-        <span className="text-muted" style={label}>
-          Cajas vinculadas · {active.length}
-        </span>
+      {/* ── 2 · dispositivos emparejados ── */}
+      <section aria-labelledby="emparejados" className="flex flex-col gap-2.5">
+        <h2 id="emparejados" className="ui-h2 m-0">
+          Emparejados · {active.length}
+        </h2>
         {active.length === 0 ? (
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
-            Aún no hay cajas vinculadas. Genera un código arriba para registrar la primera.
-          </p>
+          <EmptyState title="Ningún dispositivo emparejado" text="Genera un código arriba para emparejar la tablet o la caja." />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th className="text-muted" style={th}>Caja</th>
-                <th className="text-muted" style={th}>Sede</th>
-                <th className="text-muted" style={th}>Última actividad</th>
-                <th className="text-muted" style={th}>Registrada</th>
-                <th style={th} />
-              </tr>
-            </thead>
-            <tbody>
-              {active.map((d) => (
-                <tr key={d.id}>
-                  <td style={td}>
-                    <input
-                      defaultValue={d.name}
-                      maxLength={60}
-                      aria-label="Nombre de la caja"
-                      onBlur={(e) => rename(d.id, e.target.value, d.name)}
-                      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                      style={{ fontSize: 13, border: "none", background: "transparent", outline: "none", color: "var(--ink)", width: "100%", padding: 0 }}
-                    />
-                  </td>
-                  <td style={td} className={d.sede ? undefined : "text-muted"}>{d.sede ?? "—"}</td>
-                  <td style={td}>{relTime(d.lastSeenAt)}</td>
-                  <td style={td} className="text-muted">{new Date(d.registeredAt).toLocaleDateString("es-CO", { day: "2-digit", month: "short" })}</td>
-                  <td style={{ ...td, textAlign: "right" }}>
-                    <button className="cmd-link" type="button" onClick={() => unlink(d)} disabled={pending} style={{ fontSize: 11, color: "var(--red)" }}>
-                      Desvincular
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="m-0 p-0 list-none bg-surface border border-line rounded-card overflow-hidden">
+            {active.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-line last:border-b-0">
+                <input
+                  defaultValue={d.name}
+                  maxLength={60}
+                  aria-label="Nombre del dispositivo"
+                  onBlur={(e) => rename(d.id, e.target.value, d.name)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                  className="flex-1 min-w-[160px] h-11 bg-transparent border-0 rounded-btn px-2 -mx-2 text-[17px] font-semibold text-text hover:bg-surface-2 focus:bg-surface-2"
+                />
+                <Pill>{d.sede ?? "sin sede"}</Pill>
+                <span className="ui-sub text-[13px] basis-full sm:basis-auto">
+                  activo {relTime(d.lastSeenAt)} · desde {fechaCorta(d.registeredAt.slice(0, 10))}
+                </span>
+                <Button type="button" variant="ghost" size="sm" className="text-late" onClick={() => unlink(d)} disabled={pending}>
+                  Desvincular
+                </Button>
+              </li>
+            ))}
+          </ul>
         )}
-
         {revoked.length > 0 ? (
-          <p className="text-muted" style={{ fontSize: 11, marginTop: 12 }}>
-            {revoked.length} caja{revoked.length === 1 ? "" : "s"} desvinculada{revoked.length === 1 ? "" : "s"}:{" "}
-            {revoked.map((d) => d.name).join(", ")}.
+          <p className="ui-sub m-0 text-[13px]">
+            {revoked.length} desvinculado{revoked.length === 1 ? "" : "s"}: {revoked.map((d) => d.name).join(", ")}.
           </p>
         ) : null}
       </section>
 
-      {/* ── 3 · desktop app on the register PC ────────────────────────── */}
+      {/* ── 3 · app de escritorio en el PC de la caja ── */}
       <InstallSection />
 
       {error ? (
-        <p role="alert" style={{ color: "var(--red)", fontSize: 12, margin: 0 }}>
+        <p role="alert" className="m-0 text-late font-semibold">
           {error}
         </p>
       ) : null}
     </div>
   );
 }
-
-const code: React.CSSProperties = {
-  display: "block",
-  fontSize: 11.5,
-  lineHeight: 1.6,
-  padding: "10px 12px",
-  border: "1px solid var(--rule)",
-  background: "var(--paper)",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-all",
-  margin: "8px 0 0",
-};
 
 /**
  * How to run the POS as a desktop app on the register PC. The install button
@@ -357,54 +259,41 @@ function InstallSection() {
   const bat = origin ? startupBatch(browser, origin) : "";
 
   return (
-    <section>
-      <span className="text-muted" style={label}>
-        App de escritorio · PC de la caja
-      </span>
-      <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: "0 0 14px", maxWidth: 560 }}>
-        En el PC de la caja, abre <b style={{ color: "var(--ink)" }}>{origin ? `${origin}/pos` : "/pos"}</b> en{" "}
-        <b style={{ color: "var(--ink)" }}>Edge o Chrome</b> y toca <b style={{ color: "var(--ink)" }}>instalar</b> en la
-        barra superior. Queda como app propia (icono en el escritorio, sin barra de direcciones). El chip{" "}
-        <b style={{ color: "var(--ink)" }}>pantalla completa</b> la pone a pantalla completa; Esc o F11 salen.
-      </p>
-
-      <div style={{ border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: "18px 22px", maxWidth: 560 }}>
-        <span className="text-muted" style={{ ...label, marginBottom: 6 }}>
-          Iniciar con Windows, a pantalla completa
-        </span>
-        <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: "0 0 10px" }}>
-          Guarda este comando como <b style={{ color: "var(--ink)" }}>{STARTUP_FILE}</b> en la carpeta de inicio (Win+R →{" "}
-          <b style={{ color: "var(--ink)" }}>shell:startup</b>). Al encender el PC se abre el POS solo, ya a pantalla completa.
-        </p>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {(["edge", "chrome"] as DesktopBrowser[]).map((b) => (
-            <button
-              key={b}
-              type="button"
-              className={`cmd-btn ghost sm${browser === b ? " active" : ""}`}
-              aria-pressed={browser === b}
-              onClick={() => setBrowser(b)}
-              style={browser === b ? { background: "var(--ink)", color: "var(--paper-lt)" } : undefined}
-            >
-              {BROWSER_LABEL[b]}
-            </button>
-          ))}
-        </div>
-        <code style={code}>{bat || "…"}</code>
-        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <button type="button" className="cmd-btn sm" onClick={() => copyText("bat", bat)} disabled={!bat}>
-            {copied === "bat" ? "Copiado ✓" : `Copiar ${STARTUP_FILE}`}
-          </button>
-          <button type="button" className="cmd-btn ghost sm" onClick={() => copyText("cmd", cmd)} disabled={!cmd}>
-            {copied === "cmd" ? "Copiado ✓" : "Copiar solo el comando"}
-          </button>
-        </div>
-        <p className="text-muted" style={{ fontSize: 11, lineHeight: 1.5, margin: "12px 0 0" }}>
-          Carpeta de inicio: <span style={{ color: "var(--ink)" }}>{STARTUP_FOLDER}</span>. Alternativa sin pantalla
-          completa: en <b style={{ color: "var(--ink)" }}>edge://apps</b> (o chrome://apps), menú de la app →{" "}
-          <b style={{ color: "var(--ink)" }}>Iniciar al abrir sesión</b>.
+    <Card aria-labelledby="escritorio">
+      <div>
+        <h2 id="escritorio" className="ui-title m-0">
+          App de escritorio en el PC de la caja
+        </h2>
+        <p className="ui-sub m-0 mt-1 leading-snug">
+          En el PC de la caja abre <b className="text-text">{origin ? `${origin}/pos` : "/pos"}</b> en Edge o Chrome y toca{" "}
+          <b className="text-text">instalar</b> en la barra de direcciones. Queda como app propia, sin barra de direcciones.
         </p>
       </div>
-    </section>
+      <div className="flex flex-col gap-2">
+        <span className="ui-label">Iniciar con Windows, a pantalla completa</span>
+        <p className="ui-sub m-0 text-[14px] leading-snug">
+          Guarda este comando como <b className="text-text">{STARTUP_FILE}</b> en la carpeta de inicio (Win+R →{" "}
+          <b className="text-text">shell:startup</b>). Al encender el PC se abre el POS solo.
+        </p>
+        <Segmented<DesktopBrowser>
+          label="Navegador"
+          value={browser}
+          onChange={setBrowser}
+          options={(["edge", "chrome"] as DesktopBrowser[]).map((b) => ({ value: b, label: BROWSER_LABEL[b] }))}
+        />
+        <code className="block font-mono text-[12.5px] leading-relaxed px-3 py-2.5 rounded-btn bg-surface-2 whitespace-pre-wrap break-all">{bat || "…"}</code>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="strong" onClick={() => copyText("bat", bat)} disabled={!bat}>
+            {copied === "bat" ? "Copiado ✓" : `Copiar ${STARTUP_FILE}`}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => copyText("cmd", cmd)} disabled={!cmd}>
+            {copied === "cmd" ? "Copiado ✓" : "Copiar sólo el comando"}
+          </Button>
+        </div>
+        <p className="ui-sub m-0 text-[13px]">
+          Carpeta de inicio: <span className="text-text">{STARTUP_FOLDER}</span>.
+        </p>
+      </div>
+    </Card>
   );
 }

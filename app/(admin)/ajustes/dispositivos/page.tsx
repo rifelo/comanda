@@ -1,13 +1,14 @@
 import { requireAdmin } from "@/lib/auth";
 import { formatCode } from "@/lib/pos/devices";
-import { TurnosHeader } from "@/app/(admin)/_components/turnos-header";
+import { PageHeader } from "@/components/ui";
 import { PosConfigClient, type PosCodeRow, type PosDeviceRow } from "./_components/pos-config-client";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Dispositivos · Ajustes · Comanda" };
 
 /**
- * Configuración → Punto de venta: generate registration codes and manage the
- * tablets paired to this organization. Codes are single-use and expire after
+ * Ajustes → Dispositivos (ex /configuracion/pos): generate pairing codes
+ * (entered at /emparejar on the device) and manage the paired tablets/registers. Codes are single-use and expire after
  * 24h; the device list shows the last time each terminal touched /pos.
  */
 export default async function ConfigPosPage() {
@@ -49,9 +50,9 @@ export default async function ConfigPosPage() {
   }));
 
   return (
-    <div>
-      <TurnosHeader kicker="CONFIGURACIÓN · DISPOSITIVOS" title="Punto de venta" />
-      <div style={{ padding: "24px 32px", maxWidth: 880 }}>
+    <div className="mx-auto w-full max-w-[880px] pb-12">
+      <PageHeader title="Dispositivos" sub="La tablet del turno y la caja de esta sede" back="/ajustes" />
+      <div className="px-4 sm:px-7">
         <PosConfigClient devices={deviceRows} codes={codeRows} />
       </div>
     </div>

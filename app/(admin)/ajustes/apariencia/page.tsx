@@ -1,38 +1,30 @@
 import { requireAdmin } from "@/lib/auth";
-import { getActiveSede } from "@/lib/data/sede";
-import type { ThemeName } from "@/lib/types";
-import { TurnosHeader } from "@/app/(admin)/_components/turnos-header";
-import { ThemePicker } from "./_components/theme-picker";
+import { Card, PageHeader } from "@/components/ui";
+import { Tema } from "./_components/tema";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Apariencia · Ajustes · Comanda" };
 
-export default async function ConfigPreferenciasPage() {
-  const [, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
-  const active: ThemeName = sede?.theme ?? "papel";
-
+/**
+ * Ajustes → Apariencia (ex /configuracion/preferencias): Claro / Oscuro /
+ * Automático for this device (cookie `comanda-theme`, lib/theme.ts). The
+ * five paper themes are gone; old values map to claro/oscuro.
+ */
+export default async function AparienciaPage() {
+  await requireAdmin();
   return (
-    <div>
-      <TurnosHeader kicker="CONFIGURACIÓN · APARIENCIA" title="Preferencias" />
-      <div style={{ padding: "24px 32px", maxWidth: 640 }}>
-        <div
-          className="text-muted"
-          style={{
-            fontSize: 9,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            marginBottom: 8,
-            display: "block",
-          }}
-        >
-          Tema de la plataforma
-        </div>
-        <ThemePicker activeTheme={active} />
-        <div
-          className="text-muted"
-          style={{ fontSize: 10, marginTop: 14, letterSpacing: "0.04em" }}
-        >
-          El tema se aplica a toda la plataforma de inmediato.
-        </div>
+    <div className="mx-auto w-full max-w-[720px] pb-12">
+      <PageHeader title="Apariencia" back="/ajustes" />
+      <div className="px-4 sm:px-7">
+        <Card>
+          <div>
+            <h2 className="ui-title m-0">Tema de la app</h2>
+            <p className="ui-sub m-0 mt-1">
+              Automático sigue el modo del teléfono o la tablet. Se guarda en este dispositivo; cada tablet o teléfono puede tener el suyo.
+            </p>
+          </div>
+          <Tema />
+        </Card>
       </div>
     </div>
   );
