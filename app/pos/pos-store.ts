@@ -117,6 +117,12 @@ export interface PosState {
   orderNo: string;
   /** Set once on mount so imperative actions can read the catalog. */
   catalog: PosCatalog;
+  /**
+   * Person signed in on this register (single login), seeded from the page.
+   * Their id rides on every order as `creadoPor`, so a sale queued offline
+   * keeps its author even if the session is gone when it lands.
+   */
+  person: PosSessionPerson | null;
 
   // ── Square-style screen state ──
   /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
@@ -203,6 +209,9 @@ export interface PosState {
   fraseError: string | null;
 }
 
+/** The person in session on the register (see `PosState.person`). */
+export type PosSessionPerson = { id: string; name: string; role: "admin" | "staff" };
+
 export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
 export const PAY_METHODS: { id: PayMethod; label: string; hint: string }[] = [
   { id: "efectivo", label: "Efectivo", hint: "Calcula el cambio" },
@@ -232,6 +241,7 @@ export const POS_INITIAL: PosState = {
   sent: false,
   orderNo: "Nuevo",
   catalog: EMPTY_CATALOG,
+  person: null,
   view: "sale",
   barista: null,
   baristaPicker: false,
@@ -758,6 +768,8 @@ export interface OutboxItem {
     customerNames?: string[];
     note?: string;
     baristaId?: string;
+    /** Person in session at confirm time (PosState.person). */
+    creadoPor?: string;
   };
   payment?: { method: PayMethodId; tendered: number | null };
   /** What the labels and the receipt need, frozen at confirm time. */
@@ -1152,6 +1164,7 @@ export async function completeSale() {
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
     baristaId: s.barista?.id,
+    creadoPor: s.person?.id,
   };
   const payment = { method: s.payMethod, tendered };
 
@@ -1253,6 +1266,7 @@ export async function savePending() {
         customerNames: s.people.length ? s.people : undefined,
         note: s.note.trim() || undefined,
         baristaId: s.barista?.id,
+        creadoPor: s.person?.id,
       },
       snapshot: { order: s.order, people: s.people, customerName: s.customerName, total, change: 0 },
     };
@@ -1293,6 +1307,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     customerName: s.customerName.trim() || undefined,
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
+    creadoPor: s.person?.id,
   }));
   if (!res.ok) {
     posStore.set({ sending: false, sendError: res.error });
