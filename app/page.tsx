@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { landingFor, requireUser } from "@/lib/auth";
+import { getPosDeviceFromCookie } from "@/lib/pos/devices";
 
 /**
- * Landing route — bounce to the right home depending on role: the panel
- * for an admin, the staff home (turnos · punto de venta) for the team.
- * Middleware already enforces an authenticated session here.
+ * Landing route (and the PWA's start_url / Google's callback). The proxy
+ * already enforces a session here. A paired device always opens the shift
+ * app — the owner too; otherwise the owner gets the panel and the team the
+ * shift app (`landingFor`).
  */
 export default async function Index() {
-  const { profile } = await requireUser();
-  if (profile.role === "admin") redirect("/hoy");
-  redirect("/home");
+  const [{ profile }, device] = await Promise.all([requireUser(), getPosDeviceFromCookie()]);
+  redirect(landingFor(profile.role === "admin" ? "admin" : "staff", !!device));
 }

@@ -1,0 +1,188 @@
+/*
+ * Single login (/login) + pairing (/emparejar). Minimal styles from the
+ * «Entrar» board until F1's components/ui land (P1/P2 may replace them).
+ * Every colour goes through the PLAN 5.1 tokens with the light value as a
+ * fallback, so this renders right before and after F1's globals.css.
+ */
+.lg-app {
+  --lg-bg: var(--bg, #f5f5f4);
+  --lg-surface: var(--surface, #ffffff);
+  --lg-surface-2: var(--surface-2, #f0f0ef);
+  --lg-line: var(--line, #e4e4e2);
+  --lg-text: var(--text, #171717);
+  --lg-muted: var(--muted, #666666);
+  --lg-brand: var(--brand, #f1a900);
+  --lg-on-brand: var(--on-brand, #171717);
+  --lg-brand-soft: var(--brand-soft, #fdf3d6);
+  --lg-late: var(--late, #c0392b);
+  --lg-late-soft: var(--late-soft, #fbeae8);
+  --lg-focus: var(--focus, #171717);
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  background: var(--lg-bg);
+  color: var(--lg-text);
+  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+.lg-app *,
+.lg-app *::before,
+.lg-app *::after { box-sizing: border-box; }
+.lg-app :focus-visible { outline: 3px solid var(--lg-focus); outline-offset: 2px; }
+.lg-app h1, .lg-app p { margin: 0; }
+
+.lg-card {
+  width: 100%;
+  max-width: 600px;
+  background: var(--lg-surface);
+  border: 1px solid var(--lg-line);
+  border-radius: 16px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+@media (min-width: 640px) {
+  .lg-card { padding: 36px; gap: 22px; }
+}
+.lg-card.narrow { max-width: 440px; }
+
+.lg-head { display: flex; align-items: center; gap: 14px; }
+.lg-logo { width: 48px; height: 48px; display: block; flex-shrink: 0; }
+.lg-grow { flex: 1; min-width: 0; }
+.lg-h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.lg-sub { font-size: 15px; color: var(--lg-muted); }
+.lg-clock { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lg-label { font-size: 13px; font-weight: 600; color: var(--lg-muted); }
+.lg-muted { color: var(--lg-muted); }
+.lg-small { font-size: 14px; }
+
+.lg-people { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 520px) {
+  .lg-people { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.lg-person {
+  min-width: 0;
+  height: 120px;
+  border-radius: 14px;
+  border: 1px solid var(--lg-line);
+  background: var(--lg-surface);
+  color: var(--lg-text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0 8px;
+}
+.lg-person[aria-pressed="true"] { border: 2px solid var(--lg-brand); background: var(--lg-brand-soft); }
+.lg-person > .lg-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--lg-surface-2);
+  color: var(--lg-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.lg-fieldset { display: flex; flex-direction: column; gap: 8px; }
+.lg-field {
+  height: 56px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--lg-line);
+  background: var(--lg-surface);
+  color: var(--lg-text);
+  font-family: inherit;
+  font-size: 17px;
+  padding: 0 16px;
+}
+.lg-field[aria-invalid="true"] { border-color: var(--lg-late); }
+.lg-field.code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 28px;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-transform: uppercase;
+  height: 72px;
+}
+
+.lg-btn {
+  height: 56px;
+  min-height: 44px;
+  padding: 0 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--lg-brand);
+  color: var(--lg-on-brand);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+}
+.lg-btn.lg { height: 72px; font-size: 20px; border-radius: 14px; }
+.lg-btn.ghost { background: var(--lg-surface); color: var(--lg-text); border: 1px solid var(--lg-line); }
+.lg-btn.sm { height: 44px; font-size: 15px; padding: 0 16px; width: auto; }
+.lg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.lg-link {
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 44px;
+  color: var(--lg-text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.lg-sep { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; color: var(--lg-muted); }
+.lg-sep::before,
+.lg-sep::after { content: ""; flex: 1; border-top: 1px solid var(--lg-line); }
+
+.lg-alert {
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--lg-late-soft);
+  color: var(--lg-late);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.lg-note {
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--lg-surface-2);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.lg-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }

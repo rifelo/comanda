@@ -1,9 +1,8 @@
-import { loadTurnoGate } from "@/lib/turno/server";
+import { redirect } from "next/navigation";
+import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
 import { todayInTz } from "@/lib/utils";
 import { lastConteoAt, listConteos } from "@/lib/inventario/conteos";
 import type { InventarioConteo } from "@/lib/types";
-import { TurnoLogin } from "../_components/turno-login";
-import { TurnoUnpaired } from "../unpaired";
 import { ConteoScreen, type ConteoIngrediente } from "./conteo-screen";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +18,7 @@ export const metadata = { title: "Conteo de inventario · co-manda" };
  */
 export default async function ConteoPage() {
   const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired next="/turno/conteo" />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
+  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/conteo"));
   const { ctx } = gate;
   const { admin, organizationId } = ctx;
   const [{ data: ings }, { data: cats }, lastCompleto, recent] = await Promise.all([

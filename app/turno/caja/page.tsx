@@ -1,8 +1,7 @@
-import { loadTurnoGate } from "@/lib/turno/server";
+import { redirect } from "next/navigation";
+import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
 import { todayInTz } from "@/lib/utils";
 import { loadCajaEstado } from "@/lib/caja/estado";
-import { TurnoLogin } from "../_components/turno-login";
-import { TurnoUnpaired } from "../unpaired";
 import { CajaApp } from "./_components/caja-app";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +16,7 @@ export const metadata = { title: "Caja · co-manda" };
  */
 export default async function CajaPage() {
   const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired next="/turno/caja" />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
+  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/caja"));
   const { ctx } = gate;
   const estado = await loadCajaEstado(ctx.admin, { orgId: ctx.organizationId, restaurantId: ctx.restaurantId, tz: ctx.sede.tz, today: todayInTz(ctx.sede.tz) });
   return <CajaApp estado={estado} sedeName={ctx.sede.name} tz={ctx.sede.tz} actor={{ name: ctx.actor.fullName, isAdmin: ctx.actor.role === "admin" && !ctx.actor.viaDevice }} />;

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requirePosContext, requirePosAuth, type PosAuth } from "@/lib/pos/server";
+import { parseCreadoPor, pickBarista, pickCreatedBy, resolvePersonInOrg } from "@/lib/auth-person";
 import { registrarEnlaces } from "@/lib/calificaciones/calificaciones-db";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
@@ -49,6 +50,12 @@ const CrearOrdenSchema = z.object({
   baristaId: z.string().uuid().optional(),
   /** When the cashier confirmed it (ms) — an order queued offline keeps its real time. */
   createdAt: z.number().int().positive().optional(),
+  /**
+   * Person in session when the sale was confirmed. Only used when the device
+   * has nobody in session by the time it lands (offline replay), and only if
+   * they are a member of the device's org — see `orderAttribution`.
+   */
+  creadoPor: z.string().uuid().optional(),
 });
 
 /** The confirm time of a queued order, if believable (last 3 days, not in the future); else now. */
@@ -82,9 +89,23 @@ function settleTender(
   return { ok: true, tendered, change: tendered !== null ? tendered - total : 0 };
 }
 
-/** Profile behind the sale for the movement log (null for a paired device). */
+/** Profile behind the sale for the movement log: the account, or the person on the paired device. */
 function actorId(ctx: Pick<PosAuth, "actor">): string | null {
-  return ctx.actor.kind === "user" ? ctx.actor.profileId : null;
+  return ctx.actor.kind === "user" ? ctx.actor.profileId : (ctx.actor.person?.profileId ?? null);
+}
+
+/**
+ * `created_by` + `barista_id` of a new order. The org-membership lookup for
+ * `creadoPor` runs only when it can matter: a paired device with nobody in
+ * session (an offline sale replayed after the session expired).
+ */
+async function orderAttribution(ctx: PosCtx, data: OrdenBase): Promise<{ created_by: string | null; barista_id: string | null }> {
+  const { actor } = ctx;
+  const creadoPor = parseCreadoPor(data.creadoPor);
+  const needsCheck = actor.kind === "device" && !actor.person && !!creadoPor;
+  const isMember = needsCheck ? !!(await resolvePersonInOrg(ctx.supabase, creadoPor!, ctx.organizationId)) : false;
+  const created_by = pickCreatedBy(actor, creadoPor, isMember);
+  return { created_by, barista_id: pickBarista(data.baristaId, created_by, ctx.catalog.equipo) };
 }
 
 type OrdenHeader = {
@@ -120,6 +141,7 @@ async function insertOrden(
   };
   const prior = await findByRef();
   if (prior) return prior;
+  const who = await orderAttribution(ctx, data);
 
   // Atomic per-org folio.
   const { data: seq, error: seqErr } = await supabase.rpc("next_orden_folio", {
@@ -144,10 +166,10 @@ async function insertOrden(
       notes: data.note || null,
       customer_name: data.customerName || null,
       customer_names: data.customerNames ?? [],
-      created_by: actor.kind === "user" ? actor.profileId : null,
+      created_by: who.created_by,
       pos_device_id: actor.kind === "device" ? actor.device.id : null,
       client_ref: data.clientRef ?? null,
-      barista_id: data.baristaId && ctx.catalog.equipo.some((b) => b.id === data.baristaId) ? data.baristaId : null,
+      barista_id: who.barista_id,
       created_at: orderTime(data.createdAt),
       ...header,
     })

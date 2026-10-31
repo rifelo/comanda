@@ -1,9 +1,8 @@
-import { loadTurnoGate } from "@/lib/turno/server";
+import { redirect } from "next/navigation";
+import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
 import { fechaCorta, todayInTz } from "@/lib/utils";
 import { listCompras } from "@/lib/compras/compras-db";
 import { nombrePaquete, piezaDe } from "@/lib/inventario/niveles";
-import { TurnoLogin } from "../../_components/turno-login";
-import { TurnoUnpaired } from "../../unpaired";
 import { RecibirScreen } from "./recibir-screen";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +16,7 @@ export const metadata = { title: "Pedidos por llegar · co-manda" };
  */
 export default async function RecibirPage() {
   const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired next="/turno/inventario/recibir" />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
+  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/inventario/recibir"));
   const { ctx } = gate;
   const today = todayInTz(ctx.sede.tz);
   const pedidos = await listCompras(ctx.admin, ctx.organizationId, ["pedido"]);

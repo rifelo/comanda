@@ -124,6 +124,25 @@ const adminApi = {
     return ok({ user: { id, email, user_metadata: meta, app_metadata: {} } });
   },
 
+  /**
+   * Like supabase `auth.admin.getUserById`: the account's email plus, in
+   * `app_metadata.providers`, how it can sign in ("email" = has a password,
+   * "google"), so the single login can tell a Google-only account apart.
+   */
+  async getUserById(id: string) {
+    const rows = (await neonSql().query(
+      `select u.id::text, coalesce(b.email, u.email) email, u.raw_user_meta_data meta,
+              coalesce((select array_agg(distinct case a."providerId" when 'credential' then 'email' else a."providerId" end)
+                        from ba_account a where a."userId" = u.id::text), '{}') providers
+         from auth.users u left join ba_user b on b.id = u.id::text
+        where u.id::text = $1`,
+      [id],
+    )) as { id: string; email: string; meta: Record<string, unknown> | null; providers: string[] }[];
+    const r = rows[0];
+    if (!r) return { data: { user: null }, error: { message: "User not found", code: "user_not_found", name: "AuthApiError", status: 404 } };
+    return ok({ user: { id: r.id, email: r.email, user_metadata: r.meta ?? {}, app_metadata: { providers: r.providers } } });
+  },
+
   /** No invite mail on Neon yet: the account is created and the person signs in with Google. */
   async inviteUserByEmail(email: string, opts?: { data?: Record<string, unknown> }) {
     return adminApi.createUser({ email, email_confirm: true, user_metadata: opts?.data });

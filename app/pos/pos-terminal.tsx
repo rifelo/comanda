@@ -136,6 +136,7 @@ import {
   type ModSelection,
   type SuggestionCardState,
   type PayMethod,
+  type PosSessionPerson,
 } from "./pos-store";
 import { timeAgo, bogotaDay, shiftDay, dayLabel, bogotaTime, rebuildPeople } from "@/lib/pos/pending";
 import type { PosOrder, OrdersTab } from "@/lib/pos/types";
@@ -390,6 +391,7 @@ export function PosTerminal({
   station = "Caja 01",
   mode = "user",
   organizationId,
+  person = null,
 }: {
   catalog: PosCatalog;
   /** Scopes the live channel the stations of one business share. */
@@ -398,7 +400,16 @@ export function PosTerminal({
   station?: string;
   /** `device` = paired tablet (no account); `user` = signed-in org member. */
   mode?: "device" | "user";
+  /** Person signed in on this register (single login); seeded into the store for `creadoPor`. */
+  person?: PosSessionPerson | null;
 }) {
+  // F2: seed only — the person chip / «Cambiar persona» UI belongs to P2.
+  const personId = person?.id ?? null;
+  const personName = person?.name ?? "";
+  const personRole = person?.role ?? "staff";
+  React.useEffect(() => {
+    posStore.set({ person: personId ? { id: personId, name: personName, role: personRole } : null });
+  }, [personId, personName, personRole]);
   // Seed the store's catalog once so imperative actions can read it. When
   // Favoritos would be empty (no stars and nothing sold yet), start on the
   // first real category instead.
