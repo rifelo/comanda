@@ -90,11 +90,13 @@ export function InventarioScreen({
         )}
       </div>
 
-      <div className="sm:hidden fixed left-4 right-4 bottom-[calc(var(--h-tabs)+env(safe-area-inset-bottom)+12px)] z-20">
-        <Button block icon={<Plus size={20} aria-hidden />} onClick={() => setEditar("nuevo")}>
-          Nuevo insumo
-        </Button>
-      </div>
+      {vista === "existencias" ? (
+        <div className="sm:hidden fixed left-4 right-4 bottom-[calc(var(--h-tabs)+env(safe-area-inset-bottom)+12px)] z-20">
+          <Button block icon={<Plus size={20} aria-hidden />} onClick={() => setEditar("nuevo")}>
+            Nuevo insumo
+          </Button>
+        </div>
+      ) : null}
 
       {item ? (
         <CorregirSheet

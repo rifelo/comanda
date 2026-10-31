@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getIngredientesView } from "@/lib/db/ingredients";
 import { ImportarFacturaClient } from "./importar-factura-client";
 
-export const metadata: Metadata = { title: "Importar factura · comanda" };
+export const metadata: Metadata = { title: "Importar factura · Comanda" };
 
 /**
  * Importar factura → inventario. Upload a purchase-invoice photo; Claude reads

@@ -41,7 +41,7 @@ export interface PedidoView {
 }
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--muted)" };
-const input: React.CSSProperties = { height: 40, padding: "0 10px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 14, outline: "none", minWidth: 0 };
+const input: React.CSSProperties = { height: 40, padding: "0 10px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontSize: 16, outline: "none", minWidth: 0 };
 const MOTIVO: Record<Motivo, string> = { nivel: "nivel", faltante: "reportado", solicitud: "lo pidió el equipo" };
 const trim = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
 const cuando = (g: GrupoView) => (g.proveedor === null ? "sin proveedor asignado" : g.faltan === null ? "sin días fijos" : g.faltan === 0 ? "hoy toca pedir" : g.faltan === 1 ? "toca mañana" : `toca en ${g.faltan} días`);

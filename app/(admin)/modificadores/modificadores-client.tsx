@@ -5,11 +5,11 @@
  * group, toggle "required", add/remove options, and toggle an option's
  * availability. Each option carries a price delta.
  */
+import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { fmtCOP } from "@/lib/mock/productos";
 import { summarizeGroup, type ModGroup, type ModGroupType } from "@/lib/modificadores";
-import { SectionCrumb } from "../_components/shared";
 import {
   createGroup,
   deleteGroup,
@@ -170,7 +170,7 @@ export function ModificadoresClient({ groups }: { groups: ModGroup[] }) {
   const [error, setError] = React.useState<string | null>(null);
   return (
     <div>
-      <SectionCrumb section="modificadores" />
+      <PageHeader back="/productos" title="Modificadores" sub="Opciones que el POS pregunta (base en agua o en leche…). Se aplican a cada producto desde su ficha." />
       <div style={{ padding: "20px 28px" }}>
         <NuevoGrupo onError={setError} />
         {error ? (

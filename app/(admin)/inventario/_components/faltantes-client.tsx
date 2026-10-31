@@ -60,7 +60,7 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
   const enLista = Object.values(prio).filter((p) => p > 0).length;
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
       <section style={{ minWidth: 0 }}>
         <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>
           Faltantes abiertos {abiertos.length > 0 && <span style={{ color: "var(--red)" }}>· {abiertos.length}</span>}

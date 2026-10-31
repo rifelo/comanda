@@ -9,7 +9,7 @@ import { ConteosCard } from "@/components/inventario/conteos-card";
 import { FaltantesCard } from "@/components/inventario/faltantes-card";
 import { NotificacionesClient } from "./notificaciones-client";
 
-export const metadata = { title: "Operación · Notificaciones · co-manda" };
+export const metadata = { title: "Alertas de stock · Comanda" };
 export const dynamic = "force-dynamic";
 
 export default async function NotificacionesPage() {
@@ -43,7 +43,7 @@ export default async function NotificacionesPage() {
         <span key="n" className="text-muted" style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase" }}>
           Reportado por el equipo · {faltantes.length}
         </span>
-        <Link key="link" href="/inventario/faltantes" className="cmd-link" style={{ fontSize: 11 }}>Lista prioritaria e historial →</Link>
+        <Link key="link" href="/inventario?vista=acabando" className="cmd-link" style={{ fontSize: 11 }}>Lista prioritaria e historial →</Link>
       </div>
       <FaltantesCard key="card" items={faltantes} tz={tz} showLink={false} />
     </section>

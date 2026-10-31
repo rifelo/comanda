@@ -28,7 +28,7 @@ const CSS = `
   --pp-row: color-mix(in srgb, #fffdf7 70%, var(--paper-lt));
   --pp-row-agot: color-mix(in srgb, var(--pp-agot) 16%, var(--paper-lt));
   --pp-camino: color-mix(in srgb, #502b1c 9%, var(--paper-lt));
-  background: var(--paper-lt); color: var(--ink); font-family: var(--font-mono), ui-monospace, monospace; display: flex; flex-direction: column; }
+  background: var(--bg); color: var(--text); font-family: var(--font-sans); display: flex; flex-direction: column; }
 .pp button { font-family: inherit; color: inherit; cursor: pointer; }
 .pp button:focus-visible { outline: 3px solid var(--pp-poco); outline-offset: 2px; }
 .pp-head { padding: 18px 16px 16px; background: var(--paper); border-bottom: 1.5px solid var(--ink); display: flex; flex-direction: column; gap: 12px; }
@@ -272,7 +272,7 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
 
         {camino.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }} aria-label="En camino">
-            <h2 className="font-slab" style={{ margin: 0, display: "flex", alignItems: "baseline", gap: 8, fontWeight: 400, fontSize: 18 }}>En camino <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted)" }}>{camino.length}</span></h2>
+            <h2 className="ui-h2" style={{ margin: 0, display: "flex", alignItems: "baseline", gap: 8 }}>En camino <span style={{ fontSize: 12, color: "var(--muted)" }}>{camino.length}</span></h2>
             {camino.map((c) => (
               <div key={c.id} className="pp-camino">
                 <Camion />

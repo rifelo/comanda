@@ -5,11 +5,11 @@
  * threshold (stock_min). Admins set the threshold inline; a threshold of 0
  * disables the low-stock alert for that item.
  */
+import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { AlertasView, AlertaRow } from "@/lib/notificaciones";
 import type { StockLevel } from "@/lib/cost";
-import { SectionCrumb } from "../_components/shared";
 import { updateStockMin } from "./actions";
 
 const GRID = "1.6fr 1fr 110px 120px 140px";
@@ -119,9 +119,11 @@ export function NotificacionesClient({ view, reportados }: { view: AlertasView; 
 
   return (
     <div>
-      <SectionCrumb
-        section="notificaciones"
-        right={
+      <PageHeader
+        back="/inventario"
+        title="Alertas de stock"
+        sub="Lo que está bajo su mínimo y lo que reportó el equipo. Lo urgente ya aparece en Inventario → Por revisar."
+        actions={
           <button
             type="button"
             className={onlyAlerts ? "cmd-btn sm" : "cmd-btn ghost sm"}

@@ -2,11 +2,12 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { getIngredientesView } from "@/lib/db/ingredients";
 import { countPropuestasPendientes, listConteos } from "@/lib/inventario/conteos";
-import { TurnosHeader } from "../../_components/turnos-header";
+import { buttonClass } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/top-bar";
 import { ConteosClient } from "./conteos-client";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Operación · Conteos · co-manda" };
+export const metadata = { title: "Conteos · Comanda" };
 
 export default async function ConteosPage() {
   const { profile, supabase } = await requireAdmin();
@@ -17,10 +18,7 @@ export default async function ConteosPage() {
   ]);
   return (
     <div>
-      <TurnosHeader kicker="OPERACIÓN · INVENTARIO" title="Conteos del equipo">
-        <Link href="/inventario" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Inventario</Link>
-        <Link href="/turno/conteo" className="cmd-btn sm" style={{ textDecoration: "none" }}>Contar ahora →</Link>
-      </TurnosHeader>
+      <PageHeader back="/inventario" title="Conteos del equipo" sub="Al aprobar un conteo, sus diferencias ajustan el inventario." actions={<Link href="/turno/conteo" className={buttonClass({ variant: "ghost", size: "sm" })}>Contar ahora</Link>} />
       <ConteosClient conteos={conteos} propuestas={propuestas} ingredientes={view.ingredientes} categorias={view.categorias} />
     </div>
   );

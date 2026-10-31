@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { TurnosHeader } from "../../_components/turnos-header";
+import { PageHeader } from "@/components/ui/top-bar";
 import { SugerenciasClient, type SugerenciaView } from "./sugerencias-client";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Operación · Sugerencias del equipo · co-manda" };
+export const metadata = { title: "Sugerencias · Comanda" };
 
 /**
  * What the team suggested from the tablet, section by section: an item that
@@ -44,10 +43,7 @@ export default async function SugerenciasPage() {
   });
   return (
     <div>
-      <TurnosHeader kicker="OPERACIÓN · INVENTARIO" title="Sugerencias del equipo">
-        <Link href="/inventario" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Inventario</Link>
-        <Link href="/turno/inventario" className="cmd-btn sm" style={{ textDecoration: "none" }}>Sugerir →</Link>
-      </TurnosHeader>
+      <PageHeader back="/inventario" title="Sugerencias del equipo" sub="Desde la tablet: un ítem que va en otra sección, o algo que falta en la lista." />
       <SugerenciasClient
         sugerencias={views}
         items={(ings ?? []).map((i) => ({ id: i.id as string, name: i.name as string, ubicacion: (i.ubicacion as string | null) ?? null }))}

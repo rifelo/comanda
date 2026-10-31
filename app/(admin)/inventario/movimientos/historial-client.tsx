@@ -24,7 +24,7 @@ const GRID = "150px 1.4fr 130px 90px 1fr 90px";
 const TIPO_META: Record<MovTipo, { label: string; bd: string }> = {
   venta: { label: "Venta", bd: "var(--ink)" },
   gasto: { label: "Gasto", bd: "var(--amber)" },
-  ajuste: { label: "Ajuste manual", bd: "var(--red)" },
+  ajuste: { label: "Ajuste", bd: "var(--red)" },
   import: { label: "Importación", bd: "var(--green)" },
   merma: { label: "Merma", bd: "var(--red)" },
 };
@@ -114,10 +114,10 @@ export function HistorialClient({
         }
       />
 
-      <div style={{ padding: "20px 28px" }}>
+      <div className="px-4 sm:px-7 py-5">
         {/* Server-side filters: a plain GET form (router.push with only a changed query no-ops on this Next). */}
-        <form method="get" className="flex items-center flex-wrap" style={{ gap: 8, marginBottom: 12, fontFamily: "var(--font-mono)" }}>
-          <select name="ingrediente" defaultValue={ingredienteId ?? ""} aria-label="Ítem" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "6px 8px", border: "1.5px solid var(--ink)", minHeight: 0, maxWidth: 280 }}>
+        <form method="get" className="flex items-center flex-wrap" style={{ gap: 8, marginBottom: 12 }}>
+          <select name="ingrediente" defaultValue={ingredienteId ?? ""} aria-label="Ítem" style={{ fontSize: 16, color: "var(--text)", background: "var(--surface)", padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 12, minHeight: 44, maxWidth: "100%" }}>
             <option value="">Todos los ítems</option>
             {ingredientes.map((i) => (
               <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
@@ -126,8 +126,8 @@ export function HistorialClient({
           {DIAS_KARDEX.map((d) => (
             <button key={d} type="submit" name="dias" value={d} className={`cmd-btn sm${periodo?.dias === d ? "" : " ghost"}`}>{d} días</button>
           ))}
-          <input type="date" name="desde" defaultValue={periodo?.desde ?? ""} aria-label="Desde" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "5px 8px", border: "1.5px solid var(--ink)", minHeight: 0 }} />
-          <input type="date" name="hasta" defaultValue={periodo?.hasta ?? ""} aria-label="Hasta" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)", background: "var(--paper)", padding: "5px 8px", border: "1.5px solid var(--ink)", minHeight: 0 }} />
+          <input type="date" name="desde" defaultValue={periodo?.desde ?? ""} aria-label="Desde" style={{ fontSize: 16, color: "var(--text)", background: "var(--surface)", padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 12, minHeight: 44 }} />
+          <input type="date" name="hasta" defaultValue={periodo?.hasta ?? ""} aria-label="Hasta" style={{ fontSize: 16, color: "var(--text)", background: "var(--surface)", padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 12, minHeight: 44 }} />
           <button type="submit" className="cmd-btn ghost sm">Ver</button>
           {acotado ? (
             <Link href="/inventario/movimientos" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>Quitar filtros</Link>
@@ -161,10 +161,10 @@ export function HistorialClient({
           <Chip active={filter === "merma"} danger onClick={() => setFilter("merma")}>Mermas</Chip>
         </div>
 
-        <div className="cmd-paper-lt" style={{ border: "1.5px solid var(--ink)" }}>
+        <div className="bg-surface border border-line rounded-card" style={{ overflowX: "auto" }}>
           <div
             className="bg-paper"
-            style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "8px 14px", borderBottom: "1.5px solid var(--ink)", fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600 }}
+            style={{ display: "grid", gridTemplateColumns: GRID, minWidth: 760, gap: 12, padding: "8px 14px", borderBottom: "1px solid var(--line)", fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600 }}
           >
             <span>Fecha · hora</span>
             <span>Ingrediente</span>
@@ -184,7 +184,7 @@ export function HistorialClient({
             filtered.map((m, i) => (
               <div
                 key={m.id}
-                style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "10px 14px", alignItems: "flex-start", borderBottom: "1px dashed var(--rule-soft)", background: i % 2 ? "var(--paper-lt)" : "var(--paper)" }}
+                style={{ display: "grid", gridTemplateColumns: GRID, minWidth: 760, gap: 12, padding: "10px 14px", alignItems: "flex-start", borderBottom: "1px dashed var(--rule-soft)", background: i % 2 ? "var(--paper-lt)" : "var(--paper)" }}
               >
                 <div className="cmd-num" style={{ fontSize: 11, color: "var(--ink-2)" }}>{fmtFecha(m.created_at)}</div>
                 <div style={{ fontSize: 13, fontWeight: 500 }}>
