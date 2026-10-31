@@ -4,12 +4,49 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { recomputeProductoCost } from "@/lib/db/recetas";
+import { lineasParaDuplicar } from "@/lib/inventario/existencias";
+
+const DuplicarSchema = z.object({
+  producto_id: z.string().uuid(),
+  origen_id: z.string().uuid(),
+});
+
+/**
+ * «Duplicar receta de…»: copy another product's lines into this one. Lines the
+ * recipe already has keep their quantity; only the missing ones are added.
+ */
+export async function duplicarReceta(input: unknown): Promise<{ ok: true; added: number } | { error: string }> {
+  const parsed = DuplicarSchema.safeParse(input);
+  if (!parsed.success) return { error: "Datos inválidos." };
+  const { producto_id, origen_id } = parsed.data;
+  if (producto_id === origen_id) return { error: "Elige otro producto." };
+  const { profile, supabase } = await requireAdmin();
+  const orgId = profile.organization_id;
+
+  const [{ data: origen }, { data: actuales }, { data: destino }] = await Promise.all([
+    supabase.from("receta_items").select("ingrediente_id, qty, unit, note, position").eq("organization_id", orgId).eq("producto_id", origen_id).order("position"),
+    supabase.from("receta_items").select("ingrediente_id, position").eq("organization_id", orgId).eq("producto_id", producto_id),
+    supabase.from("productos").select("id").eq("organization_id", orgId).eq("id", producto_id).maybeSingle(),
+  ]);
+  if (!destino) return { error: "Producto no encontrado." };
+  if (!origen?.length) return { error: "Ese producto no tiene receta." };
+  const ya = new Set((actuales ?? []).map((a) => a.ingrediente_id as string));
+  const nuevas = lineasParaDuplicar(origen as { ingrediente_id: string; qty: number; unit: string; note: string | null; position: number }[], ya);
+  if (!nuevas.length) return { ok: true, added: 0 };
+  const base = (actuales ?? []).reduce((m, a) => Math.max(m, Number(a.position ?? 0)), -1) + 1;
+  const { error } = await supabase.from("receta_items").insert(
+    nuevas.map((l, i) => ({ organization_id: orgId, producto_id, ingrediente_id: l.ingrediente_id, qty: Number(l.qty), unit: l.unit, note: l.note ?? null, position: base + i })),
+  );
+  if (error) return { error: error.message };
+  await recomputeProductoCost(supabase, orgId, producto_id);
+  revalidatePath("/productos", "layout");
+  return { ok: true, added: nuevas.length };
+}
 
 function revalidate() {
-  // Recipe edits roll up into producto.cost_cop / margin_pct, so the catálogo
-  // needs to refresh too.
-  revalidatePath("/recetas");
-  revalidatePath("/catalogo");
+  // Recipe edits roll up into producto.cost_cop / margin_pct: the list and
+  // the ficha both read them.
+  revalidatePath("/productos", "layout");
 }
 
 const AddItemSchema = z.object({
@@ -124,7 +161,7 @@ export async function updatePreparacion(input: unknown) {
     .select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "Producto no encontrado." };
-  revalidatePath("/recetas");
+  revalidatePath("/productos", "layout");
   return { ok: true };
 }
 

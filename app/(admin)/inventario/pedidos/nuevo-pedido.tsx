@@ -9,7 +9,7 @@ import { parseMonto } from "@/lib/caja/movimientos";
 import { registrarPedidoManual } from "./actions";
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--muted)" };
-const input: React.CSSProperties = { height: 40, padding: "0 10px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 14, outline: "none", minWidth: 0 };
+const input: React.CSSProperties = { height: 40, padding: "0 10px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontSize: 16, outline: "none", minWidth: 0 };
 
 interface Item { id: string; name: string; /** What its quantity is typed in ("bolsas", "und"). */ enQue: string }
 interface Linea { key: number; item: Item | null; nombre: string; qty: string }

@@ -40,7 +40,7 @@ export async function importRows(input: unknown) {
       .from("productos")
       .upsert(rows, { onConflict: "organization_id,sku" });
     if (error) return { error: error.message };
-    revalidatePath("/catalogo");
+    revalidatePath("/productos", "layout");
   } else {
     const rows = valid.map((r) => ({
       organization_id: orgId,

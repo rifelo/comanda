@@ -11,7 +11,7 @@ import { cantidadLegible, piezaDe } from "@/lib/inventario/niveles";
 import { todayInTz } from "@/lib/utils";
 
 function revalidate() {
-  for (const p of ["/compras", "/notificaciones", "/inventario/faltantes"]) revalidatePath(p);
+  for (const p of ["/inventario/pedidos", "/notificaciones"]) revalidatePath(p);
   revalidatePath("/inventario", "layout");
   revalidatePath("/turno/inventario", "layout");
 }

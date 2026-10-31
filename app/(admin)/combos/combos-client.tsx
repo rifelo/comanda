@@ -5,13 +5,13 @@
  * combo (name + price + product lines), toggle active, edit the bundle price
  * inline, and delete. Regular total and saving are derived from list prices.
  */
+import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { fmtCOP } from "@/lib/mock/productos";
 import { comboSavingPct } from "@/lib/combos";
 import type { CombosView, ComboRow } from "@/lib/db/combos";
 import { Stamp } from "@/components/comanda/primitives";
-import { SectionCrumb } from "../_components/shared";
 import {
   createCombo,
   deleteCombo,
@@ -250,9 +250,11 @@ export function CombosClient({ view }: { view: CombosView }) {
   return (
     <div>
       {drawer ? <CrearComboDrawer productos={productos} onClose={() => setDrawer(false)} /> : null}
-      <SectionCrumb
-        section="combos"
-        right={
+      <PageHeader
+        back="/mas"
+        title="Combos"
+        sub="Varios productos a un precio."
+        actions={
           <>
             <button type="button" className={showInactive ? "cmd-btn ghost sm" : "cmd-btn sm"} onClick={() => setShowInactive((v) => !v)}>
               {showInactive ? "Ocultar inactivos" : "Ver inactivos"}

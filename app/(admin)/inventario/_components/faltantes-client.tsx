@@ -7,7 +7,7 @@ import { ESTADOS, PRIORIDADES } from "@/lib/inventario/faltantes";
 import type { FaltanteReporte } from "@/lib/inventario/faltantes-db";
 import { formatTime } from "@/lib/utils";
 import { FaltantesCard } from "@/components/inventario/faltantes-card";
-import { guardarPrioridades } from "./actions";
+import { guardarPrioridades } from "../faltantes/actions";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 function fechaHora(iso: string, tz: string): string {
@@ -60,7 +60,7 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
   const enLista = Object.values(prio).filter((p) => p > 0).length;
 
   return (
-    <div style={{ padding: "20px 32px 48px", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 420px)", gap: 32, fontFamily: "var(--font-mono)" }}>
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
       <section style={{ minWidth: 0 }}>
         <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>
           Faltantes abiertos {abiertos.length > 0 && <span style={{ color: "var(--red)" }}>· {abiertos.length}</span>}
@@ -71,7 +71,7 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
         {recientes.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--muted)" }}>Todavía no hay reportes. El equipo los envía desde el tablet, en Inventario → Avisar faltante.</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div className="overflow-x-auto"><table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--muted)", textAlign: "left" }}>
                 <th style={{ padding: "6px 8px 6px 0", fontWeight: 500 }}>Cuándo</th>
@@ -102,17 +102,17 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </section>
 
       <aside>
-        <div style={{ position: "sticky", top: 16, border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: 16 }}>
+        <div className="bg-surface border border-line rounded-card" style={{ position: "sticky", top: 16, padding: 16 }}>
           <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)" }}>Lista prioritaria · {enLista}</div>
           <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, margin: "6px 0 10px" }}>
             Lo que el barista ve en Inventario → Avisar faltante, del más crítico al menos. Los demás ingredientes quedan fuera de la revisión rápida.
           </p>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ingrediente…" aria-label="Buscar ingrediente" style={{ width: "100%", height: 34, padding: "0 8px", border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none", marginBottom: 8 }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ingrediente…" aria-label="Buscar ingrediente" style={{ width: "100%", height: 34, padding: "0 8px", border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--ink)", fontSize: 16, outline: "none", marginBottom: 8, borderRadius: 12, minHeight: 44 }} />
           <div style={{ maxHeight: "56vh", overflowY: "auto", paddingRight: 4 }}>
             {groups.map((g) => (
               <div key={g.label} style={{ marginBottom: 10 }}>
@@ -140,7 +140,7 @@ export function FaltantesClient({ abiertos, recientes, ingredientes, categorias,
             ))}
           </div>
           <div className="flex items-center" style={{ gap: 8, marginTop: 12 }}>
-            <button type="button" className="cmd-btn sm" disabled={dirty.size === 0 || saving} onClick={() => void save()}>{saving ? "Guardando…" : dirty.size ? `Guardar (${dirty.size})` : "Guardar"}</button>
+            <button type="button" className="cmd-btn" disabled={dirty.size === 0 || saving} onClick={() => void save()}>{saving ? "Guardando…" : dirty.size ? `Guardar (${dirty.size})` : "Guardar"}</button>
             {msg && <span style={{ fontSize: 11.5, color: msg.startsWith("Lista") ? "var(--green)" : "var(--red)" }}>{msg}</span>}
           </div>
           <ul style={{ margin: "12px 0 0", padding: 0, listStyle: "none", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>

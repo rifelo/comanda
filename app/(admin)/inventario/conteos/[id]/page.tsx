@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getConteo, listPropuestas } from "@/lib/inventario/conteos";
 import { getIngredientesView } from "@/lib/db/ingredients";
-import { TurnosHeader } from "../../../_components/turnos-header";
+import { PageHeader } from "@/components/ui/top-bar";
 import { ConteoDetail } from "./conteo-detail";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +18,7 @@ export default async function ConteoDetailPage({ params }: { params: Promise<{ i
   if (!conteo) notFound();
   return (
     <div>
-      <TurnosHeader kicker="OPERACIÓN · INVENTARIO · CONTEOS" title={conteo.kind === "diario" ? "Conteo rápido" : "Conteo completo"}>
-        <Link href="/inventario/conteos" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Conteos</Link>
-      </TurnosHeader>
+      <PageHeader back="/inventario/conteos" title={conteo.kind === "diario" ? "Conteo rápido" : "Conteo completo"} sub={conteo.counted_by_name ? `Contó ${conteo.counted_by_name}` : undefined} />
       <ConteoDetail
         conteo={conteo}
         propuestas={propuestas}

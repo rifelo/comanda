@@ -4,10 +4,11 @@ import { bogotaDay, bogotaTime, dayLabel } from "@/lib/pos/pending";
 import { posMoney } from "@/lib/pos/types";
 import { MOTIVO_MERMA, resumenMermas } from "@/lib/inventario/mermas";
 import { inicioDia, listMermas } from "@/lib/inventario/mermas-db";
-import { TurnosHeader } from "../../_components/turnos-header";
+import { buttonClass } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/top-bar";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Operación · Mermas · co-manda" };
+export const metadata = { title: "Mermas · Comanda" };
 
 const PERIODOS = [
   { dias: 1, label: "Hoy" },
@@ -15,8 +16,8 @@ const PERIODOS = [
   { dias: 30, label: "30 días" },
 ] as const;
 
-const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)", marginBottom: 6 };
-const card: React.CSSProperties = { border: "1.5px solid var(--ink)", borderRadius: 8, background: "var(--paper-lt)", padding: "14px 16px" };
+const kicker: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--line)", marginBottom: 6 };
+const card: React.CSSProperties = { border: "1px solid var(--line)", borderRadius: 16, background: "var(--surface)", padding: "14px 16px" };
 
 /**
  * Mermas for the owner: what the team registered as lost (drinks that fell,
@@ -33,11 +34,8 @@ export default async function MermasPage({ searchParams }: { searchParams: Promi
 
   return (
     <div>
-      <TurnosHeader kicker="OPERACIÓN · INVENTARIO" title="Mermas">
-        <Link href="/inventario" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Inventario</Link>
-        <Link href="/turno/inventario/merma" className="cmd-btn sm" style={{ textDecoration: "none" }}>Registrar →</Link>
-      </TurnosHeader>
-      <div style={{ padding: "18px 24px 40px", maxWidth: 1100, display: "flex", flexDirection: "column", gap: 22, fontFamily: "var(--font-mono)" }}>
+      <PageHeader back="/inventario" title="Mermas" sub="Lo que se perdió sin venderse, por motivo y por persona." actions={<Link href="/turno/inventario/merma" className={buttonClass({ variant: "ghost", size: "sm" })}>Registrar</Link>} />
+      <div className="px-4 sm:px-7 pb-10 flex flex-col gap-5" style={{ maxWidth: 1100 }}>
         {/* Plain links: a same-route router.push with only the query changed is a no-op in Next 16. */}
         <nav aria-label="Periodo" style={{ display: "flex", gap: 8 }}>
           {PERIODOS.map((p) => (
@@ -48,7 +46,7 @@ export default async function MermasPage({ searchParams }: { searchParams: Promi
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
           <div style={card}>
             <div style={{ fontSize: 10.5, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" }}>Costo perdido</div>
-            <div className="cmd-num font-slab" style={{ fontSize: 30, marginTop: 4, color: r.costo ? "var(--red)" : "var(--ink)" }}>{posMoney(r.costo)}</div>
+            <div className="cmd-num" style={{ fontSize: 30, fontWeight: 700, marginTop: 4, color: r.costo ? "var(--red)" : "var(--ink)" }}>{posMoney(r.costo)}</div>
             <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 2 }}>{r.n} {r.n === 1 ? "merma" : "mermas"} · {PERIODOS.find((p) => p.dias === dias)?.label.toLowerCase()}</div>
           </div>
           <div style={card}>
@@ -77,7 +75,7 @@ export default async function MermasPage({ searchParams }: { searchParams: Promi
           <div style={kicker}>Detalle · {rows.length}</div>
           {rows.length === 0 && <div style={{ padding: "14px 0", fontSize: 13, color: "var(--muted)" }}>No se registraron mermas en este periodo.</div>}
           {rows.map((m) => (
-            <div key={m.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 140px) 1fr auto", gap: 14, alignItems: "baseline", padding: "10px 0", borderBottom: "1px dashed var(--rule)", fontSize: 13 }}>
+            <div key={m.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[140px_minmax(0,1fr)_auto]" style={{ gap: 14, alignItems: "baseline", padding: "10px 0", borderBottom: "1px dashed var(--rule)", fontSize: 13 }}>
               <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{dayLabel(bogotaDay(Date.parse(m.reportedAt)), today)}<br /><span className="cmd-num">{bogotaTime(m.reportedAt)}</span> · {m.reportedBy ?? "—"}</span>
               <span style={{ minWidth: 0 }}>
                 <span style={{ fontWeight: 700 }}>{String(m.qty).replace(".", ",")} {m.kind === "producto" ? "×" : m.unidad} {m.nombre}</span>

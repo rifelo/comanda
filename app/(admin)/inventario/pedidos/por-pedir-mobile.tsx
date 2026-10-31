@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Wordmark } from "@/components/comanda/primitives";
+import Link from "next/link";
 import { ajustar, qtyLegible, vistaMensaje, type PorPedirGrupo } from "@/lib/compras/por-pedir";
 import type { NivelItem } from "@/lib/inventario/niveles";
-import { descartarSugerencia } from "../inventario/sugerencias/actions";
+import { descartarSugerencia } from "../sugerencias/actions";
 import { armarPedido, nuevoALista, recibirRapido } from "./actions";
 
 export interface NuevoView {
@@ -28,7 +28,7 @@ const CSS = `
   --pp-row: color-mix(in srgb, #fffdf7 70%, var(--paper-lt));
   --pp-row-agot: color-mix(in srgb, var(--pp-agot) 16%, var(--paper-lt));
   --pp-camino: color-mix(in srgb, #502b1c 9%, var(--paper-lt));
-  background: var(--paper-lt); color: var(--ink); font-family: var(--font-mono), ui-monospace, monospace; display: flex; flex-direction: column; }
+  background: var(--bg); color: var(--text); font-family: var(--font-sans); display: flex; flex-direction: column; }
 .pp button { font-family: inherit; color: inherit; cursor: pointer; }
 .pp button:focus-visible { outline: 3px solid var(--pp-poco); outline-offset: 2px; }
 .pp-head { padding: 18px 16px 16px; background: var(--paper); border-bottom: 1.5px solid var(--ink); display: flex; flex-direction: column; gap: 12px; }
@@ -63,7 +63,7 @@ const WhatsApp = () => (
 );
 
 /**
- * «Por pedir» on the owner's phone (the md:hidden layer of /compras): what
+ * «Por pedir» on the owner's phone (the md:hidden layer of /inventario/pedidos): what
  * the team marked on the tablet, by supplier, each with a quantity to nudge
  * and the WhatsApp ready; the orders on their way with «Recibido»; and what
  * the team added that is not on the list yet.
@@ -172,8 +172,8 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
       <style>{CSS}</style>
       <header className="pp-head">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Wordmark size={24} />
-          <h1 className="font-slab" style={{ margin: 0, flex: 1, fontWeight: 400, fontSize: 28, lineHeight: 1 }}>Por pedir</h1>
+          <h1 className="ui-h1" style={{ margin: 0, flex: 1 }}>Por pedir</h1>
+          <Link href="/importar-factura" style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Desde una foto</Link>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>{hora}</span>
         </div>
         <div className="pp-sum" role="status" aria-live="polite">
@@ -272,7 +272,7 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
 
         {camino.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }} aria-label="En camino">
-            <h2 className="font-slab" style={{ margin: 0, display: "flex", alignItems: "baseline", gap: 8, fontWeight: 400, fontSize: 18 }}>En camino <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted)" }}>{camino.length}</span></h2>
+            <h2 className="ui-h2" style={{ margin: 0, display: "flex", alignItems: "baseline", gap: 8 }}>En camino <span style={{ fontSize: 12, color: "var(--muted)" }}>{camino.length}</span></h2>
             {camino.map((c) => (
               <div key={c.id} className="pp-camino">
                 <Camion />
