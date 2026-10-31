@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees and the gitignored e2e scripts are not app code.
+    ".claude/**",
+    ".e2e/**",
   ]),
 ]);
 
