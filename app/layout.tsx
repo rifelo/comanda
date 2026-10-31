@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Dela_Gothic_One, Caveat } from "next/font/google";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import "./globals.css";
@@ -8,37 +7,43 @@ import { RegisterSw } from "@/components/pwa/register-sw";
 import { InstallBanner } from "@/components/pwa/install-banner";
 import { Toaster } from "@/components/ui/feedback";
 
+// Fonts are self-hosted (app/fonts, latin subset of the Google Fonts files):
+// fetching them from Google at build time failed builds on Vercel.
+
 // App face (docs/redesign/PLAN.md §5.1): Inter 400/600/700 for everything.
 // Exposed as `--font-inter`; Tailwind's `font-sans` points at it (globals.css).
-const inter = Inter({
+const inter = localFont({
+  src: "./fonts/inter-normal.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: "400 700",
   display: "swap",
+  fallback: ["system-ui", "-apple-system", "Segoe UI", "sans-serif"],
 });
 
 // Tabular numbers on receipts, labels and the kardex (`font-mono`, `cmd-num`).
-const mono = JetBrains_Mono({
+const mono = localFont({
+  src: [
+    { path: "./fonts/jetbrains-mono-normal.woff2", weight: "400 700", style: "normal" },
+    // Italic is real, not synthesised: the drink label's descriptor uses it.
+    { path: "./fonts/jetbrains-mono-italic.woff2", weight: "400 700", style: "italic" },
+  ],
   variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  // Italic is real, not synthesised: the drink label's descriptor uses it.
-  style: ["normal", "italic"],
+  fallback: ["ui-monospace", "monospace"],
 });
 
 // Display face — PA'YO branding and the public menu only. The café's
 // wordmark uses Nority Display (paid); Dela Gothic One is the free stand-in.
 // Keeps the historic `--font-slab` name so `font-slab` call sites still work.
-const slab = Dela_Gothic_One({
+const slab = localFont({
+  src: "./fonts/dela-gothic-one-normal.woff2",
   variable: "--font-slab",
-  subsets: ["latin"],
   weight: "400",
 });
 
-const script = Caveat({
+const script = localFont({
+  src: "./fonts/caveat-normal.woff2",
   variable: "--font-script",
-  subsets: ["latin"],
-  weight: ["500", "600"],
+  weight: "500 600",
 });
 
 // Phrase face for the cup label (printed on the thermal printer).
