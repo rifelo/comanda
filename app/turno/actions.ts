@@ -198,6 +198,34 @@ export async function submitNovedadAs(input: unknown): Promise<Simple> {
   }
 }
 
+/**
+ * «Abrir al público» — the last step of /turno/abrir: stamps who opened the
+ * turno (if no tick did it before). Idempotent; the opening task itself is
+ * ticked like any other task.
+ */
+export async function abrirTurnoAs(input: unknown): Promise<Simple> {
+  const parsed = ShiftOnly.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Datos inválidos." };
+  try {
+    const ctx = await requireTurnoContext();
+    const inst = await ownInstance(ctx, parsed.data.shift_instance_id);
+    if (!inst) return { ok: false, error: "Turno no encontrado." };
+    if (inst.status === "closed") return { ok: false, error: "El turno ya está cerrado." };
+    if (!inst.opened_by) {
+      const { error } = await ctx.admin
+        .from("shift_instances")
+        .update({ opened_by: ctx.actor.profileId, opened_at: new Date().toISOString() })
+        .eq("id", inst.id)
+        .is("opened_by", null);
+      if (error) return { ok: false, error: error.message };
+    }
+    revalidate(inst.date as string);
+    return { ok: true };
+  } catch (err) {
+    return fail(err, "No se pudo abrir el turno.");
+  }
+}
+
 /** Close today's turno from the tablet; the closer is the signed-in person. */
 export async function closeTurnoAs(input: unknown): Promise<Simple> {
   const parsed = ShiftOnly.safeParse(input);

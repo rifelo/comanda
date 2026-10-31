@@ -1,50 +1,23 @@
-import { redirect } from "next/navigation";
-import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
-import { todayInTz } from "@/lib/utils";
-import { lastConteoAt, listConteos } from "@/lib/inventario/conteos";
-import type { InventarioConteo } from "@/lib/types";
-import { ConteoScreen, type ConteoIngrediente } from "./conteo-screen";
+import { ahoraMs, actorOf, requireEquipo } from "@/app/turno/_components/gate";
+import { EquipoShell } from "@/app/turno/_components/equipo";
+import { ConteoScreen } from "./conteo-screen";
+import { loadConteoProps } from "./data";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Conteo de inventario · co-manda" };
+export const metadata = { title: "Conteo de inventario · Comanda" };
 
 /**
- * End-of-shift stock count on the shared tablet, signed by whoever is logged
- * in. Blind: the person types what is on the shelf without seeing what the
- * system expects; the comparison shows once the count is sent, and the owner
- * approves it from the panel. Each item is counted the way it sits on the
- * shelf (packs + loose) and shows its level (hay / poco / se acabó) as soon
- * as it is counted, from the item's own thresholds.
+ * End-of-shift stock count, signed by whoever is logged in. Blind: the
+ * person types what is on the shelf without seeing what the system expects;
+ * the comparison shows once the count is sent, and the owner approves it
+ * from the panel. Also the «Conteo rápido» step of /turno/cerrar.
  */
 export default async function ConteoPage() {
-  const gate = await loadTurnoGate();
-  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/conteo"));
-  const { ctx } = gate;
-  const { admin, organizationId } = ctx;
-  const [{ data: ings }, { data: cats }, lastCompleto, recent] = await Promise.all([
-    admin
-      .from("ingredientes")
-      .select("id, name, unit, category_id, conteo_diario, archived, pack_qty, pack_label, pieza_qty, stock_critico, stock_min, stock_objetivo, ubicacion")
-      .eq("organization_id", organizationId)
-      .eq("archived", false)
-      .order("name"),
-    admin.from("ingrediente_categorias").select("id, label, position").eq("organization_id", organizationId).order("position"),
-    lastConteoAt(admin, organizationId, "completo"),
-    listConteos(admin, organizationId, 5),
-  ]);
-  const today = todayInTz(ctx.sede.tz);
-  const todayKinds = (recent as InventarioConteo[])
-    .filter((c) => todayInTz(ctx.sede.tz, new Date(c.submitted_at)) === today && c.status !== "rechazado")
-    .map((c) => c.kind);
+  const ctx = await requireEquipo("/turno/conteo");
+  const props = await loadConteoProps(ctx);
   return (
-    <ConteoScreen
-      actor={{ name: ctx.actor.fullName, isAdmin: ctx.actor.role === "admin" && !ctx.actor.viaDevice }}
-      sedeName={ctx.sede.name}
-      today={today}
-      ingredientes={(ings ?? []) as ConteoIngrediente[]}
-      categorias={(cats ?? []).map((c) => ({ id: c.id as string, label: c.label as string }))}
-      lastCompletoAt={lastCompleto}
-      todayKinds={todayKinds}
-    />
+    <EquipoShell title="Conteo" sub="Cuenta lo que hay en el estante" actor={actorOf(ctx)} tz={ctx.sede.tz} serverNow={ahoraMs()}>
+      <ConteoScreen {...props} />
+    </EquipoShell>
   );
 }
