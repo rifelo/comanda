@@ -20,7 +20,7 @@ interface Pedido { id: string; folio: number; proveedor: string; pedido: string;
 
 const num = (n: number) => String(n).replace(".", ",");
 
-export function RecibirScreen({ sedeName, actorName, pedidos }: { sedeName: string; actorName: string; pedidos: Pedido[] }) {
+export function RecibirScreen({ pedidos }: { pedidos: Pedido[] }) {
   const [abierto, setAbierto] = React.useState<string | null>(null);
   const [hecho, setHecho] = React.useState<string | null>(null);
   const sel = pedidos.find((p) => p.id === abierto) ?? null;
@@ -28,12 +28,10 @@ export function RecibirScreen({ sedeName, actorName, pedidos }: { sedeName: stri
   return (
     <div className="cmd-paper" style={{ minHeight: "100%", display: "flex", flexDirection: "column", fontFamily: "inherit", color: "var(--ink)" }}>
       <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0 }}>
-        <span className="font-bold" style={{ fontSize: 22 }}>Pedidos por llegar</span>
-        <span className="hidden sm:inline" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "none" }}>{sedeName}</span>
-        <span className="hidden sm:inline" style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600 }}>{actorName}</span>
+        {/* Title, sede and person are in the shell header; this bar only goes back. */}
         {sel
-          ? <button type="button" onClick={() => setAbierto(null)} style={{ ...chip, marginLeft: 8 }}>← Pedidos</button>
-          : <Link href="/turno/inventario" style={{ ...chip, marginLeft: 8 }}>← Inventario</Link>}
+          ? <button type="button" onClick={() => setAbierto(null)} style={chip}>← Pedidos</button>
+          : <Link href="/turno/inventario" style={chip}>← Inventario</Link>}
       </div>
       <div style={{ padding: "20px 20px 40px", maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
         {sel ? (
