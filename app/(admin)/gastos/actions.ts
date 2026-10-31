@@ -20,8 +20,8 @@ const GastoSchema = z.object({
 
 function revalidar(fecha: string) {
   revalidatePath("/gastos");
-  revalidatePath("/numeros");
-  revalidatePath(`/numeros/${fecha}`);
+  revalidatePath("/hoy");
+  revalidatePath(`/hoy/${fecha}`);
 }
 
 export async function registrarGasto(input: unknown): Promise<GastoActionResult> {

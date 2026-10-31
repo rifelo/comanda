@@ -14,7 +14,7 @@ export function FechaPicker({ date, today }: { date: string; today: string }) {
       onChange={(e) => {
         const v = e.target.value;
         if (!v || v > today) return;
-        router.push(v === today ? "/numeros" : `/numeros/${v}`);
+        router.push(v === today ? "/hoy" : `/hoy/${v}`);
       }}
       className="cmd-num"
       style={{

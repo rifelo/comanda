@@ -542,7 +542,7 @@ export function AsignacionGrid({
                                 }}
                               >
                                 Sin equipo activo.{" "}
-                                <Link href="/configuracion/equipo" className="cmd-link">
+                                <Link href="/equipo" className="cmd-link">
                                   agregar →
                                 </Link>
                               </div>
@@ -729,7 +729,7 @@ export function AsignacionGrid({
           {roster.length === 0 ? (
             <div className="text-muted" style={{ fontSize: 11 }}>
               Sin equipo todavía.{" "}
-              <Link href="/configuracion/equipo" className="cmd-link">
+              <Link href="/equipo" className="cmd-link">
                 agregar persona →
               </Link>
             </div>
@@ -784,7 +784,7 @@ export function AsignacionGrid({
             style={{ fontSize: 10, marginTop: 14, lineHeight: 1.5 }}
           >
             Para agregar o editar personas, ve al módulo{" "}
-            <Link href="/configuracion/equipo" className="cmd-link">
+            <Link href="/equipo" className="cmd-link">
               Equipo
             </Link>
             .

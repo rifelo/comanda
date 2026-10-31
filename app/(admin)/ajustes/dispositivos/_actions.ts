@@ -44,7 +44,7 @@ export async function crearCodigoRegistro(input: { label?: string }) {
       .select("code, expires_at")
       .single();
     if (!error && data) {
-      revalidatePath("/configuracion/pos");
+      revalidatePath("/ajustes/dispositivos");
       return {
         ok: true as const,
         code: formatCode(data.code as string),
@@ -67,7 +67,7 @@ export async function anularCodigo(input: { id: string }) {
     .eq("id", input.id)
     .is("used_at", null);
   if (error) return { error: error.message };
-  revalidatePath("/configuracion/pos");
+  revalidatePath("/ajustes/dispositivos");
   return { ok: true };
 }
 
@@ -82,7 +82,7 @@ export async function desvincularDispositivo(input: { id: string }) {
     .update({ revoked_at: new Date().toISOString() })
     .eq("id", input.id);
   if (error) return { error: error.message };
-  revalidatePath("/configuracion/pos");
+  revalidatePath("/ajustes/dispositivos");
   return { ok: true };
 }
 
@@ -97,6 +97,6 @@ export async function renombrarDispositivo(input: { id: string; name: string }) 
     .update({ name: parsed.data.name.trim() })
     .eq("id", parsed.data.id);
   if (error) return { error: error.message };
-  revalidatePath("/configuracion/pos");
+  revalidatePath("/ajustes/dispositivos");
   return { ok: true };
 }

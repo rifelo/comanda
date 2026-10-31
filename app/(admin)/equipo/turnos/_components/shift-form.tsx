@@ -521,7 +521,7 @@ export function ShiftForm({
         }}
       >
         <Link
-          href="/turnos/resumen"
+          href="/equipo/turnos"
           className="cmd-link"
           style={{ fontSize: 11, padding: 0, marginBottom: 8, display: "inline-block" }}
         >
@@ -544,7 +544,7 @@ export function ShiftForm({
           </div>
           <div className="flex" style={{ gap: 8 }}>
             <Link
-              href="/turnos/resumen"
+              href="/equipo/turnos"
               className="cmd-btn ghost sm"
               style={{ textDecoration: "none" }}
             >

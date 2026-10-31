@@ -6,7 +6,7 @@ import { posMoney } from "@/lib/pos/types";
 import { fechaCorta, formatTime, todayInTz } from "@/lib/utils";
 import { baseEstado, describirLineas } from "@/lib/caja/base";
 import { SectionCrumb } from "../_components/shared";
-import { CajaCard } from "../hoy/[date]/caja-card";
+import { CajaCard } from "../hoy/[date]/turnos/caja-card";
 import { listMovimientos } from "@/lib/caja/movimientos-db";
 import { MOTIVO_CAJA, MOTIVOS_CAJA, porConfirmar, resumenCaja, type MotivoCaja } from "@/lib/caja/movimientos";
 import { CAJA_FOTOS } from "@/lib/caja/movimientos-db";

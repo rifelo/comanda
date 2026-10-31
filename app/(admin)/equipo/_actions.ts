@@ -100,8 +100,8 @@ export async function inviteMember(input: z.infer<typeof InviteSchema>) {
     );
   if (memErr) return { error: memErr.message };
 
-  revalidatePath("/configuracion/equipo");
-  revalidatePath("/turnos/asignacion");
+  revalidatePath("/equipo");
+  revalidatePath("/equipo/horario");
 
   const member: RosterMember = {
     id: data.user.id,
@@ -183,8 +183,8 @@ export async function createMemberWithPassword(
     );
   if (memErr) return { error: memErr.message };
 
-  revalidatePath("/configuracion/equipo");
-  revalidatePath("/turnos/asignacion");
+  revalidatePath("/equipo");
+  revalidatePath("/equipo/horario");
 
   const member: RosterMember = {
     id: userId,
@@ -265,8 +265,8 @@ export async function updateMember(input: z.infer<typeof UpdateSchema>) {
     if (error) return { error: error.message };
   }
 
-  revalidatePath("/configuracion/equipo");
-  revalidatePath("/turnos/asignacion");
+  revalidatePath("/equipo");
+  revalidatePath("/equipo/horario");
   return { ok: true };
 }
 
@@ -287,8 +287,8 @@ export async function removeMember(formData: FormData) {
     .eq("restaurant_id", sede.id);
   if (error) return { error: error.message };
 
-  revalidatePath("/configuracion/equipo");
-  revalidatePath("/turnos/asignacion");
+  revalidatePath("/equipo");
+  revalidatePath("/equipo/horario");
   return { ok: true };
 }
 

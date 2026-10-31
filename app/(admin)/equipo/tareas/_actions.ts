@@ -51,7 +51,7 @@ export async function createTask(input: {
     return { ok: false, error: "No se pudo crear la tarea." };
   }
 
-  revalidatePath("/turnos/tareas");
+  revalidatePath("/equipo/tareas");
   return { ok: true };
 }
 
@@ -80,7 +80,7 @@ export async function setTaskStatus(input: {
     .eq("id", parsed.data.id);
   if (error) return { ok: false, error: "No se pudo actualizar." };
 
-  revalidatePath("/turnos/tareas");
+  revalidatePath("/equipo/tareas");
   return { ok: true };
 }
 
@@ -141,7 +141,7 @@ export async function updateTask(input: {
     return { ok: false, error: "No se pudo guardar." };
   }
 
-  revalidatePath("/turnos/tareas");
+  revalidatePath("/equipo/tareas");
   return { ok: true };
 }
 
@@ -158,6 +158,6 @@ export async function deleteTask(input: {
   const { error } = await supabase.from("tasks").delete().eq("id", parsed.data.id);
   if (error) return { ok: false, error: "No se pudo eliminar." };
 
-  revalidatePath("/turnos/tareas");
+  revalidatePath("/equipo/tareas");
   return { ok: true };
 }

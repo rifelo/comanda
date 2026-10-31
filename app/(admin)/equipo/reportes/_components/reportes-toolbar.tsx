@@ -6,7 +6,7 @@ export type ShiftOption = { value: string; label: string };
 /**
  * Week + shift filters for the Reportes view. A native GET <form>: changing
  * either select submits, so the browser navigates to
- * `/turnos/reportes?week=…&template=…` and the server re-renders the chart,
+ * `/equipo/reportes?week=…&template=…` and the server re-renders the chart,
  * table and CSV export link for the chosen scope.
  *
  * Deliberately a plain form submit rather than `router.push` — in this Next 16
@@ -29,7 +29,7 @@ export function ReportesToolbar({
 
   return (
     <form
-      action="/turnos/reportes"
+      action="/equipo/reportes"
       method="get"
       className="flex items-center"
       style={{ gap: 8 }}

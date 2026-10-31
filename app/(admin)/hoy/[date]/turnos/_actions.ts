@@ -55,6 +55,7 @@ export async function createAdHocTask(input: {
   }
 
   revalidatePath(`/hoy/${shift.date}`);
+  revalidatePath(`/hoy/${shift.date}/turnos`);
   revalidatePath(`/shift/${parsed.data.shift_instance_id}`);
   revalidatePath("/turno");
   return { ok: true };
@@ -96,7 +97,8 @@ export async function reviewShift(input: {
 
   revalidatePath("/hoy");
   revalidatePath(`/hoy/${row.date}`);
-  revalidatePath("/turnos/historial");
+  revalidatePath(`/hoy/${row.date}/turnos`);
+  revalidatePath("/equipo/historial");
   return { ok: true };
 }
 

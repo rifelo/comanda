@@ -92,7 +92,7 @@ export async function publishWeek(input: z.infer<typeof PublishSchema>) {
     deleted += count ?? 0;
   }
 
-  revalidatePath("/turnos/asignacion");
-  revalidatePath("/turnos/resumen");
+  revalidatePath("/equipo/horario");
+  revalidatePath("/equipo/turnos");
   return { ok: true, written, deleted };
 }

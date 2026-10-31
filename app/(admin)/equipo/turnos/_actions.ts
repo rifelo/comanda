@@ -183,10 +183,10 @@ export async function createShift(input: z.infer<typeof CreateSchema>) {
   const synced = await syncTemplatePuestos(supabase, tpl.id as string, parsed.data.puestos, cleanTasks, keyToId);
   if ("error" in synced) return synced;
 
-  revalidatePath("/turnos/resumen");
-  revalidatePath("/turnos/asignacion");
+  revalidatePath("/equipo/turnos");
+  revalidatePath("/equipo/horario");
   revalidatePath("/hoy");
-  redirect("/turnos/resumen");
+  redirect("/equipo/turnos");
 }
 
 /**
@@ -275,10 +275,10 @@ export async function updateShift(input: z.infer<typeof UpdateSchema>) {
   const synced = await syncTemplatePuestos(supabase, parsed.data.id, parsed.data.puestos, cleanTasks, keyToId);
   if ("error" in synced) return synced;
 
-  revalidatePath("/turnos/resumen");
-  revalidatePath("/turnos/asignacion");
+  revalidatePath("/equipo/turnos");
+  revalidatePath("/equipo/horario");
   revalidatePath("/hoy");
-  redirect("/turnos/resumen");
+  redirect("/equipo/turnos");
 }
 
 const CreatePuestoSchema = z.object({
@@ -307,7 +307,7 @@ export async function createPuesto(input: z.infer<typeof CreatePuestoSchema>) {
     if (error?.code === "23505") return { error: "Ya existe un puesto con ese nombre." };
     return { error: error?.message ?? "No se pudo crear el puesto." };
   }
-  revalidatePath("/turnos/resumen");
+  revalidatePath("/equipo/turnos");
   return {
     ok: true as const,
     puesto: { id: data.id as string, restaurant_id: data.restaurant_id as string, name: data.name as string, color: data.color as string, position: Number(data.position) },
@@ -335,8 +335,8 @@ export async function deleteShift(formData: FormData) {
       .update({ active: false })
       .eq("id", parsed.data.id);
     if (error) return { error: error.message };
-    revalidatePath("/turnos/resumen");
-    redirect("/turnos/resumen");
+    revalidatePath("/equipo/turnos");
+    redirect("/equipo/turnos");
   }
 
   const { error } = await supabase
@@ -345,6 +345,6 @@ export async function deleteShift(formData: FormData) {
     .eq("id", parsed.data.id);
   if (error) return { error: error.message };
 
-  revalidatePath("/turnos/resumen");
-  redirect("/turnos/resumen");
+  revalidatePath("/equipo/turnos");
+  redirect("/equipo/turnos");
 }
