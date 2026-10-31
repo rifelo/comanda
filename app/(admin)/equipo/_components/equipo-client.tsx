@@ -1,556 +1,382 @@
 "use client";
 
 import * as React from "react";
+import { KeyRound, UserPlus } from "lucide-react";
 import type { RosterMember } from "@/lib/types";
-import {
-  createMemberWithPassword,
-  inviteMember,
-  removeMember,
-  setMemberPassword,
-  updateMember,
-} from "../_actions";
+import { Avatar, Banner, Button, Field, Pill, Segmented, Sheet, toast } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { ACCESO, PASSWORD_MIN, sugerirContrasena, type Acceso } from "../_lib/acceso";
+import { createMemberWithPassword, inviteMember, removeMember, setMemberPassword, updateMember } from "../_actions";
 
-type AccessMode = "password" | "invite";
+export type Persona = RosterMember & { acceso: Acceso };
+type Modo = "password" | "invite";
 
-export function EquipoClient({
-  initialRoster,
-}: {
-  initialRoster: RosterMember[];
-}) {
-  const [roster, setRoster] = React.useState(initialRoster);
+/**
+ * Personas: one row per person (avatar, name, role, how they sign in).
+ * Tapping a row opens a sheet to edit the name / phone, set or reset the
+ * password, deactivate or remove. «Nueva persona» creates the account with a
+ * password (default — what the shared tablet needs) or invites a Google one.
+ */
+export function EquipoClient({ initial, meId, sedeName }: { initial: Persona[]; meId: string; sedeName: string }) {
+  const [people, setPeople] = React.useState(initial);
+  const [openId, setOpenId] = React.useState<string | null>(null);
   const [adding, setAdding] = React.useState(false);
-  const [mode, setMode] = React.useState<AccessMode>("password");
+  const open = people.find((p) => p.id === openId) ?? null;
+
+  const activos = people.filter((p) => p.active);
+  const inactivos = people.filter((p) => !p.active);
+  const sinTablet = activos.filter((p) => !ACCESO[p.acceso].tablet);
+
+  const patch = (id: string, p: Partial<Persona>) => setPeople((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x)));
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="ui-sub m-0 flex-1 min-w-[200px]">
+          {activos.length} {activos.length === 1 ? "persona activa" : "personas activas"}
+          {inactivos.length ? ` · ${inactivos.length} inactiva${inactivos.length === 1 ? "" : "s"}` : ""}
+        </p>
+        <Button onClick={() => setAdding(true)} icon={<UserPlus size={20} aria-hidden />} size="sm">
+          Nueva persona
+        </Button>
+      </div>
+
+      {sinTablet.length ? (
+        <Banner tone="brand">
+          {sinTablet.length === 1
+            ? `${sinTablet[0].name} no tiene contraseña: en la tablet de ${sedeName} no puede entrar con su ficha. Tócala y ponle una.`
+            : `${sinTablet.length} personas no tienen contraseña: en la tablet de ${sedeName} no pueden entrar con su ficha. Tócalas y ponles una.`}
+        </Banner>
+      ) : null}
+
+      <Lista titulo="Activas" people={activos} meId={meId} onOpen={setOpenId} />
+      {inactivos.length ? <Lista titulo="Inactivas" people={inactivos} meId={meId} onOpen={setOpenId} muted /> : null}
+
+      <p className="ui-sub m-0 text-[13px] leading-relaxed">
+        En la tablet y la caja cada persona toca su ficha y escribe su contraseña. En su teléfono entra con su correo y contraseña,
+        o con Google si usa el mismo correo. La contraseña se entrega en persona; puedes cambiarla cuando quieras.
+      </p>
+
+      <NuevaPersona
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={(m, acceso) => {
+          setPeople((prev) => [...prev.filter((x) => x.id !== m.id), { ...m, acceso }].sort((a, b) => a.name.localeCompare(b.name, "es")));
+          setAdding(false);
+          toast(`${m.name} quedó en el equipo`, "ok");
+        }}
+      />
+
+      <PersonaSheet
+        persona={open}
+        meId={meId}
+        onClose={() => setOpenId(null)}
+        onPatch={patch}
+        onRemoved={(id) => {
+          setPeople((prev) => prev.filter((x) => x.id !== id));
+          setOpenId(null);
+        }}
+      />
+    </div>
+  );
+}
+
+function Lista({ titulo, people, meId, onOpen, muted }: { titulo: string; people: Persona[]; meId: string; onOpen: (id: string) => void; muted?: boolean }) {
+  return (
+    <section aria-label={titulo} className="flex flex-col gap-2">
+      <h2 className="ui-label m-0">{titulo}</h2>
+      <ul className="m-0 p-0 list-none bg-surface border border-line rounded-card overflow-hidden">
+        {people.map((p) => {
+          const a = ACCESO[p.acceso];
+          return (
+            <li key={p.id} className="border-b border-line last:border-b-0">
+              <button
+                type="button"
+                onClick={() => onOpen(p.id)}
+                data-testid="persona-row"
+                className={cn(
+                  "w-full min-h-[76px] flex items-center gap-3.5 px-4 sm:px-5 py-3 text-left bg-transparent border-0 cursor-pointer hover:bg-surface-2 text-text",
+                  muted && "opacity-60",
+                )}
+              >
+                <Avatar name={p.name} initials={p.initials} />
+                <span className="flex-1 min-w-0">
+                  <span className="ui-title block truncate">
+                    {p.name}
+                    {p.id === meId ? <span className="text-muted font-normal"> · tú</span> : null}
+                  </span>
+                  <span className="ui-sub block truncate">{p.email || "sin correo"}</span>
+                </span>
+                <span className="hidden sm:flex items-center gap-2 shrink-0">
+                  {p.role === "admin" ? <Pill>Dueño</Pill> : null}
+                  <Pill tone={a.tablet ? "neutral" : "late"}>{a.label}</Pill>
+                </span>
+                <span className="sm:hidden shrink-0">
+                  {a.tablet ? (p.role === "admin" ? <Pill>Dueño</Pill> : null) : <Pill tone="late">Sin contraseña</Pill>}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function NuevaPersona({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (m: RosterMember, acceso: Acceso) => void }) {
+  const [modo, setModo] = React.useState<Modo>("password");
   const [draft, setDraft] = React.useState({ name: "", email: "", phone: "", password: "" });
-  const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
-  // Inline "nueva contraseña" editor for one row at a time.
-  const [pw, setPw] = React.useState<{ id: string; value: string; saved: boolean } | null>(null);
+  const [pending, start] = React.useTransition();
+  const ok = draft.name.trim() && /\S+@\S+\.\S+/.test(draft.email.trim()) && (modo === "invite" || draft.password.length >= PASSWORD_MIN);
 
-  const canAdd =
-    draft.name.trim().length > 0 &&
-    draft.email.trim().length > 0 &&
-    (mode === "invite" || draft.password.length >= 8);
-
-  const activos = roster.filter((p) => p.active).length;
-
-  const cellInput: React.CSSProperties = {
-    fontSize: 13,
-    border: "none",
-    background: "transparent",
-    outline: "none",
-    color: "var(--ink)",
-    width: "100%",
-    padding: 0,
-  };
-  const formInput: React.CSSProperties = {
-    fontSize: 13,
-    border: "1px solid var(--ink)",
-    background: "var(--paper)",
-    padding: "9px 11px",
-    color: "var(--ink)",
-    outline: "none",
-    borderRadius: 2,
-    width: "100%",
-  };
-
-  function patchLocal(id: string, p: Partial<RosterMember>) {
-    setRoster((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x)));
-  }
-
-  function commitNameOrPhone(id: string, field: "name" | "phone", value: string) {
-    startTransition(async () => {
-      const r = await updateMember(
-        field === "name"
-          ? { id, name: value }
-          : { id, phone: value.length > 0 ? value : null },
-      );
-      if ("error" in r && r.error) setError(r.error);
-    });
-  }
-
-  function commitActive(id: string, active: boolean) {
-    patchLocal(id, { active });
-    startTransition(async () => {
-      const r = await updateMember({ id, active });
-      if ("error" in r && r.error) {
-        setError(r.error);
-        // roll back
-        patchLocal(id, { active: !active });
-      }
-    });
-  }
-
-  function remove(id: string) {
-    const prev = roster;
-    setRoster((p) => p.filter((x) => x.id !== id));
-    startTransition(async () => {
-      const fd = new FormData();
-      fd.set("id", id);
-      const r = await removeMember(fd);
-      if ("error" in r && r.error) {
-        setError(r.error);
-        setRoster(prev);
-      }
-    });
-  }
-
-  function add() {
-    if (!canAdd) return;
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ok || pending) return;
     setError(null);
-    startTransition(async () => {
-      const base = {
-        name: draft.name.trim(),
-        email: draft.email.trim(),
-        phone: draft.phone.trim() || undefined,
-      };
-      const r =
-        mode === "password"
-          ? await createMemberWithPassword({ ...base, password: draft.password })
-          : await inviteMember(base);
-      if ("error" in r && r.error) setError(r.error);
-      else if ("member" in r && r.member) {
-        const added = r.member;
-        setRoster((prev) =>
-          [...prev.filter((x) => x.id !== added.id), added].sort((a, b) => a.name.localeCompare(b.name, "es")),
-        );
+    start(async () => {
+      const base = { name: draft.name.trim(), email: draft.email.trim(), phone: draft.phone.trim() || undefined };
+      const r = modo === "password" ? await createMemberWithPassword({ ...base, password: draft.password }) : await inviteMember(base);
+      if ("error" in r && r.error) return setError(r.error);
+      if ("member" in r && r.member) {
+        onCreated(r.member, modo === "password" ? "password" : "google");
         setDraft({ name: "", email: "", phone: "", password: "" });
-        setAdding(false);
-      }
-    });
-  }
-
-  function savePassword() {
-    if (!pw || pw.value.length < 8) return;
-    const { id, value } = pw;
-    setError(null);
-    startTransition(async () => {
-      const r = await setMemberPassword({ id, password: value });
-      if ("error" in r && r.error) setError(r.error);
-      else {
-        setPw({ id, value: "", saved: true });
-        window.setTimeout(() => setPw((cur) => (cur?.id === id && cur.saved ? null : cur)), 2500);
       }
     });
   }
 
   return (
-    <div>
-      <div
-        className="flex justify-between items-center"
-        style={{ marginBottom: 14 }}
-      >
-        <div
-          className="text-muted"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-          }}
-        >
-          {roster.length} {roster.length === 1 ? "persona" : "personas"} ·{" "}
-          {activos} activas
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Nueva persona"
+      footer={
+        <Button type="submit" form="nueva-persona" block loading={pending} disabled={!ok}>
+          {modo === "password" ? "Crear cuenta" : "Enviar invitación"}
+        </Button>
+      }
+    >
+      <form id="nueva-persona" onSubmit={submit} className="flex flex-col gap-4">
+        <Segmented<Modo>
+          label="Cómo entra"
+          block
+          value={modo}
+          onChange={setModo}
+          options={[
+            { value: "password", label: "Con contraseña" },
+            { value: "invite", label: "Con Google" },
+          ]}
+        />
+        <Field label="Nombre" autoComplete="off" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} maxLength={120} required />
+        <Field
+          label="Correo"
+          type="email"
+          inputMode="email"
+          autoComplete="off"
+          autoCapitalize="none"
+          value={draft.email}
+          onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+          maxLength={160}
+          required
+        />
+        <Field label="Teléfono (opcional)" type="tel" inputMode="tel" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} maxLength={60} />
+        {modo === "password" ? (
+          <PasswordField value={draft.password} onChange={(v) => setDraft({ ...draft, password: v })} />
+        ) : (
+          <p className="ui-sub m-0">
+            Se crea la cuenta y la persona entra con Google usando ese correo. Para que pueda usar la tablet con su ficha, ponle una contraseña
+            después.
+          </p>
+        )}
+        {error ? (
+          <p role="alert" className="m-0 text-late font-semibold">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </Sheet>
+  );
+}
+
+function PasswordField({ value, onChange, label = "Contraseña" }: { value: string; onChange: (v: string) => void; label?: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Field
+        label={label}
+        type="text"
+        autoComplete="new-password"
+        autoCapitalize="none"
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={72}
+        hint={`Mínimo ${PASSWORD_MIN} caracteres. Dísela en persona.`}
+        error={value && value.length < PASSWORD_MIN ? `Faltan ${PASSWORD_MIN - value.length} caracteres.` : undefined}
+      />
+      <Button type="button" variant="ghost" size="sm" icon={<KeyRound size={18} aria-hidden />} onClick={() => onChange(sugerirContrasena())}>
+        Sugerir una
+      </Button>
+    </div>
+  );
+}
+
+function PersonaSheet({
+  persona,
+  meId,
+  onClose,
+  onPatch,
+  onRemoved,
+}: {
+  persona: Persona | null;
+  meId: string;
+  onClose: () => void;
+  onPatch: (id: string, p: Partial<Persona>) => void;
+  onRemoved: (id: string) => void;
+}) {
+  // Keep the last person while the sheet animates closed.
+  const [last, setLast] = React.useState<Persona | null>(persona);
+  if (persona && persona !== last) setLast(persona);
+  const p = persona ?? last;
+  return (
+    <Sheet open={!!persona} onClose={onClose} title={p?.name ?? "Persona"}>
+      {p ? <PersonaForm key={p.id} p={p} meId={meId} onPatch={onPatch} onRemoved={onRemoved} /> : null}
+    </Sheet>
+  );
+}
+
+function PersonaForm({
+  p,
+  meId,
+  onPatch,
+  onRemoved,
+}: {
+  p: Persona;
+  meId: string;
+  onPatch: (id: string, p: Partial<Persona>) => void;
+  onRemoved: (id: string) => void;
+}) {
+  const [name, setName] = React.useState(p.name);
+  const [phone, setPhone] = React.useState(p.phone ?? "");
+  const [pw, setPw] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, start] = React.useTransition();
+  const a = ACCESO[p.acceso];
+  const datosCambiaron = name.trim() !== p.name || (p.isMember && phone.trim() !== (p.phone ?? ""));
+
+  const run = (fn: () => Promise<{ ok?: boolean; error?: string } | { ok: true }>, done: () => void) => {
+    setError(null);
+    start(async () => {
+      const r = (await fn()) as { error?: string };
+      if (r.error) setError(r.error);
+      else done();
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <Avatar name={p.name} initials={p.initials} size="lg" />
+        <div className="min-w-0 flex-1">
+          <p className="ui-sub m-0 truncate">{p.email || "sin correo"}</p>
+          <div className="flex flex-wrap gap-2 mt-1.5">
+            {p.role === "admin" ? <Pill>Dueño</Pill> : <Pill>Equipo</Pill>}
+            <Pill tone={a.tablet ? "ok" : "late"}>{a.label}</Pill>
+            {!p.active ? <Pill tone="late">Inactiva</Pill> : null}
+          </div>
         </div>
-        <button
-          type="button"
-          className="cmd-btn sm"
-          onClick={() => setAdding((a) => !a)}
-        >
-          {adding ? "✕ Cerrar" : "+ Agregar persona"}
-        </button>
       </div>
 
-      {adding ? (
-        <div
-          className="cmd-noise"
-          style={{
-            border: "1.5px solid var(--ink)",
-            background: "var(--paper-lt)",
-            padding: 18,
-            marginBottom: 18,
-            boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
-          }}
+      <section className="flex flex-col gap-3" aria-label="Contraseña">
+        <h3 className="ui-title m-0">{a.tablet ? "Restablecer contraseña" : "Ponerle contraseña"}</h3>
+        <p className="ui-sub m-0">{a.hint}</p>
+        <PasswordField label="Nueva contraseña" value={pw} onChange={setPw} />
+        <Button
+          type="button"
+          variant="strong"
+          block
+          loading={pending}
+          disabled={pw.length < PASSWORD_MIN}
+          onClick={() =>
+            run(
+              () => setMemberPassword({ id: p.id, password: pw }),
+              () => {
+                onPatch(p.id, { acceso: p.acceso === "google" || p.acceso === "ambos" ? "ambos" : "password" });
+                setPw("");
+                toast(`Contraseña de ${p.name} guardada`, "ok");
+              },
+            )
+          }
         >
-          <div className="flex items-center" style={{ gap: 14, marginBottom: 12, flexWrap: "wrap" }}>
-            <div
-              className="text-muted"
-              style={{
-                fontSize: 9,
-                letterSpacing: "0.16em",
-                textTransform: "uppercase",
-              }}
-            >
-              Agregar persona · cómo entra
-            </div>
-            <div className="flex" style={{ gap: 6 }} role="radiogroup" aria-label="Cómo entra">
-              {(
-                [
-                  ["password", "Con contraseña"],
-                  ["invite", "Invitación por correo"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === value}
-                  onClick={() => setMode(value)}
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    padding: "5px 10px",
-                    borderRadius: 999,
-                    border: `1px solid ${mode === value ? "var(--ink)" : "var(--rule)"}`,
-                    background: mode === value ? "var(--ink)" : "transparent",
-                    color: mode === value ? "var(--paper-lt)" : "var(--muted)",
-                    cursor: "pointer",
-                    minHeight: 0,
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div
-            className="grid items-end"
-            style={{
-              gridTemplateColumns: mode === "password" ? "1.3fr 1.5fr 1.2fr .9fr auto" : "1.4fr 1.6fr 1fr auto",
-              gap: 12,
+          Guardar contraseña
+        </Button>
+      </section>
+
+      <section className="flex flex-col gap-3 border-t border-line pt-5" aria-label="Datos">
+        <h3 className="ui-title m-0">Datos</h3>
+        <Field label="Nombre" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
+        {p.isMember ? <Field label="Teléfono" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={60} /> : null}
+        <Button
+          type="button"
+          variant="ghost"
+          block
+          disabled={!datosCambiaron || !name.trim() || pending}
+          onClick={() =>
+            run(
+              () => updateMember({ id: p.id, name: name.trim(), ...(p.isMember ? { phone: phone.trim() || null } : {}) }),
+              () => {
+                onPatch(p.id, { name: name.trim(), phone: phone.trim() || null });
+                toast("Datos guardados", "ok");
+              },
+            )
+          }
+        >
+          Guardar datos
+        </Button>
+      </section>
+
+      {p.isMember && p.id !== meId ? (
+        <section className="flex flex-col gap-3 border-t border-line pt-5" aria-label="Estado">
+          <h3 className="ui-title m-0">{p.active ? "Desactivar" : "Activar"}</h3>
+          <p className="ui-sub m-0">
+            {p.active
+              ? "Deja de aparecer en la tablet, en el horario y en el POS. Su historial se conserva."
+              : "Vuelve a aparecer en la tablet, el horario y el POS."}
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            block
+            disabled={pending}
+            onClick={() => run(() => updateMember({ id: p.id, active: !p.active }), () => onPatch(p.id, { active: !p.active }))}
+          >
+            {p.active ? "Desactivar" : "Activar"}
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            block
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm(`¿Quitar a ${p.name} de la sede? Su cuenta sigue existiendo.`)) return;
+              const fd = new FormData();
+              fd.set("id", p.id);
+              run(() => removeMember(fd), () => {
+                onRemoved(p.id);
+                toast(`${p.name} ya no está en la sede`);
+              });
             }}
           >
-            <div>
-              <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
-                Nombre completo
-              </div>
-              <input
-                autoFocus
-                value={draft.name}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && add()}
-                placeholder="ej. Andrea Gómez"
-                style={formInput}
-              />
-            </div>
-            <div>
-              <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
-                Email
-              </div>
-              <input
-                type="email"
-                value={draft.email}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, email: e.target.value }))
-                }
-                onKeyDown={(e) => e.key === "Enter" && add()}
-                placeholder="persona@correo.com"
-                style={formInput}
-              />
-            </div>
-            {mode === "password" ? (
-              <div>
-                <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
-                  Contraseña <span style={{ opacity: 0.7 }}>(mín. 8)</span>
-                </div>
-                <input
-                  type="text"
-                  value={draft.password}
-                  onChange={(e) => setDraft((d) => ({ ...d, password: e.target.value }))}
-                  onKeyDown={(e) => e.key === "Enter" && add()}
-                  autoComplete="new-password"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  placeholder="la que le vas a entregar"
-                  className="cmd-num"
-                  style={formInput}
-                />
-              </div>
-            ) : null}
-            <div>
-              <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
-                Teléfono
-              </div>
-              <input
-                value={draft.phone}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, phone: e.target.value }))
-                }
-                onKeyDown={(e) => e.key === "Enter" && add()}
-                placeholder="opcional"
-                style={formInput}
-              />
-            </div>
-            <button
-              type="button"
-              className="cmd-btn red sm"
-              onClick={add}
-              disabled={pending || !canAdd}
-              style={{ height: 38 }}
-            >
-              {pending ? "…" : mode === "password" ? "Crear acceso" : "Invitar"}
-            </button>
-          </div>
-          <div className="text-muted" style={{ fontSize: 10.5, marginTop: 10, lineHeight: 1.5 }}>
-            {mode === "password"
-              ? "La persona entra en la tablet del turno con su correo y esta contraseña. Entrégasela en persona; puedes cambiarla cuando quieras desde la lista."
-              : "Le llega un correo con un enlace para activar la cuenta; luego entra con Google usando ese mismo correo."}
-          </div>
-        </div>
+            Quitar de la sede
+          </Button>
+        </section>
       ) : null}
 
       {error ? (
-        <div
-          style={{
-            border: "1px solid var(--amber)",
-            color: "var(--amber)",
-            padding: "8px 12px",
-            marginBottom: 14,
-            fontSize: 12,
-          }}
-        >
+        <p role="alert" className="m-0 text-late font-semibold">
           {error}
-        </div>
+        </p>
       ) : null}
-
-      <div style={{ border: "1px solid var(--rule)" }}>
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 96px",
-            padding: "10px 16px",
-            background: "var(--ink)",
-            color: "var(--paper-lt)",
-            fontSize: 9,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
-          }}
-        >
-          <span>Persona</span>
-          <span>Email</span>
-          <span>Teléfono</span>
-          <span style={{ textAlign: "center" }}>Rol</span>
-          <span style={{ textAlign: "center" }}>Activo</span>
-          <span></span>
-        </div>
-        {roster.map((p, i) => (
-          <React.Fragment key={p.id}>
-          <div
-            className="grid items-center"
-            style={{
-              gridTemplateColumns: "2fr 1.8fr 1.1fr .9fr .9fr 96px",
-              padding: "12px 16px",
-              borderBottom:
-                i < roster.length - 1 && pw?.id !== p.id ? "1px solid var(--rule-soft)" : "none",
-              background: p.active ? "var(--paper-lt)" : "transparent",
-              opacity: p.active ? 1 : 0.55,
-            }}
-          >
-            <div className="flex items-center" style={{ gap: 10, minWidth: 0 }}>
-              <span
-                className="inline-flex items-center justify-center flex-shrink-0"
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: "50%",
-                  border: "1.5px solid var(--ink)",
-                  background: "var(--paper)",
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}
-              >
-                {p.initials}
-              </span>
-              <input
-                value={p.name}
-                onChange={(e) => patchLocal(p.id, { name: e.target.value })}
-                onBlur={(e) => commitNameOrPhone(p.id, "name", e.target.value)}
-                style={{ ...cellInput, fontWeight: 500 }}
-              />
-            </div>
-            <input
-              type="email"
-              value={p.email}
-              readOnly
-              placeholder="—"
-              style={{ ...cellInput, color: "var(--ink-2)", fontSize: 12 }}
-            />
-            <input
-              value={p.phone ?? ""}
-              onChange={(e) => patchLocal(p.id, { phone: e.target.value })}
-              onBlur={(e) => commitNameOrPhone(p.id, "phone", e.target.value)}
-              placeholder="—"
-              readOnly={!p.isMember}
-              className="cmd-num text-muted"
-              style={{ ...cellInput, fontSize: 12 }}
-            />
-            <div style={{ textAlign: "center" }}>
-              <span
-                style={{
-                  display: "inline-block",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  padding: "3px 8px",
-                  borderRadius: 2,
-                  border: `1px solid ${p.role === "admin" ? "var(--ink)" : "var(--rule)"}`,
-                  background:
-                    p.role === "admin" ? "var(--ink)" : "transparent",
-                  color:
-                    p.role === "admin" ? "var(--paper-lt)" : "var(--muted)",
-                }}
-              >
-                {p.role === "admin" ? "Dueño" : "Staff"}
-              </span>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              {p.isMember ? (
-                <button
-                  type="button"
-                  onClick={() => commitActive(p.id, !p.active)}
-                  title={p.active ? "Activo" : "Inactivo"}
-                  style={{
-                    width: 34,
-                    height: 20,
-                    borderRadius: 10,
-                    border: `1px solid ${p.active ? "var(--green)" : "var(--rule)"}`,
-                    background: p.active
-                      ? "rgba(31,138,91,.15)"
-                      : "transparent",
-                    position: "relative",
-                    cursor: "pointer",
-                    padding: 0,
-                    minHeight: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: 2,
-                      left: p.active ? 16 : 2,
-                      width: 14,
-                      height: 14,
-                      borderRadius: "50%",
-                      background: p.active ? "var(--green)" : "var(--muted)",
-                      transition: "left .12s",
-                    }}
-                  />
-                </button>
-              ) : (
-                // Owners aren't sede members — nothing to toggle.
-                <span className="text-muted" style={{ fontSize: 12 }}>
-                  —
-                </span>
-              )}
-            </div>
-            <div className="flex items-center justify-end" style={{ gap: 6 }}>
-              <button
-                type="button"
-                onClick={() => setPw(pw?.id === p.id ? null : { id: p.id, value: "", saved: false })}
-                title="Asignar o cambiar la contraseña"
-                aria-pressed={pw?.id === p.id}
-                className="text-muted"
-                style={{
-                  background: pw?.id === p.id ? "var(--ink)" : "transparent",
-                  color: pw?.id === p.id ? "var(--paper-lt)" : undefined,
-                  border: "1px solid var(--rule)",
-                  borderRadius: 2,
-                  cursor: "pointer",
-                  fontSize: 9,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  padding: "4px 7px",
-                  minHeight: 0,
-                }}
-              >
-                clave
-              </button>
-              {p.isMember ? (
-                <button
-                  type="button"
-                  onClick={() => remove(p.id)}
-                  title="Eliminar"
-                  className="text-muted"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 16,
-                    lineHeight: 1,
-                    minHeight: 0,
-                    padding: "0 2px",
-                  }}
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {pw?.id === p.id ? (
-            <div
-              className="flex items-center"
-              style={{
-                gap: 10,
-                padding: "8px 16px 12px 56px",
-                borderBottom: i < roster.length - 1 ? "1px solid var(--rule-soft)" : "none",
-                background: "var(--paper-lt)",
-              }}
-            >
-              <span className="text-muted" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                Nueva contraseña
-              </span>
-              <input
-                autoFocus
-                type="text"
-                value={pw.value}
-                onChange={(e) => setPw({ id: p.id, value: e.target.value, saved: false })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") savePassword();
-                  if (e.key === "Escape") setPw(null);
-                }}
-                autoComplete="new-password"
-                autoCapitalize="none"
-                spellCheck={false}
-                placeholder="mín. 8 caracteres"
-                className="cmd-num"
-                style={{ ...formInput, maxWidth: 260, padding: "7px 10px" }}
-              />
-              <button
-                type="button"
-                className="cmd-btn sm"
-                onClick={savePassword}
-                disabled={pending || pw.value.length < 8}
-              >
-                {pending ? "…" : "Guardar"}
-              </button>
-              <button type="button" className="cmd-btn ghost sm" onClick={() => setPw(null)}>
-                Cancelar
-              </button>
-              {pw.saved ? (
-                <span style={{ fontSize: 11, color: "var(--green)" }}>✓ Contraseña actualizada</span>
-              ) : null}
-            </div>
-          ) : null}
-          </React.Fragment>
-        ))}
-        {roster.length === 0 ? (
-          <div
-            className="text-muted"
-            style={{ padding: 28, textAlign: "center", fontSize: 12 }}
-          >
-            Sin personas. Agrega la primera con &ldquo;+ Agregar
-            persona&rdquo;.
-          </div>
-        ) : null}
-      </div>
-      <div
-        className="text-muted"
-        style={{ fontSize: 10, marginTop: 12, letterSpacing: "0.04em" }}
-      >
-        Las personas activas aparecen al asignar turnos en{" "}
-        <strong>Turnos · Asignación</strong>. El equipo entra en la tablet del
-        turno con correo + contraseña (o con Google usando el mismo correo).
-      </div>
     </div>
   );
 }
