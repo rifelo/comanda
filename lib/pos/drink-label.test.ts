@@ -59,20 +59,30 @@ describe("planSaleLabels", () => {
   const line = (id: string, qty: number, customer?: string): OrderLine => ({ id, name: id, qty, kind: "item", ...(customer ? { customer } : {}) });
   const kinds = (jobs: ReturnType<typeof planSaleLabels>) =>
     jobs.map((j) => (j.kind === "name" ? `name:${j.name}` : j.kind === "drink" ? `drink:${j.item.name}` : j.kind === "frase" ? `frase:${j.productId}` : `qr:${j.customer || "-"}@${j.line}${j.resto ? "+" : ""}`));
-  const set = (name: string, qr: string, drink: string) => [`name:${name}`, `qr:${qr}`, `drink:${drink}`, `frase:${drink.toLowerCase()}`];
+  const set = (name: string, qr: string, drink: string) => [...(name ? [`name:${name}`] : []), `qr:${qr}`, `drink:${drink}`, `frase:${drink.toLowerCase()}`];
 
-  it("one drink: name, QR, drink, phrase", () => {
+  it("one drink without a name: QR, drink, phrase — no order-number label", () => {
     expect(kinds(planSaleLabels({ order: [line("latte", 1)], people: [], byId, tableName: "" })))
       .toEqual(set("", "-@0+", "Latte"));
   });
-  it("every drink of the same order gets the same four labels", () => {
-    const jobs = planSaleLabels({ order: [line("latte", 2), line("torta", 1), line("tinto", 1)], people: [], byId, tableName: "" });
-    expect(kinds(jobs)).toEqual([...set("", "-@0+", "Latte"), ...set("", "-@0", "Latte"), ...set("", "-@2", "Tinto")]);
+  it("one named drink: name, QR, drink, phrase", () => {
+    expect(kinds(planSaleLabels({ order: [line("latte", 1)], people: [], byId, tableName: "Juan" })))
+      .toEqual(set("Juan", "-@0+", "Latte"));
+  });
+  it("every named drink of the same order gets the same four labels", () => {
+    const jobs = planSaleLabels({ order: [line("latte", 2), line("torta", 1), line("tinto", 1)], people: [], byId, tableName: "Juan" });
+    expect(kinds(jobs)).toEqual([...set("Juan", "-@0+", "Latte"), ...set("Juan", "-@0", "Latte"), ...set("Juan", "-@2", "Tinto")]);
     expect(jobs.length).toBe(3 * LABELS_PER_DRINK);
   });
-  it("without cups: the order label only", () => {
-    expect(kinds(planSaleLabels({ order: [line("torta", 1), line("agua", 1)], people: [], byId, tableName: "" })))
-      .toEqual(["name:"]);
+  it("a blank name counts as no name", () => {
+    expect(kinds(planSaleLabels({ order: [line("latte", 1)], people: [], byId, tableName: "   " })))
+      .toEqual(set("", "-@0+", "Latte"));
+  });
+  it("without cups and without a name: nothing prints", () => {
+    expect(kinds(planSaleLabels({ order: [line("torta", 1), line("agua", 1)], people: [], byId, tableName: "" }))).toEqual([]);
+  });
+  it("without cups but with a name: the name label only", () => {
+    expect(kinds(planSaleLabels({ order: [line("torta", 1)], people: [], byId, tableName: "Juan" }))).toEqual(["name:Juan"]);
   });
   it("with people: each cup's set under its person, roster order", () => {
     const order = [line("latte", 1, "María"), line("latte", 2, "Juan"), line("torta", 1, "Juan")];
