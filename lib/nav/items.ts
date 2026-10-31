@@ -5,11 +5,11 @@
  * icons are names (resolved by components/ui/icon.tsx) and "active" is
  * decided by path prefixes (lib/nav/active.ts), never by functions.
  *
- * Hrefs point at routes that exist TODAY. Old routes keep working after
- * P3/P4 rename them (each becomes a redirect), and `match` already lists the
- * new prefixes, so the tabs light up correctly before and after.
- * TODO(Ola 3): swap hrefs to the new routes (/productos, /equipo, /ajustes,
- * /clientes, /inventario/movimientos, /inventario/pedidos…).
+ * Hrefs point at the redesigned routes. The old ones (/catalogo, /recetas,
+ * /numeros, /turnos, /configuracion, /calificaciones, /baristas, /historial,
+ * /compras…) are redirect pages; `match` keeps them so a stale link still
+ * lights the right tab. A section href may carry a query
+ * (`/inventario?vista=acabando`): it is active only when the query matches.
  */
 
 export type IconName =
@@ -73,10 +73,6 @@ export const DUENO_TABS: NavItem[] = [
     label: "Hoy",
     icon: "hoy",
     match: ["/hoy", "/numeros", "/dashboard", "/shifts"],
-    sections: [
-      { href: "/hoy", label: "Operación", match: [] },
-      { href: "/numeros", label: "Números", match: ["/numeros"] },
-    ],
   },
   {
     id: "inventario",
@@ -85,10 +81,12 @@ export const DUENO_TABS: NavItem[] = [
     icon: "inventario",
     match: ["/inventario", "/historial", "/compras"],
     sections: [
-      { href: "/inventario", label: "Existencias", match: [] },
-      { href: "/historial", label: "Movimientos", match: ["/historial", "/inventario/movimientos", "/inventario/kardex"] },
-      { href: "/compras", label: "Pedidos", match: ["/compras", "/inventario/pedidos"] },
-      { href: "/inventario/faltantes", label: "Faltantes", match: ["/inventario/faltantes"] },
+      // Exact /inventario and each insumo's ficha (/inventario/<id>); the
+      // named sub-pages below are more specific and win.
+      { href: "/inventario", label: "Existencias", match: ["/inventario"] },
+      { href: "/inventario/movimientos", label: "Movimientos", match: ["/inventario/movimientos", "/historial", "/inventario/kardex"] },
+      { href: "/inventario/pedidos", label: "Pedidos", match: ["/inventario/pedidos", "/compras"] },
+      { href: "/inventario?vista=acabando", label: "Faltantes", match: ["/inventario/faltantes"] },
       { href: "/inventario/conteos", label: "Conteos", match: ["/inventario/conteos"] },
       { href: "/inventario/mermas", label: "Mermas", match: ["/inventario/mermas"] },
       { href: "/inventario/niveles", label: "Niveles", match: ["/inventario/niveles"] },
@@ -97,29 +95,28 @@ export const DUENO_TABS: NavItem[] = [
   },
   {
     id: "productos",
-    href: "/catalogo",
+    href: "/productos",
     label: "Productos",
     icon: "productos",
     match: ["/productos", "/catalogo", "/recetas", "/modificadores"],
     sections: [
-      { href: "/catalogo", label: "Productos", match: ["/catalogo", "/productos"] },
-      { href: "/recetas", label: "Recetas", match: ["/recetas"] },
+      { href: "/productos", label: "Productos", match: ["/productos", "/catalogo", "/recetas"] },
       { href: "/modificadores", label: "Modificadores", match: ["/modificadores"] },
     ],
   },
   {
     id: "equipo",
-    href: "/configuracion/equipo",
+    href: "/equipo",
     label: "Equipo",
     icon: "equipo",
     match: ["/equipo", "/configuracion/equipo", "/turnos"],
     sections: [
-      { href: "/configuracion/equipo", label: "Personas", match: ["/configuracion/equipo"] },
-      { href: "/turnos/asignacion", label: "Horario", match: ["/turnos/asignacion", "/equipo/horario"] },
-      { href: "/turnos/resumen", label: "Turnos", match: ["/turnos/resumen", "/equipo/turnos"] },
-      { href: "/turnos/tareas", label: "Tareas", match: ["/turnos/tareas", "/equipo/tareas"] },
-      { href: "/turnos/historial", label: "Historial", match: ["/turnos/historial", "/equipo/historial"] },
-      { href: "/turnos/reportes", label: "Reportes", match: ["/turnos/reportes", "/equipo/reportes"] },
+      { href: "/equipo", label: "Personas", match: ["/configuracion/equipo"] },
+      { href: "/equipo/horario", label: "Horario", match: ["/equipo/horario", "/turnos/asignacion"] },
+      { href: "/equipo/turnos", label: "Turnos", match: ["/equipo/turnos", "/turnos/resumen"] },
+      { href: "/equipo/tareas", label: "Tareas", match: ["/equipo/tareas", "/turnos/tareas"] },
+      { href: "/equipo/historial", label: "Historial", match: ["/equipo/historial", "/turnos/historial"] },
+      { href: "/equipo/reportes", label: "Reportes", match: ["/equipo/reportes", "/turnos/reportes"] },
     ],
   },
   { id: "mas", href: "/mas", label: "Más", icon: "mas", match: ["/mas"] },
@@ -131,27 +128,28 @@ export const MAS_ITEMS: NavItem[] = [
   { id: "gastos", href: "/gastos", label: "Gastos", icon: "gastos", sub: "Costos fijos y del día", match: ["/gastos"] },
   {
     id: "clientes",
-    href: "/calificaciones",
+    href: "/clientes",
     label: "Clientes",
     icon: "clientes",
     sub: "Reseñas, puntos y baristas",
     match: ["/clientes", "/calificaciones", "/baristas"],
     sections: [
-      { href: "/calificaciones", label: "Reseñas y puntos", match: ["/calificaciones"] },
-      { href: "/baristas", label: "Baristas", match: ["/baristas", "/clientes/baristas"] },
+      { href: "/clientes", label: "Reseñas", match: ["/calificaciones"] },
+      { href: "/clientes/puntos", label: "Puntos", match: ["/clientes/puntos"] },
+      { href: "/clientes/baristas", label: "Baristas", match: ["/clientes/baristas", "/baristas"] },
     ],
   },
   {
     id: "ajustes",
-    href: "/configuracion",
+    href: "/ajustes",
     label: "Ajustes",
     icon: "ajustes",
     sub: "Sede, apariencia y dispositivos",
     match: ["/ajustes", "/configuracion"],
     sections: [
-      { href: "/configuracion/sede", label: "Sede", match: ["/configuracion/sede", "/ajustes/sede"] },
-      { href: "/configuracion/preferencias", label: "Apariencia", match: ["/configuracion/preferencias", "/ajustes/apariencia"] },
-      { href: "/configuracion/pos", label: "Dispositivos", match: ["/configuracion/pos", "/ajustes/dispositivos"] },
+      { href: "/ajustes/sede", label: "Sede", match: ["/ajustes/sede", "/configuracion/sede"] },
+      { href: "/ajustes/apariencia", label: "Apariencia", match: ["/ajustes/apariencia", "/configuracion/preferencias"] },
+      { href: "/ajustes/dispositivos", label: "Dispositivos", match: ["/ajustes/dispositivos", "/configuracion/pos"] },
     ],
   },
   { id: "turno", href: "/turno", label: "Ver como equipo", icon: "turno", sub: "La app de la tablet", match: [] },

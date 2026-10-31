@@ -7,8 +7,6 @@ import { ProductosList, type Filtro } from "./_components/productos-list";
 export const metadata: Metadata = { title: "Productos · Comanda" };
 export const dynamic = "force-dynamic";
 
-// TODO(P4→Ola 3): lib/nav/items.ts — Productos tab href "/catalogo" → "/productos"; drop the «Recetas»
-// section (/recetas now redirects to /productos?vista=recetas); «Productos» section href → "/productos".
 const FILTROS: Filtro[] =["todos", "recetas", "sin-receta", "revisar", "favoritos"];
 
 /**

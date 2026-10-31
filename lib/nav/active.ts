@@ -51,12 +51,32 @@ export function activeItemIn(pathname: string, ...lists: NavItem[][]): NavItem |
   return activeTabFor(pathname, lists.flat());
 }
 
-/** The active section of a tab; a section with `match: []` is exact-only. */
-export function activeSectionFor(pathname: string, sections: NavSection[]): NavSection | null {
+/**
+ * A section whose href carries a query (`/inventario?vista=acabando`) is
+ * active on that exact path when every one of its params is in `search`;
+ * it then beats the plain exact match of the same path.
+ */
+function queryScore(pathname: string, search: string, href: string): number {
+  const q = href.indexOf("?");
+  if (q < 0) return -1;
+  if (pathname !== href.slice(0, q)) return -1;
+  const want = new URLSearchParams(href.slice(q + 1));
+  const have = new URLSearchParams(search);
+  for (const [k, v] of want) if (have.get(k) !== v) return -1;
+  return href.length + 2000;
+}
+
+/**
+ * The active section of a tab; a section with `match: []` is exact-only.
+ * `search` (the current query string) only matters for query hrefs.
+ */
+export function activeSectionFor(pathname: string, sections: NavSection[], search = ""): NavSection | null {
   let best: NavSection | null = null;
   let bestScore = -1;
   for (const s of sections) {
-    const sc = score(pathname, s.match ?? [s.href], [s.href]);
+    const sc = s.href.includes("?")
+      ? Math.max(queryScore(pathname, search, s.href), score(pathname, s.match ?? []))
+      : score(pathname, s.match ?? [s.href], [s.href]);
     if (sc > bestScore) {
       best = s;
       bestScore = sc;
