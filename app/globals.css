@@ -223,7 +223,6 @@ button, [role="button"], a { min-height: 44px; }
   font-feature-settings: "tnum";
 }
 
-.cmd-lined { background: var(--surface); }
 
 .cmd-photo-stripe {
   background: repeating-linear-gradient(45deg, var(--surface-2) 0 6px, var(--bg) 6px 12px);
@@ -264,31 +263,3 @@ button, [role="button"], a { min-height: 44px; }
   border: none;
   font-family: inherit;
 }
-
-/* ── Shift tablet (/turno) — kept until P1 rewrites those screens ───── */
-.turno-ui { /* no-op: Inter is now the app face */ }
-.turno-topbar > * { flex-shrink: 0; }
-.trow {
-  display: grid;
-  grid-template-columns: 84px 48px minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 14px;
-  row-gap: 6px;
-}
-.trow-meta { grid-column: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.tsteps { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-.tsteps li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; }
-.tsteps li > b { font-size: 13px; line-height: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--strong); color: var(--on-strong); }
-@media (max-width: 900px) {
-  .trow { grid-template-columns: 48px minmax(0, 1fr); column-gap: 12px; }
-  .trow-time { grid-column: 1 / -1; grid-row: 1; }
-  .trow-check { grid-column: 1; grid-row: 2; }
-  .trow-body { grid-column: 2; grid-row: 2; }
-  .trow-meta { grid-column: 2; grid-row: 3; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
-  .trow-meta:empty { display: none; }
-}
-
-/* Inventario: rows open the item's kardex on click. The row background is
-   inline (zebra), so the hover needs !important to show. */
-.inv-row-link:hover { background: var(--surface-2) !important; }
-.inv-row-link:hover a[title^="Ver kardex"] { text-decoration: underline !important; }

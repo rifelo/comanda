@@ -163,73 +163,6 @@ export function CmdSectionLabel({
   );
 }
 
-// ── Comanda nameplate · ticket header band ──────────────────────
-export function ComandaPlate({
-  subtitle,
-  restaurant,
-  date,
-  time,
-  compact = false,
-}: {
-  subtitle?: React.ReactNode;
-  restaurant?: React.ReactNode;
-  date?: React.ReactNode;
-  time?: React.ReactNode;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className="bg-paper relative"
-      style={{
-        borderBottom: "1.5px solid var(--ink)",
-        padding: compact ? "10px 16px 10px" : "14px 16px 12px",
-      }}
-    >
-      {/* The global staff top bar (see app/(staff)/layout.tsx) already shows
-          the co-manda wordmark, so the plate no longer repeats it — that was
-          rendering the logo twice. The subtitle becomes the plate's title. */}
-      <div className="flex items-baseline justify-between">
-        {subtitle ? (
-          <div
-            className="text-ink"
-            style={{
-              fontSize: compact ? 12 : 14,
-              fontWeight: 600,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            {subtitle}
-          </div>
-        ) : (
-          <span />
-        )}
-        {time ? (
-          <div
-            className="text-muted"
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-            }}
-          >
-            {time}
-          </div>
-        ) : null}
-      </div>
-      {restaurant || date ? (
-        <div
-          className="mt-2 flex justify-between text-muted"
-          style={{ fontSize: 11 }}
-        >
-          <span>{restaurant}</span>
-          <span className="cmd-num">{date}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 // ── Folio · ticket-number badge ─────────────────────────────────
 export function Folio({ n, label = "FOLIO" }: { n: React.ReactNode; label?: string }) {
   return (
@@ -314,33 +247,5 @@ export function PhotoPlaceholder({
     >
       {label}
     </div>
-  );
-}
-
-// ── Caveat scribble caption ─────────────────────────────────────
-export function Scribble({
-  children,
-  rotate = -1,
-  size = 13,
-  color = "var(--red)",
-  className,
-}: {
-  children: React.ReactNode;
-  rotate?: number;
-  size?: number;
-  color?: string;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn("font-script inline-block", className)}
-      style={{
-        fontSize: size,
-        color,
-        transform: `rotate(${rotate}deg)`,
-      }}
-    >
-      {children}
-    </span>
   );
 }

@@ -8,7 +8,7 @@
 import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { fmtCOP } from "@/lib/mock/productos";
+import { fmtCOP } from "@/lib/utils";
 import { summarizeGroup, type ModGroup, type ModGroupType } from "@/lib/modificadores";
 import {
   createGroup,
