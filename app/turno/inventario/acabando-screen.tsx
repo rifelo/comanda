@@ -3,14 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Wordmark } from "@/components/comanda/primitives";
 import {
   armarVista,
   buildInsumos,
   conPendientes,
   contar,
   encolar,
-  horaLocal,
   MARCAS,
   metaInsumo,
   NOTAS_RAPIDAS,
@@ -51,18 +49,6 @@ function guardarCola(cola: MarcaPendiente[]) {
   }
 }
 
-/** Bogotá's clock, ticking once a minute; empty until mounted (no hydration mismatch). */
-function useReloj(): string {
-  const [hora, setHora] = React.useState("");
-  React.useEffect(() => {
-    const tick = () => setHora(horaLocal(new Date().toISOString()).hora);
-    tick();
-    const id = window.setInterval(tick, 20_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return hora;
-}
-
 function useEnLinea(): boolean {
   const [online, setOnline] = React.useState(true);
   React.useEffect(() => {
@@ -81,89 +67,91 @@ function useEnLinea(): boolean {
 // Layout lives in classes (never inline `display`): the rail turns into a tab
 // grid under 900 px, the row buttons grow on the portrait tablet.
 const CSS = `
-.acab { --acab-poco: #f1a900; --acab-agot: #c8321e; --acab-ok: #2f7a3e; --acab-ok-ink: #24582d;
-  --acab-row: color-mix(in srgb, #fffdf7 70%, var(--paper-lt));
-  --acab-row-poco: color-mix(in srgb, var(--acab-poco) 22%, var(--paper-lt));
-  --acab-row-agot: color-mix(in srgb, var(--acab-agot) 16%, var(--paper-lt));
-  --acab-row-camino: color-mix(in srgb, #502b1c 9%, var(--paper-lt));
-  height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--paper-lt); color: var(--ink); font-family: var(--font-mono), ui-monospace, monospace; }
+.acab { --acab-poco: var(--brand); --acab-agot: var(--late); --acab-ok: var(--ok); --acab-ok-ink: var(--ok);
+  --acab-row: var(--surface);
+  --acab-row-poco: var(--brand-soft);
+  --acab-row-agot: var(--late-soft);
+  --acab-row-camino: var(--surface-2);
+  height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: inherit; }
 .acab button { font-family: inherit; color: inherit; cursor: pointer; }
-.acab button:focus-visible, .acab a:focus-visible, .acab input:focus-visible { outline: 3px solid var(--acab-poco); outline-offset: 2px; }
-.acab-head { flex-shrink: 0; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 10px 24px; background: var(--paper); border-bottom: 1.5px solid var(--ink); }
-.acab-title { margin: 0; font-weight: 400; font-size: 26px; line-height: 1; white-space: nowrap; }
-.acab-search { height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--acab-row); }
+.acab button:focus-visible, .acab a:focus-visible, .acab input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.acab-head { flex-shrink: 0; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 12px 28px; background: var(--bg); }
+.acab-title { margin: 0; font-weight: 700; font-size: 20px; line-height: 1.2; white-space: nowrap; }
+.acab-search { height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--acab-row); }
 .acab-search input { flex: 1; min-width: 0; height: 44px; border: none; outline: none; background: transparent; font: inherit; font-size: 15px; color: var(--ink); }
-.acab-search-head { flex: 0 1 300px; min-width: 180px; }
+.acab-search-head { flex: 0 1 360px; min-width: 200px; }
 .acab-search-bar { display: none; }
-.acab-pill { display: flex; height: 48px; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; font-weight: 800; font-size: 15px; flex-shrink: 0; }
+.acab-pill { display: flex; height: 48px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-weight: 600; font-size: 15px; flex-shrink: 0; }
+.acab-online { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .acab-pill > span { display: flex; align-items: center; justify-content: center; padding: 0 14px; white-space: nowrap; }
-.acab-pill > span + span { border-left: 1.5px solid var(--ink); }
-.acab-actor { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper-lt); font-size: 14px; font-weight: 700; text-decoration: none; color: var(--ink); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.acab-pill > span + span { border-left: 1px solid var(--line); }
+.acab-actor { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper-lt); font-size: 14px; font-weight: 700; text-decoration: none; color: var(--ink); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .acab-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; min-width: 76px; }
 .acab-dot { width: 8px; height: 8px; border-radius: 4px; display: inline-block; }
-.acab-offline { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 10px 24px; background: var(--ink); color: var(--paper-lt); }
+.acab-offline { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 12px 28px; background: var(--strong); color: var(--on-strong); }
 .acab-body { flex: 1; min-height: 0; display: flex; }
-.acab-rail { width: 232px; flex-shrink: 0; box-sizing: border-box; padding: 16px 14px; border-right: 1.5px solid var(--ink); background: var(--paper); display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-.acab-railbtn { min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1.5px solid var(--ink); border-radius: 6px; text-align: left; }
-.acab-railbtn .acab-sub { font-size: 12px; opacity: .8; }
-.acab-badge { min-width: 28px; height: 28px; box-sizing: border-box; padding: 0 6px; border-radius: 4px; border: 1.5px solid var(--ink); font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.acab-rail { width: 260px; flex-shrink: 0; box-sizing: border-box; padding: 4px 16px 16px 28px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.acab-railbtn { min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 14px; text-align: left; }
+.acab-railbtn[aria-pressed="true"] { border-color: transparent; }
+.acab-railbtn .acab-sub { font-size: 13px; opacity: .75; }
+.acab-badge { min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 7px; border-radius: 999px; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .acab-railgap { margin-bottom: 10px; }
 .acab-spacer { flex: 1; min-height: 8px; }
-.acab-add { min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1.5px dashed var(--ink); border-radius: 6px; font-size: 13px; font-weight: 700; text-align: left; line-height: 1.3; }
-.acab-tools { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1.5px solid color-mix(in srgb, var(--ink) 15%, transparent); }
-.acab-tool { min-height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper-lt); font-size: 13px; font-weight: 700; color: var(--ink); text-decoration: none; }
-.acab-tool small { font-size: 11px; font-weight: 500; color: var(--muted); }
-.acab-main { flex: 1; min-width: 0; overflow-y: auto; box-sizing: border-box; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 16px; }
-.acab-h2 { margin: 0; font-weight: 400; font-size: 24px; }
-.acab-h3 { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--muted); }
-.acab-h3::after { content: ""; flex: 1; height: 1.5px; background: var(--ink); opacity: .15; }
+.acab-add { min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border: 1px dashed var(--line); border-radius: 14px; background: transparent; font-size: 15px; font-weight: 600; text-align: left; line-height: 1.3; }
+.acab-tools { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
+.acab-tool { min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); font-size: 16px; font-weight: 600; color: var(--text); text-decoration: none; }
+.acab-tool small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.acab-main { flex: 1; min-width: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 28px 28px 12px; display: flex; flex-direction: column; gap: 16px; }
+.acab-h2 { margin: 0; font-weight: 700; font-size: 20px; }
+.acab-h3 { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.acab-h3::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .acab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 8px 14px; align-items: start; }
 .acab-item { display: flex; flex-direction: column; min-width: 0; }
-.acab-row { min-height: 58px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 12px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--acab-row); min-width: 0; }
+.acab-row { min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--acab-row); min-width: 0; }
 .acab-row[data-marca="poco"] { background: var(--acab-row-poco); }
 .acab-row[data-marca="agotado"] { background: var(--acab-row-agot); }
 .acab-row[data-camino="1"] { background: var(--acab-row-camino); }
-.acab-row[data-guardado="1"] { border: 2.5px solid var(--acab-ok); }
+.acab-row[data-guardado="1"] { border: 2px solid var(--acab-ok); }
 .acab-row[data-espera="1"] { border-style: dashed; }
-.acab-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.acab-meta { font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 5px; }
-.acab-meta[data-tono="poco"] { color: #5e4300; }
-.acab-meta[data-tono="agotado"] { color: #a3261a; }
-.acab-meta[data-tono="camino"] { color: #502b1c; font-weight: 700; }
-.acab-meta[data-tono="ok"] { color: var(--acab-ok-ink); font-weight: 700; }
-.acab-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.acab-name { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acab-meta { font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 5px; }
+.acab-meta[data-tono="poco"] { color: var(--text); }
+.acab-meta[data-tono="agotado"] { color: var(--late); }
+.acab-meta[data-tono="camino"] { color: var(--text); font-weight: 600; }
+.acab-meta[data-tono="ok"] { color: var(--ok); font-weight: 600; }
+.acab-btns { display: flex; gap: 4px; flex-shrink: 0; padding: 4px; border-radius: 12px; background: var(--surface-2); }
 .acab-btns[data-camino="1"] { opacity: .38; }
-.acab-mb { height: 48px; border: 1.5px solid var(--ink); border-radius: 5px; background: var(--paper-lt); font-size: 13px; font-weight: 800; letter-spacing: .04em; }
+.acab-mb { height: 44px; border: none; border-radius: 9px; background: transparent; color: var(--muted) !important; font-size: 15px; font-weight: 600; }
 .acab-mb[data-m="hay"] { width: 60px; } .acab-mb[data-m="poco"] { width: 66px; } .acab-mb[data-m="agotado"] { width: 88px; }
-.acab-mb[aria-pressed="true"][data-m="hay"] { background: var(--ink); color: var(--paper-lt); }
-.acab-mb[aria-pressed="true"][data-m="poco"] { background: var(--acab-poco); color: #1f1a14; }
-.acab-mb[aria-pressed="true"][data-m="agotado"] { background: var(--acab-agot); color: #ffffff; }
-.acab-note-btn { width: 44px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--ink); border-radius: 5px; background: var(--paper-lt); }
-.acab-note-btn[data-on="1"] { background: var(--paper); }
-.acab-tag { padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 800; letter-spacing: .04em; background: var(--ink); color: var(--paper-lt); white-space: nowrap; }
-.acab-notepanel { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; margin: -1.5px 8px 0; border: 1.5px dashed var(--ink); border-radius: 0 0 6px 6px; background: var(--paper); }
-.acab-notepanel input { flex: 1 1 170px; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 5px; background: var(--acab-row); font: inherit; font-size: 14px; color: var(--ink); }
-.acab-chip { height: 48px; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 5px; background: var(--paper-lt); font-size: 13px; }
-.acab-solid { height: 56px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 0 22px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--ink); color: var(--paper-lt) !important; font-size: 15px; font-weight: 800; }
+.acab-mb[aria-pressed="true"][data-m="hay"] { background: var(--surface); color: var(--ok) !important; box-shadow: var(--shadow-1); }
+.acab-mb[aria-pressed="true"][data-m="poco"] { background: var(--brand); color: var(--on-brand) !important; }
+.acab-mb[aria-pressed="true"][data-m="agotado"] { background: var(--late); color: #ffffff !important; }
+.acab-note-btn { width: 48px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.acab-note-btn[data-on="1"] { background: var(--surface-2); }
+.acab-tag { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text); white-space: nowrap; }
+.acab-notepanel { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px; margin: -1px 10px 0; border: 1px solid var(--line); border-top: none; border-radius: 0 0 14px 14px; background: var(--surface-2); }
+.acab-notepanel input { flex: 1 1 170px; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--acab-row); font: inherit; font-size: 14px; color: var(--ink); }
+.acab-chip { height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 14px; font-weight: 600; }
+.acab-solid { height: 56px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 0 24px; border: 1px solid transparent; border-radius: 12px; background: var(--brand); color: var(--on-brand) !important; font-size: 17px; font-weight: 700; }
 .acab-solid:disabled { opacity: .4; cursor: default; }
-.acab-ghost { height: 56px; padding: 0 20px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper-lt); font-size: 15px; font-weight: 700; }
-.acab-card { box-sizing: border-box; padding: 28px; border: 1.5px dashed var(--ink); border-radius: 8px; background: var(--acab-row); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; margin: 24px auto 0; width: min(560px, 100%); }
+.acab-ghost { height: 56px; padding: 0 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 17px; font-weight: 700; }
+.acab-card { box-sizing: border-box; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--acab-row); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; margin: 24px auto 0; width: min(560px, 100%); }
 .acab-okcard { border-style: solid; }
 .acab-form-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
-.acab-form { box-sizing: border-box; padding: 20px; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--acab-row); display: flex; flex-direction: column; gap: 18px; }
-.acab-label { font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--muted); }
-.acab-field { height: 56px; box-sizing: border-box; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper-lt); font: inherit; font-size: 18px; font-weight: 700; color: var(--ink); width: 100%; }
+.acab-form { box-sizing: border-box; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--acab-row); display: flex; flex-direction: column; gap: 18px; }
+.acab-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.acab-field { height: 56px; box-sizing: border-box; padding: 0 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font: inherit; font-size: 17px; font-weight: 600; color: var(--text); width: 100%; }
 .acab-field.sm { height: 48px; font-size: 14px; font-weight: 400; }
 .acab-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .acab-zonas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.acab-opt { min-height: 52px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper-lt); font-size: 14px; font-weight: 700; }
-.acab-opt[aria-pressed="true"] { background: var(--ink); color: var(--paper-lt); }
-.acab-opt.poco[aria-pressed="true"] { background: var(--acab-poco); color: #1f1a14; }
+.acab-opt { min-height: 52px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 15px; font-weight: 600; }
+.acab-opt[aria-pressed="true"] { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
+.acab-opt.poco[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
 .acab-opt.agot[aria-pressed="true"] { background: var(--acab-agot); color: #fff; }
-.acab-aside { box-sizing: border-box; padding: 16px; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); display: flex; flex-direction: column; gap: 10px; }
-.acab-sugg { min-height: 56px; box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 6px 12px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--acab-row); text-align: left; }
-.acab-flash { border: 1.5px solid var(--acab-ok); border-radius: 6px; padding: 10px 14px; font-size: 13px; font-weight: 700; color: var(--acab-ok-ink); background: color-mix(in srgb, var(--acab-ok) 10%, var(--paper-lt)); }
-.acab-error { border: 1.5px solid var(--acab-agot); border-radius: 6px; padding: 10px 14px; font-size: 13px; font-weight: 700; color: #a3261a; background: var(--acab-row-agot); }
+.acab-aside { box-sizing: border-box; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
+.acab-sugg { min-height: 56px; box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--acab-row); text-align: left; }
+.acab-flash { border: none; border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; color: var(--ok); background: var(--ok-soft); }
+.acab-error { border: none; border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; color: var(--late); background: var(--late-soft); }
 .acab-tools-bottom { display: none; }
 @media (max-width: 1399px) and (min-width: 900px) {
   .acab-actor { display: none; }
@@ -177,7 +165,7 @@ const CSS = `
   .acab-head .acab-pill { order: 5; width: 100%; height: 52px; }
   .acab-head .acab-pill > span { flex: 1; }
   .acab-body { flex-direction: column; overflow-y: auto; }
-  .acab-rail { width: auto; flex-direction: row; flex-wrap: wrap; overflow: visible; border-right: none; border-bottom: 1.5px solid var(--ink); padding: 12px 16px; gap: 8px; }
+  .acab-rail { width: auto; flex-direction: row; flex-wrap: wrap; overflow: visible; border-right: none; border-bottom: 1px solid var(--line); padding: 12px 16px; gap: 8px; }
   .acab-rail > .acab-search-bar { flex-basis: 100%; }
   .acab-railbtn { flex: 1 1 140px; min-height: 52px; }
   .acab-railgap { margin-bottom: 0; }
@@ -188,15 +176,18 @@ const CSS = `
   .acab-row { min-height: 66px; }
   .acab-name { font-size: 16px; }
   .acab-meta { font-size: 12px; }
-  .acab-mb { height: 56px; font-size: 15px; }
+  .acab-mb { height: 48px; font-size: 15px; }
   .acab-mb[data-m="hay"] { width: 84px; } .acab-mb[data-m="poco"] { width: 92px; } .acab-mb[data-m="agotado"] { width: 116px; }
   .acab-form-wrap { grid-template-columns: minmax(0, 1fr); }
   .acab-zonas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .acab-tools-bottom { display: flex; }
 }
 @media (max-width: 560px) {
-  .acab-mb[data-m="hay"] { width: 58px; } .acab-mb[data-m="poco"] { width: 64px; } .acab-mb[data-m="agotado"] { width: 86px; }
-  .acab-mb { font-size: 12px; }
+  /* Phone: the name gets its own line, the three marks fill the line below. */
+  .acab-row { flex-wrap: wrap; padding: 10px 10px 10px 14px; row-gap: 8px; }
+  .acab-row > :first-child { flex: 1 1 100% !important; }
+  .acab-btns { flex: 1; }
+  .acab-mb, .acab-mb[data-m="hay"], .acab-mb[data-m="poco"], .acab-mb[data-m="agotado"] { flex: 1; width: auto; font-size: 14px; }
   .acab-actor { display: none; }
 }
 `;
@@ -235,7 +226,6 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
   porLlegar: number;
 }) {
   const router = useRouter();
-  const hora = useReloj();
   const online = useEnLinea();
   const base = React.useMemo(() => buildInsumos({ ...data, today }), [data, today]);
   const zonas = React.useMemo(() => zonasCon(base), [base]);
@@ -409,7 +399,7 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
     autoComplete: "off",
   };
   const borrar = q ? (
-    <button type="button" onClick={() => setQ("")} aria-label="Borrar búsqueda" style={{ width: 36, height: 36, border: "none", borderRadius: 4, background: "var(--paper)", fontSize: 16, fontWeight: 800 }}>×</button>
+    <button type="button" onClick={() => setQ("")} aria-label="Borrar búsqueda" style={{ width: 36, height: 36, border: "none", borderRadius: 12, background: "var(--paper)", fontSize: 16, fontWeight: 800 }}>×</button>
   ) : null;
 
   const tools = (
@@ -424,39 +414,31 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
       <Link href="/turno/inventario/merma" className="acab-tool">
         <span style={{ flex: 1 }}>Registrar merma<br /><small>se cayó, se dañó, se venció</small></span>
       </Link>
-      {isAdmin && <Link href="/compras" className="acab-tool">Por pedir · panel →</Link>}
+      {isAdmin && <Link href="/inventario/pedidos" className="acab-tool">Por pedir · panel →</Link>}
     </>
   );
 
   return (
     <div className="acab">
       <style>{CSS}</style>
+      {/* The app header (title, person, clock) comes from EquipoShell; this bar keeps search + the tally. */}
       <header className="acab-head">
-        <Link href="/turno" aria-label="Volver al turno" style={{ display: "flex", flexShrink: 0 }}><Wordmark size={30} /></Link>
-        <h1 className="acab-title font-slab">¿Qué se está acabando?</h1>
-        <div style={{ flexGrow: 1 }} />
         <label className="acab-search acab-search-head"><Lupa /><input {...searchProps} />{borrar}</label>
+        <div style={{ flexGrow: 1 }} />
         <div className="acab-pill" role="status" aria-live="polite">
           {counts.poco || counts.agotado ? (
             <>
-              <span style={{ background: "var(--acab-poco)", color: "#1f1a14" }}>{counts.poco} en poco</span>
-              <span style={{ background: "var(--acab-agot)", color: "#fff" }}>{counts.agotado} agotado</span>
+              <span style={{ background: "var(--brand-soft)" }}>{counts.poco} en poco</span>
+              <span style={{ background: "var(--late-soft)", color: "var(--late)" }}>{counts.agotado} agotado</span>
             </>
           ) : (
-            <span style={{ background: "var(--acab-ok)", color: "#fff" }}>0 en poco · 0 agotado</span>
+            <span style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>Nada en poco ni agotado</span>
           )}
-          <span style={{ background: "var(--paper-lt)", color: "#502b1c", fontWeight: 500 }}>{counts.camino} en camino</span>
+          <span style={{ background: "var(--surface)", color: "var(--muted)", fontWeight: 500 }}>{counts.camino} en camino</span>
         </div>
-        <Link href="/turno" className="acab-actor" title="Quien está en la tablet">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" /></svg>
-          <span style={{ fontWeight: 400, color: "var(--muted)" }}>Turno</span> {actorName.split(" ")[0]}
-        </Link>
-        <div className="acab-clock">
-          <span className="cmd-num" style={{ fontWeight: 800, fontSize: 16 }} suppressHydrationWarning>{hora}</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: online ? "var(--acab-ok-ink)" : "#a3261a" }}>
-            <span className="acab-dot" style={{ background: online ? "var(--acab-ok)" : "var(--acab-agot)" }} />{online ? "En línea" : "Sin conexión"}
-          </span>
-        </div>
+        <span className="acab-online" style={{ color: online ? "var(--ok)" : "var(--late)" }} title={actorName}>
+          <span className="acab-dot" style={{ background: online ? "var(--ok)" : "var(--late)" }} />{online ? "En línea" : "Sin conexión"}
+        </span>
       </header>
 
       {esperaVisible && cola.length > 0 && (
@@ -466,7 +448,7 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
             <span style={{ fontSize: 15, fontWeight: 800 }}>{online ? "No se pudo enviar" : "Sin conexión"}</span>
             <span style={{ fontSize: 13 }}>{online ? "Se reintenta solo en unos segundos." : "Se guarda cuando vuelva el internet."}</span>
           </div>
-          <span style={{ padding: "6px 10px", borderRadius: 4, background: "var(--acab-poco)", color: "#1f1a14", fontSize: 12, fontWeight: 800 }}>{cola.length} en espera</span>
+          <span style={{ padding: "6px 10px", borderRadius: 12, background: "var(--acab-poco)", color: "#1f1a14", fontSize: 12, fontWeight: 800 }}>{cola.length} en espera</span>
         </div>
       )}
 
@@ -485,7 +467,7 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
                 style={{ background: on ? "var(--ink)" : "var(--paper-lt)", color: on ? "var(--paper-lt)" : "var(--ink)" }}
               >
                 <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span className="font-slab" style={{ fontSize: 16, lineHeight: 1.1 }}>{r.label}</span>
+                  <span className="font-bold" style={{ fontSize: 16, lineHeight: 1.1 }}>{r.label}</span>
                   <span className="acab-sub">{r.sub}</span>
                 </span>
                 {r.flags > 0 && (
@@ -507,7 +489,7 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
           {addOpen ? (
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-                <h2 className="acab-h2 font-slab">Agregar algo que no está</h2>
+                <h2 className="acab-h2">Agregar algo que no está</h2>
                 <span style={{ fontSize: 13, color: "var(--muted)" }}>Queda marcado y el dueño lo ve en Por pedir</span>
               </div>
               <div className="acab-form-wrap">
@@ -567,16 +549,16 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
           ) : vistaArmada ? (
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-                <h2 className="acab-h2 font-slab">{vistaArmada.titulo}</h2>
+                <h2 className="acab-h2">{vistaArmada.titulo}</h2>
                 <span style={{ fontSize: 13, color: "var(--muted)" }}>{vistaArmada.sub}</span>
               </div>
 
               {vistaArmada.todoEnOrden && (
                 <div className="acab-card acab-okcard">
-                  <div style={{ width: 72, height: 72, borderRadius: 36, border: "1.5px solid var(--ink)", background: "color-mix(in srgb, var(--acab-ok) 14%, var(--paper-lt))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ width: 72, height: 72, borderRadius: 36, border: "1px solid var(--line)", background: "color-mix(in srgb, var(--acab-ok) 14%, var(--paper-lt))", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--acab-ok-ink)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
                   </div>
-                  <span className="font-slab" style={{ fontSize: 28, color: "var(--acab-ok-ink)" }}>Todo en orden ✓</span>
+                  <span className="font-bold" style={{ fontSize: 28, color: "var(--acab-ok-ink)" }}>Todo en orden ✓</span>
                   <span style={{ fontSize: 14, maxWidth: 380, lineHeight: 1.45 }}>Nada se está acabando. Si ves algo bajo, márcalo en <b>POCO</b> antes de que se agote.</span>
                   {zonas[0] && <button type="button" className="acab-ghost" style={{ height: 48 }} onClick={() => irA(zonas[0])}>Ver los {rows.length} insumos</button>}
                 </div>
@@ -608,7 +590,7 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
 
               {vistaArmada.sinResultados && (
                 <div className="acab-card">
-                  <span className="font-slab" style={{ fontSize: 22 }}>«{q.trim()}» no está en la lista</span>
+                  <span className="font-bold" style={{ fontSize: 22 }}>«{q.trim()}» no está en la lista</span>
                   <span style={{ fontSize: 13, lineHeight: 1.5, color: "var(--muted)" }}>Revisa cómo está escrito. Si de verdad no está, agrégalo: queda marcado y el dueño lo ve en Por pedir.</span>
                   <button type="button" className="acab-solid" onClick={() => abrirAlta(q.trim())}><Mas /> Agregar «{q.trim()}»</button>
                 </div>

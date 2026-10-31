@@ -55,3 +55,47 @@ export function stockLevel(current: number, min: number): StockLevel {
 export function isAlerting(level: StockLevel): boolean {
   return level === "bajo" || level === "sin";
 }
+
+/**
+ * The owner's rule for drinks: a recipe must leave at least 55 % of the price
+ * (cost ≤ 45 %). Products under it show up in «Costos por revisar».
+ */
+export const MARGEN_MIN = 55;
+
+/** True when a margin meets the minimum (55 % by default). */
+export function margenOk(margin: number, min: number = MARGEN_MIN): boolean {
+  return margin >= min;
+}
+
+/**
+ * Lowest price that reaches the minimum margin for a cost, rounded UP to the
+ * next $500 (menu prices in Colombia go in 500s). 0 when there is no cost.
+ * Example: cost 4.000 at 55 % → 4.000 / 0,45 = 8.888,9 → 9.000.
+ */
+export function precioParaMargen(cost: number, min: number = MARGEN_MIN, paso = 500): number {
+  if (!(cost > 0) || min >= 100) return 0;
+  const exacto = cost / (1 - min / 100);
+  return Math.ceil(exacto / paso - 1e-9) * paso;
+}
+
+/**
+ * Everything the recipe editor shows under the lines, recomputed live as the
+ * owner types: cost (Σ lines), margin (same rule as the DB column), profit per
+ * unit, whether it passes the minimum, and the price that would.
+ */
+export function resumenReceta(
+  items: ReadonlyArray<{ qty: number; cost_cop: number }>,
+  price: number,
+  min: number = MARGEN_MIN,
+): { costo: number; margen: number; utilidad: number; ok: boolean; precioSugerido: number; costoPct: number } {
+  const costo = recipeCost(items);
+  const margen = margenOf(price, costo);
+  return {
+    costo,
+    margen,
+    utilidad: price - costo,
+    ok: price > 0 && margenOk(margen, min),
+    precioSugerido: precioParaMargen(costo, min),
+    costoPct: price > 0 ? Math.round((costo / price) * 100) : 0,
+  };
+}

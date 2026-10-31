@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { posMoney } from "@/lib/pos/types";
+import { buttonClass } from "@/components/ui";
 import { fullCountDue, groupForCount, parseCount, pickCountList, type ConteoKind } from "@/lib/inventario/conteo";
 import { PRESENTACIONES, parecidos } from "@/lib/inventario/propuestas";
 import { NIVELES, ZONAS, cantidadLegible, dePaquetes, guiaNivel, nivelDe, nombrePaquete, piezaDe, type Nivel } from "@/lib/inventario/niveles";
@@ -56,9 +57,11 @@ function writeDraft(key: string, d: Draft | null) {
   }
 }
 
-const chip: React.CSSProperties = { height: 36, padding: "0 12px", borderRadius: 3, border: "1.5px solid var(--rule)", color: "var(--ink)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", textDecoration: "none", display: "inline-flex", alignItems: "center", fontFamily: "var(--font-mono)", background: "transparent", cursor: "pointer" };
+const chip: React.CSSProperties = { height: 36, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line)", color: "var(--ink)", fontSize: 11, letterSpacing: ".1em", textTransform: "none", textDecoration: "none", display: "inline-flex", alignItems: "center", fontFamily: "inherit", background: "transparent", cursor: "pointer" };
 
-export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias, lastCompletoAt, todayKinds }: {
+export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias, lastCompletoAt, todayKinds, siguiente }: {
+  /** Inside /turno/cerrar: where the «sent» screen goes next. */
+  siguiente?: { href: string; label: string };
   actor: { name: string; isAdmin: boolean };
   sedeName: string;
   today: string;
@@ -179,16 +182,16 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
   }
 
   return (
-    <div className="cmd-paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
+    <div className="cmd-paper" style={{ minHeight: "100%", display: "flex", flexDirection: "column", fontFamily: "inherit", color: "var(--ink)" }}>
       {/* top bar */}
-      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1.5px solid var(--ink)", background: "var(--paper-lt)", flexShrink: 0 }}>
-        <span className="font-slab" style={{ fontSize: 22 }}>Conteo<span style={{ color: "var(--red)" }}>.</span></span>
-        <span style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "uppercase" }}>{sedeName} · {today}</span>
+      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0 }}>
+        <span className="font-bold" style={{ fontSize: 22 }}>Conteo</span>
+        <span style={{ fontSize: 11, color: "var(--muted)", letterSpacing: ".12em", textTransform: "none" }}>{sedeName} · {today}</span>
         {step.kind === "count" && (
           <span className="cmd-num" style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: filled === list.length ? "var(--green)" : "var(--ink)" }}>{filled} de {list.length}</span>
         )}
-        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }} title={actor.name}>{actor.name}</span>
-        <div style={{ display: "flex", gap: 8 }}>
+        {/* Who counts shows in the shell header and in «Cuenta …» below — not repeated here. */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <Link href="/turno/inventario" style={chip}>← Inventario</Link>
           {actor.isAdmin && <Link href="/inventario/conteos" style={chip}>Panel</Link>}
         </div>
@@ -197,7 +200,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
       {step.kind === "setup" && (
         <div style={{ padding: "22px 20px 40px", maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 22 }}>
           <section>
-            <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>¿Qué se cuenta?</div>
+            <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "none", color: "var(--muted)", marginBottom: 10 }}>¿Qué se cuenta?</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               <KindCard
                 title="Conteo rápido"
@@ -240,9 +243,9 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
               const sigue = byCat[gi + 1];
               return (
               <section key={g.label} id={`conteo-area-${gi}`} aria-label={g.label} style={{ marginBottom: 10, border: `1.5px solid ${open ? "var(--ink)" : "var(--rule)"}`, borderRadius: 8, background: open ? "transparent" : "var(--paper-lt)", scrollMarginTop: 8 }}>
-                <button type="button" onClick={() => (open ? setAbierta(null) : abrirArea(g.label, gi))} aria-expanded={open} style={{ width: "100%", minHeight: 60, display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", background: "none", border: "none", color: "var(--ink)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-mono)" }}>
-                  <span className="font-slab" style={{ fontSize: 19, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: malos ? "var(--red)" : listo ? "var(--green)" : "var(--muted)" }}>{malos ? "revisar" : listo ? "✓ listo" : hechos ? `faltan ${g.items.length - hechos}` : "sin contar"}</span>
+                <button type="button" onClick={() => (open ? setAbierta(null) : abrirArea(g.label, gi))} aria-expanded={open} style={{ width: "100%", minHeight: 60, display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", background: "none", border: "none", color: "var(--ink)", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                  <span className="font-bold" style={{ fontSize: 19, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "none", color: malos ? "var(--red)" : listo ? "var(--green)" : "var(--muted)" }}>{malos ? "revisar" : listo ? "✓ listo" : hechos ? `faltan ${g.items.length - hechos}` : "sin contar"}</span>
                   <span className="cmd-num" style={{ fontSize: 13, fontWeight: 700, minWidth: 64, textAlign: "right" }}>{hechos} de {g.items.length}</span>
                   <span aria-hidden style={{ fontSize: 13, color: "var(--muted)", width: 14, textAlign: "center" }}>{open ? "▾" : "▸"}</span>
                 </button>
@@ -261,7 +264,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
                       onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
                       aria-label={label}
                       placeholder="—"
-                      style={{ width, height: 48, padding: "0 10px", textAlign: "right", border: `1.5px solid ${bad ? "var(--red)" : nivel ? NIVELES[nivel].color : "var(--rule)"}`, borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, outline: "none" }}
+                      style={{ width, height: 48, padding: "0 10px", textAlign: "right", border: `1.5px solid ${bad ? "var(--red)" : nivel ? NIVELES[nivel].color : "var(--rule)"}`, borderRadius: 12, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "inherit", fontSize: 18, fontWeight: 700, outline: "none" }}
                     />
                   );
                   return (
@@ -270,14 +273,14 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
                         <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</div>
                         {guia && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 1 }}>{guia}</div>}
                         {noteOpen === i.id ? (
-                          <input value={notes[i.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [i.id]: e.target.value }))} onBlur={() => setNoteOpen(null)} maxLength={120} placeholder="Nota (se rompió, se botó…)" aria-label={`Nota de ${i.name}`} style={{ marginTop: 4, width: "100%", height: 32, padding: "0 8px", border: "1px solid var(--rule)", borderRadius: 3, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none" }} />
+                          <input value={notes[i.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [i.id]: e.target.value }))} onBlur={() => setNoteOpen(null)} maxLength={120} placeholder="Nota (se rompió, se botó…)" aria-label={`Nota de ${i.name}`} style={{ marginTop: 4, width: "100%", height: 32, padding: "0 8px", border: "1px solid var(--rule)", borderRadius: 999, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "inherit", fontSize: 12, outline: "none" }} />
                         ) : (
-                          <button type="button" onClick={() => setNoteOpen(i.id)} style={{ background: "none", border: "none", padding: 0, marginTop: 2, fontSize: 10.5, color: notes[i.id] ? "var(--ink)" : "var(--muted)", fontFamily: "var(--font-mono)", cursor: "pointer", textDecoration: "underline dotted" }}>
+                          <button type="button" onClick={() => setNoteOpen(i.id)} style={{ background: "none", border: "none", padding: 0, marginTop: 2, fontSize: 10.5, color: notes[i.id] ? "var(--ink)" : "var(--muted)", fontFamily: "inherit", cursor: "pointer", textDecoration: "underline dotted" }}>
                             {notes[i.id] ? `Nota: ${notes[i.id]}` : "+ nota"}
                           </button>
                         )}
                       </div>
-                      <span role="status" aria-label={`Nivel de ${i.name}`} style={{ width: 74, fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", textAlign: "right", color: nivel ? NIVELES[nivel].color : "transparent" }}>
+                      <span role="status" aria-label={`Nivel de ${i.name}`} style={{ width: 74, fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "none", textAlign: "right", color: nivel ? NIVELES[nivel].color : "transparent" }}>
                         {nivel ? NIVELES[nivel].short : "·"}
                       </span>
                       {porPaquete(i) && (
@@ -322,7 +325,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
               onRemove={(k) => setPropuestas((x) => x.filter((_, i) => i !== k))}
             />
           </div>
-          <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: "10px 16px 14px", background: "var(--paper-lt)", borderTop: "1.5px solid var(--ink)", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: "10px 16px 14px", background: "var(--paper-lt)", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
               <span className="cmd-num" style={{ color: "var(--ink)", fontWeight: 700 }}>{filled}</span> de {list.length} contados{propuestas.length > 0 ? ` · ${propuestas.length} nuevo${propuestas.length === 1 ? "" : "s"}` : ""}{invalid > 0 ? <span style={{ color: "var(--red)" }}> · {invalid} con valor inválido</span> : null}
             </span>
@@ -334,7 +337,7 @@ export function ConteoScreen({ actor, sedeName, today, ingredientes, categorias,
         </>
       )}
 
-      {step.kind === "done" && <ConteoResult result={step.result} person={actor.name} bajos={bajos} />}
+      {step.kind === "done" && <ConteoResult result={step.result} person={actor.name} bajos={bajos} siguiente={siguiente} />}
     </div>
   );
 }
@@ -343,7 +346,7 @@ function KindCard({ title, count, hint, accent, done, disabled, onStart }: { tit
   return (
     <div style={{ border: `1.5px solid ${accent ? "var(--red)" : "var(--rule)"}`, borderRadius: 8, padding: "14px 16px", background: "var(--paper-lt)", display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-        <span className="font-slab" style={{ fontSize: 20 }}>{title}</span>
+        <span className="font-bold" style={{ fontSize: 20 }}>{title}</span>
         <span className="cmd-num" style={{ fontSize: 12, color: "var(--muted)" }}>{count} ítem{count === 1 ? "" : "s"}</span>
       </div>
       <div style={{ fontSize: 12, color: accent ? "var(--red)" : "var(--muted)", lineHeight: 1.5 }}>{hint}</div>
@@ -358,13 +361,13 @@ function KindCard({ title, count, hint, accent, done, disabled, onStart }: { tit
 /** An item that came out red or amber in the count just sent. */
 interface BajoLine { id: string; name: string; nivel: Nivel; quedan: string }
 
-function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoResult, { ok: true }>; person: string; bajos: BajoLine[] }) {
+function ConteoResult({ result, person, bajos, siguiente }: { result: Extract<EnviarConteoResult, { ok: true }>; person: string; bajos: BajoLine[]; siguiente?: { href: string; label: string } }) {
   const s = result.summary;
   const diffs = result.lines.filter((l) => l.diff !== 0);
   return (
     <div style={{ padding: "22px 20px 40px", maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ border: "1.5px solid var(--ink)", borderRadius: 10, padding: "20px 22px", background: "var(--paper-lt)" }}>
-        <div className="font-slab" style={{ fontSize: 26 }}>Conteo enviado<span style={{ color: "var(--green)" }}>.</span></div>
+      <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "20px 22px", background: "var(--paper-lt)" }}>
+        <div className="font-bold" style={{ fontSize: 26 }}>Conteo enviado</div>
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Contó {person} · {s.lines} ítems · {result.aplicado ? "las diferencias son normales: el inventario ya quedó corregido." : "queda pendiente de aprobación del dueño. El inventario no cambia hasta que lo apruebe."}</div>
         {result.propuestas > 0 && (
           <div style={{ fontSize: 12.5, marginTop: 8 }}>
@@ -379,10 +382,10 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
       </div>
       {bajos.length > 0 && (
         <div aria-label="Para pedir">
-          <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Para pedir · {bajos.length}</div>
+          <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "none", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Para pedir · {bajos.length}</div>
           {bajos.map((b) => (
             <div key={b.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "9px 0", borderBottom: "1px dashed var(--rule)", fontSize: 13 }}>
-              <span style={{ width: 78, fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: NIVELES[b.nivel].color }}>{NIVELES[b.nivel].short}</span>
+              <span style={{ width: 78, fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "none", color: NIVELES[b.nivel].color }}>{NIVELES[b.nivel].short}</span>
               <span style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>{b.name}</span>
               <span className="cmd-num" style={{ color: "var(--muted)", fontSize: 12 }}>quedan {b.quedan}</span>
             </div>
@@ -391,7 +394,7 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
       )}
       {diffs.length > 0 ? (
         <div>
-          <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Diferencias</div>
+          <div style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "none", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>Diferencias</div>
           {diffs.map((l) => (
             <div key={l.ingredienteId} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 14, alignItems: "baseline", padding: "9px 0", borderBottom: "1px dashed var(--rule)", fontSize: 13 }}>
               <span style={{ fontWeight: 600 }}>{l.name}</span>
@@ -405,8 +408,8 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
         <div style={{ fontSize: 13, color: "var(--green)", fontWeight: 600 }}>✓ Todo cuadra con el sistema.</div>
       )}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Link href="/turno" className="cmd-btn" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>← Volver al turno</Link>
-        <Link href="/turno/inventario" className="cmd-btn ghost" style={{ textDecoration: "none", height: 48, display: "inline-flex", alignItems: "center" }}>¿Qué se está acabando? →</Link>
+        {siguiente ? <Link href={siguiente.href} className={buttonClass({})}>{siguiente.label}</Link> : <Link href="/turno" className={buttonClass({ variant: "ghost" })}>← Volver al turno</Link>}
+        {siguiente ? null : <Link href="/turno/inventario" className={buttonClass({ variant: "ghost" })}>¿Qué se está acabando? →</Link>}
       </div>
     </div>
   );
@@ -415,13 +418,13 @@ function ConteoResult({ result, person, bajos }: { result: Extract<EnviarConteoR
 function Stat({ k, v, color }: { k: string; v: string; color?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" }}>{k}</div>
-      <div className="cmd-num font-slab" style={{ fontSize: 24, color: color ?? "var(--ink)" }}>{v}</div>
+      <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "none", color: "var(--muted)" }}>{k}</div>
+      <div className="cmd-num font-bold" style={{ fontSize: 24, color: color ?? "var(--ink)" }}>{v}</div>
     </div>
   );
 }
 
-const sheetInput: React.CSSProperties = { height: 48, padding: "0 12px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 15, outline: "none", minWidth: 0 };
+const sheetInput: React.CSSProperties = { height: 48, padding: "0 12px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--paper-lt)", color: "var(--ink)", fontFamily: "inherit", fontSize: 15, outline: "none", minWidth: 0 };
 
 /**
  * "No está en la lista": the counter found something the inventory doesn't
@@ -448,13 +451,13 @@ function NoListado({ ingredientes, enLista, propuestas, onExistente, onAdd, onRe
   const reset = () => { setName(""); setQty(""); setUnit("und"); setNote(""); };
 
   return (
-    <section aria-label="No está en la lista" style={{ marginTop: 8, border: "1.5px dashed var(--rule)", borderRadius: 8, padding: "14px 14px 16px" }}>
+    <section aria-label="No está en la lista" style={{ marginTop: 8, border: "1px dashed var(--line)", borderRadius: 8, padding: "14px 14px 16px" }}>
       <div style={{ fontSize: 14, fontWeight: 700 }}>¿Hay algo que no está en la lista?</div>
       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>Anótalo aquí con lo que hay. Se le envía al dueño con el conteo y él decide si entra al inventario.</div>
 
       {propuestas.map((p, k) => (
         <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px dashed var(--rule)", fontSize: 13.5 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--amber)" }}>nuevo</span>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "none", color: "var(--amber)" }}>nuevo</span>
           <span style={{ fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}{p.note ? <span style={{ fontWeight: 400, color: "var(--muted)" }}> · {p.note}</span> : null}</span>
           <span className="cmd-num">{p.qty} {p.unit}</span>
           <button type="button" onClick={() => onRemove(k)} aria-label={`Quitar ${p.name}`} style={{ ...chip, height: 36, padding: "0 10px" }}>Quitar</button>

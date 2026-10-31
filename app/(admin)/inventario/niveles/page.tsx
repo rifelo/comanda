@@ -1,11 +1,10 @@
-import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { getIngredientesView, listProveedores } from "@/lib/db/ingredients";
-import { TurnosHeader } from "../../_components/turnos-header";
+import { PageHeader } from "@/components/ui/top-bar";
 import { NivelesClient } from "./niveles-client";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Operación · Niveles de inventario · co-manda" };
+export const metadata = { title: "Niveles · Comanda" };
 
 /**
  * Niveles: every inventory item on one editable sheet — where it is counted,
@@ -21,9 +20,7 @@ export default async function NivelesPage() {
   ]);
   return (
     <div>
-      <TurnosHeader kicker="OPERACIÓN · INVENTARIO" title="Niveles de inventario">
-        <Link href="/inventario" className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>← Inventario</Link>
-      </TurnosHeader>
+      <PageHeader back="/inventario" title="Niveles de inventario" sub="Zona, presentación, cuándo es «poco» y «se acabó», hasta cuánto pedir y proveedor." />
       <NivelesClient ingredientes={view.ingredientes} categorias={view.categorias} proveedores={proveedores} />
     </div>
   );

@@ -87,3 +87,14 @@ export function fechaCorta(yyyyMMdd: string): string {
   const [, m, d] = yyyyMMdd.split("-").map(Number);
   return `${d} ${MESES_CORTOS[(m ?? 1) - 1]}`;
 }
+
+/**
+ * "12.500" / "1.234,5" — es-CO grouping without ICU (same text on server and
+ * client, unlike toLocaleString). No currency sign; callers prepend "$".
+ */
+export function fmtCOP(n: number): string {
+  const neg = n < 0;
+  const [ent, dec] = String(Math.abs(Math.round(n * 1000) / 1000)).split(".");
+  const grouped = ent.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${neg ? "-" : ""}${grouped}${dec ? "," + dec : ""}`;
+}

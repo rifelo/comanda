@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Wordmark } from "@/components/comanda/primitives";
+import { AppLogo, Button, EmptyState, Pill } from "@/components/ui";
 import { getUserAndProfile } from "@/lib/auth";
 import { switchOrganization } from "./actions";
 
@@ -39,158 +39,45 @@ export default async function OrganizacionesPage() {
   const memberships = (data ?? []) as MembershipRow[];
 
   // Nothing to choose: a user without an active org who belongs to exactly
-  // one goes straight in (the barista lands on /home, the owner on /hoy).
+  // one goes straight in (the team lands on /turno, the owner on /hoy).
   if (!profile.organization_id && memberships.length === 1) {
     await supabase.rpc("switch_organization", { target: memberships[0].organization_id });
     redirect("/");
   }
 
   return (
-    <main className="cmd-paper flex min-h-screen flex-col px-6 pt-16 pb-10">
-      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col">
-        <Wordmark size={48} className="tracking-[-0.02em]" />
-
-        <h1
-          style={{
-            marginTop: 24,
-            fontSize: 20,
-            fontWeight: 600,
-            color: "var(--ink)",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Elige una organización
-        </h1>
-        <p
-          className="text-muted mt-2 leading-relaxed"
-          style={{ fontSize: 12, letterSpacing: "0.04em" }}
-        >
-          Entra a una de tus organizaciones.
-        </p>
-
-        <div style={{ marginTop: 24 }}>
-          {memberships.length === 0 ? (
-            <p
-              className="text-muted leading-relaxed"
-              style={{ fontSize: 13 }}
-            >
-              Aún no perteneces a ninguna organización. Pídele al administrador de tu negocio que te agregue.
-            </p>
-          ) : (
-            <ul
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                listStyle: "none",
-                margin: 0,
-                padding: 0,
-              }}
-            >
-              {memberships.map((m) => {
-                const isActive = m.organization_id === profile.organization_id;
-                return (
-                  <li
-                    key={m.organization_id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      border: `1.5px solid var(--ink)`,
-                      background: isActive ? "var(--ink)" : "var(--paper)",
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 15,
-                          fontWeight: 600,
-                          color: isActive ? "var(--paper)" : "var(--ink)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {orgName(m)}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 9,
-                          letterSpacing: "0.18em",
-                          textTransform: "uppercase",
-                          marginTop: 2,
-                          color: isActive
-                            ? "var(--paper)"
-                            : "var(--muted, #888)",
-                          opacity: isActive ? 0.85 : 1,
-                        }}
-                      >
-                        {m.role === "admin" ? "Propietario" : "Personal"}
-                        {isActive ? " · Activa" : ""}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {isActive ? (
-                        <span
-                          style={{
-                            fontSize: 9,
-                            letterSpacing: "0.18em",
-                            textTransform: "uppercase",
-                            color: "var(--paper)",
-                            opacity: 0.85,
-                          }}
-                        >
-                          Activa
-                        </span>
-                      ) : null}
-                      <form action={switchOrganization}>
-                        <input
-                          type="hidden"
-                          name="organization_id"
-                          value={m.organization_id}
-                        />
-                        <button
-                          type="submit"
-                          className={isActive ? "cmd-btn sm" : "cmd-btn ghost sm"}
-                          // On the dark active row, render a light button so it
-                          // stays visible (ghost = ink-on-ink would disappear).
-                          style={
-                            isActive
-                              ? {
-                                  background: "var(--paper)",
-                                  color: "var(--ink)",
-                                  borderColor: "var(--paper)",
-                                }
-                              : undefined
-                          }
-                        >
-                          Entrar
-                        </button>
-                      </form>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+    <main className="flex min-h-dvh flex-col bg-bg px-4 pt-12 pb-10">
+      <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col gap-6">
+        <AppLogo size={56} />
+        <div>
+          <h1 className="ui-h1 m-0">Elige una organización</h1>
+          <p className="ui-sub m-0 mt-1">Entra a una de tus organizaciones.</p>
         </div>
 
-        <div
-          className="mt-auto pt-12 text-center text-muted"
-          style={{ fontSize: 10, letterSpacing: "0.14em" }}
-        >
-          <span>co-manda · operación interna</span>
-        </div>
+        {memberships.length === 0 ? (
+          <EmptyState title="Sin organización" text="Aún no perteneces a ninguna. Pídele al administrador de tu negocio que te agregue." />
+        ) : (
+          <ul className="m-0 p-0 list-none flex flex-col gap-2.5">
+            {memberships.map((m) => {
+              const isActive = m.organization_id === profile.organization_id;
+              return (
+                <li key={m.organization_id} className="flex items-center gap-3 min-h-[76px] px-5 py-3 rounded-card border border-line bg-surface">
+                  <div className="flex-1 min-w-0">
+                    <p className="ui-title m-0 truncate">{orgName(m)}</p>
+                    <p className="ui-sub m-0">{m.role === "admin" ? "Propietario" : "Equipo"}</p>
+                  </div>
+                  {isActive ? <Pill tone="ok">Activa</Pill> : null}
+                  <form action={switchOrganization}>
+                    <input type="hidden" name="organization_id" value={m.organization_id} />
+                    <Button type="submit" size="sm" variant={isActive ? "ghost" : "primary"}>
+                      Entrar
+                    </Button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </main>
   );

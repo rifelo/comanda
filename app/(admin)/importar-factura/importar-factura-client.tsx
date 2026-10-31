@@ -7,6 +7,7 @@
  * "comprado por paquete" rule as the inventario form.
  */
 import * as React from "react";
+import Link from "next/link";
 import { unitCostFromPack } from "@/lib/cost";
 import { UNITS, type InvoiceItem, type Unit } from "@/lib/ai/invoice-types";
 import { extractInvoiceAction, importIngredientesBatch } from "./actions";
@@ -154,10 +155,8 @@ export function ImportarFacturaClient({
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px 60px" }}>
       <header style={{ marginBottom: 18 }}>
-        <div style={{ fontFamily: "var(--font-slab)", fontSize: 26, color: "var(--ink)" }}>
-          Importar factura<span style={{ color: "var(--red)" }}>.</span>
-        </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+        <h1 className="ui-h1 m-0">Importar factura</h1>
+        <div className="ui-sub" style={{ marginTop: 4, lineHeight: 1.5 }}>
           Sube la foto de una factura de compra. La IA lee los renglones, calcula
           el costo por unidad (incluyendo paquetes) y tú confirmas antes de
           crear los ingredientes.
@@ -314,7 +313,7 @@ export function ImportarFacturaClient({
             </div>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-            <a className="cmd-btn" href="/inventario" style={{ textDecoration: "none" }}>Ver inventario</a>
+            <Link className="cmd-btn" href="/inventario" style={{ textDecoration: "none" }}>Ver inventario</Link>
             <button className="cmd-btn ghost" onClick={() => {
               setPhase("upload"); setFile(null); setPreview(null); setRows([]); setResult(null);
             }}>Importar otra</button>

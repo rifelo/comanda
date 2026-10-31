@@ -21,6 +21,30 @@ export async function attachEmails(roster: RosterMember[]): Promise<RosterMember
 }
 
 /**
+ * Email + sign-in providers for each person (Equipo → Personas). One
+ * `getUserById` per person (a sede has a handful), which works on both
+ * backends and exposes `app_metadata.providers` ("email" = has a password,
+ * "google") — what the single login needs to know.
+ */
+export async function attachAccess(
+  roster: RosterMember[],
+): Promise<(RosterMember & { providers: string[] })[]> {
+  const admin = createSupabaseAdminClient();
+  return Promise.all(
+    roster.map(async (m) => {
+      try {
+        const { data } = await admin.auth.admin.getUserById(m.id);
+        const u = data?.user as { email?: string; app_metadata?: { providers?: unknown } } | null | undefined;
+        const providers = Array.isArray(u?.app_metadata?.providers) ? (u!.app_metadata!.providers as string[]) : [];
+        return { ...m, email: u?.email ?? m.email, providers };
+      } catch {
+        return { ...m, providers: [] };
+      }
+    }),
+  );
+}
+
+/**
  * Derive 2-letter initials from a full name. Mirrors the design's
  * `makeRosterId` from `comanda-turnos.jsx:56-62`:
  *   "Mariana Castaño" → "MC"

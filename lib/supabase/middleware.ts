@@ -58,6 +58,11 @@ async function gate(request: NextRequest, response: NextResponse, user: { id: st
     // The shared shift tablet pairs like the POS (device cookie) — see lib/turno/server.ts.
     path === "/turno" ||
     path.startsWith("/turno/") ||
+    // Pairing a tablet / register: the registration code is the credential.
+    path === "/emparejar" ||
+    // Offline fallback page and the app's service worker (F1).
+    path === "/offline" ||
+    path === "/sw.js" ||
     // The customers' QR menu: no session, ever.
     path === "/menu" ||
     path.startsWith("/menu/") ||
@@ -84,10 +89,10 @@ async function gate(request: NextRequest, response: NextResponse, user: { id: st
     return NextResponse.redirect(url);
   }
 
-  // Role gate: staff may only reach the staff routes (`/home`, `/today`,
-  // `/shift`) — and the register, which is public here and resolves its own
+  // Role gate: staff may only reach the staff routes (see isStaffPath) — the
+  // register and the shift app are public here and resolve their own
   // context. Every other authenticated app route is admin-only, so a staff
-  // user who lands on one is bounced to their home. The role-aware `/`
+  // user who lands on one is bounced to the shift app. The role-aware `/`
   // landing page and the `requireAdmin` layout guard still apply — this just
   // makes the boundary explicit and central.
   if (user && !isPublic && !isStaffPath(path)) {
@@ -104,7 +109,7 @@ async function gate(request: NextRequest, response: NextResponse, user: { id: st
         .single<{ role: string }>();
       if (profile?.role === "staff") {
         const url = request.nextUrl.clone();
-        url.pathname = "/home";
+        url.pathname = "/turno";
         url.search = "";
         return NextResponse.redirect(url);
       }
@@ -116,14 +121,23 @@ async function gate(request: NextRequest, response: NextResponse, user: { id: st
 
 /**
  * The routes a staff member is allowed to reach. `/` is included because it's
- * the role-aware landing page that immediately bounces them to `/home`.
+ * the role-aware landing page that immediately bounces them to `/turno`.
+ * `/turno/*`, `/pos`, `/emparejar` and `/offline` are also public above (the
+ * pages gate themselves); they're listed so the boundary reads in one place.
+ * `/home`, `/today`, `/shift/*` stay until P1 turns them into redirects.
  */
 function isStaffPath(path: string): boolean {
   return (
     path === "/" ||
+    path === "/turno" ||
+    path.startsWith("/turno/") ||
+    path === "/pos" ||
+    path.startsWith("/pos/") ||
+    path === "/emparejar" ||
+    path === "/offline" ||
     // The org selector must be reachable by any authenticated user. A no-org
     // user defaults to role 'staff', which would otherwise bounce them off the
-    // selector and loop /organizaciones → /today → …
+    // selector and loop /organizaciones → /turno → …
     path === "/organizaciones" ||
     path === "/home" ||
     path === "/today" ||

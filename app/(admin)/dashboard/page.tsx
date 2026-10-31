@@ -1,9 +1,6 @@
-import { redirect } from "next/navigation";
+import { forward, type ForwardProps } from "@/app/(admin)/equipo/_lib/forward";
 
-/**
- * Legacy `/dashboard` URL — the single-sede redesign moved this surface to
- * `/hoy`. Keep the redirect so old bookmarks + the wordmark Link still work.
- */
-export default function DashboardPage() {
-  redirect("/hoy");
+/** Moved in the redesign (docs/redesign/PLAN.md §2.4): /hoy. */
+export default async function Moved({ searchParams }: ForwardProps) {
+  forward("/hoy", await searchParams);
 }

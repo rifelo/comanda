@@ -1,57 +1,10 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { Wordmark } from "@/components/comanda/primitives";
 import { teclear, type Tecla } from "@/lib/caja/movimientos";
-import { signOutTurno } from "../../auth-actions";
 import { subirFotoCaja } from "../actions";
 import { IcoAtras, IcoBorrar, IcoCamara } from "./icons";
-import { fechaLarga, hora, iniciales, plata } from "./model";
-
-/** The tablet's top bar, as the rest of /turno: sede, clock, who is signed in, the modules. Inside a flow it shows the crumb instead. */
-export function CajaHead({ sedeName, today, tz, actorName, crumb, cajaDot }: { sedeName: string; today: string; tz: string; actorName: string; crumb?: string; cajaDot?: boolean }) {
-  const [now, setNow] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    const tick = () => setNow(hora(new Date().toISOString(), tz));
-    tick();
-    const t = window.setInterval(tick, 15_000);
-    return () => window.clearInterval(t);
-  }, [tz]);
-  return (
-    <header className="cj-head">
-      <Wordmark size={22} />
-      <div className="cj-head-sede">
-        <span className="cj-lab">{sedeName}</span>
-        <span>{fechaLarga(today)}</span>
-      </div>
-      <span className="cj-slab cj-clock" suppressHydrationWarning>{now ?? ""}</span>
-      <div className="cj-grow" />
-      <span className="cj-who" title={actorName}>
-        <span className="cj-avatar">{iniciales(actorName)}</span>
-        <span className="cj-who-name">{actorName}</span>
-      </span>
-      {crumb ? (
-        <span className="cj-crumb">Caja › {crumb}</span>
-      ) : (
-        <>
-          <form action={signOutTurno}>
-            <button type="submit" className="cj-salir" title="Cerrar sesión en esta tablet">Salir</button>
-          </form>
-          <span className="cj-sep" />
-          <nav aria-label="Módulos" className="cj-nav">
-            <Link href="/turno" className="cj-tab">Turno</Link>
-            <Link href="/turno/inventario" className="cj-tab">Inventario</Link>
-            <Link href="/turno/caja" className="cj-tab" aria-current="page">
-              Caja{cajaDot && <span className="cj-tab-dot" aria-label="Pendiente" />}
-            </Link>
-            <Link href="/pos" className="cj-tab">POS →</Link>
-          </nav>
-        </>
-      )}
-    </header>
-  );
-}
+import { plata } from "./model";
 
 export type StepState = "on" | "done" | "todo";
 

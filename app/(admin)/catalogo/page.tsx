@@ -1,14 +1,6 @@
-import { requireAdmin } from "@/lib/auth";
-import { listCatalogo, listProductoCategorias } from "@/lib/db/productos";
-import { CatalogoClient } from "./catalogo-client";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Operación · Catálogo · co-manda" };
-
-export default async function CatalogoPage() {
-  const { profile, user } = await requireAdmin();
-  const [productos, categorias] = await Promise.all([
-    listCatalogo({ organizationId: profile.organization_id, userId: user.id }),
-    listProductoCategorias({ organizationId: profile.organization_id }),
-  ]);
-  return <CatalogoClient productos={productos} categorias={categorias} />;
+// Catálogo + Recetas are one list now (docs/redesign/PLAN.md §2.4).
+export default function CatalogoPage() {
+  redirect("/productos");
 }

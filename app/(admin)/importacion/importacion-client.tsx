@@ -5,6 +5,7 @@
  * happen client-side (lib/importacion); the confirmed rows are upserted by the
  * importRows server action (which re-validates).
  */
+import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -13,7 +14,6 @@ import {
   IMPORT_COLUMNS,
   type ImportType,
 } from "@/lib/importacion";
-import { SectionCrumb } from "../_components/shared";
 import { importRows } from "./actions";
 
 const SAMPLE: Record<ImportType, string> = {
@@ -57,7 +57,7 @@ export function ImportacionClient() {
 
   return (
     <div>
-      <SectionCrumb section="importacion" />
+      <PageHeader back="/mas" title="Importación CSV" sub="Carga productos o insumos en bloque desde una hoja de cálculo." />
       <div style={{ padding: "20px 28px", display: "grid", gridTemplateColumns: "1fr 360px", gap: 24 }}>
         {/* left: input */}
         <div>

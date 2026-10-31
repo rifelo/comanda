@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 
 /**
- * Legacy `/shifts/[id]` URL — folded into `/hoy/[date]` by the redesign.
+ * Legacy `/shifts/[id]` URL — folded into `/hoy/[date]/turnos?turno=<id>`.
  * Resolve the shift to its business date and bounce; if unresolvable, fall
  * back to the Hoy dashboard.
  */
@@ -20,6 +20,6 @@ export default async function AdminShiftRedirect({
     .eq("id", id)
     .maybeSingle();
 
-  if (data?.date) redirect(`/hoy/${data.date}`);
+  if (data?.date) redirect(`/hoy/${data.date}/turnos?turno=${encodeURIComponent(id)}`);
   redirect("/hoy");
 }

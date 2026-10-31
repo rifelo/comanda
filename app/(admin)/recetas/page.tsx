@@ -1,15 +1,9 @@
-import { requireAdmin } from "@/lib/auth";
-import { getRecetasView } from "@/lib/db/recetas";
-import { getCostosPendientes } from "@/lib/db/costos-pendientes";
-import { RecetasClient } from "./recetas-client";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Operación · Recetas · co-manda" };
-export const dynamic = "force-dynamic";
-
-// ?producto=<id> opens that product's recipe straight away (from Catálogo or
-// the POS recipe sheet); without a recipe yet, «Nueva receta» opens with it.
+// /recetas → /productos?vista=recetas; /recetas?producto=X → the product's
+// ficha on «Receta» (docs/redesign/PLAN.md §2.4).
 export default async function RecetasPage({ searchParams }: { searchParams: Promise<{ producto?: string }> }) {
-  const [{ profile, supabase }, sp] = await Promise.all([requireAdmin(), searchParams]);
-  const [view, costos] = await Promise.all([getRecetasView(profile.organization_id), getCostosPendientes(supabase, profile.organization_id)]);
-  return <RecetasClient key={sp.producto ?? ""} view={view} producto={sp.producto ?? null} costos={costos} />;
+  const { producto } = await searchParams;
+  if (producto && /^[0-9a-f-]{36}$/i.test(producto)) redirect(`/productos/${producto}?tab=receta`);
+  redirect("/productos?vista=recetas");
 }

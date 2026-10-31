@@ -1,6 +1,24 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
+import type { User } from "@supabase/supabase-js";
+
+export { landingFor, safeNext } from "@/lib/auth-person";
+
+/**
+ * The signed-in user + profile, or null. Unlike `requireUser` it never
+ * redirects: the register, the shift tablet and the login need to know
+ * whether a person is in session and decide themselves.
+ */
+export async function getSessionPerson(): Promise<{ user: User; profile: Profile } | null> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>();
+  return profile ? { user, profile } : null;
+}
 
 /**
  * Get current user + profile (with a possibly-null `organization_id`), or

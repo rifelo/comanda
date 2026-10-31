@@ -117,6 +117,12 @@ export interface PosState {
   orderNo: string;
   /** Set once on mount so imperative actions can read the catalog. */
   catalog: PosCatalog;
+  /**
+   * Person signed in on this register (single login), seeded from the page.
+   * Their id rides on every order as `creadoPor`, so a sale queued offline
+   * keeps its author even if the session is gone when it lands.
+   */
+  person: PosSessionPerson | null;
 
   // ── Square-style screen state ──
   /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
@@ -203,6 +209,9 @@ export interface PosState {
   fraseError: string | null;
 }
 
+/** The person in session on the register (see `PosState.person`). */
+export type PosSessionPerson = { id: string; name: string; role: "admin" | "staff" };
+
 export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
 export const PAY_METHODS: { id: PayMethod; label: string; hint: string }[] = [
   { id: "efectivo", label: "Efectivo", hint: "Calcula el cambio" },
@@ -232,6 +241,7 @@ export const POS_INITIAL: PosState = {
   sent: false,
   orderNo: "Nuevo",
   catalog: EMPTY_CATALOG,
+  person: null,
   view: "sale",
   barista: null,
   baristaPicker: false,
@@ -728,6 +738,8 @@ export function resetConversation() {
     online: s.online,
     // Who is on the bar outlives every sale; only the chip changes it.
     barista: s.barista,
+    // So does the person in session: every next sale still carries `creadoPor`.
+    person: s.person,
   }));
 }
 
@@ -758,6 +770,8 @@ export interface OutboxItem {
     customerNames?: string[];
     note?: string;
     baristaId?: string;
+    /** Person in session at confirm time (PosState.person). */
+    creadoPor?: string;
   };
   payment?: { method: PayMethodId; tendered: number | null };
   /** What the labels and the receipt need, frozen at confirm time. */
@@ -987,11 +1001,24 @@ function newJobId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Go to the tender screen (Square "Charge"). */
-export function startTender() {
+/** Go to the tender screen (Square "Charge"), optionally with the method preselected. */
+export function startTender(method?: PayMethod) {
   const s = posStore.get();
   if (!s.order.length) return;
-  posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null });
+  posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null, ...(method ? { payMethod: method } : {}) });
+}
+
+/**
+ * One-tap charge from the ticket («Transferencia»): open the tender with the
+ * method set and complete the sale at once (cash would need the amount, so
+ * it goes through the tender screen instead). Same path as confirming on the
+ * tender screen — completeSale owns the outbox / pending logic.
+ */
+export function payNow(method: Exclude<PayMethod, "efectivo">) {
+  const s = posStore.get();
+  if (!s.order.length || s.sending) return;
+  startTender(method);
+  void completeSale();
 }
 export function cancelTender() {
   const s = posStore.get();
@@ -1152,6 +1179,7 @@ export async function completeSale() {
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
     baristaId: s.barista?.id,
+    creadoPor: s.person?.id,
   };
   const payment = { method: s.payMethod, tendered };
 
@@ -1253,6 +1281,7 @@ export async function savePending() {
         customerNames: s.people.length ? s.people : undefined,
         note: s.note.trim() || undefined,
         baristaId: s.barista?.id,
+        creadoPor: s.person?.id,
       },
       snapshot: { order: s.order, people: s.people, customerName: s.customerName, total, change: 0 },
     };
@@ -1293,6 +1322,7 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     customerName: s.customerName.trim() || undefined,
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
+    creadoPor: s.person?.id,
   }));
   if (!res.ok) {
     posStore.set({ sending: false, sendError: res.error });
@@ -1542,7 +1572,7 @@ export function chargePendingSplit(o: PendingOrder) {
   void refreshPendientes();
 }
 /** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
-export async function cancelPending(id: string) {
+export async function cancelPending(id: string, motivo?: string) {
   // Optimistic: the card leaves at once; the server confirms behind, and a
   // refusal puts it back with the reason.
   const before = posStore.get();
@@ -1558,7 +1588,7 @@ export async function cancelPending(id: string) {
   if (before.pending?.id === id) discardPendingEdit();
   let res: Awaited<ReturnType<typeof cancelarPendiente>>;
   try {
-    res = await cancelarPendiente({ ordenId: id });
+    res = await cancelarPendiente({ ordenId: id, motivo });
   } catch {
     res = { ok: false, error: "Sin conexión con el servidor." };
   }

@@ -7,7 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * panel on /recetas and the summary on /inventario show them.
  */
 
-export const MARGEN_MIN = 55;
+import { MARGEN_MIN } from "@/lib/cost";
+export { MARGEN_MIN };
 
 export interface CostosPendientes {
   /** Active ingredients at cost 0 that at least one recipe uses. */

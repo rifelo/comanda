@@ -5,8 +5,8 @@ import { baseSugerida, listCierres } from "@/lib/caja/cierres";
 import { posMoney } from "@/lib/pos/types";
 import { fechaCorta, formatTime, todayInTz } from "@/lib/utils";
 import { baseEstado, describirLineas } from "@/lib/caja/base";
-import { SectionCrumb } from "../_components/shared";
-import { CajaCard } from "../hoy/[date]/caja-card";
+import { Button, PageHeader } from "@/components/ui";
+import { CajaCard } from "../hoy/[date]/turnos/caja-card";
 import { listMovimientos } from "@/lib/caja/movimientos-db";
 import { MOTIVO_CAJA, MOTIVOS_CAJA, porConfirmar, resumenCaja, type MotivoCaja } from "@/lib/caja/movimientos";
 import { CAJA_FOTOS } from "@/lib/caja/movimientos-db";
@@ -14,7 +14,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { inicioDia } from "@/lib/inventario/mermas-db";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Operación · Caja · co-manda" };
+export const metadata = { title: "Caja · Comanda" };
 
 const money = (n: number) => (n < 0 ? `-${posMoney(-n)}` : posMoney(n));
 const STATUS: Record<string, { label: string; color: string }> = {
@@ -52,25 +52,26 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
   const entregas = aprobados.reduce((s, c) => s + (c.contado_cop - c.base_dejada_cop), 0);
 
   const stat = (label: string, value: string, color?: string, hint?: string) => (
-    <div style={{ padding: "10px 12px", border: "1px solid var(--rule)", background: "var(--paper-lt)", minWidth: 150 }}>
-      <div className="text-muted" style={{ fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase" }}>{label}</div>
-      <div className="cmd-num font-slab" style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2, color: color ?? "var(--ink)" }}>{value}</div>
-      {hint && <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>{hint}</div>}
+    <div key={label} style={{ padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 16, background: "var(--surface)", minWidth: 150, flex: "1 1 150px" }}>
+      <div className="text-muted" style={{ fontSize: 15 }}>{label}</div>
+      <div className="cmd-num font-bold" style={{ fontSize: 22, lineHeight: 1.1, marginTop: 2, color: color ?? "var(--ink)" }}>{value}</div>
+      {hint && <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{hint}</div>}
     </div>
   );
 
   return (
-    <div>
-      <SectionCrumb
-        section="caja"
-        right={
-          <>
-            <Link href={`/hoy/${today}`} className="cmd-btn ghost sm" style={{ textDecoration: "none" }}>Detalle de hoy</Link>
-            <Link href="/turno/caja" className="cmd-btn sm" style={{ textDecoration: "none" }}>Caja en la tablet →</Link>
-          </>
+    <div className="mx-auto w-full max-w-[1100px]">
+      <PageHeader
+        title="Caja"
+        sub="Arqueos, bases y entradas/salidas"
+        back="/mas"
+        actions={
+          <Button href="/turno/caja" variant="ghost" size="sm">
+            Caja en la tablet →
+          </Button>
         }
       />
-      <div style={{ padding: "20px 28px 48px", fontFamily: "var(--font-mono)" }}>
+      <div className="px-4 sm:px-7 pb-12">
         <div className="flex flex-wrap" style={{ gap: 8 }}>
           {stat("Base en caja", posMoney(base.monto), undefined, base.fecha ? `dejada el ${fechaCorta(base.fecha)}${base.turno ? ` · ${base.turno}` : ""}${base.counted_by_name ? ` · ${base.counted_by_name}` : ""}` : "sin cierres todavía")}
           {stat("Por aprobar", String(pendientes.length), pendientes.length ? "var(--amber)" : undefined)}
@@ -82,7 +83,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
           {(() => {
             const t = resumenCaja(movs.map((m) => ({ ...m, anulado: !!m.anuladoAt })));
             return (
-              <div className="text-muted" style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", marginBottom: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div className="text-muted" style={{ fontSize: 13, marginBottom: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <span>Entradas y salidas · 7 días · {vivos.length}</span>
                 <span>entró <b className="cmd-num" style={{ color: "var(--green)" }}>{posMoney(t.ingresos)}</b></span>
                 <span>salió <b className="cmd-num" style={{ color: "var(--red)" }}>{posMoney(t.salidas)}</b></span>
@@ -96,7 +97,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
             </div>
           )}
           {sinComprobante.length > 0 && (
-            <div style={{ border: "1.5px solid var(--amber)", padding: "8px 12px", fontSize: 12.5, margin: "0 0 10px" }}>
+            <div style={{ border: "1.5px solid var(--amber)", padding: "8px 12px", fontSize: 15, margin: "0 0 10px" }}>
               <b style={{ color: "var(--amber)" }}>{sinComprobante.length} por confirmar</b> · {sinComprobante.map((m) => `${MOTIVO_CAJA[m.motivo].label} ${posMoney(m.monto)} (${fechaCorta(todayInTz(tz, new Date(m.createdAt)))})`).join(" · ")} — falta la foto; el equipo la sube desde el detalle del movimiento en la tablet.
             </div>
           )}
@@ -107,16 +108,16 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
               <button key={m} type="submit" name="motivo" value={m} className={`cmd-btn sm ${filtro === m ? "" : "ghost"}`}>{MOTIVO_CAJA[m].label}</button>
             ))}
           </form>
-          {lista.length === 0 && <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0" }}>Nada registrado. Domicilios, consignaciones, pagos a proveedor y el sencillo se registran en la tablet (Caja) con su ¿por qué?, y el arqueo los cuenta.</div>}
+          {lista.length === 0 && <div style={{ fontSize: 15, color: "var(--muted)", padding: "8px 0" }}>Nada registrado. Domicilios, consignaciones, pagos a proveedor y el sencillo se registran en la tablet (Caja) con su ¿por qué?, y el arqueo los cuenta.</div>}
           {lista.map((m) => {
             const falta = porConfirmar({ motivo: m.motivo, fotoPath: m.fotoPath, compraConFactura: m.compraConFactura, anulado: !!m.anuladoAt });
             const extra = [m.detalle.plataforma, m.detalle.orden && `orden ${m.detalle.orden}`, m.detalle.quien && `la lleva ${m.detalle.quien}`, m.detalle.denominaciones?.length ? describirLineas(m.detalle.denominaciones, posMoney) : null].filter(Boolean).join(" · ");
             const url = m.fotoPath ? fotoUrl.get(m.fotoPath) : null;
             return (
-              <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 12.5, opacity: m.anuladoAt ? 0.6 : 1 }}>
-                <span className="cmd-num text-muted" style={{ fontSize: 11, whiteSpace: "nowrap", minWidth: 120 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
+              <div key={m.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px dashed var(--rule)", fontSize: 15, opacity: m.anuladoAt ? 0.6 : 1 }}>
+                <span className="cmd-num text-muted" style={{ fontSize: 14, whiteSpace: "nowrap", minWidth: 0 }}>{fechaCorta(todayInTz(tz, new Date(m.createdAt)))} {formatTime(m.createdAt, tz)}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/compras" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}{m.compraProveedor ? ` ${m.compraProveedor}` : ""}</Link></> : null}
+                  <b>{MOTIVO_CAJA[m.motivo].label}</b>{m.compraFolio ? <> · <Link href="/inventario/pedidos" style={{ color: "var(--ink)" }}>pedido #{m.compraFolio}{m.compraProveedor ? ` ${m.compraProveedor}` : ""}</Link></> : null}
                   <span className="text-muted"> · «{m.justificacion}»{extra ? ` · ${extra}` : ""} · {m.by ?? "—"}</span>
                   {url && <> · <a href={url} target="_blank" rel="noreferrer" style={{ color: "var(--ink)" }}>foto</a></>}
                   {falta && <span style={{ color: "var(--amber)", fontWeight: 700 }}> · por confirmar: {falta}</span>}
@@ -130,11 +131,11 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
 
         {pendientes.length > 0 && (
           <section style={{ marginTop: 24 }}>
-            <div className="text-muted" style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", marginBottom: 10 }}>Por aprobar · {pendientes.length}</div>
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+            <div className="text-muted" style={{ fontSize: 13, marginBottom: 10 }}>Por aprobar · {pendientes.length}</div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(340px, 100%), 1fr))", gap: 12 }}>
               {pendientes.map((c) => (
                 <div key={c.id}>
-                  <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, marginBottom: 6 }}>
                     <b>{c.shift_date ? fechaCorta(c.shift_date) : fechaCorta(c.submitted_at.slice(0, 10))}</b> · {c.shift_name ?? "sin turno"} · enviado {formatTime(c.submitted_at, tz)}
                   </div>
                   <CajaCard cierre={c} window={`${formatTime(c.ventana_desde, tz)} – ${formatTime(c.ventana_hasta, tz)}`} hasCajaTask={false} />
@@ -145,14 +146,14 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
         )}
 
         <section style={{ marginTop: 28 }}>
-          <div className="text-muted" style={{ fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", marginBottom: 6 }}>Historial de cierres · base que entra y base que queda</div>
+          <div className="text-muted" style={{ fontSize: 13, marginBottom: 6 }}>Historial de cierres · base que entra y base que queda</div>
           {cierres.length === 0 ? (
             <div className="text-muted" style={{ fontSize: 13, padding: "12px 0" }}>Todavía no hay cierres. El equipo los envía desde el tablet (Turno → Caja) o desde su turno (Caja · arqueo).</div>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 15 }}>
                 <thead>
-                  <tr className="text-muted" style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", textAlign: "left" }}>
+                  <tr className="text-muted" style={{ fontSize: 15, textAlign: "left" }}>
                     <th style={{ padding: "6px 8px 6px 0", fontWeight: 500 }}>Fecha</th>
                     <th style={{ padding: "6px 8px", fontWeight: 500 }}>Turno</th>
                     <th style={{ padding: "6px 8px", fontWeight: 500 }}>Contó</th>
@@ -177,7 +178,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
                       <tr key={c.id} style={{ borderTop: "1px solid var(--rule-soft, var(--rule))", opacity: dim ? 0.55 : 1 }}>
                         <td className="cmd-num" style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>
                           {c.shift_date ? (
-                            <Link href={`/hoy/${c.shift_date}${c.shift_instance_id ? `?turno=${c.shift_instance_id}` : ""}`} className="cmd-link">{fechaCorta(c.shift_date)}</Link>
+                            <Link href={`/hoy/${c.shift_date}/turnos${c.shift_instance_id ? `?turno=${c.shift_instance_id}` : ""}`} className="cmd-link">{fechaCorta(c.shift_date)}</Link>
                           ) : fechaCorta(c.submitted_at.slice(0, 10))}
                           <span className="text-muted"> {formatTime(c.submitted_at, tz)}</span>
                         </td>
@@ -188,8 +189,8 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right" }}>{posMoney(c.contado_cop)}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: noPos ? "var(--muted)" : tone, fontWeight: 700 }}>{noPos ? "—" : money(c.diferencia_cop)}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", fontWeight: 700 }}>{posMoney(c.base_dejada_cop)}</td>
-                        <td style={{ padding: "8px", fontSize: 11, lineHeight: 1.4, minWidth: 180 }}>
-                          <span style={{ color: baseEstado(c).color, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontSize: 9.5 }}>{baseEstado(c).label}</span>
+                        <td style={{ padding: "8px", fontSize: 14, lineHeight: 1.4, minWidth: 180 }}>
+                          <span style={{ color: baseEstado(c).color, fontWeight: 700, fontSize: 15 }}>{baseEstado(c).label}</span>
                           {c.base_denominaciones.length > 0 && <div className="text-muted">{describirLineas(c.base_denominaciones, posMoney)}</div>}
                           {c.base_validada_at && !c.base_validada_ok && (
                             <div style={{ color: "var(--red)" }}>encontró {c.base_encontrada_cop != null ? posMoney(c.base_encontrada_cop) : "—"}{c.base_validada_nota ? ` · “${c.base_validada_nota}”` : ""}{c.base_validada_by_name ? ` · ${c.base_validada_by_name}` : ""}</div>
@@ -197,7 +198,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
                         </td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: entrega < 0 ? "var(--red)" : undefined }}>{money(entrega)}</td>
                         <td style={{ padding: "8px 0 8px 8px", whiteSpace: "nowrap" }}>
-                          <span style={{ fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: st.color, fontWeight: 700 }}>{st.label}</span>
+                          <span style={{ fontSize: 15, color: st.color, fontWeight: 700 }}>{st.label}</span>
                           {c.note && <span className="text-muted" title={c.note} style={{ marginLeft: 6 }}>✎</span>}
                         </td>
                       </tr>
@@ -207,7 +208,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
               </table>
             </div>
           )}
-          <p className="text-muted" style={{ fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>
+          <p className="text-muted" style={{ fontSize: 14, marginTop: 10, lineHeight: 1.5 }}>
             La base que queda de un cierre es la base inicial sugerida del siguiente; «base armada» dice qué piezas quedaron (las más pequeñas que suman la base), si quien cerró confirmó apartarlas y si quien abrió las encontró. Entrega = contado − base que queda. Diferencia = contado − (base inicial + efectivo del POS en la ventana del turno); los cierres sin pagos en el POS no se comparan.
           </p>
         </section>

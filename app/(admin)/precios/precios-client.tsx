@@ -6,12 +6,12 @@
  * override that persists, shows its Δ% vs. base, and falls back to base when
  * set equal to it.
  */
+import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { fmtCOP } from "@/lib/mock/productos";
+import { fmtCOP } from "@/lib/utils";
 import { effectivePrice, priceDeltaPct } from "@/lib/precios";
 import type { PreciosView, PrecioProductoRow, PriceListMeta } from "@/lib/db/precios";
-import { SectionCrumb } from "../_components/shared";
 import {
   createPriceList,
   deletePriceList,
@@ -121,7 +121,7 @@ export function PreciosClient({ view }: { view: PreciosView }) {
 
   return (
     <div>
-      <SectionCrumb section="precios" />
+      <PageHeader back="/mas" title="Listas de precios" sub="Precios alternos por canal o cliente. Casi no se usa." />
       <div style={{ padding: "20px 28px" }}>
         <NuevaLista onError={setError} />
         {error ? (

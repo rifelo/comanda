@@ -5,7 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getPosDeviceFromCookie, type PosDevice } from "@/lib/pos/devices";
 import { normalizeTemplatePuestoRows } from "@/lib/db/puestos";
-import { makeInitials } from "@/lib/db/roster";
+import { listRosterForSede, resolvePersonInOrg, type TurnoPerson } from "@/lib/auth-person";
 import { isoMonday } from "@/lib/db/assignments";
 import { todayInTz } from "@/lib/utils";
 import { todayIdxOf } from "./state";
@@ -24,9 +24,10 @@ import type {
  *
  * The *sede* comes from the POS pairing cookie (a paired device) or, on a
  * laptop, from the signed-in user's org. The *person* is always the
- * signed-in Supabase user: on the tablet the shift lead types their email +
- * password (see `app/turno/auth-actions.ts`), so every completion carries a
- * real `auth.uid()`. Writes still run on the service-role client — the
+ * signed-in user: on the tablet they pick their tile and type their password
+ * on the single login (/login, `signInAsMember`), so every completion
+ * carries a real `auth.uid()`. Pages never render a login of their own: any
+ * gate that isn't `ready` redirects to `turnoLoginHref(gate, path)`. Writes still run on the service-role client — the
  * device cookie (not the user) authorises the sede, undoing someone else's
  * tick must work on a shared device, and photo uploads never had a browser
  * session — and every write checks the row belongs to `restaurantId`.
@@ -51,14 +52,53 @@ export type TurnoContext = {
 
 /** What `/turno` should render. */
 export type TurnoGate =
-  | { kind: "unpaired" }
+  /** No sede: no paired device and no usable account. `signedIn` = an account is in session but has no org/sede. */
+  | { kind: "unpaired"; signedIn?: boolean }
+  /** Sede known; nobody (or a person who doesn't belong here, `error`) is signed in. */
   | { kind: "needs_login"; sede: TurnoSede; error?: string }
   | { kind: "ready"; ctx: TurnoContext };
+
+/**
+ * Where a page sends a gate that isn't `ready`: the single login, coming back
+ * to `next`. When somebody *is* signed in but can't use this sede, the login
+ * is forced open (`switch=1`) with the reason — otherwise /login would bounce
+ * the session straight back here.
+ */
+export function turnoLoginHref(gate: Exclude<TurnoGate, { kind: "ready" }>, next: string): string {
+  const q = new URLSearchParams({ next });
+  const error =
+    gate.kind === "needs_login"
+      ? gate.error
+      : gate.signedIn
+        ? "Esta cuenta no tiene una sede asignada. Entra con otra cuenta o empareja este dispositivo."
+        : undefined;
+  if (error) {
+    q.set("switch", "1");
+    q.set("error", error);
+  }
+  return `/login?${q.toString()}`;
+}
 
 async function firstRestaurant(client: SupabaseClient, organizationId: string): Promise<TurnoSede | null> {
   const { data } = await client
     .from("restaurants")
     .select("id, name, timezone")
+    .eq("organization_id", organizationId)
+    .order("name")
+    .limit(1)
+    .maybeSingle();
+  return data ? { id: data.id as string, name: data.name as string, tz: (data.timezone as string) ?? "America/Bogota" } : null;
+}
+
+/** The first (by name) sede of the org where the user is an active member. */
+async function memberSede(admin: SupabaseClient, userId: string, organizationId: string): Promise<TurnoSede | null> {
+  const { data: rows } = await admin.from("restaurant_members").select("restaurant_id").eq("user_id", userId).eq("active", true);
+  const ids = (rows ?? []).map((r) => r.restaurant_id as string);
+  if (!ids.length) return null;
+  const { data } = await admin
+    .from("restaurants")
+    .select("id, name, timezone")
+    .in("id", ids)
     .eq("organization_id", organizationId)
     .order("name")
     .limit(1)
@@ -76,30 +116,15 @@ async function deviceSede(admin: SupabaseClient, device: PosDevice): Promise<Tur
 
 type ProfileRow = { id: string; full_name: string | null; role: "admin" | "staff" | null; organization_id: string | null };
 
-/**
- * The signed-in person's profile plus their role *in this org*. A person can
- * belong to several orgs (`organization_members`); `profiles.organization_id`
- * is only the active pointer, so membership decides access here.
- */
+/** The signed-in person as a member of this org (see `resolvePersonInOrg`). */
 async function resolveActor(admin: SupabaseClient, userId: string, organizationId: string): Promise<TurnoActor | null> {
-  const [{ data: profile }, { data: membership }] = await Promise.all([
-    admin.from("profiles").select("id, full_name, role, organization_id").eq("id", userId).maybeSingle<ProfileRow>(),
-    admin
-      .from("organization_members")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("organization_id", organizationId)
-      .maybeSingle<{ role: "admin" | "staff" }>(),
-  ]);
-  if (!profile) return null;
-  if (!membership && profile.organization_id !== organizationId) return null;
-  return {
-    profileId: profile.id,
-    fullName: profile.full_name ?? "",
-    role: membership?.role ?? profile.role ?? "staff",
-    viaDevice: false,
-  };
+  const p = await resolvePersonInOrg(admin, userId, organizationId);
+  return p ? { ...p, viaDevice: false } : null;
 }
+
+// Shared with the single login and the register.
+export { listRosterForSede, resolvePersonInOrg };
+export type { TurnoPerson };
 
 /** Staff must be an active member of the sede; org admins always pass. */
 async function actorOnRoster(ctx: TurnoContext): Promise<boolean> {
@@ -133,12 +158,13 @@ export async function loadTurnoGate(): Promise<TurnoGate> {
 
   if (!user) return { kind: "unpaired" };
   const { data: profile } = await admin.from("profiles").select("id, full_name, role, organization_id").eq("id", user.id).maybeSingle<ProfileRow>();
-  if (!profile?.organization_id) return { kind: "unpaired" };
-  // RLS client: only restaurants this user can see.
-  const sede = await firstRestaurant(supabase, profile.organization_id);
-  if (!sede) return { kind: "unpaired" };
+  if (!profile?.organization_id) return { kind: "unpaired", signedIn: true };
+  // Their own sede (active membership) first — a barista on their phone works
+  // where they're on the team; else the first one the RLS client can see.
+  const sede = (await memberSede(admin, user.id, profile.organization_id)) ?? (await firstRestaurant(supabase, profile.organization_id));
+  if (!sede) return { kind: "unpaired", signedIn: true };
   const actor = await resolveActor(admin, user.id, profile.organization_id);
-  if (!actor) return { kind: "unpaired" };
+  if (!actor) return { kind: "unpaired", signedIn: true };
   const ctx: TurnoContext = { admin, organizationId: profile.organization_id, restaurantId: sede.id, sede, actor };
   if (!(await actorOnRoster(ctx))) return { kind: "needs_login", sede, error: notOnTeam(actor.fullName, sede.name) };
   return { kind: "ready", ctx };
@@ -150,39 +176,9 @@ export async function requireTurnoContext(): Promise<TurnoContext> {
   return gate.ctx;
 }
 
-export interface TurnoPerson {
-  id: string;
-  name: string;
-  initials: string;
-  role: "admin" | "staff";
-}
-
 /** Active roster of the sede plus the org's admins (the owner opens the shop). */
 export async function listTurnoRoster(ctx: TurnoContext): Promise<TurnoPerson[]> {
-  const [{ data: members }, { data: admins }] = await Promise.all([
-    ctx.admin
-      .from("restaurant_members")
-      .select("active, profile:profiles!inner(id, full_name, role)")
-      .eq("restaurant_id", ctx.restaurantId),
-    ctx.admin
-      .from("profiles")
-      .select("id, full_name, role")
-      .eq("organization_id", ctx.organizationId)
-      .eq("role", "admin"),
-  ]);
-  const byId = new Map<string, TurnoPerson>();
-  for (const m of members ?? []) {
-    const r = m as unknown as { active: boolean; profile: { id: string; full_name: string | null; role: string | null } | null };
-    if (!r.profile || r.active === false) continue;
-    const name = r.profile.full_name ?? "—";
-    byId.set(r.profile.id, { id: r.profile.id, name, initials: makeInitials(name), role: r.profile.role === "admin" ? "admin" : "staff" });
-  }
-  for (const a of admins ?? []) {
-    if (byId.has(a.id as string)) continue;
-    const name = (a.full_name as string | null) ?? "—";
-    byId.set(a.id as string, { id: a.id as string, name, initials: makeInitials(name), role: "admin" });
-  }
-  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  return listRosterForSede(ctx.admin, ctx.organizationId, ctx.restaurantId);
 }
 
 /**

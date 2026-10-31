@@ -6,6 +6,10 @@ import {
   margenOf,
   stockLevel,
   isAlerting,
+  MARGEN_MIN,
+  margenOk,
+  precioParaMargen,
+  resumenReceta,
 } from "@/lib/cost";
 
 describe("lineTotal", () => {
@@ -91,5 +95,60 @@ describe("isAlerting", () => {
     expect(isAlerting("sin")).toBe(true);
     expect(isAlerting("bajo")).toBe(true);
     expect(isAlerting("ok")).toBe(false);
+  });
+});
+
+describe("MARGEN_MIN / margenOk", () => {
+  it("is the owner's 55 % rule", () => {
+    expect(MARGEN_MIN).toBe(55);
+    expect(margenOk(55)).toBe(true);
+    expect(margenOk(54)).toBe(false);
+    expect(margenOk(40, 30)).toBe(true);
+  });
+});
+
+describe("precioParaMargen", () => {
+  it("rounds up to the next $500 that reaches 55 %", () => {
+    expect(precioParaMargen(4000)).toBe(9000); // 8.888,9 → 9.000
+    expect(precioParaMargen(4500)).toBe(10000); // exactly 10.000
+    expect(precioParaMargen(1000)).toBe(2500); // 2.222 → 2.500
+  });
+  it("is 0 without a cost or with an impossible margin", () => {
+    expect(precioParaMargen(0)).toBe(0);
+    expect(precioParaMargen(-5)).toBe(0);
+    expect(precioParaMargen(1000, 100)).toBe(0);
+  });
+  it("the suggested price always passes the rule", () => {
+    for (const c of [137, 2835, 3999, 4321, 7777]) {
+      expect(margenOf(precioParaMargen(c), c)).toBeGreaterThanOrEqual(MARGEN_MIN);
+    }
+  });
+});
+
+describe("resumenReceta", () => {
+  it("adds the lines and derives margin, profit and cost share", () => {
+    // Latte: 18 g café a 48 + 230 ml leche a 3,61 + vaso 366,67
+    const r = resumenReceta(
+      [
+        { qty: 18, cost_cop: 48 },
+        { qty: 230, cost_cop: 3.61 },
+        { qty: 1, cost_cop: 366.67 },
+      ],
+      8500,
+    );
+    expect(r.costo).toBe(864 + 830 + 367);
+    expect(r.margen).toBe(margenOf(8500, 2061));
+    expect(r.utilidad).toBe(8500 - 2061);
+    expect(r.ok).toBe(true);
+    expect(r.costoPct).toBe(24);
+  });
+  it("flags a recipe under 55 % and suggests a price", () => {
+    const r = resumenReceta([{ qty: 1, cost_cop: 6000 }], 10000);
+    expect(r.margen).toBe(40);
+    expect(r.ok).toBe(false);
+    expect(r.precioSugerido).toBe(13500); // 6.000 / 0,45 = 13.333 → 13.500
+  });
+  it("is never ok at price 0", () => {
+    expect(resumenReceta([], 0)).toMatchObject({ costo: 0, margen: 0, ok: false, costoPct: 0 });
   });
 });

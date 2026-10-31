@@ -16,7 +16,7 @@ export type AgregarResult = { ok: true; repetida: boolean } | { ok: false; error
 function revalidate(today: string) {
   revalidatePath("/turno/inventario", "layout");
   revalidatePath("/inventario", "layout");
-  revalidatePath("/compras");
+  revalidatePath("/inventario/pedidos");
   revalidatePath("/notificaciones");
   revalidatePath(`/hoy/${today}`);
 }

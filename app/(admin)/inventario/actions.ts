@@ -5,6 +5,109 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { unitCostFromPack } from "@/lib/cost";
 import { recomputeProductosForIngrediente } from "@/lib/db/recetas";
+import { getActiveSede } from "@/lib/data/sede";
+import { JUSTIFICACION_CORRECCION, MOTIVOS_CORRECCION, planCorreccion } from "@/lib/inventario/corregir";
+
+// ─────────────────────────────────────────────────────────────────────
+// «Corregir» (docs/redesign/PLAN.md §6.3): the owner types how much there
+// IS and why; the reason decides the movement type (lib/inventario/corregir).
+// ─────────────────────────────────────────────────────────────────────
+
+const CorregirSchema = z.object({
+  id: z.string().uuid(),
+  nuevo: z.coerce.number().min(0).max(100_000_000),
+  motivo: z.enum(MOTIVOS_CORRECCION),
+  /** Total paid for an unregistered purchase (optional). */
+  precio: z.coerce.number().min(0).max(100_000_000).nullable().optional(),
+  nota: z.string().trim().max(120).optional(),
+});
+
+export async function corregirStock(input: unknown): Promise<
+  { ok: true; stock: number; type: "ajuste" | "merma" | "import"; delta: number } | { ok: false; error: string; stock?: number }
+> {
+  const parsed = CorregirSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Datos inválidos." };
+  const d = parsed.data;
+  const [{ user, profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const orgId = profile.organization_id;
+
+  const { data: ing } = await supabase
+    .from("ingredientes")
+    .select("id, name, unit, stock_current, cost_cop, pack_qty")
+    .eq("organization_id", orgId)
+    .eq("id", d.id)
+    .eq("archived", false)
+    .maybeSingle();
+  if (!ing) return { ok: false, error: "Ese insumo ya no existe." };
+  const actual = Number(ing.stock_current);
+  // Total-not-delta: if a sale moved the stock while the sheet was open, the
+  // typed total is still the truth; the delta is computed from now. Only warn
+  // when nothing would change.
+  const r = planCorreccion({ actual, nuevo: d.nuevo, motivo: d.motivo, costoUnit: Number(ing.cost_cop ?? 0), precio: d.precio ?? null, nota: d.nota });
+  if (!r.ok) return { ok: false, error: r.error, stock: actual };
+  const plan = r.plan;
+
+  let mermaId: string | null = null;
+  if (plan.type === "merma") {
+    const { data: merma, error } = await supabase
+      .from("inventario_mermas")
+      .insert({
+        organization_id: orgId,
+        restaurant_id: sede?.id ?? null,
+        ingrediente_id: ing.id,
+        nombre: ing.name,
+        qty: -plan.delta,
+        unidad: ing.unit,
+        motivo: "danado",
+        justificacion: d.nota && d.nota.length >= 5 ? d.nota : JUSTIFICACION_CORRECCION,
+        costo_cop: Math.round(-plan.delta * plan.unitCost),
+        reported_by: user.id,
+      })
+      .select("id")
+      .single();
+    if (error || !merma) {
+      console.error("[corregirStock] merma:", error);
+      return { ok: false, error: "No se pudo registrar la merma." };
+    }
+    mermaId = merma.id as string;
+  }
+
+  const { data: mov, error } = await supabase
+    .from("ingrediente_movements")
+    .insert({
+      organization_id: orgId,
+      ingrediente_id: ing.id,
+      type: plan.type,
+      delta: plan.delta,
+      unit_cost_cop: plan.unitCost,
+      note: plan.note,
+      created_by: user.id,
+      ...(mermaId ? { merma_id: mermaId } : {}),
+    })
+    .select("balance_after")
+    .single();
+  if (error || !mov) {
+    console.error("[corregirStock] movement:", error);
+    if (mermaId) await supabase.from("inventario_mermas").delete().eq("id", mermaId);
+    return { ok: false, error: "No se pudo guardar. Intenta de nuevo." };
+  }
+
+  // A priced purchase sets the item's last cost and re-prices its recipes.
+  if (plan.recostear != null) {
+    const packQty = ing.pack_qty == null ? null : Number(ing.pack_qty);
+    const { error: cErr } = await supabase
+      .from("ingredientes")
+      .update({ cost_cop: plan.recostear, ...(packQty && packQty > 0 ? { pack_cost_cop: Math.round(plan.recostear * packQty) } : {}) })
+      .eq("organization_id", orgId)
+      .eq("id", ing.id);
+    if (cErr) console.error("[corregirStock] costo:", cErr);
+    else await recomputeProductosForIngrediente(supabase, orgId, ing.id as string).catch((e) => console.error("[corregirStock] recompute:", e));
+    revalidatePath("/productos", "layout");
+  }
+
+  revalidatePath("/inventario", "layout");
+  return { ok: true, stock: Number(mov.balance_after), type: plan.type, delta: plan.delta };
+}
 
 // Units the UI exposes; DB column is plain text so adding a new unit is
 // just a Zod change here + the option list in the drawer. `caja` and
@@ -354,8 +457,7 @@ export async function updateIngrediente(input: unknown) {
   }
 
   revalidatePath("/inventario");
-  revalidatePath("/recetas");
-  revalidatePath("/catalogo");
+  revalidatePath("/productos", "layout");
   return { ok: true as const, ingrediente: data };
 }
 

@@ -1,41 +1,52 @@
-import { loadTurnoGate } from "@/lib/turno/server";
 import { todayInTz } from "@/lib/utils";
 import { loadRutina } from "@/lib/inventario/conteos";
 import { loadAcabando } from "@/lib/inventario/acabando-db";
+import { buildInsumos, contar } from "@/lib/inventario/acabando";
 import { NOMBRE_CONTEO } from "@/lib/inventario/rutina";
-import { TurnoLogin } from "../_components/turno-login";
-import { TurnoUnpaired } from "../unpaired";
+import { contarAtrasadas } from "@/lib/turno/reads";
+import { ahoraMs, actorOf, requireEquipo } from "../_components/gate";
+import { EquipoShell } from "../_components/equipo";
 import { AcabandoScreen } from "./acabando-screen";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "¿Qué se está acabando? · co-manda" };
+export const metadata = { title: "Inventario · Comanda" };
 
 /**
- * Inventory on the shared tablet: «¿Qué se está acabando?». Every item of
- * the list, zone by zone, one tap to say hay · poco · agotado; what is in an
- * open order shows «en camino»; what is not on the list is added from here
- * and the owner orders it from Por pedir (/compras on the phone). The count,
- * receiving an order and mermas keep their own screens, one tap away.
+ * «¿Qué se está acabando?» (reference board 8). Every item of the list, zone
+ * by zone, one tap to say hay · poco · se acabó; what is in an open order
+ * shows «en camino»; what is not on the list is added from here and the
+ * owner orders it from Por pedir. Count, receiving and mermas keep their own
+ * screens, one tap away.
  */
 export default async function TurnoInventarioPage() {
-  const gate = await loadTurnoGate();
-  if (gate.kind === "unpaired") return <TurnoUnpaired next="/turno/inventario" />;
-  if (gate.kind === "needs_login") return <TurnoLogin sedeName={gate.sede.name} error={gate.error} />;
-  const { ctx } = gate;
+  const ctx = await requireEquipo("/turno/inventario");
   const { admin, organizationId, sede } = ctx;
-  const [data, estado, { count: porLlegar }] = await Promise.all([
+  const today = todayInTz(sede.tz);
+  const [data, estado, { count: porLlegar }, atrasadas] = await Promise.all([
     loadAcabando(admin, organizationId),
     loadRutina(admin, organizationId, sede.tz),
     admin.from("compras").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "pedido"),
+    contarAtrasadas(ctx),
   ]);
+  const c = contar(buildInsumos({ ...data, today }));
+  const avisados = c.poco + c.agotado;
   return (
-    <AcabandoScreen
-      data={data}
-      today={todayInTz(sede.tz)}
-      actorName={ctx.actor.fullName}
-      isAdmin={ctx.actor.role === "admin" && !ctx.actor.viaDevice}
-      conteo={{ pendiente: !estado.rutina.hecho, nombre: NOMBRE_CONTEO[estado.rutina.toca] }}
-      porLlegar={porLlegar ?? 0}
-    />
+    <EquipoShell
+      title="¿Qué se está acabando?"
+      sub={avisados ? `${avisados} ${avisados === 1 ? "avisado" : "avisados"}${c.camino ? ` · ${c.camino} en camino` : ""}` : "Nada avisado"}
+      actor={actorOf(ctx)}
+      tz={sede.tz}
+      serverNow={ahoraMs()}
+      atrasadas={atrasadas}
+    >
+      <AcabandoScreen
+        data={data}
+        today={today}
+        actorName={ctx.actor.fullName}
+        isAdmin={ctx.actor.role === "admin" && !ctx.actor.viaDevice}
+        conteo={{ pendiente: !estado.rutina.hecho, nombre: NOMBRE_CONTEO[estado.rutina.toca] }}
+        porLlegar={porLlegar ?? 0}
+      />
+    </EquipoShell>
   );
 }
