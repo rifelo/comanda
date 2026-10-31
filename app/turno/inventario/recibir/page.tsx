@@ -1,12 +1,12 @@
-import { redirect } from "next/navigation";
-import { loadTurnoGate, turnoLoginHref } from "@/lib/turno/server";
+import { ahoraMs, actorOf, requireEquipo } from "@/app/turno/_components/gate";
+import { EquipoShell } from "@/app/turno/_components/equipo";
 import { fechaCorta, todayInTz } from "@/lib/utils";
 import { listCompras } from "@/lib/compras/compras-db";
 import { nombrePaquete, piezaDe } from "@/lib/inventario/niveles";
 import { RecibirScreen } from "./recibir-screen";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Pedidos por llegar · co-manda" };
+export const metadata = { title: "Pedidos por llegar · Comanda" };
 
 /**
  * «Pedidos por llegar» on the shared tablet: the orders the owner placed and
@@ -15,12 +15,11 @@ export const metadata = { title: "Pedidos por llegar · co-manda" };
  * (from the drawer → a cash out with its justification).
  */
 export default async function RecibirPage() {
-  const gate = await loadTurnoGate();
-  if (gate.kind !== "ready") redirect(turnoLoginHref(gate, "/turno/inventario/recibir"));
-  const { ctx } = gate;
+  const ctx = await requireEquipo("/turno/inventario/recibir");
   const today = todayInTz(ctx.sede.tz);
   const pedidos = await listCompras(ctx.admin, ctx.organizationId, ["pedido"]);
   return (
+    <EquipoShell title="Pedidos por llegar" sub="Recibir lo que pidió el dueño" actor={actorOf(ctx)} tz={ctx.sede.tz} serverNow={ahoraMs()}>
     <RecibirScreen
       sedeName={ctx.sede.name}
       actorName={ctx.actor.fullName}
@@ -48,5 +47,6 @@ export default async function RecibirPage() {
           }),
         }))}
     />
+    </EquipoShell>
   );
 }

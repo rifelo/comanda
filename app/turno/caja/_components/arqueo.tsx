@@ -97,6 +97,8 @@ export function ArqueoFlow(props: {
   confirmar: (cierreId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   ajustar: (cierreId: string, baseDejada: number) => Promise<{ ok: true; plan: PlanBase } | { ok: false; error: string }>;
   onSalir: () => void;
+  /** Label of the button that leaves once the base is confirmed (inside the close flow: «Siguiente: entregar»). */
+  salirLabel?: string;
 }) {
   const { resultado, cierre } = props;
   const [paso, setPaso] = React.useState<"contar" | "resultado" | "base">(resultado ? "resultado" : cierre ? "base" : "contar");
@@ -305,7 +307,7 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
   );
 }
 
-function Base({ actorName, tz, online, data, confirmar, ajustar, onSalir, steps, onBack }: Parameters<typeof ArqueoFlow>[0] & { data: BaseData; steps: Array<{ label: string; s: StepState }>; onBack: () => void }) {
+function Base({ actorName, tz, online, data, confirmar, ajustar, onSalir, salirLabel, steps, onBack }: Parameters<typeof ArqueoFlow>[0] & { data: BaseData; steps: Array<{ label: string; s: StepState }>; onBack: () => void }) {
   const [plan, setPlan] = React.useState<PlanBase>(data.plan);
   const [baseDejada, setBaseDejada] = React.useState(data.baseDejada);
   const [ajuste, setAjuste] = React.useState<string | null>(null);
@@ -380,7 +382,7 @@ function Base({ actorName, tz, online, data, confirmar, ajustar, onSalir, steps,
           {hecho ? (
             <>
               <div className="cj-warn green"><IcoCheck />Base armada y confirmada{data.confirmadaBy ? ` por ${data.confirmadaBy}` : ` por ${actorName}`} a las {hora(hecho, tz)}.</div>
-              <button type="button" className="cj-btn dark tall" onClick={onSalir}>Volver a Caja</button>
+              <button type="button" className="cj-btn dark tall" onClick={onSalir}>{salirLabel ?? "Volver a Caja"}</button>
             </>
           ) : (
             <button type="button" className="cj-btn green tall" disabled={busy || !online || contadas.length === 0} onClick={() => void doConfirm()}>
