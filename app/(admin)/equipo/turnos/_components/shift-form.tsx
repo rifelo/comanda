@@ -171,7 +171,7 @@ function TimeInput12({
         maxLength={5}
         placeholder="h:mm"
         style={{
-          fontSize: 12,
+          fontSize: 15,
           height: 28,
           boxSizing: "border-box",
           border: "1px solid var(--rule)",
@@ -191,7 +191,7 @@ function TimeInput12({
           emit(text, m2);
         }}
         style={{
-          fontSize: 10,
+          fontSize: 13,
           fontWeight: 600,
           letterSpacing: "0.04em",
           height: 28,
@@ -372,7 +372,7 @@ export function ShiftForm({
                   />
                   <span
                     className="cmd-num text-muted"
-                    style={{ fontSize: 10, letterSpacing: "0.1em", marginLeft: "auto" }}
+                    style={{ fontSize: 13, letterSpacing: "0.1em", marginLeft: "auto" }}
                   >
                     #{i + 1}
                   </span>
@@ -450,7 +450,7 @@ export function ShiftForm({
                 {/* row 4 — photo toggle */}
                 <label
                   className="flex items-center"
-                  style={{ marginTop: 10, gap: 8, fontSize: 11, letterSpacing: "0.1em", color: "var(--muted)", cursor: "pointer" }}
+                  style={{ marginTop: 10, gap: 8, fontSize: 14, letterSpacing: "0.1em", color: "var(--muted)", cursor: "pointer" }}
                 >
                   <input
                     type="checkbox"
@@ -463,7 +463,7 @@ export function ShiftForm({
 
                 {/* row 5 — weekdays: every day the turno runs, or only some (e.g. once a week) */}
                 <div className="flex flex-wrap items-center" style={{ marginTop: 10, gap: 6 }} role="group" aria-label="Días de la tarea">
-                  <span style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--muted)", marginRight: 4 }}>DÍAS</span>
+                  <span style={{ fontSize: 14, letterSpacing: "0.1em", color: "var(--muted)", marginRight: 4 }}>DÍAS</span>
                   <Chip active={t.dias === null} onClick={() => setTask(i, { dias: null })}>Todos</Chip>
                   {DIAS_SEMANA.map((d, di) => {
                     const on = t.dias !== null && t.dias[di];
@@ -483,7 +483,7 @@ export function ShiftForm({
                     );
                   })}
                   {t.dias !== null && t.dias.some((on, di) => on && !dias[di]) ? (
-                    <span style={{ fontSize: 11, color: "var(--red)" }}>el turno no corre ese día</span>
+                    <span style={{ fontSize: 14, color: "var(--red)" }}>el turno no corre ese día</span>
                   ) : null}
                 </div>
               </div>
@@ -501,9 +501,7 @@ export function ShiftForm({
     borderRadius: 2,
   };
   const labelStyle: React.CSSProperties = {
-    fontSize: 9,
-    letterSpacing: "0.18em",
-    textTransform: "uppercase",
+    fontSize: 15,
     color: "var(--muted)",
     marginBottom: 8,
     display: "block",
@@ -517,13 +515,13 @@ export function ShiftForm({
         style={{
           paddingTop: 16,
           paddingBottom: 16,
-          borderBottom: "1.5px solid var(--ink)",
+          borderBottom: "1px solid var(--line)",
         }}
       >
         <Link
           href="/equipo/turnos"
           className="cmd-link"
-          style={{ fontSize: 11, padding: 0, marginBottom: 8, display: "inline-block" }}
+          style={{ fontSize: 14, padding: 0, marginBottom: 8, display: "inline-block" }}
         >
           ‹ Volver a turnos
         </Link>
@@ -531,12 +529,12 @@ export function ShiftForm({
           <div>
             <div
               className="text-muted"
-              style={{ fontSize: 10, letterSpacing: "0.16em" }}
+              style={{ fontSize: 13, letterSpacing: "0.16em" }}
             >
               {editing ? "EDITAR TURNO" : "DEFINICIÓN"}
             </div>
             <h1
-              className="font-slab"
+              className="font-bold"
               style={{ fontSize: 30, margin: "4px 0 0" }}
             >
               {editing ? `Editar turno ${initial?.name ?? ""}` : "Nuevo turno"}
@@ -600,14 +598,14 @@ export function ShiftForm({
                 marginBottom: -1,
                 cursor: "pointer",
                 color: on ? "var(--ink)" : "var(--muted)",
-                fontSize: 12,
+                fontSize: 15,
                 fontWeight: on ? 700 : 400,
                 letterSpacing: "0.04em",
                 minHeight: 0,
               }}
             >
               <span
-                className="cmd-num font-slab"
+                className="cmd-num font-bold"
                 style={{
                   fontSize: 14,
                   color: on ? "var(--red)" : "var(--muted)",
@@ -626,7 +624,7 @@ export function ShiftForm({
               {tb.id === "tareas" ? (
                 <span
                   className="cmd-num text-muted"
-                  style={{ fontSize: 10, fontWeight: 400 }}
+                  style={{ fontSize: 13, fontWeight: 400 }}
                 >
                   · {tasks.length}
                 </span>
@@ -645,7 +643,7 @@ export function ShiftForm({
               color: "var(--red)",
               padding: "10px 14px",
               marginBottom: 18,
-              fontSize: 12,
+              fontSize: 15,
             }}
           >
             {error}
@@ -672,7 +670,7 @@ export function ShiftForm({
                 style={{ gridTemplateColumns: "1fr 1fr", gap: 16 }}
               >
                 <div>
-                  <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
+                  <div className="text-muted" style={{ fontSize: 13, marginBottom: 6 }}>
                     Inicia
                   </div>
                   <input
@@ -683,7 +681,7 @@ export function ShiftForm({
                   />
                 </div>
                 <div>
-                  <div className="text-muted" style={{ fontSize: 10, marginBottom: 6 }}>
+                  <div className="text-muted" style={{ fontSize: 13, marginBottom: 6 }}>
                     Termina
                   </div>
                   <input
@@ -701,15 +699,13 @@ export function ShiftForm({
                 <span
                   className="text-muted"
                   style={{
-                    fontSize: 10,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
+                    fontSize: 13,
                   }}
                 >
                   Duración
                 </span>
                 <span
-                  className="cmd-num font-slab"
+                  className="cmd-num font-bold"
                   style={{ fontSize: 18, lineHeight: 1 }}
                 >
                   {dur}
@@ -761,12 +757,12 @@ export function ShiftForm({
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>
                     Eliminar turno
                   </div>
                   <div
                     className="text-muted"
-                    style={{ fontSize: 10, marginTop: 2 }}
+                    style={{ fontSize: 13, marginTop: 2 }}
                   >
                     Se quita de la definición de la sede. No afecta turnos
                     pasados.
@@ -797,21 +793,19 @@ export function ShiftForm({
               <span
                 className="text-muted"
                 style={{
-                  fontSize: 11,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
+                  fontSize: 14,
                 }}
               >
                 Checklist del turno
               </span>
               <span
                 className="cmd-num text-muted"
-                style={{ fontSize: 11 }}
+                style={{ fontSize: 14 }}
               >
                 {tasks.length} tareas · {fotoCount} con foto
               </span>
             </div>
-            <div className="text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+            <div className="text-muted" style={{ fontSize: 14, marginBottom: 16 }}>
               Lo que el empleado debe completar durante este turno. Marca{" "}
               <strong>FOTO</strong> cuando se requiere evidencia.
             </div>
@@ -823,7 +817,7 @@ export function ShiftForm({
                   padding: 24,
                   textAlign: "center",
                   color: "var(--muted)",
-                  fontSize: 12,
+                  fontSize: 15,
                   marginBottom: 12,
                 }}
               >
@@ -849,8 +843,8 @@ export function ShiftForm({
                     <div key={sec.id ?? "shared"} style={{ marginBottom: 18 }}>
                       <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
                         <span aria-hidden style={{ width: 10, height: 10, borderRadius: 10, background: puestoColor(sec.color) }} />
-                        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" }}>{sec.name}</span>
-                        <span className="cmd-num text-muted" style={{ fontSize: 11 }}>· {rows.length}</span>
+                        <span style={{ fontSize: 15, fontWeight: 700 }}>{sec.name}</span>
+                        <span className="cmd-num text-muted" style={{ fontSize: 14 }}>· {rows.length}</span>
                       </div>
                       {rows.map(({ t, i }) => renderCard(t, i))}
                       <button

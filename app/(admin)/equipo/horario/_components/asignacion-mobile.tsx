@@ -2,7 +2,10 @@
 
 import * as React from "react";
 import { publishWeek } from "../_actions";
+import { ChevronLeft, ChevronRight, Check as CheckIcon } from "lucide-react";
 import { PUESTO_COLORS } from "@/lib/turno/colors";
+import { Avatar, Button, IconButton, Pill, Sheet } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 type GridPuesto = { id: string; name: string; color: string };
 type GridShift = { id: string; name: string; inicio: string; dias: boolean[]; puestos: GridPuesto[] };
@@ -20,7 +23,7 @@ function keyFor(templateId: string, diaIdx: number, puestoId: string | null): st
 
 
 const DAYL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-const MON = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+const MON = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
 function parseISO(yyyyMMdd: string): Date {
   const [y, m, d] = yyyyMMdd.split("-").map(Number);
@@ -39,40 +42,6 @@ function isoWeekNumber(dt: Date): number {
 function todayIndexIn(weekStart: string, today: string): number {
   const diff = Math.round((parseISO(today).getTime() - parseISO(weekStart).getTime()) / 86400000);
   return diff >= 0 && diff <= 6 ? diff : 0;
-}
-
-/** Avatar — initials in a ring. */
-function Avatar({ children, size = 30 }: { children: React.ReactNode; size?: number }) {
-  return (
-    <span
-      className="inline-flex items-center justify-center"
-      style={{
-        width: size,
-        height: size,
-        minWidth: size,
-        borderRadius: "50%",
-        border: "1.5px solid var(--ink)",
-        background: "var(--paper)",
-        fontSize: size * 0.36,
-        fontWeight: 700,
-        flexShrink: 0,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function SectionLabel({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <div className="flex items-center" style={{ gap: 8, padding: "16px 14px 8px" }}>
-      <span className="text-muted" style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}>
-        {children}
-      </span>
-      <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
-      {right != null ? <span className="text-muted" style={{ fontSize: 10 }}>{right}</span> : null}
-    </div>
-  );
 }
 
 /** Mobile Asignación — week bar → day picker → per-turno rows → bottom-sheet
@@ -115,7 +84,7 @@ export function AsignacionMobile({
     return { d, n: String(dt.getUTCDate()).padStart(2, "0"), hoy: fmtISO(dt) === today };
   });
   const semana = isoWeekNumber(monday);
-  const rangeLabel = `${monday.getUTCDate()}·${MON[monday.getUTCMonth()]} — ${sunday.getUTCDate()}·${MON[sunday.getUTCMonth()]}`;
+  const rangeLabel = `${monday.getUTCDate()} ${MON[monday.getUTCMonth()]} – ${sunday.getUTCDate()} ${MON[sunday.getUTCMonth()]}`;
 
   const memberById = new Map(roster.map((m) => [m.id, m]));
 
@@ -177,310 +146,182 @@ export function AsignacionMobile({
     }
   }
 
+  const sheetShift = sheet ? shifts.find((s) => s.id === sheet.templateId) ?? null : null;
+  const sheetPuesto = sheet && sheetShift ? sheetShift.puestos.find((p) => p.id === sheet.puestoId)?.name ?? null : null;
+  const current = sheet ? asig.get(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId)) ?? null : null;
+  const activos = roster.filter((p) => p.active);
+
   return (
-    <div style={{ position: "relative", minHeight: "100%" }}>
-      {/* week bar */}
-      <div
-        className="flex items-center justify-between"
-        style={{ padding: "12px 14px", borderBottom: "1px dashed var(--rule)", gap: 8 }}
-      >
-        <button type="button" className="cmd-btn ghost sm" onClick={() => goWeek(-1)}>
-          ‹
-        </button>
-        <div style={{ textAlign: "center", flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em" }}>Semana {semana}</div>
-          <div className="cmd-num text-muted" style={{ fontSize: 10 }}>{rangeLabel}</div>
+    <div className="relative min-h-full flex flex-col gap-4 pb-6">
+      {/* semana */}
+      <div className="flex items-center gap-3 px-4 pt-4">
+        <IconButton label="Semana anterior" size="sm" onClick={() => goWeek(-1)}>
+          <ChevronLeft size={20} aria-hidden />
+        </IconButton>
+        <div className="flex-1 text-center">
+          <p className="ui-title m-0">Semana {semana}</p>
+          <p className="ui-sub m-0 ui-num">{rangeLabel}</p>
         </div>
-        <button type="button" className="cmd-btn ghost sm" onClick={() => goWeek(1)}>
-          ›
-        </button>
+        <IconButton label="Semana siguiente" size="sm" onClick={() => goWeek(1)}>
+          <ChevronRight size={20} aria-hidden />
+        </IconButton>
       </div>
 
-      {/* day picker */}
-      <div className="flex" style={{ gap: 6, padding: "12px 14px 8px", overflowX: "auto" }}>
+      {/* días */}
+      <div role="group" aria-label="Día" className="grid grid-cols-7 gap-1.5 px-4">
         {dias.map((d, i) => {
           const on = i === daySel;
           return (
             <button
               key={i}
               type="button"
+              aria-pressed={on}
               onClick={() => setDaySel(i)}
-              style={{
-                flexShrink: 0,
-                width: 46,
-                padding: "8px 0",
-                borderRadius: 4,
-                cursor: "pointer",
-                border: `1.5px solid ${on ? "var(--ink)" : d.hoy ? "var(--red)" : "var(--rule-soft)"}`,
-                background: on ? "var(--ink)" : "transparent",
-                color: on ? "var(--paper-lt)" : "var(--ink)",
-                textAlign: "center",
-              }}
+              className={cn(
+                "min-h-[60px] rounded-btn border flex flex-col items-center justify-center gap-0.5 cursor-pointer",
+                on ? "bg-strong text-on-strong border-transparent" : "bg-surface text-text border-line",
+                !on && d.hoy && "border-brand",
+              )}
             >
-              <div style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", opacity: on ? 0.85 : 0.6 }}>
-                {d.d}
-              </div>
-              <div
-                className="cmd-num font-slab"
-                style={{ fontSize: 17, marginTop: 2, color: on ? "var(--paper-lt)" : d.hoy ? "var(--red)" : "var(--ink)" }}
-              >
-                {d.n}
-              </div>
+              <span className={cn("text-[12px] font-semibold", on ? "opacity-80" : "text-muted")}>{d.d}</span>
+              <span className="text-[18px] font-bold ui-num leading-none">{d.n}</span>
             </button>
           );
         })}
       </div>
 
-      <SectionLabel right={`${filled}/${totalCells} cubiertos`}>
-        {DAYL[daySel]} {dias[daySel].n} · encargados
-      </SectionLabel>
+      <div className="flex items-baseline justify-between gap-2 px-4">
+        <h2 className="ui-h2 m-0">
+          {DAYL[daySel]} {dias[daySel].n}
+        </h2>
+        <span className="ui-sub ui-num">
+          {filled}/{totalCells} cubiertos en la semana
+        </span>
+      </div>
 
-      <div style={{ padding: "0 14px 16px" }}>
+      <ul className="m-0 px-4 list-none flex flex-col gap-2.5">
         {shifts.flatMap((turno) => slotsOf(turno).map((slot) => ({ turno, slot }))).map(({ turno, slot }) => {
           const operating = turno.dias[daySel];
           const key = keyFor(turno.id, daySel, slot.id);
           const whoId = asig.get(key) ?? null;
           const person = whoId ? memberById.get(whoId) : null;
-          const rowKey = key;
           if (!operating) {
-            if (slot.id && turno.puestos[0]?.id !== slot.id) return null; // one "cerrado" row per turno
+            if (slot.id && turno.puestos[0]?.id !== slot.id) return null; // one "no abre" row per turno
             return (
-              <div
-                key={rowKey}
-                className="flex items-center justify-between"
-                style={{
-                  border: "1px solid var(--rule-soft)",
-                  borderRadius: 3,
-                  padding: "14px",
-                  marginBottom: 10,
-                  background: "repeating-linear-gradient(45deg, var(--rule-soft) 0 1px, transparent 1px 8px)",
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 600, textTransform: "capitalize" }}>Turno {turno.name}</span>
-                <span
-                  className="text-muted"
-                  style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", background: "var(--paper)", padding: "2px 6px" }}
-                >
-                  cerrado
-                </span>
-              </div>
+              <li key={key} className="flex items-center justify-between gap-3 min-h-14 px-4 rounded-card border border-dashed border-line text-muted">
+                <span className="text-[15px] font-semibold">{turno.name}</span>
+                <span className="text-[13px]">No abre este día</span>
+              </li>
             );
           }
           return (
-            <button
-              key={rowKey}
-              type="button"
-              onClick={() => setSheet({ templateId: turno.id, dayIdx: daySel, puestoId: slot.id })}
-              className="flex items-center"
-              style={{
-                width: "100%",
-                textAlign: "left",
-                gap: 12,
-                border: `1.5px solid ${whoId ? "var(--ink)" : "var(--rule-soft)"}`,
-                boxShadow: slot.color ? `inset 5px 0 0 ${PUESTO_COLORS[slot.color] ?? "var(--ink)"}` : undefined,
-                borderRadius: 3,
-                padding: "13px 14px",
-                marginBottom: 10,
-                background: whoId ? "var(--paper-lt)" : "transparent",
-                cursor: "pointer",
-              }}
-            >
-              <div className="flex-1 min-w-0">
-                <div style={{ fontSize: 14, fontWeight: 600, textTransform: "capitalize" }}>Turno {turno.name}</div>
-                <div className="cmd-num text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>
-                  {turno.inicio}{slot.name ? ` · ${slot.name}` : ""}
-                </div>
-              </div>
-              {person ? (
-                <div className="flex items-center" style={{ gap: 9 }}>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 500 }}>{person.name}</div>
-                    <div className="text-muted" style={{ fontSize: 9.5 }}>cambiar →</div>
-                  </div>
-                  <Avatar size={34}>{person.initials}</Avatar>
-                </div>
-              ) : (
-                <span
-                  style={{ fontSize: 11, color: "var(--red)", border: "1px solid var(--red)", borderRadius: 2, padding: "6px 10px", letterSpacing: "0.06em" }}
-                >
-                  + asignar
+            <li key={key}>
+              <button
+                type="button"
+                onClick={() => setSheet({ templateId: turno.id, dayIdx: daySel, puestoId: slot.id })}
+                data-testid="horario-slot"
+                className="w-full min-h-[76px] flex items-center gap-3 px-4 py-3 rounded-card border border-line bg-surface text-left text-text cursor-pointer hover:bg-surface-2"
+                style={slot.color ? { boxShadow: `inset 5px 0 0 ${PUESTO_COLORS[slot.color] ?? "var(--text)"}` } : undefined}
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="ui-title block truncate">{turno.name}</span>
+                  <span className="ui-sub block ui-num">
+                    {turno.inicio.slice(0, 5)}
+                    {slot.name ? ` · ${slot.name}` : ""}
+                  </span>
                 </span>
-              )}
-            </button>
+                {person ? (
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-[15px] font-semibold truncate max-w-[120px]">{person.name}</span>
+                    <Avatar name={person.name} initials={person.initials} size="sm" />
+                  </span>
+                ) : (
+                  <Pill tone="late">Sin asignar</Pill>
+                )}
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
-      <SectionLabel>Carga del equipo · semana</SectionLabel>
-      <div style={{ padding: "0 14px 24px" }}>
+      <section aria-labelledby="carga" className="flex flex-col gap-2 px-4">
+        <h2 id="carga" className="ui-label m-0">
+          Turnos de cada persona esta semana
+        </h2>
         {roster.length === 0 ? (
-          <div className="text-muted" style={{ fontSize: 12 }}>Sin equipo todavía.</div>
+          <p className="ui-sub m-0">Sin equipo todavía.</p>
         ) : (
-          roster.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center"
-              style={{ gap: 10, padding: "9px 0", borderBottom: "1px solid var(--rule-soft)", opacity: p.active ? 1 : 0.6 }}
-            >
-              <Avatar size={28}>{p.initials}</Avatar>
-              <span className="flex-1" style={{ fontSize: 12.5, fontWeight: 500 }}>{p.name}</span>
-              <span className="cmd-num" style={{ fontSize: 14, fontWeight: 700 }}>{counts[p.id] ?? 0}</span>
-              <span className="text-muted" style={{ fontSize: 8, letterSpacing: "0.12em" }}>TURNOS</span>
-            </div>
-          ))
+          <ul className="m-0 p-0 list-none bg-surface border border-line rounded-card overflow-hidden">
+            {roster.map((p) => (
+              <li key={p.id} className={cn("flex items-center gap-3 min-h-14 px-4 border-b border-line last:border-b-0", !p.active && "opacity-60")}>
+                <Avatar name={p.name} initials={p.initials} size="sm" />
+                <span className="flex-1 min-w-0 truncate text-[15px]">{p.name}</span>
+                <span className="ui-num text-[17px] font-bold">{counts[p.id] ?? 0}</span>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
 
-      {/* publish bar */}
+      {/* publicar */}
       {dirty || error ? (
-        <div
-          style={{ position: "sticky", bottom: 0, padding: "12px 14px", background: "var(--paper)", borderTop: "1.5px solid var(--ink)" }}
-        >
+        <div className="sticky bottom-0 bg-bg border-t border-line px-4 py-3 flex flex-col gap-2">
           {error ? (
-            <div style={{ color: "var(--red)", fontSize: 11, marginBottom: 8, textAlign: "center" }}>{error}</div>
+            <p role="alert" className="m-0 text-late text-center font-semibold">
+              {error}
+            </p>
           ) : null}
-          <button
-            type="button"
-            className="cmd-btn red"
-            style={{ width: "100%", padding: 13, opacity: dirty && !pending ? 1 : 0.5 }}
-            disabled={!dirty || pending}
-            onClick={publish}
-          >
-            {pending ? "Publicando…" : `Publicar horario · semana ${semana}`}
-          </button>
+          <Button block loading={pending} disabled={!dirty} onClick={publish}>
+            Publicar horario · semana {semana}
+          </Button>
         </div>
       ) : null}
 
-      {/* person picker — bottom sheet */}
-      {sheet ? (
-        <PersonSheet
-          sheet={sheet}
-          shifts={shifts}
-          roster={roster}
-          dayLabel={`${DAYL[sheet.dayIdx]} ${dias[sheet.dayIdx].n}`}
-          current={asig.get(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId)) ?? null}
-          onPick={(id) => setAssign(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId), id)}
-          onClose={() => setSheet(null)}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function PersonSheet({
-  sheet,
-  shifts,
-  roster,
-  dayLabel,
-  current,
-  onPick,
-  onClose,
-}: {
-  sheet: { templateId: string; dayIdx: number; puestoId: string | null };
-  shifts: GridShift[];
-  roster: GridMember[];
-  dayLabel: string;
-  current: string | null;
-  onPick: (id: string | null) => void;
-  onClose: () => void;
-}) {
-  const shift = shifts.find((s) => s.id === sheet.templateId);
-  const puestoName = shift?.puestos.find((p) => p.id === sheet.puestoId)?.name;
-  const shiftName = `${shift?.name ?? ""}${puestoName ? ` · ${puestoName}` : ""}`;
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 40, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,16,10,.4)" }} />
-      <div
-        className="bg-paper"
-        style={{
-          position: "relative",
-          maxHeight: "78%",
-          display: "flex",
-          flexDirection: "column",
-          borderTopLeftRadius: 10,
-          borderTopRightRadius: 10,
-          border: "1.5px solid var(--ink)",
-          borderBottom: "none",
-          boxShadow: "0 -10px 30px rgba(20,16,10,.25)",
-        }}
+      <Sheet
+        open={!!sheet}
+        onClose={() => setSheet(null)}
+        title={sheet ? `${sheetShift?.name ?? ""}${sheetPuesto ? ` · ${sheetPuesto}` : ""} · ${DAYL[sheet.dayIdx]} ${dias[sheet.dayIdx].n}` : "Asignar"}
       >
-        <div
-          className="flex justify-between items-center"
-          style={{ padding: "16px 18px 12px", borderBottom: "1px dashed var(--rule)" }}
-        >
-          <div>
-            <div className="font-slab" style={{ fontSize: 18, textTransform: "capitalize" }}>Turno {shiftName}</div>
-            <div className="text-muted" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 2 }}>
-              {dayLabel}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Cerrar" style={{ background: "none", border: "none", fontSize: 22, color: "var(--muted)", cursor: "pointer" }}>
-            ✕
-          </button>
-        </div>
-        <div style={{ overflowY: "auto", padding: "8px 10px 24px" }}>
-          {roster.filter((p) => p.active).length === 0 ? (
-            <div className="text-muted" style={{ padding: "16px 10px", fontSize: 12 }}>Sin equipo activo.</div>
-          ) : (
-            roster
-              .filter((p) => p.active)
-              .map((p) => {
-                const on = current === p.id;
-                return (
+        {activos.length === 0 ? (
+          <p className="ui-sub m-0">Sin equipo activo. Agrega personas en Equipo → Personas.</p>
+        ) : (
+          <ul className="m-0 p-0 list-none flex flex-col gap-1">
+            {activos.map((p) => {
+              const on = current === p.id;
+              return (
+                <li key={p.id}>
                   <button
-                    key={p.id}
                     type="button"
-                    onClick={() => onPick(p.id)}
-                    className="flex items-center"
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      gap: 11,
-                      padding: "11px 10px",
-                      border: "none",
-                      borderRadius: 3,
-                      cursor: "pointer",
-                      background: on ? "var(--paper-lt)" : "transparent",
-                      color: "var(--ink)",
-                    }}
+                    aria-pressed={on}
+                    onClick={() => sheet && setAssign(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId), p.id)}
+                    className={cn(
+                      "w-full min-h-14 flex items-center gap-3 px-3 py-2 rounded-btn border-0 text-left text-text cursor-pointer",
+                      on ? "bg-brand-soft" : "bg-transparent hover:bg-surface-2",
+                    )}
                   >
-                    <Avatar size={32}>{p.initials}</Avatar>
+                    <Avatar name={p.name} initials={p.initials} size="sm" />
                     <span className="flex-1 min-w-0">
-                      <span style={{ fontSize: 13.5, fontWeight: 500, display: "block" }}>{p.name}</span>
-                      <span
-                        className="text-muted"
-                        style={{ fontSize: 10, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                      >
-                        {p.email || "—"}
-                      </span>
+                      <span className="block text-[16px] font-semibold truncate">{p.name}</span>
+                      <span className="block ui-sub truncate">{counts[p.id] ?? 0} turnos esta semana</span>
                     </span>
-                    {on ? <span style={{ color: "var(--green)", fontSize: 15 }}>✓</span> : null}
+                    {on ? <CheckIcon size={20} className="text-ok" aria-hidden /> : null}
                   </button>
-                );
-              })
-          )}
-          {current ? (
-            <button
-              type="button"
-              onClick={() => onPick(null)}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "12px 10px",
-                marginTop: 4,
-                border: "none",
-                borderTop: "1px dashed var(--rule)",
-                cursor: "pointer",
-                fontSize: 12,
-                color: "var(--red)",
-                background: "transparent",
-              }}
-            >
-              Quitar asignación
-            </button>
-          ) : null}
-        </div>
-      </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {current ? (
+          <Button
+            variant="ghost"
+            block
+            className="mt-3 text-late"
+            onClick={() => sheet && setAssign(keyFor(sheet.templateId, sheet.dayIdx, sheet.puestoId), null)}
+          >
+            Quitar asignación
+          </Button>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

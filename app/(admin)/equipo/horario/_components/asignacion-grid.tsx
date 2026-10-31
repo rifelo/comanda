@@ -237,17 +237,17 @@ export function AsignacionGrid({
         className="flex items-end justify-between"
         style={{
           padding: "20px 32px 16px",
-          borderBottom: "1.5px solid var(--ink)",
+          borderBottom: "1px solid var(--line)",
         }}
       >
         <div>
           <div
             className="text-muted"
-            style={{ fontSize: 10, letterSpacing: "0.16em" }}
+            style={{ fontSize: 13, letterSpacing: "0.16em" }}
           >
             SEMANA {semana} · {rangeLabel} · DANIEL&apos;S BURGER
           </div>
-          <h1 className="font-slab" style={{ fontSize: 30, margin: "4px 0 0" }}>
+          <h1 className="font-bold" style={{ fontSize: 30, margin: "4px 0 0" }}>
             Asignación de personal
           </h1>
         </div>
@@ -296,7 +296,7 @@ export function AsignacionGrid({
             padding: "10px 32px",
             background: "var(--paper-lt)",
             color: "var(--red)",
-            fontSize: 12,
+            fontSize: 15,
             borderBottom: "1px solid var(--rule)",
           }}
         >
@@ -321,9 +321,7 @@ export function AsignacionGrid({
             <span
               className="text-muted"
               style={{
-                fontSize: 10,
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
+                fontSize: 13,
               }}
             >
               Encargado por turno
@@ -331,7 +329,7 @@ export function AsignacionGrid({
             <span
               className="cmd-num"
               style={{
-                fontSize: 11,
+                fontSize: 14,
                 color: filled === totalCells ? "var(--green)" : "var(--amber)",
               }}
             >
@@ -348,9 +346,7 @@ export function AsignacionGrid({
               <div key={d.n} style={{ textAlign: "center", paddingBottom: 8 }}>
                 <div
                   style={{
-                    fontSize: 10,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
+                    fontSize: 13,
                     color: d.hoy ? "var(--red)" : "var(--muted)",
                     fontWeight: d.hoy ? 700 : 400,
                   }}
@@ -358,7 +354,7 @@ export function AsignacionGrid({
                   {d.d}
                 </div>
                 <div
-                  className="cmd-num font-slab"
+                  className="cmd-num font-bold"
                   style={{
                     fontSize: 16,
                     color: d.hoy ? "var(--red)" : "var(--ink)",
@@ -377,7 +373,7 @@ export function AsignacionGrid({
                 >
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: 14,
                       fontWeight: 700,
                       textTransform: "capitalize",
                     }}
@@ -386,14 +382,14 @@ export function AsignacionGrid({
                   </div>
                   <div
                     className="cmd-num text-muted"
-                    style={{ fontSize: 9 }}
+                    style={{ fontSize: 15 }}
                   >
                     {s.inicio}
                   </div>
                   {s.puestos.length > 0 && (
                     <div className="flex flex-col" style={{ gap: 3, marginTop: 6 }}>
                       {s.puestos.map((p) => (
-                        <span key={p.id} className="flex items-center" style={{ gap: 5, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-2)", height: 28 }}>
+                        <span key={p.id} className="flex items-center" style={{ gap: 5, fontSize: 15, color: "var(--ink-2)", height: 28 }}>
                           <span aria-hidden style={{ width: 7, height: 7, borderRadius: 7, background: PUESTO_COLORS[p.color] ?? "var(--ink)" }} />
                           {p.name}
                         </span>
@@ -423,9 +419,7 @@ export function AsignacionGrid({
                         <span
                           className="text-muted"
                           style={{
-                            fontSize: 8,
-                            letterSpacing: "0.12em",
-                            textTransform: "uppercase",
+                            fontSize: 15,
                             background: "var(--paper)",
                             padding: "1px 4px",
                           }}
@@ -475,9 +469,9 @@ export function AsignacionGrid({
                               width: slot.id ? 22 : 26,
                               height: slot.id ? 22 : 26,
                               borderRadius: "50%",
-                              border: "1.5px solid var(--ink)",
+                              border: "1px solid var(--line)",
                               background: "var(--paper)",
-                              fontSize: 10,
+                              fontSize: 13,
                               fontWeight: 700,
                             }}
                           >
@@ -512,7 +506,7 @@ export function AsignacionGrid({
                               [alignRight ? "right" : "left"]: 0,
                               width: 210,
                               background: "var(--paper)",
-                              border: "1.5px solid var(--ink)",
+                              border: "1px solid var(--line)",
                               boxShadow: "3px 3px 0 rgba(0,0,0,.12)",
                             }}
                           >
@@ -521,9 +515,7 @@ export function AsignacionGrid({
                               style={{
                                 padding: "7px 10px",
                                 borderBottom: "1px dashed var(--rule)",
-                                fontSize: 9,
-                                letterSpacing: "0.14em",
-                                textTransform: "uppercase",
+                                fontSize: 15,
                               }}
                             >
                               <span style={{ textTransform: "capitalize" }}>
@@ -538,7 +530,7 @@ export function AsignacionGrid({
                                 className="text-muted"
                                 style={{
                                   padding: "12px 10px",
-                                  fontSize: 11,
+                                  fontSize: 14,
                                 }}
                               >
                                 Sin equipo activo.{" "}
@@ -577,9 +569,9 @@ export function AsignacionGrid({
                                           width: 24,
                                           height: 24,
                                           borderRadius: "50%",
-                                          border: "1.5px solid var(--ink)",
+                                          border: "1px solid var(--line)",
                                           background: "var(--paper)",
-                                          fontSize: 9,
+                                          fontSize: 15,
                                           fontWeight: 700,
                                           flexShrink: 0,
                                         }}
@@ -592,7 +584,7 @@ export function AsignacionGrid({
                                       >
                                         <span
                                           style={{
-                                            fontSize: 12,
+                                            fontSize: 15,
                                             fontWeight: 500,
                                             display: "block",
                                           }}
@@ -602,7 +594,7 @@ export function AsignacionGrid({
                                         <span
                                           className="text-muted"
                                           style={{
-                                            fontSize: 9,
+                                            fontSize: 15,
                                             display: "block",
                                             overflow: "hidden",
                                             textOverflow: "ellipsis",
@@ -637,7 +629,7 @@ export function AsignacionGrid({
                                   border: "none",
                                   borderTop: "1px dashed var(--rule)",
                                   cursor: "pointer",
-                                  fontSize: 11,
+                                  fontSize: 14,
                                   color: "var(--red)",
                                   background: "transparent",
                                   minHeight: 0,
@@ -664,7 +656,7 @@ export function AsignacionGrid({
             style={{
               marginTop: 18,
               gap: 18,
-              fontSize: 10,
+              fontSize: 13,
               letterSpacing: "0.08em",
               flexWrap: "wrap",
             }}
@@ -718,16 +710,14 @@ export function AsignacionGrid({
           <div
             className="text-muted"
             style={{
-              fontSize: 10,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
+              fontSize: 13,
               marginBottom: 12,
             }}
           >
             Carga del equipo
           </div>
           {roster.length === 0 ? (
-            <div className="text-muted" style={{ fontSize: 11 }}>
+            <div className="text-muted" style={{ fontSize: 14 }}>
               Sin equipo todavía.{" "}
               <Link href="/equipo" className="cmd-link">
                 agregar persona →
@@ -751,16 +741,16 @@ export function AsignacionGrid({
                     width: 30,
                     height: 30,
                     borderRadius: "50%",
-                    border: "1.5px solid var(--ink)",
+                    border: "1px solid var(--line)",
                     background: "var(--paper)",
-                    fontSize: 11,
+                    fontSize: 14,
                     fontWeight: 700,
                   }}
                 >
                   {p.initials}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div style={{ fontSize: 12, fontWeight: 500 }}>{p.name}</div>
+                  <div style={{ fontSize: 15, fontWeight: 500 }}>{p.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div
@@ -771,7 +761,7 @@ export function AsignacionGrid({
                   </div>
                   <div
                     className="text-muted"
-                    style={{ fontSize: 8, letterSpacing: "0.12em" }}
+                    style={{ fontSize: 15, letterSpacing: "0.12em" }}
                   >
                     TURNOS
                   </div>
@@ -781,7 +771,7 @@ export function AsignacionGrid({
           )}
           <div
             className="text-muted"
-            style={{ fontSize: 10, marginTop: 14, lineHeight: 1.5 }}
+            style={{ fontSize: 13, marginTop: 14, lineHeight: 1.5 }}
           >
             Para agregar o editar personas, ve al módulo{" "}
             <Link href="/equipo" className="cmd-link">

@@ -121,7 +121,7 @@ export function TareasManager({
             style={{
               width: "100%",
               boxSizing: "border-box",
-              fontSize: 12,
+              fontSize: 15,
               color: "var(--ink)",
               background: "var(--paper-lt)",
               border: "1.5px solid var(--rule)",
@@ -140,7 +140,7 @@ export function TareasManager({
             <Stamp rotate={-5} size={13}>
               Sin resultados
             </Stamp>
-            <div style={{ fontSize: 12, marginTop: 14 }}>
+            <div style={{ fontSize: 15, marginTop: 14 }}>
               Ninguna tarea coincide con los filtros.
             </div>
           </div>
@@ -183,7 +183,7 @@ export function TareasManager({
             className="hidden lg:block fixed top-0 right-0 bottom-0 z-50"
             style={{
               width: 440,
-              borderLeft: "1.5px solid var(--ink)",
+              borderLeft: "1px solid var(--line)",
               boxShadow: "-12px 0 36px rgba(20,16,10,0.18)",
             }}
           >
@@ -202,7 +202,7 @@ export function TareasManager({
               height: "92%",
               borderTopLeftRadius: 12,
               borderTopRightRadius: 12,
-              border: "1.5px solid var(--ink)",
+              border: "1px solid var(--line)",
               borderBottom: "none",
               boxShadow: "0 -10px 30px rgba(20,16,10,0.25)",
             }}
@@ -242,12 +242,12 @@ function Stat({
         borderRadius: 3,
       }}
     >
-      <div className="cmd-num font-slab" style={{ fontSize: 34, lineHeight: 1, color }}>
+      <div className="cmd-num font-bold" style={{ fontSize: 34, lineHeight: 1, color }}>
         {value}
       </div>
       <div
         className="text-muted"
-        style={{ fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6 }}
+        style={{ fontSize: 15, marginTop: 6 }}
       >
         {label}
       </div>
@@ -267,7 +267,7 @@ function Segmented<T extends string>({
   return (
     <div
       className="inline-flex overflow-hidden"
-      style={{ border: "1.5px solid var(--ink)", borderRadius: 3 }}
+      style={{ border: "1px solid var(--line)", borderRadius: 3 }}
     >
       {options.map((o, i) => {
         const active = value === o.value;
@@ -277,10 +277,8 @@ function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(o.value)}
             style={{
-              fontSize: 11,
+              fontSize: 14,
               fontWeight: 600,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
               padding: "9px 13px",
               cursor: "pointer",
               background: active ? "var(--ink)" : "transparent",
@@ -310,10 +308,10 @@ function Select({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        fontSize: 12,
+        fontSize: 15,
         color: "var(--ink)",
         background: "var(--paper-lt)",
-        border: "1.5px solid var(--ink)",
+        border: "1px solid var(--line)",
         borderRadius: 3,
         padding: "9px 28px 9px 11px",
         cursor: "pointer",

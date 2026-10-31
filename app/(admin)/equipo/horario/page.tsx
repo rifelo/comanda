@@ -62,8 +62,8 @@ export default async function TurnosAsignacionPage() {
 
   return (
     <>
-      {/* ── Mobile · day picker + bottom-sheet picker ────────────── */}
-      <div className="md:hidden">
+      {/* ── Teléfono / tablet vertical · lista por día + sheet ── */}
+      <div className="lg:hidden">
         <AsignacionMobile
           initialWeekStart={weekStart}
           today={today}
@@ -73,8 +73,8 @@ export default async function TurnosAsignacionPage() {
         />
       </div>
 
-      {/* ── Desktop · week grid (unchanged) ──────────────────────── */}
-      <div className="hidden md:block">
+      {/* ── ≥ lg · grilla de la semana ── */}
+      <div className="hidden lg:block">
         <AsignacionGrid
           initialWeekStart={weekStart}
           today={today}

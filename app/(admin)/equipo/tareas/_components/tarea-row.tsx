@@ -64,7 +64,7 @@ export function TareaRow({
         {pending ? (
           <span
             className="inline-flex items-center justify-center"
-            style={{ width: 22, height: 22, border: "1.5px solid var(--ink)", borderRadius: 3, background: "var(--paper-lt)" }}
+            style={{ width: 22, height: 22, border: "1px solid var(--line)", borderRadius: 3, background: "var(--paper-lt)" }}
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           </span>
@@ -89,7 +89,7 @@ export function TareaRow({
           {task.requires_photo ? <FotoBadge done={isDone} /> : null}
         </div>
         {task.details ? (
-          <div className="text-muted" style={{ fontSize: 11, marginTop: 2, lineHeight: 1.35 }}>
+          <div className="text-muted" style={{ fontSize: 14, marginTop: 2, lineHeight: 1.35 }}>
             {task.details}
           </div>
         ) : null}
@@ -98,7 +98,7 @@ export function TareaRow({
           <AssigneeChip name={task.assigned_to ? (task.assignee_name ?? "Asignada") : null} />
         </div>
         {error ? (
-          <p style={{ color: "var(--red)", fontSize: 11, marginTop: 4 }}>{error}</p>
+          <p style={{ color: "var(--red)", fontSize: 14, marginTop: 4 }}>{error}</p>
         ) : null}
       </div>
 
@@ -128,7 +128,7 @@ export function TareaRow({
           onClick={() => onEdit(task)}
           disabled={pending}
           className="cmd-link"
-          style={{ fontSize: 11 }}
+          style={{ fontSize: 14 }}
         >
           Editar
         </button>
@@ -137,7 +137,7 @@ export function TareaRow({
           onClick={remove}
           disabled={pending}
           className="text-muted"
-          style={{ fontSize: 11, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}
+          style={{ fontSize: 14, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}
         >
           Eliminar
         </button>

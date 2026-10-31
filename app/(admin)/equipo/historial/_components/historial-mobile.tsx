@@ -126,21 +126,21 @@ export function HistorialMobile({
         className="bg-paper flex flex-col"
         style={{ position: "fixed", inset: 0, zIndex: 40, color: "var(--ink)" }}
       >
-        <div style={{ padding: "calc(env(safe-area-inset-top) + 14px) 16px 14px", borderBottom: "1.5px solid var(--ink)", flexShrink: 0 }}>
+        <div style={{ padding: "calc(env(safe-area-inset-top) + 14px) 16px 14px", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => setSel(null)}
             className="cmd-link"
-            style={{ background: "none", border: "none", fontSize: 11, padding: 0, marginBottom: 8, cursor: "pointer" }}
+            style={{ background: "none", border: "none", fontSize: 14, padding: 0, marginBottom: 8, cursor: "pointer" }}
           >
             ‹ Historial
           </button>
           <div className="flex justify-between items-start">
             <div>
-              <div className="text-muted" style={{ fontSize: 9.5, letterSpacing: "0.14em" }}>
+              <div className="text-muted" style={{ fontSize: 15, letterSpacing: "0.14em" }}>
                 {cur.dateLabel} · TURNO {cur.template_name.toUpperCase()} · DR-{cur.id.slice(0, 4).toUpperCase()}
               </div>
-              <div className="font-slab" style={{ fontSize: 22, marginTop: 4 }}>
+              <div className="font-bold" style={{ fontSize: 22, marginTop: 4 }}>
                 {cur.opener}
               </div>
             </div>
@@ -158,10 +158,10 @@ export function HistorialMobile({
               { l: "Novedades", v: cur.novedades },
             ].map((s) => (
               <div key={s.l}>
-                <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                <div className="text-muted" style={{ fontSize: 15 }}>
                   {s.l}
                 </div>
-                <div className="cmd-num font-slab" style={{ fontSize: 24, marginTop: 2 }}>
+                <div className="cmd-num font-bold" style={{ fontSize: 24, marginTop: 2 }}>
                   {s.v}
                 </div>
               </div>
@@ -171,9 +171,9 @@ export function HistorialMobile({
           <SectionLabel right={isLoading ? "cargando…" : `${done}/${total}`}>Tareas del turno</SectionLabel>
           <div style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)" }}>
             {isLoading ? (
-              <div className="text-muted" style={{ padding: 16, fontSize: 11, textAlign: "center" }}>Cargando…</div>
+              <div className="text-muted" style={{ padding: 16, fontSize: 14, textAlign: "center" }}>Cargando…</div>
             ) : tasks.length === 0 ? (
-              <div className="text-muted" style={{ padding: 16, fontSize: 11, textAlign: "center" }}>
+              <div className="text-muted" style={{ padding: 16, fontSize: 14, textAlign: "center" }}>
                 Sin checklist registrado para este turno.
               </div>
             ) : (
@@ -200,24 +200,24 @@ export function HistorialMobile({
                         border: `1.5px solid ${t.completed ? "var(--green)" : "var(--rule)"}`,
                         background: t.completed ? "var(--green)" : "transparent",
                         color: "var(--paper-lt)",
-                        fontSize: 10,
+                        fontSize: 13,
                       }}
                     >
                       {t.completed ? "✓" : ""}
                     </span>
-                    <span className="cmd-num text-muted" style={{ fontSize: 10, width: 38 }}>
+                    <span className="cmd-num text-muted" style={{ fontSize: 13, width: 38 }}>
                       {t.due_time ?? "—"}
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 12.5 }}>{t.title}</span>
+                      <span style={{ fontSize: 15 }}>{t.title}</span>
                       {t.completed && (doneAt || t.completed_by_name) ? (
-                        <span className="text-muted" style={{ fontSize: 9, display: "block", letterSpacing: "0.04em" }}>
+                        <span className="text-muted" style={{ fontSize: 15, display: "block", letterSpacing: "0.04em" }}>
                           {[doneAt, t.completed_by_name].filter(Boolean).join(" · ")}
                         </span>
                       ) : null}
                     </span>
                     {t.requires_photo ? (
-                      <span style={{ fontSize: 12, color: t.photo_url ? "var(--green)" : "var(--muted)" }}>📷</span>
+                      <span style={{ fontSize: 15, color: t.photo_url ? "var(--green)" : "var(--muted)" }}>📷</span>
                     ) : null}
                   </div>
                 );
@@ -254,7 +254,7 @@ export function HistorialMobile({
               {isLoading ? (
                 <div
                   className="text-muted"
-                  style={{ border: "1px solid var(--rule)", padding: 10, background: "var(--paper-lt)", fontSize: 11, textAlign: "center" }}
+                  style={{ border: "1px solid var(--rule)", padding: 10, background: "var(--paper-lt)", fontSize: 14, textAlign: "center" }}
                 >
                   Cargando…
                 </div>
@@ -264,11 +264,11 @@ export function HistorialMobile({
                     <div key={n.id} style={{ border: "1px solid var(--rule)", padding: 11, background: "var(--paper-lt)" }}>
                       <div className="flex justify-between" style={{ marginBottom: 5 }}>
                         <Folio n={`N-${String(i + 1).padStart(2, "0")}`} />
-                        <span className="cmd-num text-muted" style={{ fontSize: 10 }}>
+                        <span className="cmd-num text-muted" style={{ fontSize: 13 }}>
                           {[timeLabel(n.submitted_at), n.submitter].filter(Boolean).join(" · ") || "—"}
                         </span>
                       </div>
-                      <div style={{ fontSize: 12.5, lineHeight: 1.4, color: "var(--ink-2)", whiteSpace: "pre-wrap" }}>
+                      <div style={{ fontSize: 15, lineHeight: 1.4, color: "var(--ink-2)", whiteSpace: "pre-wrap" }}>
                         {n.body}
                       </div>
                     </div>
@@ -314,7 +314,7 @@ export function HistorialMobile({
             >
               <span
                 className="inline-flex items-center justify-center"
-                style={{ width: 34, height: 34, minWidth: 34, borderRadius: "50%", border: "1.5px solid var(--ink)", background: "var(--paper)", fontSize: 12, fontWeight: 700 }}
+                style={{ width: 34, height: 34, minWidth: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--paper)", fontSize: 15, fontWeight: 700 }}
               >
                 {initials(p.opener)}
               </span>
@@ -322,7 +322,7 @@ export function HistorialMobile({
                 <div style={{ fontSize: 13, fontWeight: 600 }}>
                   {p.dateLabel} · <span style={{ textTransform: "capitalize" }}>{p.template_name}</span>
                 </div>
-                <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>
+                <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
                   {p.opener} · DR-{p.id.slice(0, 4).toUpperCase()}
                 </div>
               </div>
@@ -330,7 +330,7 @@ export function HistorialMobile({
                 <div className="cmd-num" style={{ fontSize: 14, fontWeight: 700 }}>
                   {p.done}/{totalLabel}
                 </div>
-                <div style={{ fontSize: 8.5, letterSpacing: "0.1em", textTransform: "uppercase", color: estadoColor(e) }}>
+                <div style={{ fontSize: 15, color: estadoColor(e) }}>
                   {e}
                 </div>
               </div>
@@ -347,12 +347,12 @@ function SectionLabel({ children, right }: { children: React.ReactNode; right?: 
     <div className="flex items-center" style={{ gap: 8, padding: "16px 0 8px" }}>
       <span
         className="text-muted"
-        style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}
+        style={{ fontSize: 15, fontWeight: 600 }}
       >
         {children}
       </span>
       <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
-      {right != null ? <span className="text-muted" style={{ fontSize: 10 }}>{right}</span> : null}
+      {right != null ? <span className="text-muted" style={{ fontSize: 13 }}>{right}</span> : null}
     </div>
   );
 }

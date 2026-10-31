@@ -88,15 +88,15 @@ export function TareaForm({
       {/* header */}
       <div
         className="flex items-center justify-between"
-        style={{ padding: "18px 20px 14px", borderBottom: "1.5px solid var(--ink)" }}
+        style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--line)" }}
       >
         <div>
-          <div className="font-slab text-ink" style={{ fontSize: 20, lineHeight: 1 }}>
+          <div className="font-bold text-ink" style={{ fontSize: 20, lineHeight: 1 }}>
             {editing ? "Editar tarea" : "Nueva tarea"}
           </div>
           <div
             className="text-muted"
-            style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}
+            style={{ fontSize: 13, marginTop: 4 }}
           >
             {sedeName}
           </div>
@@ -220,21 +220,21 @@ export function TareaForm({
             <div className="text-ink" style={{ fontSize: 13 }}>
               Requiere foto de evidencia
             </div>
-            <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>
+            <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
               El staff deberá capturar una foto para completar.
             </div>
           </div>
         </div>
 
         {error ? (
-          <p style={{ color: "var(--red)", fontSize: 11, marginTop: 10 }}>{error}</p>
+          <p style={{ color: "var(--red)", fontSize: 14, marginTop: 10 }}>{error}</p>
         ) : null}
       </div>
 
       {/* footer */}
       <div
         className="flex"
-        style={{ gap: 10, padding: "14px 20px", borderTop: "1.5px solid var(--ink)" }}
+        style={{ gap: 10, padding: "14px 20px", borderTop: "1px solid var(--line)" }}
       >
         <button
           type="button"
@@ -274,14 +274,14 @@ function Field({
     <div style={{ marginBottom: 16 }}>
       <label
         className="text-muted block"
-        style={{ fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 6 }}
+        style={{ fontSize: 15, marginBottom: 6 }}
       >
         {label}
         {required ? <span style={{ color: "var(--red)" }}> *</span> : null}
       </label>
       {children}
       {hint ? (
-        <div className="text-muted" style={{ fontSize: 10, marginTop: 5, letterSpacing: "0.03em" }}>
+        <div className="text-muted" style={{ fontSize: 13, marginTop: 5, letterSpacing: "0.03em" }}>
           {hint}
         </div>
       ) : null}

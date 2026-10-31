@@ -107,7 +107,7 @@ export default async function TurnosReportesPage({
         <div className="flex justify-between items-center" style={{ padding: "12px 0 4px" }}>
           <span
             className="text-muted"
-            style={{ fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase" }}
+            style={{ fontSize: 15 }}
           >
             {weekLabel}
           </span>
@@ -118,25 +118,25 @@ export default async function TurnosReportesPage({
 
         <div
           className="cmd-noise"
-          style={{ border: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: 18, marginTop: 8 }}
+          style={{ border: "1px solid var(--line)", background: "var(--paper-lt)", padding: 18, marginTop: 8 }}
         >
-          <div className="text-muted" style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase" }}>
+          <div className="text-muted" style={{ fontSize: 13 }}>
             Cumplimiento global
           </div>
-          <div className="cmd-num font-slab" style={{ fontSize: 56, lineHeight: 1, marginTop: 2 }}>
+          <div className="cmd-num font-bold" style={{ fontSize: 56, lineHeight: 1, marginTop: 2 }}>
             {report.globalPct ?? "—"}
             <span className="text-muted" style={{ fontSize: 20 }}>%</span>
           </div>
-          <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+          <div className="text-muted" style={{ fontSize: 14, marginTop: 2 }}>
             {report.hasData ? `Semana ${weekLabel}` : "Sin datos suficientes para esta semana."}
           </div>
           <div
             className="flex items-end"
-            style={{ gap: 6, height: 96, padding: "14px 4px 0", borderBottom: "1.5px solid var(--ink)" }}
+            style={{ gap: 6, height: 96, padding: "14px 4px 0", borderBottom: "1px solid var(--line)" }}
           >
             {report.daily.map((value, i) => (
               <div key={i} className="flex flex-col items-center justify-end" style={{ flex: 1, gap: 5, height: "100%" }}>
-                <span className="cmd-num text-muted" style={{ fontSize: 9 }}>{value ?? "—"}</span>
+                <span className="cmd-num text-muted" style={{ fontSize: 15 }}>{value ?? "—"}</span>
                 {value === null ? (
                   <div style={{ width: "100%", height: 2, border: "1px dashed var(--rule)" }} />
                 ) : (
@@ -147,7 +147,7 @@ export default async function TurnosReportesPage({
           </div>
           <div className="flex" style={{ gap: 6, padding: "6px 4px 0" }}>
             {WEEKDAYS.map((w, i) => (
-              <div key={i} className="text-muted" style={{ flex: 1, textAlign: "center", fontSize: 10 }}>
+              <div key={i} className="text-muted" style={{ flex: 1, textAlign: "center", fontSize: 13 }}>
                 {w}
               </div>
             ))}
@@ -163,7 +163,7 @@ export default async function TurnosReportesPage({
             { l: "Tareas en retraso", v: report.hasData ? kpis.late : "—" },
           ].map((s) => (
             <div key={s.l} style={{ border: "1px solid var(--rule)", background: "var(--paper-lt)", padding: "11px 13px", borderRadius: 3 }}>
-              <div className="text-muted" style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              <div className="text-muted" style={{ fontSize: 15 }}>
                 {s.l}
               </div>
               <div className="cmd-num" style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{s.v}</div>
@@ -173,13 +173,13 @@ export default async function TurnosReportesPage({
 
         {/* per-shift */}
         <div className="flex items-center text-muted" style={{ gap: 8, padding: "20px 0 8px" }}>
-          <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>
             Cumplimiento por turno
           </span>
           <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
         </div>
         {perShift.length === 0 ? (
-          <div className="text-muted" style={{ fontSize: 12, textAlign: "center", padding: 16 }}>
+          <div className="text-muted" style={{ fontSize: 15, textAlign: "center", padding: 16 }}>
             Sin turnos configurados.
           </div>
         ) : (
@@ -188,12 +188,12 @@ export default async function TurnosReportesPage({
               <div className="flex justify-between items-start">
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, textTransform: "capitalize" }}>Turno {s.name}</div>
-                  <div className="cmd-num text-muted" style={{ fontSize: 10, marginTop: 2 }}>
+                  <div className="cmd-num text-muted" style={{ fontSize: 13, marginTop: 2 }}>
                     {s.inicio} – {s.fin}
                   </div>
                 </div>
                 <div
-                  className="cmd-num font-slab"
+                  className="cmd-num font-bold"
                   style={{ fontSize: 26, lineHeight: 1, color: s.avg === null ? "var(--muted)" : barColor(s.avg) }}
                 >
                   {s.avg === null ? "—" : `${s.avg}%`}
@@ -207,14 +207,14 @@ export default async function TurnosReportesPage({
                     ) : (
                       <div style={{ width: "100%", height: Math.max(2, (value / 100) * 36), background: barColor(value), borderRadius: "2px 2px 0 0" }} />
                     )}
-                    <span className="text-muted" style={{ fontSize: 9 }}>{WEEKDAYS[j]}</span>
+                    <span className="text-muted" style={{ fontSize: 15 }}>{WEEKDAYS[j]}</span>
                   </div>
                 ))}
               </div>
             </div>
           ))
         )}
-        <div className="text-muted" style={{ fontSize: 9.5, letterSpacing: "0.04em", marginTop: 10, textAlign: "center" }}>
+        <div className="text-muted" style={{ fontSize: 15, letterSpacing: "0.04em", marginTop: 10, textAlign: "center" }}>
           generado · {sede.name}
         </div>
       </div>
@@ -246,7 +246,7 @@ export default async function TurnosReportesPage({
         <div
           className="cmd-noise"
           style={{
-            border: "1.5px solid var(--ink)",
+            border: "1px solid var(--line)",
             padding: 24,
             background: "var(--paper-lt)",
             marginBottom: 24,
@@ -257,15 +257,13 @@ export default async function TurnosReportesPage({
               <div
                 className="text-muted"
                 style={{
-                  fontSize: 10,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
+                  fontSize: 13,
                 }}
               >
                 Cumplimiento global
               </div>
               <div
-                className="cmd-num font-slab"
+                className="cmd-num font-bold"
                 style={{ fontSize: 64, lineHeight: 1, marginTop: 4 }}
               >
                 {report.globalPct ?? "—"}
@@ -273,13 +271,13 @@ export default async function TurnosReportesPage({
                   %
                 </span>
               </div>
-              <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+              <div className="text-muted" style={{ fontSize: 14, marginTop: 4 }}>
                 {report.hasData
                   ? `Semana ${weekLabel}`
                   : "Sin datos suficientes para esta semana."}
               </div>
             </div>
-            <div className="flex" style={{ gap: 24, fontSize: 11 }}>
+            <div className="flex" style={{ gap: 24, fontSize: 14 }}>
               {[
                 {
                   l: "Tareas completadas",
@@ -306,9 +304,7 @@ export default async function TurnosReportesPage({
                   <div
                     className="text-muted"
                     style={{
-                      fontSize: 9,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
+                      fontSize: 15,
                     }}
                   >
                     {s.l}
@@ -330,7 +326,7 @@ export default async function TurnosReportesPage({
               gap: 6,
               height: 140,
               padding: "0 8px",
-              borderBottom: "1.5px solid var(--ink)",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             {report.daily.map((value, i) => (
@@ -339,7 +335,7 @@ export default async function TurnosReportesPage({
                 className="flex flex-col items-center justify-end"
                 style={{ flex: 1, gap: 6, height: "100%" }}
               >
-                <span className="cmd-num text-muted" style={{ fontSize: 10 }}>
+                <span className="cmd-num text-muted" style={{ fontSize: 13 }}>
                   {value ?? "—"}
                 </span>
                 {value === null ? (
@@ -370,7 +366,7 @@ export default async function TurnosReportesPage({
                 style={{
                   flex: 1,
                   textAlign: "center",
-                  fontSize: 10,
+                  fontSize: 13,
                   letterSpacing: "0.1em",
                 }}
               >
@@ -389,9 +385,7 @@ export default async function TurnosReportesPage({
               padding: "10px 16px",
               background: "var(--ink)",
               color: "var(--paper-lt)",
-              fontSize: 10,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
+              fontSize: 13,
             }}
           >
             <span>Turno</span>
@@ -402,7 +396,7 @@ export default async function TurnosReportesPage({
           {perShift.length === 0 ? (
             <div
               className="text-muted"
-              style={{ padding: 16, fontSize: 12, textAlign: "center" }}
+              style={{ padding: 16, fontSize: 15, textAlign: "center" }}
             >
               Sin turnos configurados.
             </div>
@@ -433,7 +427,7 @@ export default async function TurnosReportesPage({
                   </span>
                   <span
                     className="cmd-num text-muted"
-                    style={{ fontSize: 10, display: "block" }}
+                    style={{ fontSize: 13, display: "block" }}
                   >
                     {s.inicio} – {s.fin}
                   </span>
@@ -464,7 +458,7 @@ export default async function TurnosReportesPage({
                   )}
                 </div>
                 <span
-                  className="cmd-num font-slab"
+                  className="cmd-num font-bold"
                   style={{
                     textAlign: "right",
                     fontSize: 22,
@@ -476,7 +470,7 @@ export default async function TurnosReportesPage({
                 <span style={{ textAlign: "right" }}>
                   <span
                     className="cmd-link text-muted"
-                    style={{ fontSize: 12, cursor: "default" }}
+                    style={{ fontSize: 15, cursor: "default" }}
                   >
                     {s.avg === null ? "sin datos" : "ver detalle"}
                   </span>
@@ -490,7 +484,7 @@ export default async function TurnosReportesPage({
           className="text-muted"
           style={{
             marginTop: 16,
-            fontSize: 10,
+            fontSize: 13,
             letterSpacing: "0.06em",
             textAlign: "right",
           }}

@@ -142,9 +142,7 @@ export function HistorialClient({
             padding: "10px 24px 10px 32px",
             background: "var(--ink)",
             color: "var(--paper-lt)",
-            fontSize: 9,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
+            fontSize: 15,
           }}
         >
           <span>Fecha · turno</span>
@@ -176,11 +174,11 @@ export function HistorialClient({
               }}
             >
               <span>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{p.dateLabel}</span>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{p.dateLabel}</span>
                 <span
                   className="text-muted"
                   style={{
-                    fontSize: 10,
+                    fontSize: 13,
                     display: "block",
                     textTransform: "capitalize",
                   }}
@@ -188,17 +186,17 @@ export function HistorialClient({
                   Turno {p.template_name} · DR-{p.id.slice(0, 4).toUpperCase()}
                 </span>
               </span>
-              <span style={{ fontSize: 12 }}>{p.opener}</span>
+              <span style={{ fontSize: 15 }}>{p.opener}</span>
               <span
                 className="cmd-num"
-                style={{ textAlign: "right", fontSize: 12 }}
+                style={{ textAlign: "right", fontSize: 15 }}
               >
                 {p.done}/{details[p.id]?.tasks.length || "—"}
               </span>
               <span
                 style={{
                   textAlign: "right",
-                  fontSize: 9,
+                  fontSize: 15,
                   letterSpacing: "0.1em",
                   color: estadoColor(e),
                   textTransform: "uppercase",
@@ -217,12 +215,12 @@ export function HistorialClient({
           <div>
             <div
               className="text-muted"
-              style={{ fontSize: 10, letterSpacing: "0.14em" }}
+              style={{ fontSize: 13, letterSpacing: "0.14em" }}
             >
               {cur.dateLabel} · TURNO {cur.template_name.toUpperCase()} · DR-
               {cur.id.slice(0, 4).toUpperCase()}
             </div>
-            <div className="font-slab" style={{ fontSize: 22, marginTop: 4 }}>
+            <div className="font-bold" style={{ fontSize: 22, marginTop: 4 }}>
               {cur.opener}
             </div>
           </div>
@@ -249,15 +247,13 @@ export function HistorialClient({
               <div
                 className="text-muted"
                 style={{
-                  fontSize: 9,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
+                  fontSize: 15,
                 }}
               >
                 {s.l}
               </div>
               <div
-                className="cmd-num font-slab"
+                className="cmd-num font-bold"
                 style={{ fontSize: 22, marginTop: 2 }}
               >
                 {s.v}
@@ -269,9 +265,7 @@ export function HistorialClient({
         <div
           className="text-muted"
           style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
+            fontSize: 13,
             margin: "16px 0 10px",
           }}
         >
@@ -281,14 +275,14 @@ export function HistorialClient({
           {isLoading ? (
             <div
               className="text-muted"
-              style={{ padding: 16, fontSize: 11, textAlign: "center" }}
+              style={{ padding: 16, fontSize: 14, textAlign: "center" }}
             >
               Cargando…
             </div>
           ) : tasks.length === 0 ? (
             <div
               className="text-muted"
-              style={{ padding: 16, fontSize: 11, textAlign: "center" }}
+              style={{ padding: 16, fontSize: 14, textAlign: "center" }}
             >
               Sin checklist registrado para este turno.
             </div>
@@ -320,22 +314,22 @@ export function HistorialClient({
                       border: `1.5px solid ${completed ? "var(--green)" : "var(--rule)"}`,
                       background: completed ? "var(--green)" : "transparent",
                       color: "var(--paper-lt)",
-                      fontSize: 10,
+                      fontSize: 13,
                       lineHeight: 1,
                     }}
                   >
                     {completed ? "✓" : ""}
                   </span>
-                  <span className="cmd-num text-muted" style={{ fontSize: 10 }}>
+                  <span className="cmd-num text-muted" style={{ fontSize: 13 }}>
                     {t.due_time ?? "—"}
                   </span>
                   <span>
-                    <span style={{ fontSize: 12 }}>{t.title}</span>
+                    <span style={{ fontSize: 15 }}>{t.title}</span>
                     {completed && (doneAt || t.completed_by_name) ? (
                       <span
                         className="text-muted"
                         style={{
-                          fontSize: 9,
+                          fontSize: 15,
                           display: "block",
                           letterSpacing: "0.04em",
                         }}
@@ -350,7 +344,7 @@ export function HistorialClient({
                     <span
                       className="inline-flex items-center"
                       style={{
-                        fontSize: 9,
+                        fontSize: 15,
                         letterSpacing: "0.1em",
                         gap: 4,
                         color: t.photo_url ? "var(--green)" : "var(--muted)",
@@ -368,9 +362,7 @@ export function HistorialClient({
         <div
           className="text-muted"
           style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
+            fontSize: 13,
             margin: "16px 0 10px",
           }}
         >
@@ -414,9 +406,7 @@ export function HistorialClient({
             <div
               className="text-muted"
               style={{
-                fontSize: 10,
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
+                fontSize: 13,
                 margin: "18px 0 10px",
               }}
             >
@@ -429,7 +419,7 @@ export function HistorialClient({
                   border: "1px solid var(--rule)",
                   padding: 10,
                   background: "var(--paper-lt)",
-                  fontSize: 11,
+                  fontSize: 14,
                   textAlign: "center",
                 }}
               >
@@ -453,7 +443,7 @@ export function HistorialClient({
                       <Folio n={`N-${String(i + 1).padStart(2, "0")}`} />
                       <span
                         className="cmd-num text-muted"
-                        style={{ fontSize: 10 }}
+                        style={{ fontSize: 13 }}
                       >
                         {[timeLabel(n.submitted_at), n.submitter]
                           .filter(Boolean)
@@ -462,7 +452,7 @@ export function HistorialClient({
                     </div>
                     <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 15,
                         lineHeight: 1.4,
                         color: "var(--ink-2)",
                         whiteSpace: "pre-wrap",

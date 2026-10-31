@@ -138,11 +138,11 @@ export default async function TurnosResumenPage() {
           className="flex items-center text-muted"
           style={{ gap: 8, padding: "12px 0 10px" }}
         >
-          <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>
             Turnos configurados
           </span>
           <span className="flex-1" style={{ borderTop: "1px dashed var(--rule)", marginTop: 1 }} />
-          <span style={{ fontSize: 10 }}>{shifts.length} por día</span>
+          <span style={{ fontSize: 13 }}>{shifts.length} por día</span>
         </div>
 
         {shifts.length === 0 ? (
@@ -155,9 +155,9 @@ export default async function TurnosResumenPage() {
           cards.map((c) => (
             <div
               key={c.id}
-              className="cmd-noise relative"
+              className="relative"
               style={{
-                border: "1.5px solid var(--ink)",
+                border: "1px solid var(--line)",
                 background: "var(--paper-lt)",
                 padding: 16,
                 marginBottom: 14,
@@ -166,17 +166,17 @@ export default async function TurnosResumenPage() {
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-slab" style={{ fontSize: 24, lineHeight: 1, textTransform: "capitalize" }}>
+                  <div className="font-bold" style={{ fontSize: 24, lineHeight: 1, textTransform: "capitalize" }}>
                     {c.name}
                   </div>
-                  <div className="cmd-num text-muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  <div className="cmd-num text-muted" style={{ fontSize: 15, marginTop: 6 }}>
                     {c.inicio} – {c.fin} · {c.duration}
                   </div>
                 </div>
                 <span
                   className="inline-flex items-center whitespace-nowrap"
                   style={{
-                    fontSize: 9,
+                    fontSize: 15,
                     letterSpacing: "0.14em",
                     padding: "4px 8px",
                     gap: 5,
@@ -195,7 +195,7 @@ export default async function TurnosResumenPage() {
               <div style={{ marginTop: 14, paddingTop: 13, borderTop: "1px dashed var(--rule)" }}>
                 <div
                   className="text-muted"
-                  style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 7 }}
+                  style={{ fontSize: 15, marginBottom: 7 }}
                 >
                   Personal de hoy
                 </div>
@@ -207,9 +207,9 @@ export default async function TurnosResumenPage() {
                         width: 30,
                         height: 30,
                         borderRadius: "50%",
-                        border: "1.5px solid var(--ink)",
+                        border: "1px solid var(--line)",
                         background: "var(--paper)",
-                        fontSize: 11,
+                        fontSize: 14,
                         fontWeight: 700,
                       }}
                     >
@@ -217,7 +217,7 @@ export default async function TurnosResumenPage() {
                     </span>
                     <div className="min-w-0">
                       <div style={{ fontSize: 13.5, fontWeight: 500 }}>{c.memberName}</div>
-                      <div className="text-muted" style={{ fontSize: 10.5 }}>
+                      <div className="text-muted" style={{ fontSize: 13 }}>
                         {c.open ? `${c.total} tareas hoy` : "asignado"}
                       </div>
                     </div>
@@ -225,10 +225,10 @@ export default async function TurnosResumenPage() {
                 ) : (
                   <div
                     className="text-muted flex justify-between items-center"
-                    style={{ fontSize: 12.5, fontStyle: "italic" }}
+                    style={{ fontSize: 15, fontStyle: "italic" }}
                   >
                     <span>— sin asignar —</span>
-                    <Link href="/equipo/horario" className="cmd-link" style={{ fontSize: 11, fontStyle: "normal" }}>
+                    <Link href="/equipo/horario" className="cmd-link" style={{ fontSize: 14, fontStyle: "normal" }}>
                       asignar →
                     </Link>
                   </div>
@@ -245,7 +245,7 @@ export default async function TurnosResumenPage() {
                 className="flex justify-between items-center"
                 style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--rule)", gap: 8 }}
               >
-                <span className="cmd-num text-muted" style={{ fontSize: 10.5, minWidth: 0 }}>
+                <span className="cmd-num text-muted" style={{ fontSize: 13, minWidth: 0 }}>
                   {c.total} tareas · {c.photoCount} con foto
                 </span>
                 <div className="flex" style={{ gap: 8, flexShrink: 0 }}>
@@ -295,9 +295,7 @@ export default async function TurnosResumenPage() {
         <div
           className="text-muted"
           style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
+            fontSize: 13,
             marginBottom: 14,
           }}
         >
@@ -370,9 +368,9 @@ export default async function TurnosResumenPage() {
               return (
                 <article
                   key={t.id}
-                  className="cmd-noise relative"
+                  className="relative"
                   style={{
-                    border: "1.5px solid var(--ink)",
+                    border: "1px solid var(--line)",
                     background: "var(--paper-lt)",
                     padding: 22,
                     boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
@@ -381,14 +379,14 @@ export default async function TurnosResumenPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <div
-                        className="font-slab"
+                        className="font-bold"
                         style={{ fontSize: 26, lineHeight: 1, textTransform: "capitalize" }}
                       >
                         {t.name}
                       </div>
                       <div
                         className="cmd-num text-muted"
-                        style={{ fontSize: 12, marginTop: 6 }}
+                        style={{ fontSize: 15, marginTop: 6 }}
                       >
                         {t.inicio} – {t.fin}
                       </div>
@@ -397,7 +395,7 @@ export default async function TurnosResumenPage() {
                       <span
                         className="inline-flex items-center"
                         style={{
-                          fontSize: 9,
+                          fontSize: 15,
                           letterSpacing: "0.14em",
                           padding: "3px 7px",
                           gap: 5,
@@ -421,7 +419,7 @@ export default async function TurnosResumenPage() {
                       <Link
                         href={`/equipo/turnos/${t.id}/editar`}
                         className="cmd-link"
-                        style={{ fontSize: 11 }}
+                        style={{ fontSize: 14 }}
                       >
                         editar turno →
                       </Link>
@@ -443,9 +441,7 @@ export default async function TurnosResumenPage() {
                       <div
                         className="text-muted"
                         style={{
-                          fontSize: 8,
-                          letterSpacing: "0.14em",
-                          textTransform: "uppercase",
+                          fontSize: 15,
                         }}
                       >
                         Última tarea completada
@@ -474,7 +470,7 @@ export default async function TurnosResumenPage() {
                             </div>
                             <div
                               className="cmd-num text-muted"
-                              style={{ fontSize: 10, marginTop: 2 }}
+                              style={{ fontSize: 13, marginTop: 2 }}
                             >
                               completada · {formatTime(lastComp!.completed_at, sede.tz)}
                             </div>
@@ -484,7 +480,7 @@ export default async function TurnosResumenPage() {
                         <div
                           className="text-muted"
                           style={{
-                            fontSize: 12,
+                            fontSize: 15,
                             marginTop: 6,
                             fontStyle: "italic",
                           }}
@@ -502,15 +498,13 @@ export default async function TurnosResumenPage() {
                       <div
                         className="text-muted"
                         style={{
-                          fontSize: 8,
-                          letterSpacing: "0.14em",
-                          textTransform: "uppercase",
+                          fontSize: 15,
                         }}
                       >
                         {open ? "Tiempo restante" : "Abre a las"}
                       </div>
                       <div
-                        className="cmd-num font-slab"
+                        className="cmd-num font-bold"
                         style={{
                           fontSize: 24,
                           lineHeight: 1.1,
@@ -522,7 +516,7 @@ export default async function TurnosResumenPage() {
                       </div>
                       <div
                         className="text-muted"
-                        style={{ fontSize: 9, marginTop: 3 }}
+                        style={{ fontSize: 15, marginTop: 3 }}
                       >
                         {open
                           ? "para cerrar turno"
@@ -542,9 +536,7 @@ export default async function TurnosResumenPage() {
                     <div
                       className="text-muted"
                       style={{
-                        fontSize: 9,
-                        letterSpacing: "0.14em",
-                        textTransform: "uppercase",
+                        fontSize: 15,
                         marginBottom: 6,
                       }}
                     >
@@ -558,9 +550,9 @@ export default async function TurnosResumenPage() {
                             width: 30,
                             height: 30,
                             borderRadius: "50%",
-                            border: "1.5px solid var(--ink)",
+                            border: "1px solid var(--line)",
                             background: "var(--paper)",
-                            fontSize: 11,
+                            fontSize: 14,
                             fontWeight: 700,
                           }}
                         >
@@ -570,7 +562,7 @@ export default async function TurnosResumenPage() {
                           <div style={{ fontSize: 13, fontWeight: 500 }}>
                             {member.name}
                           </div>
-                          <div className="text-muted" style={{ fontSize: 10 }}>
+                          <div className="text-muted" style={{ fontSize: 13 }}>
                             {open ? `${total} tareas hoy` : "asignado"}
                           </div>
                         </div>
@@ -578,13 +570,13 @@ export default async function TurnosResumenPage() {
                     ) : (
                       <div
                         className="text-muted flex justify-between items-center"
-                        style={{ fontSize: 12 }}
+                        style={{ fontSize: 15 }}
                       >
                         <span>— sin asignar —</span>
                         <Link
                           href="/equipo/horario"
                           className="cmd-link"
-                          style={{ fontSize: 11 }}
+                          style={{ fontSize: 14 }}
                         >
                           asignar →
                         </Link>
@@ -604,13 +596,13 @@ export default async function TurnosResumenPage() {
                       style={{
                         marginTop: 16,
                         paddingTop: 12,
-                        borderTop: "1.5px solid var(--ink)",
+                        borderTop: "1px solid var(--line)",
                       }}
                     >
                       <Link
                         href={`/hoy/${today}?turno=${inst.id}`}
                         className="cmd-link"
-                        style={{ fontSize: 11, color: open ? "var(--red)" : "var(--ink)" }}
+                        style={{ fontSize: 14, color: open ? "var(--red)" : "var(--ink)" }}
                       >
                         {open ? "ver tareas del turno →" : "ver detalle →"}
                       </Link>
