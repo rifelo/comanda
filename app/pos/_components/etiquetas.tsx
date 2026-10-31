@@ -7,7 +7,7 @@ import { renderOrderLabel, renderMessageLabel, ensureLabelFonts } from "@/lib/pr
 import { useCatalog, usePos, closeEtiquetas } from "../pos-store";
 import { rebuildPeople } from "@/lib/pos/pending";
 import { usePrinter, connectPrinter, checkPrinter, printOrderLabel, printDrinkLabel, printMessageLabel, relaysLabels } from "@/lib/printer/serial";
-import { C, F, Overlay } from "./theme";
+import { C, F, H, Overlay } from "./theme";
 import { chipStyle } from "./top-bar";
 import { personChip } from "./ticket";
 
@@ -15,13 +15,13 @@ import { personChip } from "./ticket";
 // Etiquetas — print or reprint a label on demand
 // ════════════════════════════════════════════════════════════════
 export const etqBtn = (primary: boolean, off: boolean): React.CSSProperties => ({
-  height: 48, padding: "0 16px", borderRadius: 4, cursor: off ? "default" : "pointer", opacity: off ? 0.45 : 1, flex: 1, minWidth: 0,
-  border: `1.5px solid ${C.ink}`, background: primary ? C.ink : "transparent", color: primary ? C.paperLt : C.ink,
-  fontFamily: F.mono, fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  height: 48, padding: "0 16px", borderRadius: 10, cursor: off ? "default" : "pointer", opacity: off ? 0.45 : 1, flex: 1, minWidth: 0,
+  border: `1px solid ${C.rule}`, background: primary ? C.ink : "transparent", color: primary ? C.paperLt : C.ink,
+  fontFamily: F.mono, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 });
-export const etqTitle: React.CSSProperties = { fontFamily: F.slab, fontSize: 20, lineHeight: 1.1, color: C.ink };
-export const etqHint: React.CSSProperties = { fontSize: 11.5, color: C.muted, margin: "4px 0 12px", lineHeight: 1.45 };
-export const etqLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted, margin: "14px 0 6px" };
+export const etqTitle: React.CSSProperties = { ...H, fontSize: 20, lineHeight: 1.1, color: C.ink };
+export const etqHint: React.CSSProperties = { fontSize: 13, color: C.muted, margin: "4px 0 12px", lineHeight: 1.45 };
+export const etqLabel: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: C.muted, margin: "14px 0 6px" };
 
 /** The label exactly as the printer will draw it (same renderer, 1 bit). */
 export function LabelPreview({ kind, text, extra, art }: { kind: "nombre" | "frase"; text: string; extra: string; art?: string | null }) {
@@ -122,16 +122,16 @@ export function EtiquetasScreen() {
         : p.status === "ready"
           ? p.lastPrinted ? `Impresa: ${p.lastPrinted.name || p.lastPrinted.folio}` : "Impresora lista"
           : "Impresora sin conectar";
-  const tonoChip = (on: boolean): React.CSSProperties => ({ ...personChip(on), height: "max(40px, var(--pos-chip))", padding: "0 14px", fontSize: 13, opacity: loading ? 0.6 : 1 });
+  const tonoChip = (on: boolean): React.CSSProperties => ({ ...personChip(on), height: "max(40px, var(--pos-chip))", padding: "0 14px", fontSize: 15, opacity: loading ? 0.6 : 1 });
 
   return (
     <Overlay align="fill">
       <div role="region" aria-label="Etiquetas" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
         <div className="pos-hdr pos-ord-hdr">
-          <button onClick={closeEtiquetas} style={{ height: 40, padding: "0 14px", borderRadius: 3, border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
-          <span style={{ fontFamily: F.slab, fontSize: 22 }}>Etiquetas<span style={{ color: C.red }}>.</span></span>
+          <button onClick={closeEtiquetas} style={{ height: 40, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink, fontFamily: F.mono, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>← Volver</button>
+          <span style={{ ...H, fontSize: 22 }}>Etiquetas<span style={{ color: C.red }}>.</span></span>
           <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span role="status" style={{ fontSize: 11, letterSpacing: ".06em", color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
+            <span role="status" style={{ fontSize: 13, color: p.status === "error" || p.status === "off" ? C.red : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>
             {(p.status === "disconnected" || p.status === "error" || p.status === "off") && (
               <button onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} style={{ ...chipStyle, flexShrink: 0 }}>{p.status === "off" ? "Reintentar" : "Conectar impresora"}</button>
             )}
@@ -164,7 +164,7 @@ export function EtiquetasScreen() {
                       return (
                         <button type="button" key={`${k.folio}:${k.name}:${i}`} onClick={() => { setName(k.name); setFolio(k.folio); }} aria-pressed={on} style={personChip(on)}>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.name}</span>
-                          {k.folio && <span className="cmd-num" style={{ fontSize: 10.5, fontWeight: 400, opacity: 0.7 }}>{k.folio}</span>}
+                          {k.folio && <span className="cmd-num" style={{ fontSize: 12, fontWeight: 400, opacity: 0.7 }}>{k.folio}</span>}
                         </button>
                       );
                     })}
@@ -172,9 +172,9 @@ export function EtiquetasScreen() {
                 </>
               )}
               {folio && (
-                <div style={{ fontSize: 11.5, color: C.ink2, marginTop: 10 }}>
+                <div style={{ fontSize: 13, color: C.ink2, marginTop: 10 }}>
                   Pedido <span className="cmd-num" style={{ fontWeight: 700 }}>{folio}</span> en la etiqueta ·{" "}
-                  <button type="button" className="pos-textbtn tight" onClick={() => setFolio("")} style={{ background: "none", border: "none", color: C.red, fontFamily: F.mono, fontSize: 11.5, cursor: "pointer" }}>quitar</button>
+                  <button type="button" className="pos-textbtn tight" onClick={() => setFolio("")} style={{ background: "none", border: "none", color: C.red, fontFamily: F.mono, fontSize: 13, cursor: "pointer" }}>quitar</button>
                 </div>
               )}
               {who && <LabelPreview kind="nombre" text={who} extra={folio} art={catalog.handArt} />}
@@ -202,7 +202,7 @@ export function EtiquetasScreen() {
                 ))}
                 <button type="button" disabled={loading} onClick={() => void generate(null)} style={{ ...tonoChip(false), borderStyle: "dashed" }}>Sorpréndeme</button>
               </div>
-              {error && <div role="alert" style={{ marginTop: 12, fontSize: 12, color: C.red }}>{error}</div>}
+              {error && <div role="alert" style={{ marginTop: 12, fontSize: 14, color: C.red }}>{error}</div>}
               <div style={etqLabel}>{loading ? "Pensando…" : "La frase"}</div>
               <textarea
                 className="pos-etq-text"

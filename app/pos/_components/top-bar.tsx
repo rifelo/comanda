@@ -3,43 +3,65 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Wordmark } from "@/components/comanda/primitives";
+import {
+  ArrowLeft,
+  ClipboardList,
+  Coffee,
+  Download,
+  Ellipsis,
+  Maximize2,
+  Mic,
+  Minimize2,
+  Printer,
+  RefreshCw,
+  Search,
+  Star,
+  Tag,
+  Unlink,
+  UserRound,
+  WifiOff,
+  X,
+} from "lucide-react";
+import { Avatar, Button, Sheet } from "@/components/ui";
+import { signOutLocal } from "@/app/login/actions";
 import { desvincularPos } from "../actions";
-import { StationCtx, usePos, posStore, retryOutbox, openOrdenes, closeOrdenes, openEtiquetas, closeEtiquetas, openPuntos, closePuntos, setBarista, openBaristaPicker, closeBaristaPicker } from "../pos-store";
+import { StationCtx, usePos, posStore, retryOutbox, openOrdenes, closeOrdenes, openEtiquetas, openPuntos, setBarista, openBaristaPicker, closeBaristaPicker } from "../pos-store";
 import { usePrinter, connectPrinter, checkPrinter, printTestLabel, type PrinterStatus } from "@/lib/printer/serial";
 import { useDesktopApp, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
-import { C, F, Overlay } from "./theme";
+import { C, F } from "./theme";
 
 // ════════════════════════════════════════════════════════════════
-// Top bar
+// Top bar: ← · search · Pedidos · barista · printer · persona · ⋯
 // ════════════════════════════════════════════════════════════════
+/**
+ * The POS chrome. Only what a sale needs stays on the bar; everything else
+ * (labels, points, the voice assistant, install / full screen, unpairing)
+ * lives behind «⋯» so the bar fits a 390 px phone.
+ *
+ *   ← back to the person's home: /turno on a paired device (the owner works
+ *     as the team there too) or for staff, /hoy for the owner on their own
+ *     device.
+ */
 export function TopBar({ mode }: { mode: "device" | "user" }) {
-  const station = React.useContext(StationCtx);
-
+  const s = usePos();
+  const back = mode === "device" || s.person?.role !== "admin" ? "/turno" : "/hoy";
   return (
-    <div className="pos-hdr">
-      <span className="pos-wordmark" style={{ lineHeight: 1, flexShrink: 0 }}>
-        <Wordmark size={20} />
-      </span>
-
+    <header className="pos-hdr">
+      <Link href={back} className="pos-hbtn icon" aria-label="Volver" title="Volver">
+        <ArrowLeft size={22} aria-hidden />
+      </Link>
+      {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark */}
+      <img src="/icons/icon.svg" alt="" width={40} height={40} className="pos-hide-narrow" style={{ borderRadius: 10, flexShrink: 0 }} />
       <SearchBox />
-
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <BaristaChip />
         <OutboxChip />
         <PendientesChip />
-        <PuntosChip />
-        <EtiquetasChip />
+        <BaristaChip />
         <PrinterChip />
-        {mode === "device" && <UnlinkButton station={station} />}
-        <DesktopChips />
-        {mode === "user" && (
-          <Link href="/" title="Inicio" aria-label="Inicio" style={{ ...iconBtnStyle, color: C.ink2, textDecoration: "none" }}>
-            ←
-          </Link>
-        )}
+        <PersonChip mode={mode} />
+        <MoreButton mode={mode} />
       </div>
-    </div>
+    </header>
   );
 }
 
@@ -47,24 +69,28 @@ export function SearchBox() {
   const s = usePos();
   const ref = React.useRef<HTMLInputElement>(null);
   return (
-    <div style={{ flex: 1, minWidth: 120, maxWidth: 520, position: "relative" }}>
-      <span aria-hidden style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.muted, fontSize: 14 }}>⌕</span>
+    <div className="pos-search">
+      <Search size={20} aria-hidden style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: C.muted }} />
       <input
         ref={ref}
+        type="search"
         value={s.search}
         onChange={(e) => posStore.set({ search: e.target.value })}
-        placeholder="Buscar producto…"
+        placeholder="Buscar producto"
         aria-label="Buscar producto"
-        style={{ width: "100%", height: 40, padding: "0 36px 0 32px", border: `1.5px solid ${s.search ? C.ink : C.rule}`, background: C.paper, color: C.ink, fontFamily: F.mono, fontSize: 14, borderRadius: 3, outline: "none" }}
+        enterKeyHint="search"
+        autoComplete="off"
       />
       {s.search && (
-        <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 0, top: 0, width: 40, height: 40, border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer" }}>×</button>
+        <button onClick={() => { posStore.set({ search: "" }); ref.current?.focus(); }} aria-label="Limpiar búsqueda" style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, border: "none", background: "transparent", color: C.muted, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <X size={18} aria-hidden />
+        </button>
       )}
     </div>
   );
 }
 
-/** "Pedidos" — opens the Square-style orders screen; badge = open orders. */
+/** «Pedidos» — opens the orders screen; badge = orders not completed yet. */
 export function PendientesChip() {
   const s = usePos();
   // Not completed yet: unpaid, or paid and not delivered (queued ones are neither).
@@ -72,40 +98,44 @@ export function PendientesChip() {
   const on = s.view === "ordenes";
   return (
     <button
+      type="button"
+      className="pos-hbtn"
       onClick={() => (on ? closeOrdenes() : openOrdenes())}
       title={`Pedidos: ${n} por completar`}
+      aria-label={n ? `Pedidos, ${n} por completar` : "Pedidos"}
       aria-pressed={on}
-      style={{ ...chipStyle, justifyContent: "center", minWidth: "min(150px, 22vw)", padding: "0 16px", fontSize: 12, border: `1.5px solid ${on ? C.ink : n ? C.amber : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, position: "relative" }}
     >
-      Pedidos
-      {n > 0 && (
-        <span className="cmd-num" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.amber, color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {n}
-        </span>
-      )}
+      <ClipboardList size={20} aria-hidden />
+      <span className="pos-hide-phone">Pedidos</span>
+      {n > 0 && <span className="pos-badge">{n}</span>}
     </button>
   );
 }
 
 /**
- * «Barista: Andrés» — who is on the bar. Every new order is credited to them,
- * so the drinks they make and the ratings those cups get count for them.
- * Unset, it asks «¿Quién prepara?» in red until someone picks.
+ * «Prepara: Andrés» — who is on the bar. Every new order is credited to them,
+ * so the drinks they make and the ratings those cups get count for them. It
+ * starts as the person in session when they are on the team (see
+ * PosTerminal); unset, it asks «¿Quién prepara?» until someone picks. On a
+ * narrow screen it hides once set (it is in «⋯» too).
  */
 export function BaristaChip() {
   const s = usePos();
   if (!s.catalog.equipo.length) return null;
   const b = s.barista;
+  const self = !!b && b.id === s.person?.id;
   return (
     <button
+      type="button"
       onClick={openBaristaPicker}
-      className={"pos-chip-c" + (b ? "" : " pos-hl")}
-      title={b ? `Las bebidas se cuentan para ${b.name}. Toca para cambiar de barista.` : "Elige quién está en la barra: las bebidas y sus calificaciones se cuentan para esa persona."}
-      aria-label={b ? `Barista: ${b.name}. Cambiar` : "Elegir barista"}
-      style={{ ...chipStyle, justifyContent: "center", padding: "0 12px", fontSize: 12, maxWidth: 220, border: `1.5px solid ${b ? C.ink : C.red}`, background: "transparent", color: b ? C.ink : C.red, fontWeight: b ? 600 : 700 }}
+      className={"pos-hbtn" + (b ? " pos-hide-narrow" : " alert pos-hl")}
+      title={b ? `Las bebidas se cuentan para ${b.name}. Toca para cambiar.` : "Elige quién está en la barra: las bebidas y sus calificaciones se cuentan para esa persona."}
+      aria-label={b ? `Prepara ${b.name}. Cambiar` : "Elegir quién prepara"}
+      style={{ maxWidth: 200 }}
     >
+      <Coffee size={18} aria-hidden />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {b ? <><span className="pos-barista-pre">Barista: </span>{b.name.split(" ")[0]}</> : <><span className="pos-barista-ask-long">¿Quién prepara?</span><span className="pos-barista-ask-short">¿Quién?</span></>}
+        {b ? (self ? "Preparo yo" : b.name.split(" ")[0]) : <><span className="pos-barista-ask-long">¿Quién prepara?</span><span className="pos-barista-ask-short">¿Quién?</span></>}
       </span>
     </button>
   );
@@ -114,193 +144,25 @@ export function BaristaChip() {
 /** Pick who is on the bar. One tap; stays on this register until changed. */
 export function BaristaPicker() {
   const s = usePos();
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); closeBaristaPicker(); } };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
   return (
-    <Overlay onClose={closeBaristaPicker} align="center">
-      <div role="dialog" aria-modal aria-label="¿Quién prepara?" style={{ width: "min(440px, 94vw)", maxHeight: "86dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1.5px solid ${C.ink}`, borderRadius: 8, boxShadow: "0 30px 80px -30px rgba(0,0,0,.55)", overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1.1 }}>¿Quién prepara?</div>
-            <div style={{ fontSize: 12, color: C.ink2, marginTop: 6, lineHeight: 1.5 }}>Las bebidas que se vendan desde ahora, y sus calificaciones, se cuentan para esta persona.</div>
-          </div>
-          <button onClick={closeBaristaPicker} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
-        </div>
-        <div className="pos-scroll" style={{ overflowY: "auto", padding: "8px 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {s.catalog.equipo.map((m) => {
-            const on = s.barista?.id === m.id;
-            return (
-              <button key={m.id} onClick={() => setBarista(m)} aria-pressed={on} style={{ height: 56, padding: "0 16px", borderRadius: 6, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink, fontFamily: F.mono, fontSize: 16, fontWeight: 600, textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span>{m.name}</span>
-                {on && <span style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}>En barra</span>}
-              </button>
-            );
-          })}
-          {s.barista && (
-            <button onClick={() => setBarista(null)} style={{ height: 44, marginTop: 4, border: "none", background: "transparent", color: C.muted, fontFamily: F.mono, fontSize: 12, letterSpacing: ".06em", cursor: "pointer" }}>Nadie en barra (no contar)</button>
-          )}
-        </div>
+    <Sheet open onClose={closeBaristaPicker} title="¿Quién prepara?">
+      <p style={{ margin: 0, fontSize: 15, color: C.muted, lineHeight: 1.5 }}>Las bebidas que se vendan desde ahora, y sus calificaciones, se cuentan para esta persona.</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {s.catalog.equipo.map((m) => {
+          const on = s.barista?.id === m.id;
+          return (
+            <button key={m.id} type="button" onClick={() => setBarista(m)} aria-pressed={on} style={{ minHeight: 64, padding: "0 16px", borderRadius: 12, border: `1px solid ${on ? C.strong : C.rule}`, background: on ? C.strong : C.paperLt, color: on ? C.onStrong : C.ink, fontSize: 17, fontWeight: 600, textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+              <Avatar name={m.name} />
+              <span style={{ flex: 1 }}>{m.name}{m.id === s.person?.id ? " (yo)" : ""}</span>
+              {on && <span style={{ fontSize: 14 }}>En barra</span>}
+            </button>
+          );
+        })}
+        {s.barista && (
+          <Button variant="ghost" size="sm" onClick={() => setBarista(null)}>Nadie en barra (no contar)</Button>
+        )}
       </div>
-    </Overlay>
-  );
-}
-
-/** "Puntos" — the customers' points board (@ and accumulated points). */
-export function PuntosChip() {
-  const s = usePos();
-  const on = s.view === "puntos";
-  return (
-    <button
-      onClick={() => (on ? closePuntos() : openPuntos())}
-      className="pos-chip-c"
-      title="Puntos: los clientes con su @ de Instagram y los puntos acumulados"
-      aria-pressed={on}
-      style={{ ...chipStyle, justifyContent: "center", padding: "0 14px", fontSize: 12, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink }}
-    >
-      Puntos
-    </button>
-  );
-}
-
-/** "Etiquetas" — opens the screen to print or reprint a label on demand. */
-export function EtiquetasChip() {
-  const s = usePos();
-  const on = s.view === "etiquetas";
-  return (
-    <button
-      onClick={() => (on ? closeEtiquetas() : openEtiquetas())}
-      className="pos-chip-c"
-      title="Etiquetas: imprimir o reimprimir un nombre, un vaso o una frase"
-      aria-pressed={on}
-      style={{ ...chipStyle, justifyContent: "center", padding: "0 14px", fontSize: 12, border: `1.5px solid ${on ? C.ink : C.rule}`, background: on ? C.ink : "transparent", color: on ? C.paperLt : C.ink }}
-    >
-      Etiquetas
-    </button>
-  );
-}
-
-export const chipStyle: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer",
-  border: `1.5px solid ${C.rule}`, background: "transparent", color: C.ink,
-  fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap",
-};
-
-/** Square icon-only variant of {@link chipStyle} — same height as the chips. */
-export const iconBtnStyle: React.CSSProperties = {
-  ...chipStyle, gap: 0, justifyContent: "center", width: 40, padding: 0, fontSize: 15, letterSpacing: 0,
-};
-
-/**
- * Desktop-app chips: "instalar" while Chrome/Edge offers the install prompt
- * (hidden once installed / already in an app window), and a full-screen
- * toggle. Both need a click — the browser won't install or go full screen
- * without a user gesture; F11 and Esc keep working as usual.
- */
-export function DesktopChips() {
-  const d = useDesktopApp();
-  return (
-    <>
-      {d.canInstall && !d.standalone && (
-        <button onClick={() => void installApp()} title="Instalar el POS como app en este PC" aria-label="Instalar el POS como app" style={iconBtnStyle}>
-          <span aria-hidden>⤓</span>
-        </button>
-      )}
-      <button
-        onClick={() => void toggleFullscreen()}
-        aria-pressed={d.fullscreen}
-        title={d.fullscreen ? "Salir de pantalla completa (Esc)" : "Pantalla completa (F11)"}
-        aria-label={d.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
-        style={{ ...iconBtnStyle, border: `1.5px solid ${d.fullscreen ? C.ink : C.rule}` }}
-      >
-        <span aria-hidden>{d.fullscreen ? "⤡" : "⤢"}</span>
-      </button>
-    </>
-  );
-}
-
-/** Printer glyph for {@link PrinterChip}; inherits the status colour. */
-export function PrinterIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M6 9V3h12v6" />
-      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-      <rect x="6" y="14" width="12" height="8" rx="1" />
-    </svg>
-  );
-}
-
-export const PRINTER_UI: Record<PrinterStatus, { label: string; dot: string; blink?: boolean }> = {
-  unsupported: { label: "sin impresora", dot: C.muted },
-  disconnected: { label: "conectar impresora", dot: C.muted },
-  connecting: { label: "conectando…", dot: C.amber, blink: true },
-  ready: { label: "impresora", dot: C.green },
-  printing: { label: "imprimiendo…", dot: C.amber, blink: true },
-  off: { label: "impresora apagada", dot: C.red },
-  error: { label: "impresora", dot: C.red },
-};
-
-/**
- * Label-printer chip. Disconnected → click pairs (needs the click: the port
- * picker only opens inside a user gesture). Connected → click prints a test
- * label. Errors show as a red dot with the reason in the tooltip and a line
- * under the bar.
- */
-export function PrinterChip() {
-  const p = usePrinter();
-  const ui = PRINTER_UI[p.status];
-  const canPair = p.status === "disconnected" || p.status === "error";
-  const disabled = p.status === "unsupported" || p.status === "connecting" || p.status === "printing";
-  const title = p.note ?? (p.status === "ready" ? "Imprimir etiqueta de prueba" : canPair ? "Conectar la impresora de etiquetas" : ui.label);
-  const onClick = () => {
-    if (canPair) void connectPrinter();
-    else if (p.status === "ready") printTestLabel();
-    else if (p.status === "off") void checkPrinter(); // "¿ya la encendí?" without waiting for the heartbeat
-  };
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      aria-label={title}
-      style={{
-        ...iconBtnStyle, position: "relative",
-        cursor: disabled ? "default" : "pointer",
-        border: `1.5px solid ${p.status === "error" ? C.red : C.rule}`,
-        color: ui.dot,
-      }}
-    >
-      <PrinterIcon className={ui.blink ? "pos-rec" : ""} />
-      {p.queued > 0 && (
-        <span className="cmd-num" style={{ position: "absolute", top: -6, right: -6, minWidth: 17, height: 17, padding: "0 4px", borderRadius: 9, background: C.ink, color: C.paperLt, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          +{p.queued}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** Paired-device chip: shows the station name and lets the admin unpair it. */
-export function UnlinkButton({ station }: { station: string }) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  function onClick() {
-    if (pending) return;
-    if (!window.confirm(`¿Desvincular "${station}" de esta cuenta? Necesitarás un nuevo código para volver a usarla.`)) return;
-    startTransition(async () => {
-      await desvincularPos();
-      router.refresh();
-    });
-  }
-  return (
-    <button onClick={onClick} disabled={pending} title="Desvincular este dispositivo" style={{
-      height: 40, padding: "0 12px", borderRadius: 3, cursor: "pointer", border: `1.5px solid ${C.rule}`, background: "transparent", color: C.muted,
-      fontFamily: F.mono, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase",
-    }}>
-      {pending ? "…" : "desvincular"}
-    </button>
+    </Sheet>
   );
 }
 
@@ -312,22 +174,214 @@ export function OutboxChip() {
   const waiting = s.outbox.filter((j) => j.status === "offline").length;
   if (!s.online || waiting) {
     return (
-      <button onClick={() => retryOutbox()} title="Sin internet: los pedidos se guardan en esta caja y se envían solos cuando vuelva la conexión. Toca para intentar ya." style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.amber}`, background: C.amber, color: "#fff", fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
-        Sin conexión{waiting + sending ? ` · ${waiting + sending} en cola` : ""}{failed ? ` · ${failed} con error` : ""}
+      <button type="button" className="pos-hbtn warn" onClick={() => retryOutbox()} title="Sin internet: los pedidos se guardan en esta caja y se envían solos cuando vuelva la conexión. Toca para intentar ya." aria-label="Sin conexión. Reintentar">
+        <WifiOff size={18} aria-hidden />
+        <span className="pos-hide-phone">Sin conexión{waiting + sending ? ` · ${waiting + sending} en cola` : ""}{failed ? ` · ${failed} con error` : ""}</span>
       </button>
     );
   }
   if (!sending && !failed) return null;
   if (failed) {
     return (
-      <button onClick={() => retryOutbox()} title={s.outbox.find((j) => j.status === "failed")?.error ?? undefined} style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.red}`, background: C.red, color: C.paperLt, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
-        {failed} sin registrar · reintentar
+      <button type="button" className="pos-hbtn alert" onClick={() => retryOutbox()} title={s.outbox.find((j) => j.status === "failed")?.error ?? undefined}>
+        <RefreshCw size={18} aria-hidden />
+        <span className="pos-hide-phone">{failed} sin registrar · reintentar</span>
       </button>
     );
   }
   return (
-    <span style={{ height: 40, padding: "0 12px", borderRadius: 3, border: `1.5px solid ${C.rule}`, color: C.muted, fontFamily: F.mono, fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>
+    <span className="pos-hbtn pos-hide-phone" style={{ color: C.muted, cursor: "default" }}>
       Enviando {sending}…
     </span>
+  );
+}
+
+/** Kept for the screens that still draw small chips (Puntos, Etiquetas). */
+export const chipStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 14px", borderRadius: 12, cursor: "pointer",
+  border: `1px solid ${C.rule}`, background: C.paperLt, color: C.ink,
+  fontFamily: F.mono, fontSize: 15, fontWeight: 600, whiteSpace: "nowrap",
+};
+
+const PRINTER_UI: Record<PrinterStatus, { label: string; dot: string; blink?: boolean }> = {
+  unsupported: { label: "Este navegador no imprime etiquetas", dot: C.muted },
+  disconnected: { label: "Conectar la impresora", dot: C.muted },
+  connecting: { label: "Conectando…", dot: C.amber, blink: true },
+  ready: { label: "Impresora lista", dot: C.green },
+  printing: { label: "Imprimiendo…", dot: C.amber, blink: true },
+  off: { label: "Impresora apagada", dot: C.red },
+  error: { label: "Error de impresora", dot: C.red },
+};
+
+/** What a tap on the printer does in its current state (shared by the chip and «⋯»). */
+function printerAction(status: PrinterStatus): { label: string; run: (() => void) | null } {
+  if (status === "disconnected" || status === "error") return { label: "Conectar la impresora", run: () => void connectPrinter() };
+  if (status === "ready") return { label: "Imprimir etiqueta de prueba", run: printTestLabel };
+  if (status === "off") return { label: "¿Ya la encendiste? Reintentar", run: () => void checkPrinter() };
+  return { label: PRINTER_UI[status].label, run: null };
+}
+
+/**
+ * Label-printer chip. Disconnected → click pairs (needs the click: the port
+ * picker only opens inside a user gesture). Connected → test label. Hidden
+ * where the browser can't print (phones, the tablet: labels relay to the
+ * register).
+ */
+export function PrinterChip() {
+  const p = usePrinter();
+  if (p.status === "unsupported") return null;
+  const ui = PRINTER_UI[p.status];
+  const act = printerAction(p.status);
+  const title = p.note ?? act.label;
+  return (
+    <button
+      type="button"
+      className={"pos-hbtn icon pos-hide-phone" + (p.status === "error" || p.status === "off" ? " alert" : "")}
+      onClick={() => act.run?.()}
+      disabled={!act.run}
+      title={title}
+      aria-label={title}
+      style={{ position: "relative", color: ui.dot }}
+    >
+      <Printer size={20} className={ui.blink ? "pos-rec" : ""} aria-hidden />
+      {p.queued > 0 && (
+        <span className="pos-badge" style={{ position: "absolute", top: -6, right: -6, background: C.strong, color: C.onStrong }}>+{p.queued}</span>
+      )}
+    </button>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Persona (single login) — chip + sheet with «Cambiar persona»
+// ════════════════════════════════════════════════════════════════
+export function PersonChip({ mode }: { mode: "device" | "user" }) {
+  const s = usePos();
+  const [open, setOpen] = React.useState(false);
+  const p = s.person;
+  if (!p) return null;
+  const first = p.name.split(" ")[0] || p.name;
+  return (
+    <>
+      <button type="button" className="pos-hbtn" onClick={() => setOpen(true)} aria-label={`${p.name}. Cambiar persona`} title={`${p.name} · cambiar persona`} style={{ paddingLeft: 6 }}>
+        <Avatar name={p.name} size="sm" />
+        <span className="pos-who-name pos-hide-narrow">{first}</span>
+      </button>
+      <PersonSheet open={open} onClose={() => setOpen(false)} mode={mode} />
+    </>
+  );
+}
+
+function PersonSheet({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: "device" | "user" }) {
+  const s = usePos();
+  const p = s.person;
+  if (!p) return null;
+  const busy = s.order.length > 0 || s.outbox.some((j) => j.status === "sending");
+  return (
+    <Sheet open={open} onClose={onClose} title="En esta caja">
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <Avatar name={p.name} size="lg" />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{p.name}</div>
+          <div style={{ fontSize: 15, color: C.muted }}>{p.role === "admin" ? "Administrador" : "Equipo"} · las ventas quedan a tu nombre</div>
+        </div>
+      </div>
+      {busy && (
+        <p role="alert" style={{ margin: 0, padding: "12px 14px", borderRadius: 12, background: C.brandSoft, fontSize: 15, lineHeight: 1.45 }}>
+          Hay un pedido en curso. Si cambias de persona ahora, el ticket se pierde; los pedidos ya enviados no.
+        </p>
+      )}
+      <form action={signOutLocal}>
+        {/* TODO(P2→F2): signOutLocal always lands on /login → /turno; a `next` field would bring the next person straight back to /pos. */}
+        <Button type="submit" variant="strong" block icon={<UserRound size={20} aria-hidden />}>Cambiar persona</Button>
+      </form>
+      {p.role === "admin" && mode === "user" ? (
+        <Button href="/hoy" variant="ghost" block>Ir al panel</Button>
+      ) : (
+        <Button href="/turno" variant="ghost" block>Ir a la tablet del turno</Button>
+      )}
+    </Sheet>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// «⋯» — everything that isn't a sale
+// ════════════════════════════════════════════════════════════════
+function MoreButton({ mode }: { mode: "device" | "user" }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" className="pos-hbtn icon" onClick={() => setOpen(true)} aria-label="Más opciones" title="Más opciones" aria-haspopup="dialog">
+        <Ellipsis size={22} aria-hidden />
+      </button>
+      <MoreSheet open={open} onClose={() => setOpen(false)} mode={mode} />
+    </>
+  );
+}
+
+function MoreRow({ icon, title, sub, onClick, tone, disabled }: { icon: React.ReactNode; title: string; sub?: string; onClick: () => void; tone?: "late"; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{ minHeight: 64, width: "100%", padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.rule}`, background: C.paperLt, color: tone === "late" ? C.red : C.ink, display: "flex", alignItems: "center", gap: 14, textAlign: "left", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}
+    >
+      <span aria-hidden style={{ width: 40, height: 40, borderRadius: 10, background: C.paperDk, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{title}</span>
+        {sub && <span style={{ display: "block", fontSize: 14, color: C.muted, marginTop: 2 }}>{sub}</span>}
+      </span>
+    </button>
+  );
+}
+
+function MoreSheet({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: "device" | "user" }) {
+  const s = usePos();
+  const p = usePrinter();
+  const d = useDesktopApp();
+  const station = React.useContext(StationCtx);
+  const router = useRouter();
+  const [unlinking, setUnlinking] = React.useState(false);
+  const act = printerAction(p.status);
+  const go = (fn: () => void) => () => { onClose(); fn(); };
+  async function unlink() {
+    if (unlinking) return;
+    if (!window.confirm(`¿Desvincular «${station}»? Necesitarás un código nuevo para volver a usarla como caja.`)) return;
+    setUnlinking(true);
+    await desvincularPos();
+    // Not inside startTransition (Next 16: router.push/refresh there can hang the pending state).
+    router.refresh();
+  }
+  return (
+    <Sheet open={open} onClose={onClose} title="Más opciones">
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <MoreRow icon={<Tag size={20} />} title="Etiquetas" sub="Imprimir un nombre, un vaso o una frase" onClick={go(openEtiquetas)} />
+        <MoreRow icon={<Star size={20} />} title="Puntos y reseñas" sub="Clientes con su @ y lo que dijeron" onClick={go(openPuntos)} />
+        {s.catalog.equipo.length > 0 && (
+          <MoreRow icon={<Coffee size={20} />} title="¿Quién prepara?" sub={s.barista ? `Ahora: ${s.barista.name}` : "Nadie elegido"} onClick={go(openBaristaPicker)} />
+        )}
+        {p.status !== "unsupported" && (
+          <MoreRow icon={<Printer size={20} />} title="Impresora de etiquetas" sub={p.note ?? (act.label === PRINTER_UI[p.status].label ? act.label : `${PRINTER_UI[p.status].label} · ${act.label}`)} onClick={go(() => act.run?.())} disabled={!act.run} />
+        )}
+        <MoreRow
+          icon={<Mic size={20} />}
+          title={s.aiOpen ? "Cerrar el asistente de voz" : "Asistente de voz"}
+          sub="Escucha la conversación y sugiere productos"
+          onClick={go(() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen })))}
+        />
+        {d.canInstall && !d.standalone && (
+          <MoreRow icon={<Download size={20} />} title="Instalar el POS" sub="Como app en este equipo" onClick={go(() => void installApp())} />
+        )}
+        <MoreRow
+          icon={d.fullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+          title={d.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+          sub={d.fullscreen ? "Esc" : "F11"}
+          onClick={go(() => void toggleFullscreen())}
+        />
+        {mode === "device" && (
+          <MoreRow icon={<Unlink size={20} />} title="Desvincular esta caja" sub={`${station} · pide un código nuevo para volver`} tone="late" onClick={() => void unlink()} disabled={unlinking} />
+        )}
+      </div>
+    </Sheet>
   );
 }

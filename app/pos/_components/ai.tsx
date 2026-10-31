@@ -16,14 +16,14 @@ export function AiDrawer() {
     <div className="pos-drawer" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: DRAWER_W, maxWidth: "100%", zIndex: 30, display: "flex", flexDirection: "column", background: C.ink, boxShadow: "-18px 0 40px -24px rgba(0,0,0,.6)" }}>
       <AiHeader />
       <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 14px 8px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 10, letterSpacing: ".18em", color: "rgba(244,236,220,.5)", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ fontSize: 12, color: "rgba(244,236,220,.5)", display: "flex", alignItems: "center", gap: 8 }}>
           <span>Sugerencias</span>
-          {s.thinking && <span style={{ color: C.amber, letterSpacing: ".08em" }}>· pensando…</span>}
+          {s.thinking && <span style={{ color: C.amber }}>· pensando…</span>}
           <span style={{ flex: 1, borderTop: "1px dashed rgba(244,236,220,.2)" }} />
         </div>
-        {s.micNote && <div style={{ fontSize: 11, color: C.amber, border: `1px solid ${C.amber}`, borderRadius: 3, padding: "9px 11px", lineHeight: 1.5 }}>{s.micNote}</div>}
+        {s.micNote && <div style={{ fontSize: 13, color: C.amber, border: `1px solid ${C.amber}`, borderRadius: 10, padding: "9px 11px", lineHeight: 1.5 }}>{s.micNote}</div>}
         {open.length === 0 && (
-          <div style={{ color: "rgba(244,236,220,.55)", fontSize: 12, lineHeight: 1.7, padding: "14px 4px" }}>
+          <div style={{ color: "rgba(244,236,220,.55)", fontSize: 14, lineHeight: 1.7, padding: "14px 4px" }}>
             {idle
               ? "Activa el micrófono (o escribe abajo) y el asistente escuchará la conversación para darte ideas: agregar productos, combos, personalizar y atender alergias."
               : "Todo en orden. Sigo escuchando y te aviso si surge una oportunidad."}
@@ -44,22 +44,22 @@ export function AiHeader() {
     <div style={{ padding: "12px 14px 12px", borderBottom: "1px solid rgba(244,236,220,.16)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-          <span style={{ width: 30, height: 30, borderRadius: 30, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>IA</span>
+          <span style={{ width: 30, height: 30, borderRadius: 30, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>IA</span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: C.paperLt, letterSpacing: ".02em" }}>Asistente</div>
-            <div style={{ fontSize: 9.5, color: "rgba(244,236,220,.55)", letterSpacing: ".04em" }}>Escucha la conversación y sugiere</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.paperLt }}>Asistente</div>
+            <div style={{ fontSize: 11, color: "rgba(244,236,220,.55)" }}>Escucha la conversación y sugiere</div>
           </div>
         </div>
         <button onClick={() => posStore.set((st) => ({ ...st, listening: !st.listening }))} title="Activar/pausar micrófono" style={{
           display: "flex", alignItems: "center", gap: 7, background: "transparent", border: `1px solid ${live ? C.red : "rgba(244,236,220,.3)"}`,
-          color: live ? C.red : "rgba(244,236,220,.7)", fontFamily: F.mono, fontSize: 10, letterSpacing: ".1em", height: 36, padding: "0 10px", cursor: "pointer", borderRadius: 3, flexShrink: 0,
+          color: live ? C.red : "rgba(244,236,220,.7)", fontFamily: F.mono, fontSize: 12, height: 36, padding: "0 10px", cursor: "pointer", borderRadius: 10, flexShrink: 0,
         }}>
           <span className={"pos-eq" + (live ? "" : " paused")} style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14 }}><i /><i /><i /><i /><i /></span>
           {live ? "ESCUCHANDO" : "MICRÓFONO"}
         </button>
-        <button onClick={() => posStore.set({ aiOpen: false })} aria-label="Cerrar asistente" style={{ width: 36, height: 36, borderRadius: 3, border: "1px solid rgba(244,236,220,.3)", background: "transparent", color: C.paperLt, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
+        <button onClick={() => posStore.set({ aiOpen: false })} aria-label="Cerrar asistente" style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(244,236,220,.3)", background: "transparent", color: C.paperLt, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
       </div>
-      <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 7, fontSize: 9.5, color: "rgba(244,236,220,.62)", lineHeight: 1.4 }}>
+      <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "rgba(244,236,220,.62)", lineHeight: 1.4 }}>
         <span className={live ? "pos-rec" : ""} style={{ width: 7, height: 7, borderRadius: 7, background: live ? C.red : "rgba(244,236,220,.4)", flexShrink: 0 }} />
         <span>Cliente informado · el audio se transcribe en la nube; no se almacena.</span>
       </div>
@@ -81,26 +81,26 @@ export const KIND_COLOR: Record<PosSuggestKind, { line: string; tag: string }> =
 export function SuggestionCard({ g }: { g: SuggestionCardState }) {
   const col = KIND_COLOR[g.kind] || KIND_COLOR.pedido;
   return (
-    <div className="pos-card" style={{ background: C.paperLt, borderRadius: 4, borderLeft: `4px solid ${col.line}`, boxShadow: "0 6px 18px -10px rgba(0,0,0,.5)", overflow: "hidden" }}>
+    <div className="pos-card" style={{ background: C.paperLt, borderRadius: 10, borderLeft: `4px solid ${col.line}`, boxShadow: "0 6px 18px -10px rgba(0,0,0,.5)", overflow: "hidden" }}>
       <div style={{ padding: "11px 13px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 2 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 10 }}>
             {POS_KIND_LABEL[g.kind] || "Idea"}
           </span>
           <button onClick={() => dismissSuggestion(g.uid, false)} title="Descartar" style={{ background: "transparent", border: "none", color: C.muted, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 2 }}>×</button>
         </div>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, lineHeight: 1.3 }}>{g.title}</div>
-        {g.detail && <div style={{ fontSize: 11.5, color: C.ink2, lineHeight: 1.5, marginTop: 5 }}>{g.detail}</div>}
+        {g.detail && <div style={{ fontSize: 13, color: C.ink2, lineHeight: 1.5, marginTop: 5 }}>{g.detail}</div>}
         {g.say && (
-          <div style={{ marginTop: 10, background: C.paper, border: `1px solid ${C.rule}`, borderRadius: 4, padding: "9px 11px" }}>
-            <div style={{ fontSize: 8.5, letterSpacing: ".16em", color: C.muted, textTransform: "uppercase", marginBottom: 4 }}>Para decir en voz alta</div>
+          <div style={{ marginTop: 10, background: C.paper, border: `1px solid ${C.rule}`, borderRadius: 10, padding: "9px 11px" }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Para decir en voz alta</div>
             <div style={{ fontFamily: F.script, fontSize: 18, color: C.ink, lineHeight: 1.25 }}>“{g.say}”</div>
           </div>
         )}
         {g.actionLabel && g.act && (
           <button onClick={() => { applyAct(g.act); dismissSuggestion(g.uid, true); }} style={{
-            marginTop: 11, width: "100%", fontFamily: F.mono, fontSize: 12, fontWeight: 600, letterSpacing: ".02em", minHeight: 42,
-            background: col.line === C.paperLt ? C.ink : col.line, color: C.paperLt, border: "none", borderRadius: 3, padding: "10px", cursor: "pointer",
+            marginTop: 11, width: "100%", fontFamily: F.mono, fontSize: 14, fontWeight: 600, minHeight: 42,
+            background: col.line === C.paperLt ? C.ink : col.line, color: C.paperLt, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer",
           }}>{g.actionLabel}</button>
         )}
       </div>
@@ -116,31 +116,31 @@ export function TranscriptDock() {
   }, [s.transcript.length, s.interim]);
   return (
     <div style={{ height: 168, borderTop: "1px solid rgba(244,236,220,.16)", background: "rgba(0,0,0,.18)", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "9px 14px 4px", display: "flex", alignItems: "center", gap: 8, fontSize: 9.5, letterSpacing: ".16em", color: "rgba(244,236,220,.5)", textTransform: "uppercase" }}>
+      <div style={{ padding: "9px 14px 4px", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(244,236,220,.5)" }}>
         <span>Conversación</span><span style={{ flex: 1, borderTop: "1px dashed rgba(244,236,220,.18)" }} />
         <span className="cmd-num">{s.transcript.length}</span>
       </div>
       <div ref={ref} className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 14px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
         {s.transcript.length === 0 && !s.interim && (
-          <div style={{ fontSize: 11, color: "rgba(244,236,220,.4)", paddingTop: 8 }}>
+          <div style={{ fontSize: 13, color: "rgba(244,236,220,.4)", paddingTop: 8 }}>
             {s.listening ? "Escuchando… habla y aparecerá aquí." : "Esperando la conversación…"}
           </div>
         )}
         {s.transcript.map((t, i) =>
           t.who === "sistema" ? (
-            <div key={i} style={{ textAlign: "center", fontSize: 9.5, color: "rgba(244,236,220,.4)", letterSpacing: ".06em", fontStyle: "italic" }}>· {t.text} ·</div>
+            <div key={i} style={{ textAlign: "center", fontSize: 11, color: "rgba(244,236,220,.4)", fontStyle: "italic" }}>· {t.text} ·</div>
           ) : (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-              <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: t.who === "cliente" ? C.amber : C.green, minWidth: 50, textTransform: "uppercase" }}>{t.who}</span>
-              <span style={{ fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1 }}>{t.text}</span>
-              <span className="cmd-num" style={{ fontSize: 8.5, color: "rgba(244,236,220,.35)" }}>{t.time}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: t.who === "cliente" ? C.amber : C.green, minWidth: 50 }}>{t.who}</span>
+              <span style={{ fontSize: 13, color: C.paperLt, lineHeight: 1.4, flex: 1 }}>{t.text}</span>
+              <span className="cmd-num" style={{ fontSize: 11, color: "rgba(244,236,220,.35)" }}>{t.time}</span>
             </div>
           ),
         )}
         {s.interim && (
           <div style={{ display: "flex", gap: 8, alignItems: "baseline", opacity: 0.7 }}>
-            <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".08em", color: C.amber, minWidth: 50, textTransform: "uppercase" }}>···</span>
-            <span style={{ fontSize: 11.5, color: C.paperLt, lineHeight: 1.4, flex: 1, fontStyle: "italic" }}>{s.interim}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, minWidth: 50 }}>···</span>
+            <span style={{ fontSize: 13, color: C.paperLt, lineHeight: 1.4, flex: 1, fontStyle: "italic" }}>{s.interim}</span>
           </div>
         )}
       </div>
@@ -148,7 +148,7 @@ export function TranscriptDock() {
   );
 }
 
-export const ctrlBtn: React.CSSProperties = { flex: "0 0 auto", fontFamily: F.mono, fontSize: 12, background: "transparent", border: "1px solid rgba(244,236,220,.32)", color: C.paperLt, height: 40, minWidth: 40, padding: "0 12px", cursor: "pointer", borderRadius: 3 };
+export const ctrlBtn: React.CSSProperties = { flex: "0 0 auto", fontFamily: F.mono, fontSize: 14, background: "transparent", border: "1px solid rgba(244,236,220,.32)", color: C.paperLt, height: 40, minWidth: 40, padding: "0 12px", cursor: "pointer", borderRadius: 10 };
 
 export function AiControls() {
   const [text, setText] = React.useState("");
@@ -166,7 +166,7 @@ export function AiControls() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Escribe lo que dijo el cliente…"
-          style={{ flex: 1, fontFamily: F.mono, fontSize: 12, background: "rgba(244,236,220,.06)", border: "1px solid rgba(244,236,220,.28)", color: C.paperLt, height: 40, padding: "0 11px", borderRadius: 3, outline: "none", minWidth: 0 }}
+          style={{ flex: 1, fontFamily: F.mono, fontSize: 14, background: "rgba(244,236,220,.06)", border: "1px solid rgba(244,236,220,.28)", color: C.paperLt, height: 40, padding: "0 11px", borderRadius: 10, outline: "none", minWidth: 0 }}
         />
         <button type="submit" style={ctrlBtn} title="Enviar al asistente">▶</button>
       </form>

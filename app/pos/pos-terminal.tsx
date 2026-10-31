@@ -34,7 +34,7 @@ import * as React from "react";
 import { FAV_CAT, type PosCatalog } from "@/lib/pos/types";
 import { usePosLive } from "./pos-live";
 import { usePosWindowLease } from "./pos-window";
-import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, refreshOrdenes, refreshPendientes, type PosSessionPerson } from "./pos-store";
+import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
 import { C, F, POS_CSS } from "./_components/theme";
@@ -69,7 +69,7 @@ export function PosTerminal({
   /** Person signed in on this register (single login); seeded into the store for `creadoPor`. */
   person?: PosSessionPerson | null;
 }) {
-  // F2: seed only — the person chip / «Cambiar persona» UI belongs to P2.
+  // The person in session rides on every order (`creadoPor`) and shows in the top bar.
   const personId = person?.id ?? null;
   const personName = person?.name ?? "";
   const personRole = person?.role ?? "staff";
@@ -88,7 +88,12 @@ export function PosTerminal({
       ...(!hasFavs && firstReal && (cur === FAV_CAT || !cur) ? { cat: firstReal } : {}),
     });
     hydrateBarista();
-  }, [catalog]);
+    seedBaristaFromPerson(personId);
+    // «Ver en POS» from a product page: /pos?buscar=<sku>.
+    const q = new URLSearchParams(window.location.search).get("buscar");
+    if (q) posStore.set({ search: q.slice(0, 60) });
+    // personId: a new person on this register gets their own default barista.
+  }, [catalog, personId]);
   // What every printed label shows in its kicker line.
   React.useEffect(() => {
     setLabelDefaults({ station, orgName: catalog.orgName, art: catalog.handArt });
@@ -101,6 +106,24 @@ export function PosTerminal({
       </StationCtx.Provider>
     </CatalogCtx.Provider>
   );
+}
+
+const BARISTA_SEED_KEY = "pos:barista-seed";
+/**
+ * «Preparo yo» by default: when the person who signs in is on the team, the
+ * bar is credited to them — once per person (a manual pick in «¿Quién
+ * prepara?» sticks until somebody else signs in on this register).
+ */
+function seedBaristaFromPerson(personId: string | null) {
+  if (!personId) return;
+  const st = posStore.get();
+  const me = st.catalog.equipo.find((m) => m.id === personId);
+  if (!me) return;
+  try {
+    if (window.localStorage.getItem(BARISTA_SEED_KEY) === personId) return;
+    window.localStorage.setItem(BARISTA_SEED_KEY, personId);
+  } catch { /* private mode: seed every load */ }
+  setBarista(me);
 }
 
 /** Another station wrote an order: reload what this one shows. */

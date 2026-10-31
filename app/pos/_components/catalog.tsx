@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Stamp } from "@/components/comanda/primitives";
+import { ChevronDown, Star } from "lucide-react";
 import { posMoney, POS_KIND_LABEL, FAV_CAT, COMBO_CAT, type PosCatalog, type PosMenuItem, type PosCombo } from "@/lib/pos/types";
-import { useCatalog, usePos, posStore, orderTotal, tapItem, showRecipe, addCombo, applyAct, dismissSuggestion, type SuggestionCardState } from "../pos-store";
-import { C, F, TILE_ACCENTS } from "./theme";
+import { useCatalog, usePos, posStore, orderTotal, tapItem, showRecipe, addCombo, applyAct, dismissSuggestion, startTender, payNow, type SuggestionCardState } from "../pos-store";
+import { confirmarSinImpresora } from "./ticket";
+import { C, F, H, TILE_ACCENTS } from "./theme";
 import { KIND_COLOR } from "./ai";
 
 // ════════════════════════════════════════════════════════════════
@@ -70,15 +71,15 @@ export function Catalog() {
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: C.paper }}>
       {/* tabs */}
-      <div className="pos-scroll" style={{ display: "flex", gap: 8, padding: "12px 16px 10px", overflowX: "auto", flexShrink: 0, borderBottom: `1px solid ${C.rule}` }}>
+      <div className="pos-scroll pos-cats" role="group" aria-label="Categorías">
         {catalog.cats.map((c) => {
           const on = !filter && !q && cat === c.id;
           const iaOn = on && s.catSource === "ia";
           return (
-            <button key={c.id} onClick={() => setCat(c.id)} style={{
-              flexShrink: 0, height: 44, padding: "0 18px", borderRadius: 22, cursor: "pointer", fontFamily: F.mono, fontSize: 13, fontWeight: 600, letterSpacing: ".02em",
-              border: `1.5px solid ${on ? (iaOn ? C.red : C.ink) : C.rule}`, background: on ? (iaOn ? C.red : C.ink) : C.paperLt, color: on ? C.paperLt : C.ink,
-            }}>{c.label}</button>
+            <button key={c.id} type="button" onClick={() => setCat(c.id)} aria-pressed={on} className={"pos-cat" + (iaOn ? " ia" : "")}>
+              {c.id === FAV_CAT && <Star size={16} aria-hidden fill="currentColor" />}
+              {c.label}
+            </button>
           );
         })}
       </div>
@@ -99,7 +100,7 @@ export function Catalog() {
       )}
 
       {/* grid */}
-      <div ref={gridRef} className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 16px 24px" }}>
+      <div ref={gridRef} className="pos-scroll pos-gridwrap">
         {catalog.menu.length === 0 && catalog.combos.length === 0 ? (
           <Empty>No hay productos en el catálogo todavía.<br />Créalos en Catálogo para venderlos aquí.</Empty>
         ) : empty ? (
@@ -108,7 +109,7 @@ export function Catalog() {
         {sections.map((sec, si) => (
           <div key={si} style={{ marginTop: si === 0 ? 0 : 18 }}>
             {sec.label && <SubLabel icon={isColdLabel(sec.label) ? <SnowflakeIcon /> : isHotLabel(sec.label) ? <FlameIcon /> : null}>{sec.label}</SubLabel>}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, alignContent: "start" }}>
+            <div className="pos-grid">
               {sec.combos
                 ? sec.combos.map((c) => <ComboTile key={c.id} c={c} qty={inTicket[c.id] ?? 0} hl={s.highlightId === c.id} hlRef={s.highlightId === c.id ? hlRef : undefined} />)
                 : sec.items!.map((p) => <ProductTile key={p.id} p={p} qty={inTicket[p.id] ?? 0} accent={accentFor(catalog, p.catId)} hl={s.highlightId === p.id} hlRef={s.highlightId === p.id ? hlRef : undefined} />)}
@@ -134,23 +135,37 @@ export function CartBar() {
   const title = editing ? `Editando ${editing.folio}` : s.customerName.trim() || s.people.join(" · ") || "Pedido";
   // Newest line first: the end of a long summary is what gets cut off.
   const summary = [...s.order].reverse().map((l) => `${l.qty}× ${l.name}`).join(" · ");
+  const canPay = count > 0 && !editing && !s.sending && !s.order.some((l) => l.missing);
   return (
-    <div className="pos-cartbar">
-      <button
-        onClick={() => posStore.set({ ticketOpen: true })}
-        aria-label={`Ver pedido · ${count} ítem${count === 1 ? "" : "s"} · ${posMoney(total)}`}
-        style={{ width: "100%", height: 72, padding: "0 16px", display: "flex", alignItems: "center", gap: 14, textAlign: "left", cursor: "pointer", border: "none", borderTop: `1.5px solid ${C.ink}`, background: C.ink, color: C.paperLt, fontFamily: F.mono }}
-      >
-        <span key={count} className={"cmd-num" + (count ? " pos-bump" : "")} style={{ minWidth: 38, height: 38, padding: "0 8px", borderRadius: 19, background: count ? (editing ? C.red : C.paperLt) : "transparent", color: count ? (editing ? C.paperLt : C.ink) : C.paperLt, border: count ? "none" : "1.5px dashed rgba(244,236,220,.4)", fontSize: 16, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{count}</span>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ display: "block", fontSize: 12, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-          <span style={{ display: "block", fontSize: 12, marginTop: 3, color: "rgba(244,236,220,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {count ? summary : "Toca un producto para agregarlo · mantenlo presionado para ver su receta"}
+    <div className="pos-cartbar" style={{ borderTop: `1px solid ${C.rule}`, background: C.paperLt, padding: "10px 12px calc(10px + env(safe-area-inset-bottom))" }}>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => posStore.set({ ticketOpen: true })}
+          aria-label={`Ver pedido · ${count} ítem${count === 1 ? "" : "s"} · ${posMoney(total)}`}
+          style={{ flex: 1, minWidth: 0, minHeight: 64, padding: "0 12px", display: "flex", alignItems: "center", gap: 12, textAlign: "left", cursor: "pointer", border: `1px solid ${C.rule}`, borderRadius: 14, background: C.paperDk, color: C.ink }}
+        >
+          <span key={count} className={"cmd-num" + (count ? " pos-bump" : "")} style={{ minWidth: 36, height: 36, padding: "0 8px", borderRadius: 18, background: count ? (editing ? C.red : C.strong) : "transparent", color: count ? C.onStrong : C.muted, border: count ? "none" : `1.5px dashed ${C.rule}`, fontSize: 16, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{count}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {count > 0 ? (
+              <>
+                <span className="cmd-num" style={{ ...H, display: "block", fontSize: 19 }}>{posMoney(total)}</span>
+                <span style={{ display: "block", fontSize: 13, marginTop: 1, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {editing ? title : <>Ver pedido<span className="pos-hide-phone"> · {summary}</span></>}
+                </span>
+              </>
+            ) : (
+              <span style={{ display: "block", fontSize: 14, color: C.muted, lineHeight: 1.35 }}>Toca un producto · mantenlo para ver la receta</span>
+            )}
           </span>
-        </span>
-        {count > 0 && <span className="cmd-num" style={{ fontFamily: F.slab, fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{posMoney(total)}</span>}
-        <span style={{ height: 44, padding: "0 14px", borderRadius: 4, background: count ? C.red : "transparent", border: count ? "none" : "1.5px solid rgba(244,236,220,.4)", color: C.paperLt, fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", flexShrink: 0 }}>Ver pedido ▸</span>
-      </button>
+        </button>
+        {count > 0 && !editing && (
+          <>
+            <button type="button" className="pos-paybtn cash" disabled={!canPay} onClick={() => { if (confirmarSinImpresora()) startTender("efectivo"); }} style={{ height: "auto", minHeight: 64, padding: "0 12px", fontSize: 16 }}>Efectivo</button>
+            <button type="button" className="pos-paybtn transfer" disabled={!canPay} onClick={() => { if (confirmarSinImpresora()) payNow("transferencia"); }} style={{ height: "auto", minHeight: 64, padding: "0 12px", fontSize: 16 }}>Transf.</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -159,12 +174,12 @@ export function CartBar() {
 export function TileQty({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
-    <span key={n} className="pos-tile-qty pos-bump cmd-num" aria-label={`${n} en el pedido`} style={{ position: "absolute", top: 6, right: 6, minWidth: 28, height: 28, padding: "0 7px", borderRadius: 14, background: C.ink, color: C.paperLt, fontSize: 13, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>×{n}</span>
+    <span key={n} className="pos-tile-qty pos-bump cmd-num" aria-label={`${n} en el pedido`} style={{ position: "absolute", top: 6, right: 6, minWidth: 28, height: 28, padding: "0 7px", borderRadius: 14, background: C.strong, color: C.onStrong, fontSize: 14, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>×{n}</span>
   );
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <div style={{ padding: "48px 20px", textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.7 }}>{children}</div>;
+  return <div style={{ padding: "48px 20px", textAlign: "center", color: C.muted, fontSize: 15, lineHeight: 1.7 }}>{children}</div>;
 }
 
 /** A cold section ("Frío", "Fríos") gets the snowflake so it reads at a glance; a hot one ("Caliente") the flame. */
@@ -174,7 +189,7 @@ export const isHotLabel = (label: string) => /^calientes?$/i.test(label.trim());
 /** Flame on the same ink chip as the snowflake, so the two sections pair up. */
 export function FlameIcon() {
   return (
-    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 5, background: "#000", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 10, background: "#000", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
       <svg viewBox="0 0 24 24" width={18} height={18} fill="none" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2.5c.6 3.2 3.4 4.6 4.9 7.1A7 7 0 1 1 5.6 11c.4 1.4 1.3 2.4 2.5 2.9C7.4 10.3 9 6.4 12 2.5Z" fill="#FF8A3D" stroke="#FF8A3D" strokeWidth={1.2} />
         <path d="M12 21a3.4 3.4 0 0 1-3.4-3.4c0-2 1.9-3 3.4-5.6 1.5 2.6 3.4 3.6 3.4 5.6A3.4 3.4 0 0 1 12 21Z" fill="#FFD166" />
@@ -187,7 +202,7 @@ export function FlameIcon() {
 export function SnowflakeIcon() {
   const arm = "M256 176V50M190 80l66 45 66-45";
   return (
-    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 5, background: "#000", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 10, background: "#000", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
       <svg viewBox="0 0 512 512" width={20} height={20} fill="none" strokeWidth={30} strokeLinecap="round" strokeLinejoin="round">
         <g stroke="#7DBDFF">
           {[0, 60, 120, 180, 240, 300].map((deg) => <path key={deg} d={arm} transform={`rotate(${deg} 256 256)`} />)}
@@ -200,7 +215,7 @@ export function SnowflakeIcon() {
 
 export function SubLabel({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: C.muted }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 2px 8px", fontSize: 12, fontWeight: 600, color: C.muted }}>
       {icon}
       <span>{children}</span>
       <span style={{ flex: 1, borderTop: `1px dashed ${C.rule}` }} />
@@ -210,11 +225,11 @@ export function SubLabel({ children, icon }: { children: React.ReactNode; icon?:
 
 export function Banner({ children, onClose, closeLabel }: { children: React.ReactNode; onClose?: () => void; closeLabel?: string }) {
   return (
-    <div className="pos-card" style={{ margin: "10px 16px 0", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.red}`, background: C.paperLt, borderRadius: 3 }}>
-      <span style={{ width: 18, height: 18, borderRadius: 18, border: `1.5px solid ${C.red}`, color: C.red, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
-      <span style={{ flex: 1, fontSize: 11.5, color: C.ink2, lineHeight: 1.4 }}>{children}</span>
+    <div className="pos-card" style={{ margin: "10px 16px 0", display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: `1px solid ${C.brand}`, background: C.brandSoft, borderRadius: 12 }}>
+      <span style={{ width: 22, height: 22, borderRadius: 22, background: C.brand, color: C.onBrand, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>IA</span>
+      <span style={{ flex: 1, fontSize: 13, color: C.ink2, lineHeight: 1.4 }}>{children}</span>
       {onClose && (
-        <button onClick={onClose} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: C.red, border: `1px solid ${C.red}`, background: "transparent", padding: "5px 9px", borderRadius: 2, cursor: "pointer", flexShrink: 0 }}>
+        <button onClick={onClose} style={{ fontSize: 12, fontWeight: 700, color: C.ink, border: `1px solid ${C.rule}`, background: C.paperLt, padding: "0 12px", height: 36, borderRadius: 10, cursor: "pointer", flexShrink: 0 }}>
           {closeLabel} ✕
         </button>
       )}
@@ -254,22 +269,23 @@ export function ProductTile({ p, qty, accent, hl, hlRef }: { p: PosMenuItem; qty
   const out = p.stock === "sin";
   const hold = useLongPress(() => showRecipe(p.id));
   return (
-    <button ref={hlRef} disabled={out} onClick={hold.guard(() => tapItem(p.id))} onPointerDown={hold.onPointerDown} onPointerUp={hold.onPointerUp} onPointerLeave={hold.onPointerLeave} onPointerCancel={hold.onPointerCancel} onContextMenu={hold.onContextMenu} className={"pos-tile" + (hl ? " pos-hl" : "")} title={p.desc || p.name} style={{
-      textAlign: "left", padding: "12px 12px 10px", borderRadius: 6, cursor: out ? "not-allowed" : "pointer", minHeight: 112, position: "relative", overflow: "hidden",
-      border: `1.5px solid ${hl ? C.red : C.rule}`, background: hl ? C.paperLt : out ? C.paperDk : C.paperLt, opacity: out ? 0.55 : 1, display: "flex", flexDirection: "column",
+    <button ref={hlRef} type="button" disabled={out} onClick={hold.guard(() => tapItem(p.id))} onPointerDown={hold.onPointerDown} onPointerUp={hold.onPointerUp} onPointerLeave={hold.onPointerLeave} onPointerCancel={hold.onPointerCancel} onContextMenu={hold.onContextMenu} className={"pos-tile" + (hl ? " pos-hl" : "") + (qty > 0 ? " has-qty" : "")} title={p.desc || p.name} aria-label={`${p.name}, ${posMoney(p.price)}${out ? ", agotado" : ""}`} style={{
+      textAlign: "left", cursor: out ? "not-allowed" : "pointer", position: "relative", overflow: "hidden",
+      border: `1px solid ${hl ? C.brand : qty > 0 ? C.ink : C.rule}`, background: out ? C.paperDk : C.paperLt, color: C.ink, opacity: out ? 0.55 : 1, display: "flex", flexDirection: "column",
+      boxShadow: qty > 0 ? `inset 0 0 0 1px ${C.ink}` : "var(--shadow-1)",
     }}>
-      <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: hl ? C.red : accent, opacity: 0.85 }} />
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, paddingLeft: 4 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25, color: C.ink, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</span>
-        {p.mods.length > 0 && !out && <span title="Con opciones" style={{ fontSize: 10, color: C.muted, flexShrink: 0, marginTop: 2 }}>▾</span>}
-      </div>
-      <div style={{ marginTop: "auto", paddingTop: 10, paddingLeft: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <span className="cmd-num" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{posMoney(p.price)}</span>
-        {out ? <Stamp size={9} rotate={-6}>Agotado</Stamp>
-          : hl ? <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: C.paperLt, background: C.red, padding: "3px 7px", borderRadius: 2 }}>★ SUGERIDO</span>
-          : p.stock === "bajo" ? <span style={{ fontSize: 9, letterSpacing: ".08em", color: C.amber }}>● bajo</span>
+      <span className="pos-tile-name" style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</span>
+      <span style={{ marginTop: "auto", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <span aria-hidden style={{ width: 8, height: 8, borderRadius: 4, background: accent, flexShrink: 0 }} />
+          <span className="cmd-num pos-tile-price">{posMoney(p.price)}</span>
+        </span>
+        {out ? <span style={{ fontSize: 12, fontWeight: 700, color: C.red }}>Agotado</span>
+          : hl ? <span style={{ fontSize: 12, fontWeight: 700, color: C.onBrand, background: C.brand, padding: "2px 8px", borderRadius: 999 }}>Sugerido</span>
+          : p.stock === "bajo" ? <span style={{ fontSize: 12, fontWeight: 600, color: C.amber }}>Poco</span>
+          : p.mods.length > 0 ? <ChevronDown size={16} aria-label="Con opciones" style={{ color: C.muted, flexShrink: 0 }} />
           : null}
-      </div>
+      </span>
       <TileQty n={qty} />
     </button>
   );
@@ -278,20 +294,19 @@ export function ProductTile({ p, qty, accent, hl, hlRef }: { p: PosMenuItem; qty
 export function ComboTile({ c, qty, hl, hlRef }: { c: PosCombo; qty: number; hl: boolean; hlRef?: React.Ref<HTMLButtonElement> }) {
   return (
     <button ref={hlRef} onClick={() => addCombo(c.id)} className={"pos-tile" + (hl ? " pos-hl" : "")} style={{
-      textAlign: "left", padding: "12px 14px 10px", borderRadius: 6, cursor: "pointer", gridColumn: "span 2", minHeight: 112, position: "relative", overflow: "hidden",
-      border: `1.5px solid ${hl ? C.red : C.green}`, background: C.paperLt, display: "flex", flexDirection: "column",
+      textAlign: "left", cursor: "pointer", gridColumn: "span 2", position: "relative", overflow: "hidden",
+      border: `1px solid ${hl ? C.brand : C.rule}`, background: C.paperLt, color: C.ink, display: "flex", flexDirection: "column",
     }}>
-      <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: hl ? C.red : C.green }} />
       <div style={{ paddingLeft: 4 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", color: C.green, border: `1px solid ${C.green}`, padding: "1px 5px", borderRadius: 2 }}>COMBO</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.green, background: C.greenSoft, padding: "2px 8px", borderRadius: 999 }}>Combo</span>
           <span style={{ fontSize: 14.5, fontWeight: 700, color: C.ink }}>{c.name}</span>
         </div>
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 4, lineHeight: 1.35 }}>{c.desc}</div>
+        <div style={{ fontSize: 13, color: C.muted, marginTop: 4, lineHeight: 1.35 }}>{c.desc}</div>
       </div>
       <div style={{ marginTop: "auto", paddingTop: 10, paddingLeft: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span className="cmd-num" style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{posMoney(c.price)}</span>
-        {c.saving > 0 && <span style={{ fontSize: 10, color: C.green, letterSpacing: ".04em" }}>AHORRA {posMoney(c.saving)}</span>}
+        {c.saving > 0 && <span style={{ fontSize: 12, color: C.green }}>Ahorra {posMoney(c.saving)}</span>}
       </div>
       <TileQty n={qty} />
     </button>
@@ -303,13 +318,13 @@ export function SuggestionStrip({ g, more }: { g: SuggestionCardState; more: num
   const col = KIND_COLOR[g.kind] || KIND_COLOR.pedido;
   const accent = col.line === C.paperLt ? C.ink : col.line;
   return (
-    <div className="pos-card" style={{ margin: "10px 16px 0", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 12px", border: `1px solid ${C.rule}`, borderLeft: `4px solid ${accent}`, background: C.paperLt, borderRadius: 3 }}>
-      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 2, flexShrink: 0 }}>{POS_KIND_LABEL[g.kind] || "Idea"}</span>
-      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: C.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title}</span>
+    <div className="pos-card" style={{ margin: "10px 16px 0", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 12px", border: `1px solid ${C.rule}`, borderLeft: `4px solid ${accent}`, background: C.paperLt, borderRadius: 10 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: col.tag, border: `1px solid ${col.tag}`, padding: "2px 6px", borderRadius: 10, flexShrink: 0 }}>{POS_KIND_LABEL[g.kind] || "Idea"}</span>
+      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: C.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title}</span>
       {g.actionLabel && g.act && (
-        <button onClick={() => { applyAct(g.act); dismissSuggestion(g.uid, true); }} style={{ height: 32, padding: "0 12px", borderRadius: 3, border: "none", background: C.ink, color: C.paperLt, fontFamily: F.mono, fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.actionLabel}</button>
+        <button onClick={() => { applyAct(g.act); dismissSuggestion(g.uid, true); }} style={{ height: 32, padding: "0 12px", borderRadius: 10, border: "none", background: C.ink, color: C.paperLt, fontFamily: F.mono, fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.actionLabel}</button>
       )}
-      <button onClick={() => posStore.set({ aiOpen: true })} style={{ height: 32, padding: "0 10px", borderRadius: 3, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontFamily: F.mono, fontSize: 10.5, cursor: "pointer", flexShrink: 0 }}>
+      <button onClick={() => posStore.set({ aiOpen: true })} style={{ height: 32, padding: "0 10px", borderRadius: 10, border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontFamily: F.mono, fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
         {more > 0 ? `+${more} más` : "Ver"}
       </button>
       <button onClick={() => dismissSuggestion(g.uid, false)} aria-label="Descartar" style={{ width: "var(--pos-x)", height: "var(--pos-x)", border: "none", background: "transparent", color: C.muted, fontSize: 16, cursor: "pointer", flexShrink: 0 }}>×</button>
