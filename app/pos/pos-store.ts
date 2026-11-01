@@ -39,6 +39,7 @@ import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@
 import { defaultMergeTarget } from "@/lib/pos/combinar";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
+import type { VentaOrden } from "@/lib/pos/ventas";
 import { planSaleLabels, type SaleLabelJob } from "@/lib/pos/drink-label";
 import { fraseRespaldo } from "@/lib/pos/frase";
 import {
@@ -138,7 +139,7 @@ export interface PosState {
    * personas = /pos/pedidos/<id>/personas. Etiquetas and Puntos are tools
    * over the sale (no URL of their own).
    */
-  view: "sale" | "tender" | "done" | "ordenes" | "personas" | "etiquetas" | "puntos";
+  view: "sale" | "tender" | "done" | "ordenes" | "personas" | "etiquetas" | "puntos" | "ventas";
   /** Who is on the bar: every new order is credited to them (ordenes.barista_id). Kept per register. */
   barista: PosBarista | null;
   /** The «¿Quién prepara?» picker is open. */
@@ -894,6 +895,7 @@ export function watchConnectivity() {
 function enqueueOutbox(job: OutboxItem) {
   posStore.set((st) => ({ ...st, outbox: [...st.outbox, job] }));
   persistOutbox();
+  logVentaLocal(job);
   void runOutbox();
 }
 let outboxRunning = false;
@@ -1492,6 +1494,50 @@ export function openOrdenes(tab?: OrdersTab) {
   void refreshPendientes();
 }
 /** The Etiquetas screen: print or reprint a name / cup / phrase label on demand. */
+// ── «Hoy en ventas» ──────────────────────────────────────────────
+export function openVentas() {
+  posStore.set({ view: "ventas", sheet: null, ticketOpen: false });
+}
+export function closeVentas() {
+  posStore.set({ view: "sale" });
+}
+/** «Ofrécelos»: back to the sale with the products that haven't sold, as a filter. */
+export function offerUnsold(label: string, ids: string[]) {
+  posStore.set({ view: "sale", search: "", catalogFilter: { label, ids, intro: "Ofrécelos:" }, highlightId: null });
+}
+
+/**
+ * Every order this device rang up (paid or «pagar después»), kept 8 days in
+ * localStorage: offline, «Hoy en ventas» can only count what this tablet sold.
+ */
+const VENTAS_LOCAL_KEY = "pos:ventas-local";
+const VENTAS_LOCAL_DAYS = 8;
+export function ventasLocales(): VentaOrden[] {
+  try {
+    return (JSON.parse(window.localStorage.getItem(VENTAS_LOCAL_KEY) ?? "[]") as VentaOrden[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+function logVentaLocal(job: OutboxItem) {
+  try {
+    const cutoff = Date.now() - VENTAS_LOCAL_DAYS * 86_400_000;
+    const prev = ventasLocales().filter((o) => Date.parse(o.createdAt) >= cutoff && o.id !== job.id);
+    const row: VentaOrden = {
+      id: job.id,
+      status: job.kind,
+      total: job.snapshot.total,
+      createdAt: new Date(job.createdAt).toISOString(),
+      method: job.kind === "pagada" ? job.payment?.method ?? null : null,
+      merged: false,
+      createdBy: job.base.creadoPor ?? null,
+      items: job.snapshot.order.map((l) => ({ key: l.id, name: l.name, qty: l.qty })),
+      pagos: [],
+    };
+    window.localStorage.setItem(VENTAS_LOCAL_KEY, JSON.stringify([...prev, row].slice(-1500)));
+  } catch { /* private mode: offline totals stay empty */ }
+}
+
 export function openEtiquetas() {
   posStore.set({ view: "etiquetas", sheet: null, ticketOpen: false });
 }

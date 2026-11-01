@@ -9,7 +9,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { signOutLocal } from "@/app/login/actions";
 import { desvincularPos } from "../actions";
-import { StationCtx, usePos, posStore, openOrdenes, closeOrdenes, openEtiquetas, openPuntos, setBarista, closeBaristaPicker } from "../pos-store";
+import { StationCtx, usePos, posStore, openOrdenes, closeOrdenes, openEtiquetas, openPuntos, openVentas, setBarista, closeBaristaPicker } from "../pos-store";
 import { printTicketTest, setTicketSettings, useTicketPrinter, type TicketSettings } from "@/lib/printer/tickets";
 import { usePrinter, connectPrinter, checkPrinter, printTestLabel, relaysLabels, type PrinterStatus } from "@/lib/printer/serial";
 import { useDesktopApp, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
@@ -29,6 +29,7 @@ export function TopBar({ mode }: { mode: "device" | "user" }) {
       <span className="grow" />
       <PrinterStatusChip />
       <ConnectionStatus />
+      <VentasButton />
       <PedidosButton />
       <MoreMenu mode={mode} />
       <Clock />
@@ -42,6 +43,15 @@ function Clock() {
   if (!now) return <span className="clock" />;
   const d = new Date(now - 5 * 3600_000);
   return <span className="clock">{d.getUTCHours()}:{String(d.getUTCMinutes()).padStart(2, "0")}</span>;
+}
+
+/** «Hoy en ventas» (bar chart icon) next to Pedidos; on a phone it lives only in «⋯». */
+function VentasButton() {
+  return (
+    <button type="button" className="icon-btn tb-ventas" onClick={openVentas} aria-label="Hoy en ventas" title="Hoy en ventas">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M5 20V12M12 20V5M19 20v-9" /></svg>
+    </button>
+  );
 }
 
 /** «Pedidos» with the count of orders not completed yet (open + queued in this register). */
@@ -208,6 +218,7 @@ function MoreMenu({ mode }: { mode: "device" | "user" }) {
         <>
           <button type="button" className="menu-shade" aria-label="Cerrar menú" tabIndex={-1} onClick={() => setOpen(false)} />
           <div className="menu" role="menu" aria-label="Más herramientas">
+            <button type="button" role="menuitem" onClick={go(openVentas)}>Hoy en ventas</button>
             <button type="button" role="menuitem" onClick={go(openEtiquetas)}>Etiquetas</button>
             <button type="button" role="menuitem" onClick={go(openPuntos)}>Puntos y reseñas</button>
             <button type="button" role="menuitem" onClick={go(() => posStore.set((st) => ({ ...st, aiOpen: !st.aiOpen })))}>

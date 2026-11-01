@@ -15,12 +15,13 @@
  *   /pos/done                     sale registered
  *   /pos/pedidos                  orders
  *   /pos/pedidos/<id>/personas    split an order by person
+ *   /pos/ventas                   «Hoy en ventas» (team-facing numbers)
  *
  * Overlays (receta, cancelar, combinar, etiquetas, puntos, asistente) have
  * no URL of their own.
  */
 import * as React from "react";
-import { posStore, usePos, openOrdenes, chargePendingSplit, type PosState, type PayMethod } from "./pos-store";
+import { posStore, usePos, openOrdenes, openVentas, chargePendingSplit, type PosState, type PayMethod } from "./pos-store";
 
 const PAY: readonly PayMethod[] = ["efectivo", "transferencia", "datafono"];
 
@@ -33,6 +34,8 @@ export function pathFor(s: Pick<PosState, "view" | "payMethod" | "pending" | "sh
       return "/pos/done";
     case "ordenes":
       return "/pos/pedidos";
+    case "ventas":
+      return "/pos/ventas";
     case "personas":
       return s.pending ? `/pos/pedidos/${s.pending.id}/personas` : "/pos/pedidos";
     default:
@@ -74,6 +77,7 @@ export function applyPath(pathname: string, search: string) {
     return openOrdenes();
   }
   if (parts[0] === "pedidos") return s.view === "ordenes" ? undefined : openOrdenes();
+  if (parts[0] === "ventas") return s.view === "ventas" ? undefined : openVentas();
   if (s.view !== "etiquetas" && s.view !== "puntos") return sale();
 }
 

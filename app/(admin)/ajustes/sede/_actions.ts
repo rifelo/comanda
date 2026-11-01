@@ -47,6 +47,8 @@ const ReciboSchema = z.object({
   transferencia_llave: z.string().max(80),
   transferencia_titular: z.string().max(80),
   datafono_liquidacion: z.string().max(60),
+  /** «600.000», «600000» or "" (no goal). */
+  meta_diaria: z.string().max(20),
 });
 
 /** What the POS prints on the receipt and shows on the payment pages (organizations). */
@@ -56,6 +58,9 @@ export async function updateRecibo(input: z.infer<typeof ReciboSchema>) {
   const { supabase, profile } = await requireAdmin();
   const val = (v: string) => v.trim() || null;
   const d = parsed.data;
+  const metaDigits = d.meta_diaria.replace(/[^\d]/g, "");
+  const meta = metaDigits ? Number(metaDigits) : null;
+  if (meta !== null && (meta <= 0 || meta > 1_000_000_000)) return { error: "La meta del día debe ser un valor en pesos mayor que 0." };
   const { error } = await supabase
     .from("organizations")
     .update({
@@ -64,6 +69,7 @@ export async function updateRecibo(input: z.infer<typeof ReciboSchema>) {
       transferencia_llave: val(d.transferencia_llave),
       transferencia_titular: val(d.transferencia_titular),
       datafono_liquidacion: val(d.datafono_liquidacion),
+      meta_diaria_cop: meta,
     })
     .eq("id", profile.organization_id);
   if (error) return { error: error.message };

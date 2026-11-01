@@ -152,6 +152,8 @@ export interface PosBarista {
 export interface PosCatalogFilter {
   label: string; // short description, e.g. "Bebidas frías" / "Sin gluten"
   ids: string[]; // matching product ids
+  /** Lead-in of the strip over the grid; default «Lo que pidió el cliente:». */
+  intro?: string;
 }
 
 // ── AI assistant shapes ─────────────────────────────────────────

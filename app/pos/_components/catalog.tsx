@@ -88,7 +88,7 @@ export function Catalog() {
       {topSuggestion && <SuggestionStrip g={topSuggestion} more={s.suggestions.length - 1} />}
       {filter && !q && (
         <div className="say" style={{ alignItems: "center", padding: "10px 14px" }}>
-          <p className="grow" style={{ fontSize: 15 }}>Lo que pidió el cliente: <b>{filter.label}</b> · {filter.ids.length} opci{filter.ids.length === 1 ? "ón" : "ones"}</p>
+          <p className="grow" style={{ fontSize: 15 }}>{filter.intro ?? "Lo que pidió el cliente:"} <b>{filter.label}</b> · {filter.ids.length} opci{filter.ids.length === 1 ? "ón" : "ones"}</p>
           <button type="button" className="btn ghost sm" style={{ height: 44 }} onClick={() => posStore.set({ catalogFilter: null })}>Ver todo</button>
         </div>
       )}

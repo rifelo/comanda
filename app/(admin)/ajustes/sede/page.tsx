@@ -11,10 +11,10 @@ export default async function ConfigSedePage() {
   const [{ supabase, profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const { data: org } = await supabase
     .from("organizations")
-    .select("recibo_encabezado, recibo_pie, transferencia_llave, transferencia_titular, datafono_liquidacion")
+    .select("recibo_encabezado, recibo_pie, transferencia_llave, transferencia_titular, datafono_liquidacion, meta_diaria_cop")
     .eq("id", profile.organization_id)
     .maybeSingle();
-  const o = (org ?? {}) as Record<string, string | null | undefined>;
+  const o = (org ?? {}) as Record<string, string | number | null | undefined>;
   return (
     <div className="mx-auto w-full max-w-[720px] pb-12">
       <PageHeader title="Sede" back="/ajustes" />
@@ -28,15 +28,16 @@ export default async function ConfigSedePage() {
           }}
         />
       </Card>
-      <h2 className="ui-label mx-4 sm:mx-7 mt-8 mb-3">Recibo y cobros</h2>
+      <h2 className="ui-label mx-4 sm:mx-7 mt-8 mb-3">Recibo, cobros y meta</h2>
       <Card className="mx-4 sm:mx-7">
         <ReciboForm
           initial={{
-            recibo_encabezado: o.recibo_encabezado ?? "",
-            recibo_pie: o.recibo_pie ?? "",
-            transferencia_llave: o.transferencia_llave ?? "",
-            transferencia_titular: o.transferencia_titular ?? "",
-            datafono_liquidacion: o.datafono_liquidacion ?? "",
+            recibo_encabezado: String(o.recibo_encabezado ?? ""),
+            recibo_pie: String(o.recibo_pie ?? ""),
+            transferencia_llave: String(o.transferencia_llave ?? ""),
+            transferencia_titular: String(o.transferencia_titular ?? ""),
+            datafono_liquidacion: String(o.datafono_liquidacion ?? ""),
+            meta_diaria: o.meta_diaria_cop ? String(o.meta_diaria_cop) : "",
           }}
         />
       </Card>

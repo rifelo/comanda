@@ -612,3 +612,116 @@
   .app .done-change .huge { font-size: 64px; }
   .app .done-card .btn.lg { height: auto; min-height: 64px; padding: 10px 16px; font-size: 17px; white-space: normal; }
 }
+
+/* ── D · Hoy en ventas (Ventas.dc.html) ─────────────────────────────── */
+.app { --vt-past: #d9c27a; }
+.app.dark, :root[data-theme="oscuro"] .app { --vt-past: #8a6f12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="claro"]):not([data-theme="oscuro"]) .app:not(.light) { --vt-past: #8a6f12; } }
+.app.light { --vt-past: #d9c27a; }
+.app .vt-top .h2 { white-space: nowrap; }
+.app .vt-sub { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .vt-seg-body { display: none; }
+.app .vt-body { gap: 20px; padding: 20px; }
+.app .vt-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.app .vt-side { width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+.app .vt-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.app .vt-h .h2, .app .vt-bar .h2, .app .vt-pay .h2 { font-size: 17px; }
+.app .vt-h .muted { font-size: 13px; }
+.app .vt-none { font-size: 14px; margin: 0; }
+.app .vt-kpis { display: flex; gap: 12px; }
+.app .vt-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.app .vt-kpi .v { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app .vt-kpi .d { font-size: 13px; font-weight: 600; color: var(--muted); }
+.app .vt-kpi .v.long { font-size: 26px; line-height: 36px; }
+.app .vt-kpi .d.up { color: var(--ok); }
+.app .vt-kpi .d.down { color: var(--late); }
+.app .vt-kpi.meta { border-color: var(--brand); background: var(--brand-soft); }
+.app .vt-kpi.meta .label, .app .vt-kpi.meta .d { color: var(--text); }
+.app .vt-hours-card { flex: 1; min-height: 0; gap: 6px; }
+.app .vt-hours { flex: 1; min-height: 140px; display: grid; gap: 6px; align-items: stretch; padding-top: 22px; }
+.app .vt-hours .hcol { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: 100%; outline: none; cursor: default; }
+.app .vt-hours .hwell { flex: 1; min-height: 0; display: flex; align-items: flex-end; justify-content: center; }
+.app .vt-hours .hlab { text-align: center; }
+.app .vt-hours .hcol:focus-visible .hbar { box-shadow: 0 0 0 3px var(--focus); }
+.app .vt-hours .hbar { width: 100%; max-width: 40px; background: var(--brand); border-radius: 4px 4px 0 0; position: relative; flex-shrink: 0; }
+.app .vt-hours .hbar.past { background: var(--vt-past); }
+.app .vt-hours .hbar.now { outline: 2px solid var(--text); outline-offset: 1px; }
+.app .vt-hours .hbar.future { background: var(--surface-2); }
+.app .vt-hours .hlab { font-size: 11px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.app .vt-hours .hval { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.app .vt-tip { position: absolute; bottom: calc(100% - 18px); left: 50%; transform: translateX(-50%); z-index: 5; background: var(--strong); color: var(--on-strong); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+.app .vt-hours .hcol:first-child .vt-tip { left: 0; transform: none; }
+.app .vt-hours .hcol:last-child .vt-tip { left: auto; right: 0; transform: none; }
+.app .vt-bar { gap: 8px; }
+.app .vt-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.app .vt-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.app .vt-pn { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .vt-ps { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .vt-pv { font-weight: 700; white-space: nowrap; }
+.app .vt-top8 { gap: 4px; flex: 1; min-height: 0; overflow-y: auto; }
+.app .vt-top8 .vt-h { padding-bottom: 6px; }
+.app .vt-rank { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.app .vt-rank .rn { width: 22px; font-size: 13px; font-weight: 700; color: var(--muted); text-align: right; flex-shrink: 0; }
+.app .vt-rank .nm { width: 150px; flex-shrink: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .vt-rank .tr { flex: 1; height: 14px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.app .vt-rank .tr span { display: block; height: 100%; background: var(--strong); border-radius: 0 4px 4px 0; }
+.app .vt-rank .ct { width: 34px; text-align: right; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.app .vt-unsold { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); margin-top: 6px; font-size: 13px; }
+.app .vt-offer { height: 44px; padding: 0; border: none; background: transparent; cursor: pointer; flex-shrink: 0; font-family: inherit; }
+.app .vt-offer .pill { height: 24px; font-size: 12px; font-weight: 700; }
+.app .vt-pay { gap: 2px; }
+.app .vt-pay .h2 { padding-bottom: 6px; }
+.app .vt-pay .pay { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 15px; }
+.app .vt-pay .pct { width: 48px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.app .vt-pay .amt { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app .vt-verify { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+.app .vt-verify .btn { height: 44px; font-size: 13px; }
+@media (min-width: 1600px) and (min-height: 960px) {
+  .app .vt-body { padding: 24px; gap: 24px; }
+  .app .vt-side { width: 480px; }
+  .app .vt-kpi .v { font-size: 44px; }
+  .app .vt-kpi .v.long { font-size: 36px; line-height: 44px; }
+  .app .vt-kpi .d { font-size: 15px; }
+  .app .vt-hours .hbar { max-width: 56px; }
+  .app .vt-hours .hlab { font-size: 13px; }
+}
+@media (max-width: 1100px) and (min-width: 1024px) {
+  .app .vt-side { width: 360px; }
+  .app .vt-kpi .v { font-size: 30px; }
+}
+@media (max-width: 1023px) {
+  .app .vt-body { padding: 16px; gap: 16px; }
+  .app .vt-kpis { flex-wrap: wrap; }
+  .app .vt-kpi { flex: 1 1 calc(50% - 6px); }
+  .app .vt-hours-card { flex: none; }
+  .app .vt-hours { min-height: 220px; }
+  .app .vt-top8 { flex: none; overflow: visible; }
+  .app .vt-people { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .app .vt-seg-top, .app .vt-top .clock, .app .tb-ventas { display: none; }
+  .app .vt-seg-body { display: flex; flex-shrink: 0; }
+  .app .vt-seg-body button { flex: 1; justify-content: center; padding: 0 8px; }
+  .app .vt-body { padding: 12px; gap: 12px; }
+  .app .vt-sub { font-size: 12px; }
+  .app .vt-kpi { padding: 12px 14px; }
+  .app .vt-kpi .v, .app .vt-kpi .v.long { font-size: 24px; line-height: 28px; }
+  .app .vt-kpi .d { font-size: 12px; }
+  .app .vt-hours { gap: 3px; min-height: 180px; }
+  .app .vt-hours .hlab { font-size: 10px; }
+  .app .vt-rank .nm { width: 110px; }
+  .app .vt-people { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── tile spec (follow-up #2): same tile everywhere, sizes per breakpoint ── */
+/* 28 px qty pill at top 10 / right 10 on every size; the tile keeps its
+   min-height (120, phone 104) even on a short landscape screen — the grid
+   scrolls instead of squashing the touch target. */
+@media (max-width: 600px) {
+  .app .tile .qty { top: 10px; right: 10px; min-width: 28px; height: 28px; font-size: 14px; }
+  .app .tile:has(.qty) .n { padding-right: 30px; }
+}
+@media (max-height: 720px) and (min-width: 1024px) {
+  .app .tile { min-height: 120px; padding: 16px; }
+}
+.app .vt-stale > section, .app .vt-stale > aside { opacity: 0.5; transition: opacity 0.15s; }
