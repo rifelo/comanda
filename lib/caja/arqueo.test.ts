@@ -50,11 +50,11 @@ describe("resumenPagos", () => {
     const r = resumenPagos([
       { method: "efectivo", amount_cop: 12000 },
       { method: "efectivo", amount_cop: 8000 },
-      { method: "tarjeta", amount_cop: 25000 },
+      { method: "datafono", amount_cop: 25000 },
       { method: "transferencia", amount_cop: 5000 },
       { method: "otro", amount_cop: 999 },
     ]);
-    expect(r).toEqual({ efectivo: 20000, tarjeta: 25000, transferencia: 5000, count: 4 });
+    expect(r).toEqual({ efectivo: 20000, datafono: 25000, transferencia: 5000, count: 4 });
   });
 });
 
@@ -88,11 +88,11 @@ describe("cobrosDirectos", () => {
   it("turns orders paid with «Cobrar» (no payment rows) into payments", () => {
     const rows = cobrosDirectos([
       { payment_method: "efectivo", total_cop: 12000, pagos: 0 },
-      { payment_method: "tarjeta", total_cop: 9000, pagos: 0 },
+      { payment_method: "datafono", total_cop: 9000, pagos: 0 },
       { payment_method: "efectivo", total_cop: 15000, pagos: 2 },
       { payment_method: null, total_cop: 5000, pagos: 0 },
     ]);
-    expect(rows).toEqual([{ method: "efectivo", amount_cop: 12000 }, { method: "tarjeta", amount_cop: 9000 }]);
-    expect(resumenPagos(rows)).toEqual({ efectivo: 12000, tarjeta: 9000, transferencia: 0, count: 2 });
+    expect(rows).toEqual([{ method: "efectivo", amount_cop: 12000 }, { method: "datafono", amount_cop: 9000 }]);
+    expect(resumenPagos(rows)).toEqual({ efectivo: 12000, datafono: 9000, transferencia: 0, count: 2 });
   });
 });

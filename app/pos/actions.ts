@@ -30,18 +30,24 @@ import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lin
 
 // ── payloads (lines are re-priced in lib/pos/lineas.ts, never trusted) ──────
 const PaymentSchema = z.object({
-  method: z.enum(["efectivo", "tarjeta", "transferencia"]),
+  // «tarjeta» was the datáfono before 0063; an order queued offline on an
+  // older register may still carry it.
+  method: z.enum(["efectivo", "transferencia", "datafono", "tarjeta"]).transform((m) => (m === "tarjeta" ? "datafono" : m)),
   /** Cash received; only meaningful for efectivo. */
   tendered: z.coerce.number().int().min(0).max(100_000_000).nullable().optional(),
+  /** Approval number from the datáfono voucher (optional, datafono only). */
+  approvalCode: z.string().trim().max(40).nullable().optional(),
 });
 const CrearOrdenSchema = z.object({
   orderType: z.enum(["aqui", "llevar", "domicilio"]),
   sinGluten: z.boolean(),
   lines: z.array(LineSchema).min(1).max(60),
   payment: PaymentSchema.optional(),
-  /** Table / group label ("Mesa 3"). */
+  /** Who the order is for (self-service: by name, no tables). */
   customerName: z.string().trim().max(80).optional(),
-  /** Ordered roster of the table; keeps people who have no line yet. */
+  /** The barista brings it to the customer («Se lo llevamos»). */
+  seLoLlevamos: z.boolean().optional(),
+  /** Ordered roster of the order; keeps people who have no line yet. */
   customerNames: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   note: z.string().trim().max(500).optional(),
   /** Id the register gave the order; a retry with the same ref returns the stored order. */
@@ -114,6 +120,8 @@ type OrdenHeader = {
   tendered_cop: number | null;
   change_cop: number;
   paid_at: string | null;
+  paid_cop?: number;
+  por_verificar?: "transferencia" | null;
 };
 
 /** Allocate a folio and insert header + lines (rolls the header back on item failure). */
@@ -170,6 +178,7 @@ async function insertOrden(
       pos_device_id: actor.kind === "device" ? actor.device.id : null,
       client_ref: data.clientRef ?? null,
       barista_id: who.barista_id,
+      se_lo_llevamos: data.seLoLlevamos ?? false,
       created_at: orderTime(data.createdAt),
       ...header,
     })
@@ -220,8 +229,29 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
     tendered_cop: tender.tendered,
     change_cop: tender.change,
     paid_at: orderTime(base.createdAt),
+    // A datáfono voucher number lives on a payment row; the order is then
+    // counted from its pagos, like a split one (paid_cop = the total).
+    ...(payment.approvalCode && payment.method === "datafono" ? { paid_cop: priced.subtotal } : {}),
   });
   if (!ins.ok) return ins;
+  if (!ins.existing && payment.approvalCode && payment.method === "datafono") {
+    const { error: pagoErr } = await ctx.supabase.from("orden_pagos").insert({
+      organization_id: ctx.organizationId,
+      orden_id: ins.ordenId,
+      customer_name: null,
+      method: "datafono",
+      amount_cop: priced.subtotal,
+      tendered_cop: null,
+      change_cop: 0,
+      aprobacion: payment.approvalCode,
+      created_by: actorId(ctx),
+    });
+    if (pagoErr) {
+      // The sale stands; only the voucher number is lost (paid from the header).
+      console.error("[crearOrden] voucher row failed:", pagoErr);
+      await ctx.supabase.from("ordenes").update({ paid_cop: 0 }).eq("id", ins.ordenId).eq("organization_id", ctx.organizationId);
+    }
+  }
   if (ins.existing) {
     // Queued as «pagar después», then charged while still offline: the order
     // may have landed as pendiente on an attempt whose answer was lost.
@@ -241,6 +271,8 @@ export async function crearOrden(input: unknown): Promise<CrearOrdenResult> {
 const GuardarPendienteSchema = CrearOrdenSchema.omit({ payment: true }).extend({
   /** Present when re-saving an order that is already pending (edit). */
   ordenId: z.string().uuid().optional(),
+  /** «Aún no llega · pagar después» on the transfer page. */
+  porVerificar: z.literal("transferencia").nullable().optional(),
 });
 const CobrarPendienteSchema = z.object({
   ordenId: z.string().uuid(),
@@ -285,6 +317,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
       tendered_cop: null,
       change_cop: 0,
       paid_at: null,
+      por_verificar: parsed.data.porVerificar ?? null,
     });
     if (!ins.ok) return ins;
     if (!ins.existing) await syncOrderConsumption(supabase, orgId, ins.ordenId, actorId(ctx));
@@ -333,6 +366,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
       notes: base.note || null,
       customer_name: base.customerName || null,
       customer_names: base.customerNames ?? [],
+      ...(base.seLoLlevamos !== undefined ? { se_lo_llevamos: base.seLoLlevamos } : {}),
     })
     .eq("id", ordenId)
     .eq("organization_id", orgId);
@@ -365,7 +399,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -408,6 +442,8 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       paidAt: (o.paid_at as string | null) ?? null,
       entregadaAt: (o.entregada_at as string | null) ?? null,
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
+      seLoLlevamos: Boolean(o.se_lo_llevamos),
+      porVerificar: (o.por_verificar as PosOrder["porVerificar"]) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
       paid: Number(o.paid_cop ?? 0),
@@ -447,6 +483,7 @@ function mapPagos(rows: Array<Record<string, unknown>>): OrderPayment[] {
       amount: Number(p.amount_cop),
       tendered: (p.tendered_cop as number | null) ?? null,
       change: Number(p.change_cop ?? 0),
+      approvalCode: (p.aprobacion as string | null) ?? null,
       createdAt: p.created_at as string,
     }))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -512,6 +549,7 @@ async function applyPago(
     amount_cop: amt,
     tendered_cop: tender.tendered,
     change_cop: tender.change,
+    aprobacion: payment.method === "datafono" ? payment.approvalCode || null : null,
     created_by: actorId(ctx),
   });
   if (insErr) {
@@ -521,7 +559,7 @@ async function applyPago(
 
   const { data: rows } = await supabase
     .from("orden_pagos")
-    .select("id, customer_name, method, amount_cop, tendered_cop, change_cop, created_at")
+    .select("id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at")
     .eq("orden_id", ordenId)
     .eq("organization_id", orgId);
   const pagos = mapPagos((rows ?? []) as Array<Record<string, unknown>>);
@@ -535,6 +573,8 @@ async function applyPago(
       payment_method: summarizeMethod(pagos.map((p) => p.method)),
       tendered_cop: cash.length ? cash.reduce((s, p) => s + (p.tendered ?? 0), 0) : null,
       change_cop: pagos.reduce((s, p) => s + p.change, 0),
+      // Money arrived: the transfer is no longer waiting to be checked.
+      por_verificar: null,
       ...(settled ? { status: "pagada", paid_at: new Date().toISOString() } : {}),
     })
     .eq("id", ordenId)
@@ -644,6 +684,27 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
   // Voided → give the ingredients back.
   await syncOrderConsumption(supabase, orgId, parsed.data.ordenId, actorId(ctx));
+  return { ok: true };
+}
+
+// ── se lo llevamos ────────────────────────────────────────────────────────────
+const SeLoLlevamosSchema = z.object({ ordenId: z.string().uuid(), value: z.boolean() });
+
+/** The barista will bring this order to the customer (or not any more). */
+export async function marcarSeLoLlevamos(input: unknown): Promise<SimpleResult> {
+  const parsed = SeLoLlevamosSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const ctx = await requirePosAuth();
+  const { error } = await ctx.supabase
+    .from("ordenes")
+    .update({ se_lo_llevamos: parsed.data.value })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", ctx.organizationId)
+    .in("status", ["pendiente", "pagada"]);
+  if (error) {
+    console.error("[marcarSeLoLlevamos] update failed:", error);
+    return { ok: false, error: "No se pudo guardar." };
+  }
   return { ok: true };
 }
 

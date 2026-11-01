@@ -27,7 +27,7 @@ describe("splitByPerson", () => {
 describe("shareStatus", () => {
   const share: PersonShare = { customer: "Ana", label: "Ana", items: [], amount: 8000 };
   const pago = (customer: string | null, amount: number): OrderPayment =>
-    ({ id: "p", customer, method: "efectivo", amount, tendered: null, change: 0, createdAt: "2026-09-19T10:00:00Z" });
+    ({ id: "p", customer, method: "efectivo", amount, tendered: null, change: 0, approvalCode: null, createdAt: "2026-09-19T10:00:00Z" });
   it("counts only the share's own payments", () => {
     expect(shareStatus(share, [pago("Ana", 8000), pago("Juan", 5000)], false)).toMatchObject({ paid: 8000, done: true });
     expect(shareStatus(share, [pago("Juan", 8000)], false)).toMatchObject({ paid: 0, done: false, last: null });

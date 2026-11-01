@@ -44,7 +44,7 @@ export function Rentabilidad({ r, esHoy }: { r: RentabilidadDia; esHoy: boolean 
           <Fila label="Utilidad bruta" value={money(r.utilidadBruta)} strong tone="var(--ok)" />
           <Fila
             label={r.comision.estimada ? "Comisión Bold (estimada)" : "Comisión Bold"}
-            hint={r.comision.estimada ? `1,495 % + 4x1000 sobre ${posMoney(r.comision.base)} en transferencias y tarjeta` : "registrada en Gastos ese día"}
+            hint={r.comision.estimada ? `1,495 % + 4x1000 sobre ${posMoney(r.comision.base)} en transferencias y datáfono` : "registrada en Gastos ese día"}
             value={`−${money(r.comision.monto)}`}
             tone="var(--late)"
           />

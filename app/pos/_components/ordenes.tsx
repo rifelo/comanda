@@ -29,7 +29,7 @@ export const STATUS_UI: Record<PosOrder["status"], { label: string; color: strin
 export const methodLabel = (m: string | null | undefined): string =>
   m === "mixto" ? "Mixto" : PAY_METHODS.find((x) => x.id === m)?.label ?? (m ?? "");
 
-export function OrdenesScreen() {
+export function PedidosPage() {
   const s = usePos();
   const [, tick] = React.useReducer((n: number) => n + 1, 0);
   React.useEffect(() => {

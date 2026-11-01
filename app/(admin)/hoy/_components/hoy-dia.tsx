@@ -162,12 +162,12 @@ export async function HoyDia({
               esperado={{
                 efectivo: n.resumen.cobros.efectivo.monto,
                 transferencia: n.resumen.cobros.transferencia.monto,
-                tarjeta: n.resumen.cobros.tarjeta.monto,
+                datafono: n.resumen.cobros.datafono.monto,
               }}
               hints={{
                 efectivo: `Efectivo de las ventas, sin la base${n.caja.base ? ` de ${posMoney(n.caja.base)}` : ""}.`,
                 transferencia: "Lo que llegó a la cuenta o la billetera.",
-                tarjeta: "El cierre del datáfono.",
+                datafono: "El cierre del datáfono.",
               }}
             />
           </Card>

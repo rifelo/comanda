@@ -225,7 +225,7 @@ export function TenderScreen() {
               </div>
             ) : (
               <div style={{ marginTop: 18, padding: "20px", border: `1px dashed ${C.rule}`, borderRadius: 16, color: C.ink2, fontSize: 15, lineHeight: 1.6 }}>
-                {s.payMethod === "tarjeta"
+                {s.payMethod === "datafono"
                   ? <>Pasa <b>{posMoney(total)}</b> por el datáfono y confirma cuando apruebe.</>
                   : <>Verifica la transferencia por <b>{posMoney(total)}</b> (Nequi, Daviplata o QR) y confirma.</>}
               </div>

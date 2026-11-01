@@ -10,7 +10,7 @@
  *     /_next/image) + Supabase Storage images   stale-while-revalidate
  * POSTs (server actions) and everything else pass straight through.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const PAGES = `pos-pages-${VERSION}`;
 const STATIC = `pos-static-${VERSION}`;
 const ASSETS = `pos-assets-${VERSION}`;
@@ -30,6 +30,9 @@ self.addEventListener("activate", (event) => {
 });
 
 const isPage = (url) => url.origin === self.location.origin && (url.pathname === "/pos" || url.pathname === "/pos/");
+/** A POS screen URL (/pos/pay/efectivo, /pos/pedidos…): online it loads itself; offline it opens /pos. */
+const isPosScreen = (url) =>
+  url.origin === self.location.origin && url.pathname.startsWith("/pos/") && !url.pathname.startsWith("/pos/manifest") && !/\.\w+$/.test(url.pathname);
 const isStatic = (url) => url.origin === self.location.origin && url.pathname.startsWith("/_next/static/");
 const isStorage = (url) => url.hostname.endsWith(".supabase.co") && url.pathname.includes("/storage/v1/object/");
 const isAsset = (url) =>
@@ -94,6 +97,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.mode === "navigate") {
     if (isPage(url)) event.respondWith(pageFirstNetwork(request));
+    else if (isPosScreen(url)) event.respondWith(fetch(request).catch(() => Response.redirect("/pos", 302)));
     return;
   }
   if (request.headers.get("RSC") === "1" || url.searchParams.has("_rsc")) return;

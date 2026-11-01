@@ -4,7 +4,7 @@ import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
   id: "p-latte", name: "Latte", catId: "c", sub: "", sku: "BC-007", price: 7500,
-  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "", printsLabel: true, spec: ["1 SHOT · 9 G"], image: null, recipe: [], prep: [],
+  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "", printsLabel: true, spec: ["1 SHOT · 9 G"], image: null, recipe: [], prep: [], script: null,
 };
 const tinto: PosMenuItem = { ...latte, id: "p-tinto", name: "Tinto", price: 3000, mods: [] };
 const catalog: PosCatalog = {
@@ -16,11 +16,11 @@ const catalog: PosCatalog = {
   byId: { "p-latte": latte, "p-tinto": tinto },
   comboById: { "cb-1": { id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 } },
   catLabel: {}, orgName: "Cafe", instagram: null, sticker: null, cupArt: null, handArt: null,
-  equipo: [],
+  equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
 };
 
 const order = (items: PendingOrder["items"]): PendingOrder => ({
-  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, entregadaAt: null, paymentMethod: null, tendered: null, change: 0, paid: 0, pagos: [], items, mergedInto: null, mergedIntoFolio: null,
+  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, entregadaAt: null, paymentMethod: null, seLoLlevamos: false, porVerificar: null, tendered: null, change: 0, paid: 0, pagos: [], items, mergedInto: null, mergedIntoFolio: null,
 });
 
 describe("sanitizeMods", () => {

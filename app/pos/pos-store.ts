@@ -75,6 +75,8 @@ export const EMPTY_CATALOG: PosCatalog = {
   cupArt: null,
   handArt: null,
   equipo: [],
+  pairs: {},
+  pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
 };
 export const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
 export const StationCtx = React.createContext<string>("Caja 01");
@@ -125,13 +127,21 @@ export interface PosState {
   person: PosSessionPerson | null;
 
   // ── Square-style screen state ──
-  /** sale = catalog + ticket · tender = choose payment · done = receipt · ordenes = Pedidos (queue + history). */
-  view: "sale" | "tender" | "done" | "ordenes" | "etiquetas" | "puntos";
+  /**
+   * The screen. Each one is a URL (see pos-routes.ts): sale = /pos,
+   * tender = /pos/pay/<payMethod>, done = /pos/done, ordenes = /pos/pedidos,
+   * personas = /pos/pedidos/<id>/personas. Etiquetas and Puntos are tools
+   * over the sale (no URL of their own).
+   */
+  view: "sale" | "tender" | "done" | "ordenes" | "personas" | "etiquetas" | "puntos";
   /** Who is on the bar: every new order is credited to them (ordenes.barista_id). Kept per register. */
   barista: PosBarista | null;
   /** The «¿Quién prepara?» picker is open. */
   baristaPicker: boolean;
-  /** Item sheet (modifiers / qty) — add a new product or edit a ticket line. */
+  /**
+   * Product options page (/pos/item/<id>) — add a new product or edit a
+   * ticket line — or the recipe overlay (receta, over whatever is showing).
+   */
   sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | { mode: "receta"; productId: string } | null;
   /** Free-text search over the catalog (name / sku / description). */
   search: string;
@@ -143,9 +153,13 @@ export interface PosState {
    * ticket has its own column.
    */
   ticketOpen: boolean;
-  /** Table / group label ("Mesa 3"); the people are in `people`. */
+  /** Who the order is for («¿A nombre de quién?»); the people are in `people`. */
   customerName: string;
-  /** The table's roster, in chip order. May hold someone with no line yet. */
+  /** The barista brings it to the customer («Se lo llevamos»). No tables: self-service. */
+  seLoLlevamos: boolean;
+  /** Approval number typed from the datáfono voucher (optional). */
+  approvalCode: string;
+  /** The order's roster, in chip order. May hold someone with no line yet. */
   people: string[];
   /** Chip that new lines are assigned to. null = "sin nombre". */
   activePerson: string | null;
@@ -212,11 +226,11 @@ export interface PosState {
 /** The person in session on the register (see `PosState.person`). */
 export type PosSessionPerson = { id: string; name: string; role: "admin" | "staff" };
 
-export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
+export type PayMethod = PayMethodId;
 export const PAY_METHODS: { id: PayMethod; label: string; hint: string }[] = [
   { id: "efectivo", label: "Efectivo", hint: "Calcula el cambio" },
-  { id: "tarjeta", label: "Tarjeta", hint: "Datáfono" },
-  { id: "transferencia", label: "Transferencia", hint: "Nequi · Daviplata · QR" },
+  { id: "transferencia", label: "Transferencia", hint: "Nequi · Bancolombia · Bre-B" },
+  { id: "datafono", label: "Datáfono", hint: "Bold · tarjeta débito / crédito" },
 ];
 
 export const POS_INITIAL: PosState = {
@@ -250,6 +264,8 @@ export const POS_INITIAL: PosState = {
   aiOpen: false,
   ticketOpen: false,
   customerName: "",
+  seLoLlevamos: false,
+  approvalCode: "",
   people: [],
   activePerson: null,
   note: "",
@@ -483,7 +499,7 @@ export function removeLine(idx: number) {
   posStore.set((s) => ({ ...s, order: s.order.filter((_, k) => k !== idx), sent: false, sheet: null }));
 }
 export function clearTicket() {
-  posStore.set((s) => ({ ...s, order: [], customerName: "", people: [], activePerson: null, note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null, ticketOpen: false }));
+  posStore.set((s) => ({ ...s, order: [], customerName: "", seLoLlevamos: false, approvalCode: "", people: [], activePerson: null, note: "", noteSinGluten: false, sent: false, sheet: null, view: "sale", tendered: null, ticketOpen: false }));
 }
 
 // ── people at the table ─────────────────────────────────────────
@@ -772,8 +788,11 @@ export interface OutboxItem {
     baristaId?: string;
     /** Person in session at confirm time (PosState.person). */
     creadoPor?: string;
+    seLoLlevamos?: boolean;
+    /** «Aún no llega · pagar después» (pendiente jobs only). */
+    porVerificar?: "transferencia";
   };
-  payment?: { method: PayMethodId; tendered: number | null };
+  payment?: { method: PayMethodId; tendered: number | null; approvalCode?: string | null };
   /** What the labels and the receipt need, frozen at confirm time. */
   snapshot: { order: OrderLine[]; people: string[]; customerName: string; total: number; change: number };
   /** Labels already printed offline: the provisional folio and the rating codes to register on landing. */
@@ -985,6 +1004,8 @@ export function queuedOrders(s: Pick<PosState, "outbox" | "catalog">): PosOrder[
       paidAt: pagada ? createdAt : null,
       entregadaAt: null,
       paymentMethod: pagada ? j.payment?.method ?? null : null,
+      seLoLlevamos: j.base.seLoLlevamos ?? false,
+      porVerificar: pagada ? null : j.base.porVerificar ?? null,
       tendered: pagada ? j.payment?.tendered ?? null : null,
       change: pagada ? j.snapshot.change : 0,
       paid: 0,
@@ -1005,7 +1026,7 @@ function newJobId() {
 export function startTender(method?: PayMethod) {
   const s = posStore.get();
   if (!s.order.length) return;
-  posStore.set({ view: "tender", tendered: null, sendError: null, sheet: null, ...(method ? { payMethod: method } : {}) });
+  posStore.set({ view: "tender", tendered: null, approvalCode: "", sendError: null, sheet: null, ticketOpen: false, ...(method ? { payMethod: method } : {}) });
 }
 
 /**
@@ -1022,6 +1043,11 @@ export function payNow(method: Exclude<PayMethod, "efectivo">) {
 }
 export function cancelTender() {
   const s = posStore.get();
+  if (s.pending?.mode === "charge" && s.split) {
+    // Charging one person: back to the people.
+    posStore.set({ view: "personas", splitTarget: null, tendered: null, approvalCode: "", sendError: null });
+    return;
+  }
   if (s.pending?.mode === "charge") {
     // The ticket only held the order for the summary — drop it and go back to Pedidos.
     resetConversation();
@@ -1085,7 +1111,7 @@ export async function startSplit() {
   const s = posStore.get();
   if (s.sending) return;
   if (s.pending?.mode === "charge") {
-    posStore.set({ split: true, splitTarget: null, tendered: null, sendError: null });
+    posStore.set({ view: "personas", split: true, splitTarget: null, tendered: null, sendError: null });
     return;
   }
   const res = await persistPending();
@@ -1099,7 +1125,7 @@ export async function startSplit() {
     return;
   }
   loadPending(o, "charge");
-  posStore.set({ view: "tender", split: true, splitTarget: null, tendered: null, payMethod: "efectivo", sendError: null });
+  posStore.set({ view: "personas", split: true, splitTarget: null, tendered: null, payMethod: "efectivo", sendError: null });
 }
 /** Take the selected share (or the rest) with the chosen method. */
 export async function paySplit() {
@@ -1117,7 +1143,7 @@ export async function paySplit() {
   const res = await safeAction(registrarPago({
     ordenId: s.pending.id,
     customerName: target.kind === "share" ? target.customer : null,
-    payment: { method: s.payMethod, tendered },
+    payment: { method: s.payMethod, tendered, approvalCode: s.approvalCode.trim() || null },
     amount: target.kind === "share" ? amount : undefined,
   }));
   if (!res.ok) {
@@ -1139,11 +1165,14 @@ export async function paySplit() {
       splitTarget: null,
     });
   } else {
+    // Back to the people: the next one pays (or the rest).
     posStore.set((st) => ({
       ...st,
       sending: false,
       splitTarget: null,
       tendered: null,
+      approvalCode: "",
+      view: "personas",
       pending: st.pending ? { ...st.pending, paid: res.paid, pagos: res.pagos } : st.pending,
     }));
   }
@@ -1180,8 +1209,9 @@ export async function completeSale() {
     note: s.note.trim() || undefined,
     baristaId: s.barista?.id,
     creadoPor: s.person?.id,
+    seLoLlevamos: s.seLoLlevamos || undefined,
   };
-  const payment = { method: s.payMethod, tendered };
+  const payment = { method: s.payMethod, tendered, approvalCode: s.payMethod === "datafono" ? s.approvalCode.trim() || null : null };
 
   const queuedId = s.pending ? jobIdOf(s.pending.id) : null;
   if (queuedId) {
@@ -1262,8 +1292,9 @@ export async function completeSale() {
  * the pending order being edited) and free the register. The kitchen label
  * prints on the first send only.
  */
-export async function savePending() {
+export async function savePending(opts: { porVerificar?: boolean } = {}) {
   const s = posStore.get();
+  const porVerificar = opts.porVerificar ? ("transferencia" as const) : undefined;
   if (!s.pending) {
     if (!s.order.length || s.sending) return;
     if (s.order.some((l) => l.missing)) {
@@ -1282,6 +1313,8 @@ export async function savePending() {
         note: s.note.trim() || undefined,
         baristaId: s.barista?.id,
         creadoPor: s.person?.id,
+        seLoLlevamos: s.seLoLlevamos || undefined,
+        porVerificar,
       },
       snapshot: { order: s.order, people: s.people, customerName: s.customerName, total, change: 0 },
     };
@@ -1289,7 +1322,7 @@ export async function savePending() {
     enqueueOutbox(job);
     return;
   }
-  const res = await persistPending();
+  const res = await persistPending(porVerificar);
   if (!res.ok) return;
   posStore.set({
     sent: true,
@@ -1306,7 +1339,7 @@ export async function savePending() {
  * Store the ticket as a pending order (or re-save the one being edited)
  * without leaving the current screen. Labels print on the first send only.
  */
-async function persistPending(): Promise<{ ok: true; folio: string; ordenId: string; total: number } | { ok: false }> {
+async function persistPending(porVerificar?: "transferencia"): Promise<{ ok: true; folio: string; ordenId: string; total: number } | { ok: false }> {
   const s = posStore.get();
   if (!s.order.length || s.sending) return { ok: false };
   if (s.order.some((l) => l.missing)) {
@@ -1323,6 +1356,8 @@ async function persistPending(): Promise<{ ok: true; folio: string; ordenId: str
     customerNames: s.people.length ? s.people : undefined,
     note: s.note.trim() || undefined,
     creadoPor: s.person?.id,
+    seLoLlevamos: s.seLoLlevamos,
+    ...(porVerificar && !s.pending ? { porVerificar } : {}),
   }));
   if (!res.ok) {
     posStore.set({ sending: false, sendError: res.error });
@@ -1537,6 +1572,8 @@ function loadPending(o: PendingOrder, mode: "edit" | "charge") {
   posStore.set({
     order: lines,
     customerName: o.customerName,
+    seLoLlevamos: o.seLoLlevamos,
+    approvalCode: "",
     people: rebuildPeople(o),
     // Start neutral so the cashier consciously picks who the next drink is for.
     activePerson: null,
@@ -1559,17 +1596,28 @@ export function editPending(o: PendingOrder) {
   // the usual reason to edit is to add something to it.
   posStore.set({ view: "sale", ticketOpen: false });
 }
-/** Take payment for a pending order (stored total). */
-export function chargePending(o: PendingOrder) {
+/**
+ * Take payment for a pending order (stored total). «Verificar» on an order
+ * sent with its transfer still on the way opens the transfer page.
+ */
+export function chargePending(o: PendingOrder, method?: PayMethod) {
   loadPending(o, "charge");
-  posStore.set({ view: "tender", tendered: null, payMethod: "efectivo" });
+  posStore.set({ view: "tender", tendered: null, payMethod: method ?? (o.porVerificar === "transferencia" ? "transferencia" : "efectivo") });
   void refreshPendientes();
 }
-/** Take payment for a pending order person by person. */
+/** The «Personas» page of a pending order: assign lines, then charge person by person. */
 export function chargePendingSplit(o: PendingOrder) {
   loadPending(o, "charge");
-  posStore.set({ view: "tender", tendered: null, payMethod: "efectivo", split: true, splitTarget: null });
+  posStore.set({ view: "personas", tendered: null, payMethod: "efectivo", split: true, splitTarget: null });
   void refreshPendientes();
+}
+/** From «Personas»: charge one person's share (or the rest) with a method. */
+export function payShare(target: SplitTarget, method: PayMethod) {
+  posStore.set({ split: true, splitTarget: target, payMethod: method, tendered: null, approvalCode: "", sendError: null, view: "tender" });
+}
+/** Toggle «Se lo llevamos» on the ticket. */
+export function setSeLoLlevamos(v: boolean) {
+  posStore.set({ seLoLlevamos: v });
 }
 /** Void a pending order; if it was loaded in the ticket, clear the ticket too. */
 export async function cancelPending(id: string, motivo?: string) {

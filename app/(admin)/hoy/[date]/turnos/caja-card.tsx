@@ -82,7 +82,7 @@ export function CajaCard({ cierre, window: ventana, hasCajaTask, compact }: {
       <div className="text-muted" style={{ fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>
         {noPos
           ? "Sin pagos registrados en el POS en la ventana."
-          : `POS: efectivo ${posMoney(cierre.efectivo_cop)} · tarjeta ${posMoney(cierre.tarjeta_cop)} · transferencia ${posMoney(cierre.transferencia_cop)} · ${cierre.pagos_count} pago${cierre.pagos_count === 1 ? "" : "s"}`}
+          : `POS: efectivo ${posMoney(cierre.efectivo_cop)} · datáfono ${posMoney(cierre.tarjeta_cop)} · transferencia ${posMoney(cierre.transferencia_cop)} · ${cierre.pagos_count} pago${cierre.pagos_count === 1 ? "" : "s"}`}
       </div>
       {cierre.denominaciones.length > 0 && (
         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>

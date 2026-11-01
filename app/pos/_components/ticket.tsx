@@ -147,7 +147,7 @@ export function Ticket() {
           </button>
         </div>
         <div className="pos-paymore">
-          <button type="button" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) startTender("tarjeta"); }}>
+          <button type="button" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) startTender("datafono"); }}>
             Otro pago
           </button>
           <button type="button" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) void savePending(); }}>

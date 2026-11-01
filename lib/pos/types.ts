@@ -37,6 +37,8 @@ export interface PosMenuItem {
   recipe: PosRecipeLine[];
   /** Preparation steps (productos.preparacion, one per line), empty when none. */
   prep: string[];
+  /** Upsell line the barista says for this product (productos.recomendacion), null = none. */
+  script: string | null;
 }
 
 /** "1. Muele…\n2. Extrae…" or plain lines → trimmed steps, numbering stripped. */
@@ -106,6 +108,29 @@ export interface PosCatalog {
   handArt: string | null;
   /** The team who can be on the bar (for «Barista: …»): staff with an active sede membership. */
   equipo: PosBarista[];
+  /**
+   * What sells together, from the orders of the last 30 days: product id →
+   * the products most often on the same order, most frequent first.
+   */
+  pairs: Record<string, PosPair[]>;
+  /** Shown on the payment pages when set (organizations columns). */
+  pago: PosPagoInfo;
+}
+
+/** Another product that shows up on the same orders as one product. */
+export interface PosPair {
+  id: string;
+  /** Share (0–100) of the orders with the product that also had this one. */
+  pct: number;
+}
+
+export interface PosPagoInfo {
+  /** Bre-B key / account the customer transfers to. */
+  transferenciaLlave: string | null;
+  /** Account holder name. */
+  transferenciaTitular: string | null;
+  /** When datáfono money reaches the account, e.g. «1–2 días hábiles». */
+  datafonoLiquidacion: string | null;
 }
 
 /** A barista the register can credit a sale to (ordenes.barista_id). */
@@ -220,7 +245,16 @@ export interface PendingOrderItem {
 }
 
 export type OrderStatus = "pendiente" | "pagada" | "cancelada";
-export type PayMethodId = "efectivo" | "tarjeta" | "transferencia";
+/** How a payment was taken. «datafono» is record-only (Bold voucher, no integration). */
+export type PayMethodId = "efectivo" | "transferencia" | "datafono";
+/** An order's summary over its payments; «mixto» = paid in parts with several methods. */
+export type PayMethodSummary = PayMethodId | "mixto";
+export const PAY_METHOD_LABEL: Record<PayMethodSummary, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+  datafono: "Datáfono",
+  mixto: "Mixto",
+};
 
 /** One payment on an order (several when the table pays per person). */
 export interface OrderPayment {
@@ -231,6 +265,8 @@ export interface OrderPayment {
   amount: number;
   tendered: number | null;
   change: number;
+  /** Approval number from the datáfono voucher (optional). */
+  approvalCode: string | null;
   createdAt: string;
 }
 /**
@@ -248,16 +284,20 @@ export interface PosOrder {
   total: number;
   sinGluten: boolean;
   note: string;
-  /** Table / group label ("Mesa 3"); per-person names live on the lines. */
+  /** Who the order is for (self-service: orders go by name, there are no tables). */
   customerName: string;
-  /** Ordered roster of the table (the ticket's chips), may include people with no line yet. */
+  /** Ordered roster of the order (the ticket's people chips), may include people with no line yet. */
   customerNames: string[];
   createdAt: string;
   paidAt: string | null;
   /** When the order reached the customer; null = still to deliver. */
   entregadaAt: string | null;
   /** Summary over the payments: the one method, or "mixto". */
-  paymentMethod: PayMethodId | "mixto" | null;
+  paymentMethod: PayMethodSummary | null;
+  /** The barista brings it to the customer («Se lo llevamos»). */
+  seLoLlevamos: boolean;
+  /** «Aún no llega · pagar después»: sent before the transfer showed up. */
+  porVerificar: "transferencia" | null;
   tendered: number | null;
   change: number;
   /** Sum of the payments so far (cached on the order). */
@@ -278,5 +318,5 @@ export type PendingOrder = PosOrder;
  * reason is prepended to `ordenes.notes` (no schema change) so the 16 % of
  * cancelled orders can be read by cause.
  */
-export const CANCEL_REASONS = ["Error al marcar", "Cliente se fue", "Duplicado", "Prueba"] as const;
+export const CANCEL_REASONS = ["Duplicado", "Error al tomar", "Cliente se fue", "Se acabó el producto", "Otro"] as const;
 export type CancelReason = (typeof CANCEL_REASONS)[number];
