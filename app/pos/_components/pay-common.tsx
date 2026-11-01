@@ -21,7 +21,7 @@ export function listaY(xs: string[]): string {
 
 const bogotaNow = (): string => {
   const d = new Date(Date.now() - 5 * 3_600_000);
-  const h = d.getUTCHours() % 12 || 12;
+  const h = d.getUTCHours();
   return `${h}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 };
 
