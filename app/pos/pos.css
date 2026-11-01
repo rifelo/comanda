@@ -319,3 +319,135 @@
   .app .combo { height: 60px; }
   .app .ocard { min-height: 64px; }
 }
+
+/* ── A · Venta (top bar, catalog, ticket, cart bar, estados, receta) ── */
+.app .topbar { position: relative; }
+.app .topbar .status { border: none; font-family: inherit; }
+.app button.status { cursor: pointer; }
+.app .status .ico { display: none; flex-shrink: 0; }
+.app .reg-only { display: none; }
+.app .menu { max-height: calc(100dvh - 80px); overflow-y: auto; }
+.app .menu button:disabled { opacity: 0.5; cursor: default; }
+.app .menu-shade { position: fixed; inset: 0; z-index: 41; background: transparent; border: none; padding: 0; cursor: default; }
+.app .switch { width: 44px; height: 26px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); position: relative; flex-shrink: 0; }
+.app .switch > span { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 999px; background: var(--muted); transition: transform 0.15s ease; }
+.app .switch.on { background: var(--strong); border-color: var(--strong); }
+.app .switch.on > span { transform: translateX(18px); background: var(--on-strong); }
+
+.app .catalog { min-height: 0; }
+.app .cats { overflow-x: auto; scrollbar-width: none; }
+.app .cats::-webkit-scrollbar { display: none; }
+.app .cats .cat { flex-shrink: 0; }
+/* Favoritos fill the grid (2 rows at 1280 × 800); a longer category keeps
+   the same row height and scrolls instead of squashing the tiles. */
+.app .grid { --rows: 2; --g: 12px; gap: var(--g); overflow-y: auto; overscroll-behavior: contain; align-content: start;
+  grid-auto-rows: minmax(min-content, calc((100% - (var(--rows) - 1) * var(--g)) / var(--rows))); }
+.app .tile .n { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.app .tile.hl { outline: 3px solid var(--brand); outline-offset: -1px; }
+.app .tile:not(.off):active { transform: scale(0.98); }
+.app .grid .empty { min-height: 160px; }
+.app .ocard { position: relative; }
+.app .ocard-main { flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 12px; margin: -12px 0 -12px -14px; padding: 12px 0 12px 14px; background: transparent; border: none; border-radius: 16px; font-family: inherit; color: inherit; text-align: left; cursor: pointer; }
+.app .ocard.more { flex: 0 0 200px; justify-content: center; color: var(--muted); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+
+.app .tk-close { display: none; }
+.app .tk-shade { display: none; }
+.app .tk-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 6px; }
+.app .tk-box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--line); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.app .tk-box.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.app .tk-lines { flex: 1; min-height: 0; }
+.app button.line { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--line); font-family: inherit; color: inherit; text-align: left; cursor: pointer; }
+.app button.line:last-child { border-bottom: none; }
+
+.app .cartbar { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.app .cb-open { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; background: transparent; border: none; padding: 6px 0; font-family: inherit; color: inherit; text-align: left; cursor: pointer; }
+.app .cb-n { width: 34px; height: 34px; border-radius: 9px; background: var(--brand); color: var(--on-brand); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; flex-shrink: 0; }
+.app .cb-n.none { background: var(--surface-2); color: var(--muted); }
+.app .cb-t { display: block; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .cb-s { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .cartbar .total .v { font-size: 28px; }
+
+.app .toast .btn.quiet { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); }
+.app .sheet { max-height: calc(100dvh - 48px); }
+.app .rc-body { display: flex; gap: 24px; align-items: flex-start; min-height: 0; }
+.app .rc-photo { padding: 0; overflow: hidden; }
+.app button.rc-photo { cursor: zoom-in; border-style: solid; }
+.app .rc-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.app .rc-cols { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; }
+.app .rc-zoom { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.9); border: none; display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.app .rc-zoom img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px; }
+
+@media (min-width: 1600px) and (min-height: 960px) {
+  .app .reg-only { display: inline-flex; }
+  .app .topbar .badge-btn { height: 56px; font-size: 17px; padding: 0 24px; }
+  .app .topbar .icon-btn { width: 56px; height: 56px; }
+  .app .topbar .clock { font-size: 26px; }
+  .app .catalog { gap: 16px; }
+  .app .grid { --g: 16px; }
+  .app .combos, .app .pending { gap: 16px; }
+  .app .ticket-h { padding: 18px 22px; }
+  .app .ticket-h .h2 { font-size: 22px; }
+  .app .ticket-b { padding: 6px 22px; }
+  .app .ticket-f { padding: 20px 22px; gap: 12px; }
+  .app .ticket .line { min-height: 68px; }
+  .app .ticket .line .ln, .app .ticket .line .lp { font-size: 18px; }
+  .app .ticket-f .btn.lg { height: 80px; font-size: 22px; }
+  .app .ticket-f .pay2 .btn { height: 56px; }
+  .app .combo .n { font-size: 17px; }
+  .app .combo .p { font-size: 19px; }
+}
+@media (max-width: 1023px) {
+  .app .topbar .status .txt, .app .topbar .clock, .app .topbar .act-long { display: none; }
+  .app .topbar .status { padding: 0 12px; }
+  .app .status .ico { display: block; }
+  .app .grid { --rows: 3; }
+  .app .combos { display: none; }
+  .app .pending .ocard:nth-child(n+3) { display: none; }
+  .app .offline .off-sub { display: none; }
+  .app .tk-close { display: flex; }
+  .app .tk-shade { display: block; position: absolute; inset: 0; z-index: 29; background: rgba(0, 0, 0, 0.4); border: none; padding: 0; }
+  .app .sale > .ticket:not(.open) { visibility: hidden; transition: transform 0.2s ease, visibility 0s 0.2s; }
+  .app .toast { bottom: 150px; }
+  .app .rc-body { flex-direction: column; }
+  .app .rc-photo { width: 100%; height: 220px; }
+  .app .rc-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .app .topbar .logo { width: 32px !important; height: 32px !important; }
+  .app .topbar .chip { height: 40px; }
+  .app .topbar .chip .avatar { width: 28px; height: 28px; font-size: 11px; }
+  .app .topbar .status { height: 40px; padding: 0 10px; }
+  .app .status .ico { display: none; }
+  .app .topbar .badge-btn { height: 40px; padding: 0 12px; font-size: 14px; }
+  .app .topbar .icon-btn { width: 44px; height: 44px; }
+  .app .grid { --rows: 4; --g: 8px; }
+  .app .tile .qty { top: 6px; right: 6px; min-width: 24px; height: 24px; font-size: 12px; }
+  .app .pending { display: none; }
+  .app .offline { gap: 10px; font-size: 14px; padding: 0 12px; }
+  .app .cb-open { gap: 10px; padding: 4px 0; }
+  .app .cb-n { width: 30px; height: 30px; border-radius: 8px; font-size: 14px; }
+  .app .cb-t { font-size: 15px; }
+  .app .cb-s { font-size: 12px; }
+  .app .cb-s .hint, .app .cb-up { display: none; }
+  .app .cartbar .total .v { font-size: 24px; }
+  .app .cartbar .pay2 { gap: 8px; }
+  .app .cartbar .pay2 .btn { height: 52px; font-size: 16px; padding: 0 12px; }
+  .app .toast { white-space: normal; width: calc(100% - 24px); flex-wrap: wrap; bottom: 140px; }
+  .app .rc-cols { gap: 16px; }
+}
+.app .tile .n { hyphens: auto; overflow-wrap: break-word; }
+.app .ticket-h .h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .ticket-h .chip { flex-shrink: 0; }
+.app .ticket-h .chip.ask { padding-left: 14px; }
+.app .ocard .on { display: block; overflow: hidden; text-overflow: ellipsis; }
+.app .tile:has(.qty) .n { padding-right: 26px; }
+.app .ticket-f .pay2 .btn { padding: 0 8px; font-size: 14px; }
+.app .steps-n { list-style: decimal; }
+.app .steps-n li::marker { font-weight: 700; color: var(--muted); }
+@media (max-width: 600px) {
+  .app .ticket-h { padding: 12px 14px; gap: 8px; }
+  .app .ticket-h .h2 { font-size: 18px; }
+  .app .ticket-h .chip { font-size: 14px; padding-right: 12px; }
+  .app .ticket-h .chip svg { display: none; }
+}
+.app .cats { padding: 4px; margin: -4px; }
