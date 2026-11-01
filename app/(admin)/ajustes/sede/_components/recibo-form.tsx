@@ -10,6 +10,7 @@ export type ReciboInitial = {
   transferencia_llave: string;
   transferencia_titular: string;
   datafono_liquidacion: string;
+  meta_diaria: string;
 };
 
 /**
@@ -58,6 +59,9 @@ export function ReciboForm({ initial }: { initial: ReciboInitial }) {
         <Field label="Llave Bre-B / cuenta" hint="Se muestra al cobrar por transferencia." maxLength={80} {...field("transferencia_llave")} />
         <Field label="Titular de la cuenta" maxLength={80} {...field("transferencia_titular")} />
         <Field label="Datáfono: cuándo llega la plata" hint="Ej.: 1–2 días hábiles." maxLength={60} {...field("datafono_liquidacion")} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-line pt-5">
+        <Field label="Meta de ventas del día" hint="El equipo la ve en el POS (Hoy en ventas). La semana = 7 × la del día. Vacía = sin meta." inputMode="numeric" placeholder="600.000" maxLength={20} {...field("meta_diaria")} />
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={save} loading={pending}>Guardar</Button>

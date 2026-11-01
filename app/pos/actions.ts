@@ -28,6 +28,7 @@ import { bogotaDay, shiftDay } from "@/lib/pos/pending";
 import { cancelNotes, summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
 import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lineas";
+import { resumirVentas, ventanaVentas, type ResumenVentas, type VentaOrden } from "@/lib/pos/ventas";
 
 // ── payloads (lines are re-priced in lib/pos/lineas.ts, never trusted) ──────
 const PaymentSchema = z.object({
@@ -712,6 +713,83 @@ export async function contarCompletados(input: unknown = {}): Promise<{ ok: true
     .lt("created_at", `${shiftDay(d, 1)}T05:00:00Z`);
   if (error) return { ok: false, error: "No se pudo contar." };
   return { ok: true, count: count ?? 0 };
+}
+
+// ── «Hoy en ventas» (/pos/ventas) ─────────────────────────────────────────────
+const ResumenVentasSchema = z.object({ periodo: z.enum(["hoy", "ayer", "semana"]) });
+export type ResumenVentasResult =
+  | {
+      ok: true;
+      resumen: ResumenVentas;
+      /** Sold in the same span one week earlier. */
+      antes: number;
+      /** organizations.meta_diaria_cop (null = no goal set). */
+      metaDiaria: number | null;
+      /** profile id → full name, for «Por barista». */
+      nombres: Record<string, string>;
+      at: number;
+    }
+  | { ok: false; error: string };
+
+/** Team-facing sales summary of today, yesterday or this week (lib/pos/ventas.ts). */
+export async function resumenVentas(input: unknown): Promise<ResumenVentasResult> {
+  const parsed = ResumenVentasSchema.safeParse(input ?? {});
+  if (!parsed.success) return { ok: false, error: "Periodo inválido." };
+  const { periodo } = parsed.data;
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const now = Date.now();
+  const w = ventanaVentas(periodo, now);
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const [main, prev, org] = await Promise.all([
+    supabase
+      .from("ordenes")
+      .select("id, status, total_cop, created_at, payment_method, merged_into, created_by, orden_items(kind, producto_id, combo_id, name, qty), orden_pagos(method, amount_cop)")
+      .eq("organization_id", orgId)
+      .gte("created_at", iso(w.desde))
+      .lt("created_at", iso(w.hasta))
+      .order("created_at", { ascending: true })
+      .limit(3000),
+    supabase
+      .from("ordenes")
+      .select("total_cop")
+      .eq("organization_id", orgId)
+      .eq("status", "pagada")
+      .gte("created_at", iso(w.antes.desde))
+      .lt("created_at", iso(w.antes.hasta))
+      .limit(3000),
+    // The goal column arrives with 0065; until then the card just says «Sin meta».
+    Promise.resolve(supabase.from("organizations").select("meta_diaria_cop").eq("id", orgId).maybeSingle()).catch(() => ({ data: null })),
+  ]);
+  if (main.error) {
+    console.error("[resumenVentas] failed:", main.error);
+    return { ok: false, error: "No se pudieron cargar las ventas." };
+  }
+  const rows = (main.data ?? []) as Array<Record<string, unknown>>;
+  const ordenes: VentaOrden[] = rows.map((o) => ({
+    id: o.id as string,
+    status: o.status as VentaOrden["status"],
+    total: Number(o.total_cop ?? 0),
+    createdAt: o.created_at as string,
+    method: (o.payment_method as string | null) ?? null,
+    merged: !!o.merged_into,
+    createdBy: (o.created_by as string | null) ?? null,
+    items: ((o.orden_items ?? []) as Array<Record<string, unknown>>).map((it) => ({
+      key: ((it.kind === "combo" ? it.combo_id : it.producto_id) as string | null) ?? `name:${it.name as string}`,
+      name: it.name as string,
+      qty: Number(it.qty ?? 0),
+    })),
+    pagos: ((o.orden_pagos ?? []) as Array<Record<string, unknown>>).map((p) => ({ method: p.method as string, amount: Number(p.amount_cop ?? 0) })),
+  }));
+  const resumen = resumirVentas(ordenes, { periodo, now });
+  const ids = resumen.personas.map((p) => p.id).filter((x): x is string => !!x);
+  const nombres: Record<string, string> = {};
+  if (ids.length) {
+    const { data: people } = await supabase.from("profiles").select("id, full_name").in("id", ids);
+    for (const p of (people ?? []) as Array<{ id: string; full_name: string | null }>) nombres[p.id] = p.full_name ?? "";
+  }
+  const antes = ((prev.data ?? []) as Array<{ total_cop: number }>).reduce((n, o) => n + Number(o.total_cop ?? 0), 0);
+  const metaRaw = (org.data as { meta_diaria_cop?: number | null } | null)?.meta_diaria_cop;
+  return { ok: true, resumen, antes, metaDiaria: metaRaw ? Number(metaRaw) : null, nombres, at: now };
 }
 
 // ── se lo llevamos ────────────────────────────────────────────────────────────

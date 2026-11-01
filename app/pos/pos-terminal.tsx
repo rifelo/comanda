@@ -16,6 +16,7 @@
  *   /pos/done                   Venta registrada (closes itself when no change)
  *   /pos/pedidos                Pendientes · Completados (+ Cancelar, Combinar)
  *   /pos/pedidos/<id>/personas  split by person
+ *   /pos/ventas                 Hoy en ventas (KPIs, por hora, más vendidos, pagos, barista)
  *
  * Overlays over any screen: Receta (hold a tile), barista picker, assistant,
  * Etiquetas, Puntos, the offline bar and the printer toast. Below 1024 px the
@@ -28,7 +29,7 @@ import * as React from "react";
 import { FAV_CAT, type PosCatalog } from "@/lib/pos/types";
 import { usePosLive } from "./pos-live";
 import { usePosWindowLease } from "./pos-window";
-import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, type PosSessionPerson } from "./pos-store";
+import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, closeVentas, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
 import { CUP_LABEL_ASSETS } from "@/lib/printer/label";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
@@ -45,6 +46,7 @@ import { DatafonoPage } from "./_components/pay-datafono";
 import { VentaRegistradaPage } from "./_components/done";
 import { PedidosPage } from "./_components/ordenes";
 import { PersonasPage } from "./_components/personas";
+import { VentasPage } from "./_components/ventas";
 import { PuntosScreen } from "./_components/puntos";
 import { EtiquetasScreen } from "./_components/etiquetas";
 import { AiDrawer } from "./_components/ai";
@@ -184,6 +186,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       else if (st.view === "personas") closeOrdenes();
       else if (st.view === "etiquetas") closeEtiquetas();
       else if (st.view === "puntos") closePuntos();
+      else if (st.view === "ventas") closeVentas();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
       else if (st.ticketOpen) posStore.set({ ticketOpen: false });
     };
@@ -216,6 +219,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       {s.view === "done" && <VentaRegistradaPage />}
       {s.view === "ordenes" && <PedidosPage />}
       {s.view === "personas" && <PersonasPage />}
+      {s.view === "ventas" && <VentasPage />}
       {s.view === "etiquetas" && <EtiquetasScreen />}
       {s.view === "puntos" && <PuntosScreen />}
       {s.sheet?.mode === "receta" && <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />}
