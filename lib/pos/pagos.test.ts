@@ -10,7 +10,7 @@ describe("splitByPerson", () => {
       [it_("Torta", 1, 7000), it_("Latte", 1, 8000, "Zoe"), it_("Tinto", 2, 3000, "Juan"), it_("Latte", 1, 8000, "María")],
       ["María", "Juan"],
     );
-    expect(shares.map((s) => `${s.label}:${s.amount}`)).toEqual(["María:8000", "Juan:6000", "Zoe:8000", "Mesa:7000"]);
+    expect(shares.map((s) => `${s.label}:${s.amount}`)).toEqual(["María:8000", "Juan:6000", "Zoe:8000", "Sin nombre:7000"]);
     expect(shares[3].customer).toBeNull();
   });
   it("skips people with nothing on the ticket and omits Mesa when nothing is unassigned", () => {
@@ -36,7 +36,7 @@ describe("shareStatus", () => {
     expect(shareStatus(share, [], true).done).toBe(true);
   });
   it("matches Mesa with payments that carry no person", () => {
-    const mesa: PersonShare = { customer: null, label: "Mesa", items: [], amount: 7000 };
+    const mesa: PersonShare = { customer: null, label: "Sin nombre", items: [], amount: 7000 };
     expect(shareStatus(mesa, [pago(null, 7000)], false).done).toBe(true);
   });
 });

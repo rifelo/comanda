@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bogotaDay, bogotaTime, dayLabel, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
+import { ageLabel, bogotaClock, bogotaDay, bogotaTime, dayLabel, folioTag, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
 import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
@@ -129,5 +129,24 @@ describe("Bogotá days", () => {
   });
   it("formats Bogotá clock time", () => {
     expect(bogotaTime("2026-09-16T19:05:00Z")).toBe("14:05");
+  });
+});
+
+describe("Pedidos card labels", () => {
+  it("shows the folio number with four digits", () => {
+    expect(folioTag("A-1246")).toBe("#1246");
+    expect(folioTag("A-73")).toBe("#0073");
+    expect(folioTag("…")).toBe("…");
+  });
+  it("says how long an order has waited", () => {
+    const now = Date.parse("2026-10-31T15:00:00Z");
+    expect(ageLabel("2026-10-31T14:59:40Z", now)).toBe("ahora");
+    expect(ageLabel("2026-10-31T14:46:00Z", now)).toBe("14 min");
+    expect(ageLabel("2026-10-31T13:50:00Z", now)).toBe("1 h 10 min");
+    expect(ageLabel("2026-10-31T13:00:00Z", now)).toBe("2 h");
+  });
+  it("formats the delivery time without a leading zero", () => {
+    expect(bogotaClock("2026-10-31T14:31:00Z")).toBe("9:31");
+    expect(bogotaClock("2026-10-31T22:05:00Z")).toBe("17:05");
   });
 });

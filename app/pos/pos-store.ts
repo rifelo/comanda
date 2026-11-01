@@ -52,6 +52,8 @@ import {
   listarPendientes,
   registrarPago,
   combinarPendientes,
+  contarCompletados,
+  marcarSeLoLlevamos,
   posSuggest,
   transcribeAudio,
 } from "./actions";
@@ -1006,6 +1008,7 @@ export function queuedOrders(s: Pick<PosState, "outbox" | "catalog">): PosOrder[
       paymentMethod: pagada ? j.payment?.method ?? null : null,
       seLoLlevamos: j.base.seLoLlevamos ?? false,
       porVerificar: pagada ? null : j.base.porVerificar ?? null,
+      baristaId: j.base.baristaId ?? null,
       tendered: pagada ? j.payment?.tendered ?? null : null,
       change: pagada ? j.snapshot.change : 0,
       paid: 0,
@@ -1989,3 +1992,127 @@ export function useMicTranscribe(listening: boolean) {
   }, [listening]);
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+// ── Pedidos · Cancelar · Combinar · Personas (package C) ────────
+/**
+ * «Combinar pedidos» overlay: tap an open order in or out. The target is
+ * always the oldest number among the picked ones (computed from the queue,
+ * whichever Pedidos tab is showing).
+ */
+export function toggleCombinar(id: string) {
+  posStore.set((st) => {
+    const sel = st.merge.sel.includes(id) ? st.merge.sel.filter((x) => x !== id) : [...st.merge.sel, id];
+    const pool = [...st.pendientes, ...st.ordenes.filter((o) => !st.pendientes.some((p) => p.id === o.id))];
+    const target = defaultMergeTarget(pool.filter((o) => sel.includes(o.id)));
+    return { ...st, merge: { ...st.merge, on: true, sel, target, targetChosen: false, error: null } };
+  });
+}
+
+/** «Se lo llevamos» on a stored order (card menu). Optimistic; a refusal flips it back. */
+export async function toggleSeLoLlevamos(id: string, value: boolean) {
+  const flip = (list: PosOrder[], v: boolean) => list.map((o) => (o.id === id ? { ...o, seLoLlevamos: v } : o));
+  posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, value), pendientes: flip(st.pendientes, value), ordenesError: null }));
+  let res: Awaited<ReturnType<typeof marcarSeLoLlevamos>>;
+  try {
+    res = await marcarSeLoLlevamos({ ordenId: id, value });
+  } catch {
+    res = { ok: false, error: "Sin conexión: no se guardó «Se lo llevamos»." };
+  }
+  if (!res.ok) {
+    const error = res.error;
+    posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, !value), pendientes: flip(st.pendientes, !value), ordenesError: error }));
+    return;
+  }
+  nudge("ordenes");
+}
+
+/** «Completados · N» while the queue is showing: how many orders of that day are paid and delivered. */
+export async function countCompletados(day: string): Promise<number | null> {
+  try {
+    const res = await contarCompletados({ day });
+    return res.ok ? res.count : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Personas → «Volver»: drop the order from the ticket and go back to Pedidos. */
+export function closePersonas() {
+  resetConversation();
+  openOrdenes();
+}
+
+let personasSave: Promise<void> | null = null;
+let personasAgain = false;
+/**
+ * Save who each line belongs to on the stored order being split (same
+ * guardarPendiente as «Editar»: the number and the payments stay). Saves
+ * run one at a time; taps during a save are folded into one more.
+ */
+function savePersonas(): Promise<void> {
+  if (personasSave) {
+    personasAgain = true;
+    return personasSave;
+  }
+  personasSave = (async () => {
+    try {
+      do {
+        personasAgain = false;
+        const s = posStore.get();
+        if (!s.pending || s.pending.mode !== "charge") return;
+        posStore.set({ sending: true, sendError: null });
+        const res = await safeAction(guardarPendiente({
+          ordenId: s.pending.id,
+          orderType: s.orderType,
+          sinGluten: s.noteSinGluten,
+          lines: linesPayload(s.order),
+          customerName: s.customerName.trim() || undefined,
+          customerNames: s.people.length ? s.people : undefined,
+          note: s.note.trim() || undefined,
+          seLoLlevamos: s.seLoLlevamos,
+        }));
+        if (!res.ok) {
+          posStore.set({ sending: false, sendError: res.error });
+          break;
+        }
+        const total = res.total;
+        posStore.set((st) => ({ ...st, sending: false, pending: st.pending ? { ...st.pending, total } : st.pending }));
+      } while (personasAgain);
+    } finally {
+      personasSave = null;
+      personasAgain = false;
+    }
+    // The stored lines (new ids, same people) come back with the queue.
+    await refreshPendientes();
+    nudge("ordenes");
+  })();
+  return personasSave;
+}
+
+/**
+ * Personas: give a line of the stored order to a person (null = nobody).
+ * The split on the right follows at once; the order is saved behind.
+ */
+export function assignLinePersona(idx: number, name: string | null) {
+  const s = posStore.get();
+  if (!s.pending || s.pending.mode !== "charge" || !s.order[idx]) return;
+  setLinePerson(idx, name);
+  posStore.set((st) => {
+    if (!st.pending) return st;
+    // rebuildLines keeps the stored order (by position): line idx ↔ item idx.
+    const sorted = [...st.pending.items].sort((a, b) => a.position - b.position);
+    const items = sorted.map((it, k) => (k === idx ? { ...it, customer: name ?? "" } : it));
+    const people = name && !st.pending.people.includes(name) ? [...st.pending.people, name] : st.pending.people;
+    return { ...st, pending: { ...st.pending, items, people } };
+  });
+  void savePersonas();
+}
+
+/** Personas «+ Persona»: add someone to the stored order and select them. */
+export function addPersonaToOrder(raw: string): string | null {
+  const name = addPerson(raw, { activate: true });
+  if (!name) return null;
+  posStore.set((st) => (st.pending && !st.pending.people.includes(name) ? { ...st, pending: { ...st.pending, people: [...st.pending.people, name] } } : st));
+  void savePersonas();
+  return name;
+}
