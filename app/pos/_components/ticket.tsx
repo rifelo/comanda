@@ -1,433 +1,386 @@
 "use client";
 
+/**
+ * Venta.dc.html — the ticket (.ticket): «Pedido nuevo» / «Pedido #folio»,
+ * «Prepara <barista>», the name that goes on the cup, «Se lo llevamos»,
+ * people chips, the lines, total and the pay buttons. Below 1024 px it is
+ * the slide-over opened from the cart bar (`ticketOpen`).
+ */
 import * as React from "react";
 import { posMoney } from "@/lib/pos/types";
-import { X } from "lucide-react";
-import { useCatalog, usePos, posStore, orderTotal, modLinePrice, modSummary, changeQty, clearTicket, setActivePerson, addPerson, nameTicket, renamePerson, removePerson, setLinePerson, linesOf, startTender, payNow, savePending, discardPendingEdit, type OrderLine } from "../pos-store";
-import { usePrinter, connectPrinter, checkPrinter, relaysLabels, printerStore, type PrinterStatus } from "@/lib/printer/serial";
-import { C, F, H, Overlay } from "./theme";
+import { useCatalog, usePos, posStore, orderTotal, modLinePrice, modSummary, clearTicket, setActivePerson, addPerson, nameTicket, renamePerson, removePerson, linesOf, startTender, savePending, discardPendingEdit, setSeLoLlevamos, openBaristaPicker, type OrderLine } from "../pos-store";
+import { relaysLabels, type PrinterStatus } from "@/lib/printer/serial";
+import { C, F } from "./theme";
 
 // ════════════════════════════════════════════════════════════════
-// Ticket
+// Small shared helpers (canvas format: "$ 10.000")
 // ════════════════════════════════════════════════════════════════
+export const money = (n: number): string => (n < 0 ? "−$ " : "$ ") + posMoney(Math.abs(n)).slice(1);
+
+/** «Pipe Cipagauta» → «PC». */
+export function initials(name: string): string {
+  const w = name.trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+/** «Pa' Juan» line / cart summary: who it's for and the options picked. */
+export function lineSub(line: OrderLine, catalog: Parameters<typeof modSummary>[1]): string {
+  const parts: string[] = [];
+  if (line.customer) parts.push(`Pa' ${line.customer}`);
+  if (line.kind === "combo") {
+    const c = catalog.comboById[line.id];
+    if (c) parts.push(c.items.map((id) => catalog.byId[id]?.name).filter(Boolean).join(" + ") || c.desc);
+  }
+  const mods = modSummary(line, catalog);
+  if (mods.length) parts.push(mods.map((m) => m.name).join(", "));
+  return parts.join(" · ");
+}
+
+/**
+ * Canvas overlay: .scrim + .sheet. Click on the scrim or Escape closes;
+ * Escape is caught before the register's own handler.
+ */
+export function Overlay({ onClose, labelledBy, maxWidth, children, style }: {
+  onClose: () => void;
+  labelledBy: string;
+  maxWidth?: number;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  const close = React.useRef(onClose);
+  React.useEffect(() => { close.current = onClose; });
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close.current(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+  return (
+    <div className="scrim" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="sheet" role="dialog" aria-modal="true" aria-labelledby={labelledBy} style={{ ...(maxWidth ? { maxWidth } : {}), ...style }}>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Wall clock for the POS, as an external store: ticks every 30 s while
+ * something listens; 0 on the server (render nothing time-based there).
+ */
+let nowVal = 0;
+const nowSubs = new Set<() => void>();
+let nowTimer: number | null = null;
+function subscribeNow(cb: () => void) {
+  nowSubs.add(cb);
+  if (nowTimer === null) {
+    nowVal = Date.now();
+    nowTimer = window.setInterval(() => { nowVal = Date.now(); nowSubs.forEach((f) => f()); }, 30_000);
+  }
+  return () => {
+    nowSubs.delete(cb);
+    if (!nowSubs.size && nowTimer !== null) { window.clearInterval(nowTimer); nowTimer = null; }
+  };
+}
+export function useNow(): number {
+  return React.useSyncExternalStore(subscribeNow, () => nowVal || (nowVal = Date.now()), () => 0);
+}
+
+// Kept for the screens not redesigned yet (Pedidos / tender read the old type labels).
 export const ORDER_TYPES = [
   { id: "aqui", label: "Aquí" },
   { id: "llevar", label: "Llevar" },
   { id: "domicilio", label: "Domicilio" },
 ] as const;
+/** Kept for Puntos / Etiquetas (older inline styles). */
+export const personChip = (on: boolean, dashed = false): React.CSSProperties => ({
+  height: 44, padding: "0 14px", borderRadius: 999, cursor: "pointer", maxWidth: 190,
+  border: `1px ${dashed ? "dashed" : "solid"} ${on ? C.strong : C.rule}`,
+  background: on ? C.strong : C.paperLt, color: on ? C.onStrong : C.ink,
+  fontSize: 15, fontWeight: 600, fontFamily: F.mono,
+  display: "inline-flex", alignItems: "center", gap: 6,
+});
 
-export const qtyBtn: React.CSSProperties = { width: "var(--pos-qty)", height: "var(--pos-qty)", border: `1px solid ${C.rule}`, background: C.paperLt, color: C.ink, fontFamily: F.mono, fontSize: 18, lineHeight: 1, cursor: "pointer", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
+/**
+ * A PC without its printer connected cannot print labels — and nothing
+ * relays them for it. Shown (never asked): the top bar status and the
+ * printer toast say so; a sale never waits on it.
+ */
+export const sinImpresora = (p: { status: PrinterStatus; relay: boolean }) =>
+  !relaysLabels(p) && (p.status === "disconnected" || p.status === "off" || p.status === "error");
 
+const ChevronDown = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+);
+
+// ════════════════════════════════════════════════════════════════
+// Ticket
+// ════════════════════════════════════════════════════════════════
 export function Ticket() {
   const s = usePos();
   const catalog = useCatalog();
   const total = orderTotal(s.order, catalog);
-  // Local (not in the store): a second global modal key would collide with `s.sheet!`.
-  const [personSheet, setPersonSheet] = React.useState<PersonSheetState | null>(null);
+  const [editPerson, setEditPerson] = React.useState<string | null>(null);
+  const [noteOpen, setNoteOpen] = React.useState(false);
   const editing = s.pending?.mode === "edit" ? s.pending : null;
   const hasMissing = s.order.some((l) => l.missing);
   const canSend = s.order.length > 0 && !s.sending && !hasMissing;
   const count = s.order.reduce((n, l) => n + l.qty, 0);
   const comboSaved = s.order.filter((l) => l.kind === "combo").reduce((acc, l) => acc + (catalog.comboById[l.id]?.saving ?? 0) * l.qty, 0);
-  const [noteOpen, setNoteOpen] = React.useState(false);
   const listRef = React.useRef<HTMLDivElement>(null);
   const prevCount = React.useRef(s.order.length);
   React.useEffect(() => {
     if (s.order.length > prevCount.current && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
     prevCount.current = s.order.length;
   }, [s.order.length]);
+  const empty = s.order.length === 0 && !editing;
+  const offline = !s.online || s.outbox.some((j) => j.status === "offline");
 
   return (
-    <div className={"pos-ticket" + (s.ticketOpen ? " open" : "")} style={{ flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${C.rule}`, background: C.paperLt }}>
-      {/* header */}
-      <div className="pos-ticket-head" style={{ borderBottom: `1px solid ${C.rule}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          {/* Narrow layout only: back to the catalog. */}
-          <button type="button" className="pos-ticket-close" onClick={() => posStore.set({ ticketOpen: false })} aria-label="Cerrar pedido" style={{ width: 44, height: 44, marginLeft: -4, borderRadius: 12, border: `1px solid ${C.rule}`, background: C.paperLt, color: C.ink, cursor: "pointer", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={20} aria-hidden /></button>
-          <span style={{ ...H, fontSize: 20, color: editing ? C.red : C.ink, marginRight: "auto" }}>
-            {editing ? <>Editando <span className="cmd-num">{editing.folio}</span></> : "Pedido"}
-            {count > 0 && <span className="cmd-num" style={{ color: C.muted, fontWeight: 500, fontSize: 15 }}> · {count} ítem{count === 1 ? "" : "s"}</span>}
-          </span>
-          {editing ? (
-            <button className="pos-textbtn" onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido ${editing.folio}?`)) discardPendingEdit(); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Descartar</button>
-          ) : s.order.length > 0 && (
-            <button className="pos-textbtn" onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Vaciar</button>
+    <>
+      {s.ticketOpen && <button type="button" className="tk-shade" aria-label="Cerrar el pedido" tabIndex={-1} onClick={() => posStore.set({ ticketOpen: false })} />}
+      <aside className={"ticket" + (s.ticketOpen ? " open" : "")} aria-labelledby="tk">
+        <div className="ticket-h">
+          <h1 id="tk" className="h2 grow">{editing ? `Pedido #${editing.folio}` : "Pedido nuevo"}</h1>
+          <BaristaChip />
+          <button type="button" className="icon-btn tk-close" onClick={() => posStore.set({ ticketOpen: false })} aria-label="Cerrar el pedido">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+
+        <div className="ticket-b">
+          {empty ? (
+            <div className="empty">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 8h12l-1 11H6z" /><path d="M17 10h2a2 2 0 0 1 0 4h-2.4" /><path d="M8 4c0 1 1 1 1 2M11 4c0 1 1 1 1 2" /></svg>
+              <span style={{ fontSize: 17, fontWeight: 600, color: "var(--text)" }}>Toca un producto para empezar</span>
+              <span style={{ fontSize: 14 }}>
+                {offline ? "Sin conexión también puedes cobrar: la venta se guarda aquí." : "Mantén presionado un producto para ver su receta."}
+              </span>
+            </div>
+          ) : (
+            <>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 0 6px" }}>
+                <span className="label">¿A nombre de quién?</span>
+                <NameField />
+              </label>
+              <div className="tk-chips">
+                <button type="button" className="who-chip" aria-pressed={s.seLoLlevamos} onClick={() => setSeLoLlevamos(!s.seLoLlevamos)}>
+                  <span className={"tk-box" + (s.seLoLlevamos ? " on" : "")} aria-hidden>
+                    {s.seLoLlevamos && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>}
+                  </span>
+                  Se lo llevamos
+                </button>
+                <PeopleChips onEdit={setEditPerson} />
+              </div>
+              <div ref={listRef} className="tk-lines scroll">
+                {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} />)}
+              </div>
+              {(noteOpen || s.note) && (
+                <textarea
+                  className="field"
+                  value={s.note}
+                  onChange={(e) => posStore.set({ note: e.target.value })}
+                  placeholder="Nota para la barra…"
+                  aria-label="Nota del pedido"
+                  rows={2}
+                  maxLength={500}
+                  style={{ minHeight: 64, marginTop: 8, fontSize: 15 }}
+                />
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 0 4px" }}>
+                <span className="muted" style={{ fontSize: 14 }}>{count} ítem{count === 1 ? "" : "s"}</span>
+                <span className="grow" />
+                <button type="button" className="btn ghost sm" style={{ height: 44, fontSize: 14 }} onClick={() => { if (noteOpen || s.note) { posStore.set({ note: "" }); setNoteOpen(false); } else setNoteOpen(true); }}>
+                  {noteOpen || s.note ? "Quitar nota" : "Nota"}
+                </button>
+                {editing ? (
+                  <button type="button" className="btn ghost sm" style={{ height: 44, fontSize: 14 }} onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido #${editing.folio}?`)) discardPendingEdit(); }}>Descartar</button>
+                ) : (
+                  <button type="button" className="btn ghost sm" style={{ height: 44, fontSize: 14 }} onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }}>Vaciar</button>
+                )}
+              </div>
+            </>
           )}
         </div>
-        {/* Stacked, or on one row on a short screen (POS_CSS). */}
-        <div className="pos-meta">
-          <div className="pos-otypes" role="group" aria-label="Tipo de pedido" style={{ background: C.paperDk, borderRadius: 12, padding: 4, gap: 4 }}>
-            {ORDER_TYPES.map((t) => {
-              const on = s.orderType === t.id;
-              return (
-                <button key={t.id} type="button" className="pos-otype" aria-pressed={on} onClick={() => posStore.set({ orderType: t.id })} style={{
-                  fontSize: 15, fontWeight: 600, cursor: "pointer", borderRadius: 9, border: "none",
-                  background: on ? C.paperLt : "transparent", color: on ? C.ink : C.muted, boxShadow: on ? "var(--shadow-1)" : "none",
-                }}>{t.label}</button>
-              );
-            })}
-          </div>
-          <NameField />
-        </div>
-        {/* People at the table. Inline styles only on these nodes (no responsive Tailwind). */}
-        <div style={{ marginTop: 8 }}>
-          <PersonPicker
-            value={s.activePerson}
-            onPick={setActivePerson}
-            noAdd
-            onEdit={(name) => setPersonSheet({ mode: "edit", name })}
-            counts
-          />
-          {s.people.length > 0 && (
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Toca un nombre para asignarle lo que agregues.</div>
+
+        <div className="ticket-f">
+          {s.noteSinGluten && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="pill ok">Pedido sin gluten</span>
+              <button type="button" className="btn ghost sm" style={{ height: 36, fontSize: 13, padding: "0 10px" }} onClick={() => posStore.set({ noteSinGluten: false })}>Quitar</button>
+            </div>
+          )}
+          {comboSaved > 0 && <span className="save" style={{ alignSelf: "flex-start" }}>Ahorro en combos · {money(comboSaved)}</span>}
+          <div className="total"><span className="t">Total</span><span className={"v" + (empty ? " muted" : "")}>{money(total)}</span></div>
+          {hasMissing && <span role="alert" style={{ fontSize: 13, color: "var(--late)", fontWeight: 600 }}>Quita el producto no disponible para continuar.</span>}
+          {s.sendError && s.view === "sale" && <span role="alert" style={{ fontSize: 13, color: "var(--late)", fontWeight: 600 }}>{s.sendError}</span>}
+          <button type="button" className="btn lg block" disabled={!canSend} onClick={() => startTender("efectivo")}>Efectivo</button>
+          <button type="button" className="btn strong lg block" disabled={!canSend} onClick={() => startTender("transferencia")}>Transferencia</button>
+          {!empty && (
+            <div className="pay2">
+              <button type="button" className="btn ghost sm" disabled={!canSend} onClick={() => startTender("datafono")}>Datáfono · otro pago</button>
+              <button type="button" className="btn ghost sm" disabled={!canSend} onClick={() => void savePending()}>
+                {s.sending ? "Guardando…" : editing ? "Guardar cambios" : "Enviar · pagar después"}
+              </button>
+            </div>
           )}
         </div>
-      </div>
-
-      {/* lines */}
-      <div ref={listRef} className="pos-scroll" style={{ flex: 1, overflowY: "auto" }}>
-        {s.order.length === 0 && (
-          <div style={{ padding: "56px 24px", textAlign: "center", color: C.muted, fontSize: 15, lineHeight: 1.7 }}>
-            Toca un producto<br />para empezar el pedido.
-          </div>
-        )}
-        {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} onPerson={() => setPersonSheet({ mode: "line", idx: i })} />)}
-      </div>
-      {personSheet && <PersonSheet state={personSheet} onClose={() => setPersonSheet(null)} />}
-
-      {/* footer */}
-      <div className="pos-ticket-foot" style={{ borderTop: `1px solid ${C.rule}`, background: C.paperLt }}>
-        {s.noteSinGluten && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, fontSize: 14, fontWeight: 600, color: C.green, background: C.greenSoft, padding: "6px 10px", borderRadius: 10 }}>
-            <span>✓ Pedido «sin gluten»</span>
-            <button onClick={() => posStore.set({ noteSinGluten: false })} style={{ background: "none", border: "none", color: C.green, cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
-          </div>
-        )}
-        {noteOpen || s.note ? (
-          <textarea
-            value={s.note}
-            onChange={(e) => posStore.set({ note: e.target.value })}
-            placeholder="Nota para cocina / barra…"
-            aria-label="Nota del pedido"
-            rows={2}
-            maxLength={500}
-            style={{ width: "100%", marginBottom: 8, padding: "10px 12px", border: `1px solid ${C.rule}`, background: C.paperDk, color: C.ink, fontSize: 16, borderRadius: 12, outline: "none", resize: "none" }}
-          />
-        ) : null}
-        {/* Two rows, or one on a short screen (POS_CSS). */}
-        <div className="pos-sum">
-        <div className="pos-sum-note" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, color: C.muted }}>
-          <button className="pos-textbtn tight" onClick={() => setNoteOpen((v) => !v)} style={{ background: "none", border: "none", color: C.ink2, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
-            {noteOpen || s.note ? "− Nota" : "+ Nota"}
-          </button>
-          {comboSaved > 0 && <span style={{ color: C.green }}>Ahorro en combos <span className="cmd-num">−{posMoney(comboSaved)}</span></span>}
-        </div>
-        <div className="pos-total" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: C.ink2 }}>Total</span>
-          <span className="cmd-num pos-total-amt" style={{ ...H, color: C.ink, lineHeight: 1 }}>{posMoney(total)}</span>
-        </div>
-        </div>
-        {hasMissing && (
-          <div style={{ fontSize: 12, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>Quita el producto no disponible para continuar.</div>
-        )}
-        {s.sendError && s.view === "sale" && (
-          <div role="alert" style={{ fontSize: 13, color: C.red, marginBottom: 8, lineHeight: 1.4 }}>{s.sendError}</div>
-        )}
-        <SinImpresora />
-        {/* One-tap charges (PLAN 6.1): «Efectivo» opens the cash keypad with
-            «Exacto» ready (add → Efectivo → Confirmar = 3 taps); «Transferencia»
-            completes the sale at once (2 taps). «Otro» = tarjeta / dividir;
-            «Enviar» = pagar después. */}
-        <div className="pos-paybar">
-          <button type="button" className="pos-paybtn cash" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) startTender("efectivo"); }}>
-            Efectivo
-          </button>
-          <button type="button" className="pos-paybtn transfer" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) payNow("transferencia"); }}>
-            Transferencia
-          </button>
-        </div>
-        <div className="pos-paymore">
-          <button type="button" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) startTender("tarjeta"); }}>
-            Otro pago
-          </button>
-          <button type="button" disabled={!canSend} onClick={() => { if (confirmarSinImpresora()) void savePending(); }}>
-            {s.sending ? "Guardando…" : editing ? "Guardar cambios" : "Enviar · pagar después"}
-          </button>
-        </div>
-      </div>
-    </div>
+      </aside>
+      {editPerson && <PersonSheet name={editPerson} onClose={() => setEditPerson(null)} />}
+    </>
   );
 }
 
-// ════════════════════════════════════════════════════════════════
-// People at the table — chips, sheet, per-line badge
-// ════════════════════════════════════════════════════════════════
-export const personChip = (on: boolean, dashed = false): React.CSSProperties => ({
-  height: "var(--pos-chip)", padding: "0 14px", borderRadius: 999, cursor: "pointer", maxWidth: 190,
-  border: `1px ${dashed ? "dashed" : "solid"} ${on ? C.strong : C.rule}`,
-  background: on ? C.strong : C.paperLt, color: on ? C.onStrong : C.ink,
-  fontSize: 15, fontWeight: 600,
-  display: "inline-flex", alignItems: "center", gap: 6,
-});
-export const personInput: React.CSSProperties = {
-  height: 48, padding: "0 14px", border: `1px solid ${C.rule}`, borderRadius: 12, background: C.paperDk, color: C.ink, fontSize: 16, outline: "none", minWidth: 0,
-};
-
-export function Count({ n, on }: { n: number; on: boolean }) {
-  return <span className="cmd-num" style={{ fontSize: 12, fontWeight: 400, color: on ? C.onStrong : C.muted, opacity: on ? 0.75 : 1 }}>{n}</span>;
-}
-
-/**
- * Chip row for the table's people. Used by the ticket header (with counts,
- * tapping the active chip edits it; names are added in the big field above,
- * so no "+ persona" there), by the item sheet and by the line picker (no
- * counts; "+ persona" adds inline).
- */
-/**
- * A PC without its printer connected cannot print labels — and nothing
- * relays them for it. The ticket says so in red until it is connected, and
- * charging asks first, so a sale never goes out expecting labels that will
- * not come.
- */
-export const sinImpresora = (p: { status: PrinterStatus; relay: boolean }) =>
-  !relaysLabels(p) && (p.status === "disconnected" || p.status === "off" || p.status === "error");
-
-export function confirmarSinImpresora(): boolean {
-  const p = printerStore.get();
-  if (!sinImpresora(p)) return true;
-  return window.confirm("La impresora no está conectada: la venta se registra pero no van a salir etiquetas. ¿Continuar?");
-}
-
-export function SinImpresora() {
-  const p = usePrinter();
-  if (!sinImpresora(p)) return null;
-  const busy = p.status === "connecting";
-  return (
-    <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, padding: "8px 10px 8px 14px", borderRadius: 12, background: C.redSoft }}>
-      <span style={{ flex: 1, fontSize: 13, lineHeight: 1.4, color: C.red, fontWeight: 600 }}>Sin impresora: las etiquetas no van a salir.</span>
-      <button type="button" onClick={() => (p.status === "off" ? void checkPrinter() : void connectPrinter())} disabled={busy} style={{ height: 40, padding: "0 14px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
-        {p.status === "off" ? "Reintentar" : "Conectar"}
-      </button>
-    </div>
-  );
-}
-
-export function PersonPicker({ value, onPick, onAdd, onEdit, counts, noAdd }: {
-  value: string | null;
-  onPick: (name: string | null) => void;
-  onAdd?: () => void;
-  onEdit?: (name: string) => void;
-  counts?: boolean;
-  noAdd?: boolean;
-}) {
+/** «Prepara <barista>» → «¿Quién prepara?». Hidden when the org has no team on the bar. */
+function BaristaChip() {
   const s = usePos();
-  const [adding, setAdding] = React.useState(false);
-  const [text, setText] = React.useState("");
-  const ref = React.useRef<HTMLInputElement>(null);
-  React.useEffect(() => { if (adding) ref.current?.focus(); }, [adding]);
-  const addInline = () => {
-    const name = addPerson(text, { activate: false });
-    if (!name) return;
-    onPick(name);
-    setText("");
-    setAdding(false);
-  };
+  if (!s.catalog.equipo.length) return null;
+  const b = s.barista;
+  const first = b ? b.name.split(" ")[0] : "";
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {s.people.length > 0 && (
-        <button type="button" onClick={() => onPick(null)} aria-pressed={value === null} style={{ ...personChip(value === null), fontWeight: 500, color: value === null ? C.onStrong : C.muted }}>
-          Sin nombre{counts && <Count n={linesOf(s.order, null)} on={value === null} />}
-        </button>
-      )}
-      {s.people.map((name) => {
-        const on = value === name;
-        return (
-          <button type="button" key={name} onClick={() => (on && onEdit ? onEdit(name) : onPick(name))} aria-pressed={on} aria-label={`Cliente ${name}`} title={on && onEdit ? "Editar o quitar" : undefined} style={personChip(on)}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-            {counts && <Count n={linesOf(s.order, name)} on={on} />}
-            {on && onEdit && <span aria-hidden style={{ opacity: 0.7, fontSize: 13 }}>✎</span>}
-          </button>
-        );
-      })}
-      {noAdd ? null : onAdd ? (
-        <button type="button" onClick={onAdd} style={personChip(false, true)}>+ persona</button>
-      ) : adding ? (
-        <form onSubmit={(e) => { e.preventDefault(); addInline(); }} style={{ display: "inline-flex", gap: 6 }}>
-          <input ref={ref} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }} maxLength={40} placeholder="Nombre" aria-label="Nombre de la persona" style={{ ...personInput, height: "var(--pos-chip)", width: 150, fontSize: 14 }} />
-          <button type="submit" style={personChip(true)}>OK</button>
-        </form>
-      ) : (
-        <button type="button" onClick={() => setAdding(true)} style={personChip(false, true)}>+ persona</button>
-      )}
-    </div>
+    <button type="button" className={"chip" + (b ? "" : " ask")} onClick={openBaristaPicker} aria-label={b ? `¿Quién prepara? ${b.name}` : "¿Quién prepara? Nadie elegido"}>
+      {b ? <span className="avatar">{initials(b.name)}</span> : null}
+      {b ? `Prepara ${first}` : "¿Quién prepara?"}
+      <ChevronDown />
+    </button>
   );
 }
 
 /**
- * The name that goes on the cup. One big field instead of a "mesa / grupo"
- * box: Enter (or leaving the field) adds the name as a chip and makes it the
- * active person. Free text on purpose — customers give nicknames and
- * pronouns, and that is exactly what gets printed. It pulses while the
- * ticket has no name.
+ * The name that goes on the cup. The field holds the order's first person:
+ * typing a name and leaving the field (or Enter) names the ticket — lines
+ * rung up before get that name too (nameTicket) — editing it renames them,
+ * clearing it takes the name off. Free text on purpose: nicknames print.
  */
 export function NameField() {
   const s = usePos();
-  const [text, setText] = React.useState("");
+  const current = s.people[0] ?? "";
+  const [text, setText] = React.useState(current);
+  const [focused, setFocused] = React.useState(false);
+  const shown = focused ? text : current;
   const commit = () => {
-    if (!text.trim()) return;
-    nameTicket(text);
-    setText("");
+    const t = text.trim();
+    if (!current) { if (t) nameTicket(t); }
+    else if (!t) removePerson(current);
+    else if (t !== current) renamePerson(current, t);
   };
-  const ask = s.people.length === 0 && !text;
   return (
     <input
-      className={"pos-nombre" + (ask ? " ask" : "")}
-      value={text}
+      className="field"
+      type="text"
+      value={shown}
+      onFocus={() => { setText(current); setFocused(true); }}
       onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
-      onBlur={commit}
-      placeholder={s.people.length === 0 ? "¿A nombre de quién?" : "Otro nombre…"}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
+      onBlur={() => { commit(); setFocused(false); }}
+      placeholder="Nombre para el vaso"
       aria-label="Nombre del cliente"
       enterKeyHint="done"
       autoComplete="off"
       autoCapitalize="words"
       maxLength={40}
+      style={{ height: 48 }}
     />
   );
 }
 
-export type PersonSheetState = { mode: "add" } | { mode: "edit"; name: string } | { mode: "line"; idx: number };
-
-/** Add people in a burst, rename / remove one, or pick who a line is for. */
-export function PersonSheet({ state, onClose }: { state: PersonSheetState; onClose: () => void }) {
+/**
+ * Several customers on one order: one chip per person (lines count), the
+ * active one gets what is added next; tapping the active chip edits it.
+ * «+ persona» adds another inline.
+ */
+function PeopleChips({ onEdit }: { onEdit: (name: string) => void }) {
   const s = usePos();
-  const [text, setText] = React.useState(state.mode === "edit" ? state.name : "");
+  const [adding, setAdding] = React.useState(false);
+  const [text, setText] = React.useState("");
   const ref = React.useRef<HTMLInputElement>(null);
-  React.useEffect(() => { ref.current?.focus(); }, []);
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
-
-  const line = state.mode === "line" ? s.order[state.idx] : undefined;
-  const count = state.mode === "edit" ? linesOf(s.order, state.name) : 0;
-
-  const submit = () => {
-    if (state.mode === "add") {
-      if (!addPerson(text)) return;
-      setText("");
-      ref.current?.focus();
-    } else if (state.mode === "edit") {
-      renamePerson(state.name, text);
-      onClose();
-    } else {
-      const name = addPerson(text, { activate: false });
-      if (!name) return;
-      setLinePerson(state.idx, name);
-      onClose();
-    }
+  React.useEffect(() => { if (adding) ref.current?.focus(); }, [adding]);
+  if (!s.people.length) return null;
+  const add = () => {
+    const name = addPerson(text);
+    setText("");
+    setAdding(false);
+    return name;
   };
+  const several = s.people.length > 1;
+  return (
+    <>
+      {several && s.people.map((name) => {
+        const on = s.activePerson === name;
+        return (
+          <button key={name} type="button" className={"who-chip" + (on ? " a" : "")} aria-pressed={on} onClick={() => (on ? onEdit(name) : setActivePerson(name))} aria-label={`${name}, ${linesOf(s.order, name)} ítems${on ? ". Editar" : ""}`}>
+            <span style={{ maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+            <span className="muted">{linesOf(s.order, name)}</span>
+          </button>
+        );
+      })}
+      {adding ? (
+        <form onSubmit={(e) => { e.preventDefault(); add(); }} style={{ display: "inline-flex", gap: 6 }}>
+          <input ref={ref} className="field" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => { if (text.trim()) add(); else setAdding(false); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }} maxLength={40} placeholder="Nombre" aria-label="Nombre de otra persona" style={{ height: 44, width: 130, fontSize: 14, padding: "0 12px" }} />
+        </form>
+      ) : (
+        <button type="button" className="who-chip" onClick={() => setAdding(true)} style={{ borderStyle: "dashed", background: "transparent" }}>+ persona</button>
+      )}
+    </>
+  );
+}
+
+/** Rename or take a person off the order (their lines stay, unassigned). */
+function PersonSheet({ name, onClose }: { name: string; onClose: () => void }) {
+  const s = usePos();
+  const [text, setText] = React.useState(name);
+  const count = linesOf(s.order, name);
   const remove = () => {
-    if (state.mode !== "edit") return;
-    if (count > 0 && !window.confirm(`¿Quitar a ${state.name}? Sus ${count} ítem${count === 1 ? "" : "s"} quedan sin nombre.`)) return;
-    removePerson(state.name);
+    if (count > 0 && !window.confirm(`¿Quitar a ${name}? Sus ${count} ítem${count === 1 ? "" : "s"} quedan sin nombre.`)) return;
+    removePerson(name);
     onClose();
   };
-
-  const title = state.mode === "add" ? "Personas de la mesa" : state.mode === "edit" ? state.name : line?.name ?? "Persona";
-  const hint = state.mode === "add"
-    ? "Escribe un nombre y Enter. Repite para cada persona."
-    : state.mode === "edit" ? "Cambia el nombre o quita a la persona de la mesa." : "¿Para quién es?";
-  const btn: React.CSSProperties = { height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${C.rule}`, background: C.ink, color: C.paperLt, fontFamily: F.mono, fontSize: 14, cursor: "pointer", flexShrink: 0 };
-
   return (
-    <Overlay onClose={onClose} align="center">
-      <div role="dialog" aria-modal aria-label={title} style={{ width: "min(520px, 94vw)", maxHeight: "88dvh", display: "flex", flexDirection: "column", background: C.paperLt, border: `1px solid ${C.rule}`, borderRadius: 16, boxShadow: "var(--shadow-2)", overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ ...H, fontSize: 22, lineHeight: 1.1, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{hint}</div>
-          </div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ width: "var(--pos-close)", height: "var(--pos-close)", borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", color: C.ink2, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
-        </div>
-
-        <div className="pos-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 20px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-          {state.mode === "line" && (
-            <PersonPicker value={line?.customer ?? null} onPick={(name) => { setLinePerson(state.idx, name); onClose(); }} onAdd={() => ref.current?.focus()} />
-          )}
-          <form onSubmit={(e) => { e.preventDefault(); submit(); }} style={{ display: "flex", gap: 8 }}>
-            <input ref={ref} value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder={state.mode === "line" ? "Nombre nuevo" : "Nombre"} aria-label="Nombre de la persona" style={{ ...personInput, flex: 1 }} />
-            <button type="submit" style={btn}>{state.mode === "edit" ? "Guardar" : "Agregar"}</button>
-          </form>
-          {state.mode === "add" && s.people.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {s.people.map((n) => <span key={n} style={{ ...personChip(n === s.activePerson), cursor: "default" }}>{n}<Count n={linesOf(s.order, n)} on={n === s.activePerson} /></span>)}
-            </div>
-          )}
-        </div>
-
-        <div style={{ borderTop: `1px solid ${C.rule}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-          {state.mode === "edit" && (
-            <button onClick={remove} style={{ height: 44, padding: "0 14px", borderRadius: 10, border: `1.5px solid ${C.red}`, background: "transparent", color: C.red, fontFamily: F.mono, fontSize: 14, cursor: "pointer" }}>Quitar persona</button>
-          )}
-          <button className="cmd-btn" onClick={onClose} style={{ flex: 1, height: 48, fontSize: 15, marginLeft: "auto" }}>{state.mode === "add" ? "Listo" : "Cerrar"}</button>
-        </div>
+    <Overlay onClose={onClose} labelledBy="per-t" maxWidth={480}>
+      <h2 id="per-t" className="h2">{name}</h2>
+      <form onSubmit={(e) => { e.preventDefault(); renamePerson(name, text); onClose(); }} style={{ display: "flex", gap: 10 }}>
+        <input className="field" autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={40} aria-label="Nombre de la persona" />
+        <button type="submit" className="btn">Guardar</button>
+      </form>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button type="button" className="btn ghost" style={{ flex: 1, color: "var(--late)" }} onClick={remove}>Quitar persona</button>
+        <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={onClose}>Cerrar</button>
       </div>
     </Overlay>
   );
 }
 
-export function TicketLine({ idx, line, onPerson }: { idx: number; line: OrderLine; onPerson: () => void }) {
-  const s = usePos();
+/** One ticket line; tap = edit it on the options page (qty, options, person). */
+export function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
   const catalog = useCatalog();
   const unit = modLinePrice(line, catalog);
-  const mods = modSummary(line, catalog);
-  // A line with no options only opens the sheet once there are people to pick from.
-  const editable = line.kind === "item" && !line.missing && (!!line.hasMods || s.people.length > 0);
-  const open = () => { if (editable) posStore.set({ sheet: { mode: "edit", idx } }); };
-  const showPerson = !!line.customer || s.people.length > 0;
+  const sub = lineSub(line, catalog);
+  const editable = line.kind === "item" && !line.missing;
+  const body = (
+    <>
+      <span className="q">{line.qty}</span>
+      <span className="grow">
+        <span className="ln" style={{ display: "block" }}>
+          {line.missing && <span className="pill late" style={{ marginRight: 6 }}>No disponible</span>}
+          {line.kind === "combo" && <span className="save" style={{ marginRight: 6 }}>Combo</span>}
+          {line.name}
+        </span>
+        {sub && <span className="ls" style={{ display: "block" }}>{sub}</span>}
+      </span>
+      <span className="lp">{money(unit * line.qty)}</span>
+    </>
+  );
+  if (!editable) return <div className="line" style={line.missing ? { opacity: 0.6 } : undefined}>{body}</div>;
   return (
-    <div className={editable ? "pos-line" : undefined} style={{ padding: "10px 12px 10px 14px", borderBottom: `1px solid ${C.ruleSoft}`, opacity: line.missing ? 0.55 : 1 }}>
-      {/* The person badge sits OUTSIDE the row's role="button": a control nested
-          in a control merges into its accessible name and steals its clicks. */}
-      {showPerson && (
-        <div style={{ marginBottom: 4 }}>
-          <button
-            type="button"
-            className="pos-linebadge"
-            onClick={onPerson}
-            aria-label={line.customer ? `Persona: ${line.customer}. Cambiar` : "Asignar persona"}
-            style={{ fontWeight: 600, borderRadius: 999, cursor: "pointer", background: line.customer ? C.brandSoft : "transparent", border: `1px ${line.customer ? "solid" : "dashed"} ${line.customer ? C.brand : C.rule}`, color: line.customer ? C.ink : C.muted, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          >
-            {line.customer ? `Pa' ${line.customer}` : "+ nombre"}
-          </button>
-        </div>
-      )}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div role={editable ? "button" : undefined} tabIndex={editable ? 0 : undefined} onClick={open} onKeyDown={(e) => { if (editable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }} style={{ flex: 1, minWidth: 0, cursor: editable ? "pointer" : "default" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {line.kind === "combo" && <span style={{ fontSize: 12, fontWeight: 700, color: C.green, background: C.greenSoft, padding: "1px 8px", borderRadius: 999 }}>Combo</span>}
-          {line.missing && <span style={{ fontSize: 12, fontWeight: 700, color: C.red, background: C.redSoft, padding: "1px 8px", borderRadius: 999 }}>No disponible</span>}
-          <span style={{ fontSize: 15, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{line.name}</span>
-        </div>
-        {line.kind === "combo" && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{catalog.comboById[line.id]?.desc}</div>}
-        {mods.length > 0 && (
-          <div style={{ fontSize: 13, color: C.ink2, marginTop: 3, lineHeight: 1.4 }}>
-            {mods.map((m) => m.name + (m.delta > 0 ? ` (+${posMoney(m.delta)})` : "")).join(" · ")}
-          </div>
-        )}
-        <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-          <span className="cmd-num">{posMoney(unit)}</span> c/u{editable && <span style={{ color: C.ink, fontWeight: 600, marginLeft: 8, textDecoration: "underline" }}>editar</span>}
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <button onClick={() => changeQty(idx, -1)} aria-label={line.qty === 1 ? "Quitar" : "Quitar uno"} style={qtyBtn}>{line.qty === 1 ? "×" : "−"}</button>
-        <span className="cmd-num" style={{ fontSize: 15, fontWeight: 700, minWidth: 22, textAlign: "center" }}>{line.qty}</span>
-        <button onClick={() => changeQty(idx, +1)} aria-label="Agregar uno" style={qtyBtn}>+</button>
-      </div>
-      <div className="cmd-num" style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 70, textAlign: "right" }}>{posMoney(unit * line.qty)}</div>
-      </div>
-    </div>
+    <button type="button" className="line" onClick={() => posStore.set({ sheet: { mode: "edit", idx } })} aria-label={`${line.qty} ${line.name}${sub ? `, ${sub}` : ""}, ${money(unit * line.qty)}. Editar`}>
+      {body}
+    </button>
   );
 }
+
+/** Tile badge helper for the catalog: how many of a product are on the ticket. */
+export function qtyOnTicket(order: ReadonlyArray<OrderLine>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const l of order) out[l.id] = (out[l.id] ?? 0) + l.qty;
+  return out;
+}
+

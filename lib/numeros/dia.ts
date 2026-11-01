@@ -13,11 +13,11 @@
  */
 import { localToUtc, type MetodoPago } from "@/lib/caja/arqueo";
 
-export const METODOS: readonly MetodoPago[] = ["efectivo", "transferencia", "tarjeta"];
+export const METODOS: readonly MetodoPago[] = ["efectivo", "transferencia", "datafono"];
 export const METODO_LABEL: Record<MetodoPago, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
-  tarjeta: "Tarjeta",
+  datafono: "Datáfono",
 };
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -169,7 +169,7 @@ export interface ResumenDia {
 }
 
 function esMetodo(m: string | null): m is MetodoPago {
-  return m === "efectivo" || m === "transferencia" || m === "tarjeta";
+  return m === "efectivo" || m === "transferencia" || m === "datafono";
 }
 
 export function resumenDia(input: ResumenDiaInput): ResumenDia {
@@ -203,7 +203,7 @@ export function resumenDia(input: ResumenDiaInput): ResumenDia {
   const cobros = {
     efectivo: { monto: 0, pagos: 0 },
     transferencia: { monto: 0, pagos: 0 },
-    tarjeta: { monto: 0, pagos: 0 },
+    datafono: { monto: 0, pagos: 0 },
     total: 0,
     pagos: 0,
   };

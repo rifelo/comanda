@@ -89,7 +89,7 @@ export function rentabilidadDia(input: {
   costos: ReadonlyMap<string, CostoProducto>;
   /** `${groupId}|${optionName}` → recipe cost of the option. */
   costosOpcion: ReadonlyMap<string, number>;
-  /** Transferencias + tarjeta of the day: what Bold charges on. */
+  /** Transferencias + datáfono of the day: what Bold charges on. */
   cobrosNoEfectivo: number;
   /** The day's expenses, fixed ones included (they are left out and spread instead). */
   gastosDia: ReadonlyArray<{ categoria: CategoriaGasto; monto: number }>;

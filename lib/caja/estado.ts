@@ -43,7 +43,7 @@ async function centrar(db: SupabaseClient, scope: Scope, instances: CajaInstance
   const { orgId, restaurantId, tz, today } = scope;
   const inst = instances.find((i) => i.id === instanceId) ?? null;
   const ventana = inst ? ventanaTurno({ date: today, inicio: inst.inicio, tz, opened_at: inst.opened_at, closed_at: inst.closed_at }) : null;
-  const pagos = ventana ? await sumPagosVentana(db, { orgId, restaurantId, desde: ventana.desde, hasta: ventana.hasta }) : { efectivo: 0, tarjeta: 0, transferencia: 0, count: 0 };
+  const pagos = ventana ? await sumPagosVentana(db, { orgId, restaurantId, desde: ventana.desde, hasta: ventana.hasta }) : { efectivo: 0, datafono: 0, transferencia: 0, count: 0 };
   const prev = base.cierre;
   return {
     instanceId,

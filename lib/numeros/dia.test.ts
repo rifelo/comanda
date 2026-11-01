@@ -132,7 +132,7 @@ describe("resumenDia · cobros", () => {
     const r = run([directa, directaTransf, conPago], [pago(conPago, "transferencia", 12000)]);
     expect(r.cobros.efectivo).toEqual({ monto: 6000, pagos: 1 });
     expect(r.cobros.transferencia).toEqual({ monto: 21000, pagos: 2 });
-    expect(r.cobros.tarjeta).toEqual({ monto: 0, pagos: 0 });
+    expect(r.cobros.datafono).toEqual({ monto: 0, pagos: 0 });
     expect(r.cobros.total).toBe(27000);
     expect(r.cuadre).toEqual({ diferencia: 0, ajustes: [], sinExplicar: 0 });
   });
@@ -141,11 +141,11 @@ describe("resumenDia · cobros", () => {
     const mixta = orden({ total: 20000, paymentMethod: "mixto" });
     mixta.pagos = [
       { method: "efectivo", amount: 8000, createdAt: mixta.createdAt },
-      { method: "tarjeta", amount: 12000, createdAt: mixta.createdAt },
+      { method: "datafono", amount: 12000, createdAt: mixta.createdAt },
     ];
-    const r = run([mixta], [pago(mixta, "efectivo", 8000), pago(mixta, "tarjeta", 12000)]);
+    const r = run([mixta], [pago(mixta, "efectivo", 8000), pago(mixta, "datafono", 12000)]);
     expect(r.cobros.efectivo.monto).toBe(8000);
-    expect(r.cobros.tarjeta.monto).toBe(12000);
+    expect(r.cobros.datafono.monto).toBe(12000);
     expect(r.cuadre.sinExplicar).toBe(0);
   });
 

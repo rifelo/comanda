@@ -212,7 +212,7 @@ function Conteo({ today, actorName, online, instanceId, instanceName, baseInicia
           {pendiente && <div className="cj-warn amber"><IcoNube size={20} />El conteo está guardado en la tablet: se envía solo cuando vuelva el internet.</div>}
           {!online && !pendiente && <div className="cj-warn amber"><IcoNube size={20} />Sin internet: el arqueo también se puede hacer. Se envía al dueño cuando vuelva.</div>}
           {error && <div role="alert" className="cj-warn red"><IcoAlerta />{error}</div>}
-          <span className="cj-fine">Tarjeta y transferencia no se cuentan aquí; salen del POS. Cuenta {actorName}.</span>
+          <span className="cj-fine">Datáfono y transferencia no se cuentan aquí; salen del POS. Cuenta {actorName}.</span>
           <button type="button" className="cj-btn dark big" disabled={!instanceId || sending || pendiente} onClick={() => void doEnviar()}>{sending ? "Enviando…" : pendiente ? "En espera de internet…" : "Enviar conteo"}</button>
         </aside>
       </div>
@@ -296,9 +296,9 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
           <div className="cj-card soft">
             <span className="cj-lab">Solo informativo · no se cuentan en el cajón</span>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
-              <span>Tarjeta <b>{plata(r.pagos.tarjeta)}</b></span>
+              <span>Datáfono <b>{plata(r.pagos.datafono)}</b></span>
               <span>Transferencias <b>{plata(r.pagos.transferencia)}</b></span>
-              <span>Total del turno <b>{plata(r.pagos.efectivo + r.pagos.tarjeta + r.pagos.transferencia)}</b></span>
+              <span>Total del turno <b>{plata(r.pagos.efectivo + r.pagos.datafono + r.pagos.transferencia)}</b></span>
             </div>
           </div>
         </aside>

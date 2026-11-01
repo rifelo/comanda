@@ -4,7 +4,7 @@ import { notaPedido, validarPedido, type PedidoAgente } from "./pedido";
 
 const latte: PosMenuItem = {
   id: "p-latte", name: "Latte frío", catId: "c", sub: "", sku: "BF-005", price: 8500,
-  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-base"], desc: "", printsLabel: true, spec: [], image: null, recipe: [], prep: [],
+  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-base"], desc: "", printsLabel: true, spec: [], image: null, recipe: [], prep: [], script: null,
 };
 const torta: PosMenuItem = { ...latte, id: "p-torta", name: "Torta de naranja", price: 7000, mods: [], stock: "sin" };
 const catalog: PosCatalog = {
@@ -14,7 +14,7 @@ const catalog: PosCatalog = {
     "g-base": { id: "g-base", name: "Base", type: "single", required: true, options: [{ name: "En agua", delta: 0 }, { name: "En leche", delta: 1000 }] },
   },
   byId: { "p-latte": latte, "p-torta": torta },
-  comboById: {}, catLabel: {}, orgName: "Café", instagram: null, sticker: null, cupArt: null, handArt: null, equipo: [],
+  comboById: {}, catLabel: {}, orgName: "Café", instagram: null, sticker: null, cupArt: null, handArt: null, equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
 };
 
 const pedido = (over: Partial<PedidoAgente> = {}): PedidoAgente => ({

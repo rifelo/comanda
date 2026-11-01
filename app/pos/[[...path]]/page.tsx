@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { loadPosContext } from "@/lib/pos/server";
-import { PosTerminal } from "./pos-terminal";
+import { PosTerminal } from "../pos-terminal";
 
 // The register installs as its own desktop app: this segment swaps the root
 // (staff, phone-first) manifest for app/pos/manifest.webmanifest/route.ts.

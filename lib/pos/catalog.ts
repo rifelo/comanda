@@ -17,7 +17,7 @@ import {
   type PosBarista,
 } from "./types";
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
-import { rankTopSellers, TOP_SELLERS_DAYS, type SoldLine } from "./top-sellers";
+import { rankPairs, rankTopSellers, TOP_SELLERS_DAYS, type SoldLine } from "./top-sellers";
 
 /**
  * Build the live POS catalog for an org from the catálogo/combos/modificadores
@@ -58,7 +58,7 @@ export async function getPosCatalog({
     supabase
       .from("productos")
       .select(
-        "id, category_id, name, description, sku, price_cop, stock_status, image_url, preparacion",
+        "id, category_id, name, description, sku, price_cop, stock_status, image_url, preparacion, recomendacion",
       )
       .eq("organization_id", organizationId)
       .order("name"),
@@ -86,7 +86,7 @@ export async function getPosCatalog({
     getModificadores(organizationId, client),
     supabase
       .from("organizations")
-      .select("instagram, sticker_url, cup_url, label_art_url")
+      .select("instagram, sticker_url, cup_url, label_art_url, transferencia_llave, transferencia_titular, datafono_liquidacion")
       .eq("id", organizationId)
       .maybeSingle(),
     getEquipo(organizationId),
@@ -159,6 +159,7 @@ export async function getPosCatalog({
     stock_status: "ok" | "bajo" | "sin";
     image_url: string | null;
     preparacion: string | null;
+    recomendacion: string | null;
   }>).map((p) => {
     const own = p.category_id ? catById.get(p.category_id) ?? null : null;
     const top = topLevelOf(p.category_id);
@@ -199,6 +200,7 @@ export async function getPosCatalog({
       spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
       image: (p.image_url ?? "").trim() || null,
       prep: prepSteps(p.preparacion),
+      script: (p.recomendacion ?? "").trim() || null,
       recipe: (shownByProduct.get(p.id) ?? [])
         .sort((a, b) => a.position - b.position)
         .map(({ name, qty, unit, note }) => ({ name, qty, unit, note })),
@@ -248,6 +250,8 @@ export async function getPosCatalog({
   for (const c of catalogCats) catLabel[c.id] = c.label;
 
   const names = new Map(menu.map((m) => [m.id, m.name]));
+  const org = (orgRow ?? {}) as Record<string, string | null | undefined>;
+  const txt = (v: string | null | undefined) => (v ?? "").trim() || null;
 
   return {
     cats: catalogCats,
@@ -264,6 +268,12 @@ export async function getPosCatalog({
     cupArt: ((orgRow as { cup_url?: string | null } | null)?.cup_url ?? "").trim() || null,
     handArt: ((orgRow as { label_art_url?: string | null } | null)?.label_art_url ?? "").trim() || null,
     equipo,
+    pairs: rankPairs(vendidas, names),
+    pago: {
+      transferenciaLlave: txt(org.transferencia_llave),
+      transferenciaTitular: txt(org.transferencia_titular),
+      datafonoLiquidacion: txt(org.datafono_liquidacion),
+    },
   };
 }
 
@@ -276,7 +286,7 @@ async function getVendidas(supabase: SupabaseClient, organizationId: string): Pr
   const desde = new Date(Date.now() - TOP_SELLERS_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("ordenes")
-    .select("created_at, orden_items(producto_id, qty)")
+    .select("id, created_at, orden_items(producto_id, qty)")
     .eq("organization_id", organizationId)
     .neq("status", "cancelada")
     .gte("created_at", desde)
@@ -290,6 +300,7 @@ async function getVendidas(supabase: SupabaseClient, organizationId: string): Pr
       productoId: i.producto_id,
       qty: Number(i.qty),
       at: o.created_at as string,
+      ordenId: o.id as string,
     })),
   );
 }
