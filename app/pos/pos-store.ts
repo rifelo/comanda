@@ -33,6 +33,7 @@ import {
   type OrderPayment,
   type PendingOrderItem,
   type PayMethodId,
+  PAY_METHOD_LABEL,
 } from "@/lib/pos/types";
 import { splitByPerson, shareStatus, summarizeMethod, type PersonShare } from "@/lib/pos/pagos";
 import { defaultMergeTarget } from "@/lib/pos/combinar";
@@ -59,6 +60,8 @@ import {
 } from "./actions";
 import { nudge } from "./pos-live";
 import { printOrderLabel, printMessageLabel, printDrinkLabel, printCalificaLabel } from "@/lib/printer/serial";
+import { getTicketState, printTicket, ticketsOn } from "@/lib/printer/tickets";
+import type { TicketDoc, TicketLine } from "@/lib/printer/ticket";
 import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
 
 // ── catalog context (stable, SSR-correct — no flash) ────────────
@@ -78,7 +81,7 @@ export const EMPTY_CATALOG: PosCatalog = {
   handArt: null,
   equipo: [],
   pairs: {},
-  pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
+  pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null }, recibo: { encabezado: null, pie: null },
 };
 export const CatalogCtx = React.createContext<PosCatalog>(EMPTY_CATALOG);
 export const StationCtx = React.createContext<string>("Caja 01");
@@ -799,6 +802,8 @@ export interface OutboxItem {
   snapshot: { order: OrderLine[]; people: string[]; customerName: string; total: number; change: number };
   /** Labels already printed offline: the provisional folio and the rating codes to register on landing. */
   printed?: { folio: string; enlaces: EnlaceVenta[] };
+  /** The automatic receipt already printed (offline, or before a queued order was charged). */
+  recibo?: boolean;
 }
 const OUTBOX_KEY = "pos:outbox";
 function persistOutbox() {
@@ -921,10 +926,12 @@ export async function runOutbox(probe = false) {
         if (!printed) {
           const folio = offlineFolio();
           printed = { folio, enlaces: printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, null) };
+          printJobTicket(job, folio, "comanda");
         }
+        const recibo = job.recibo || (job.kind === "pagada" && printJobTicket(job, printed.folio, "recibo-auto"));
         posStore.set((st) => ({
           ...st,
-          outbox: st.outbox.map((j) => (j.id === job.id ? { ...j, status: "offline", error: OFFLINE_MSG, printed } : j)),
+          outbox: st.outbox.map((j) => (j.id === job.id ? { ...j, status: "offline", error: OFFLINE_MSG, printed, recibo } : j)),
           ...(st.receiptJobId === job.id ? { orderNo: printed.folio } : {}),
         }));
         persistOutbox();
@@ -942,7 +949,11 @@ export async function runOutbox(probe = false) {
         }));
         if (job.printed) {
           if (job.printed.enlaces.length) void registrarEnlacesVenta(res.ordenId, job.printed.enlaces);
-        } else printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, res.ordenId);
+        } else {
+          printSaleLabels({ ...job.snapshot, catalog: posStore.get().catalog }, folio, res.ordenId);
+          printJobTicket(job, folio, "comanda");
+        }
+        if (job.kind === "pagada" && !job.recibo) printJobTicket(job, job.printed?.folio ?? folio, "recibo-auto");
         void refreshPendientes();
         if (posStore.get().view === "ordenes") void refreshOrdenes();
         nudge("ordenes");
@@ -1284,6 +1295,7 @@ export async function completeSale() {
       lastMethod: s.payMethod,
       receiptKind: "pagada",
     });
+    if (ticketsOn() && getTicketState().recibo === "auto") printReceipt();
     // A pending order already got its labels when it was sent.
     void refreshPendientes();
     nudge("ordenes");
@@ -1367,7 +1379,14 @@ async function persistPending(porVerificar?: "transferencia"): Promise<{ ok: tru
     return { ok: false };
   }
   posStore.set({ sending: false });
-  if (!s.pending) printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio, res.ordenId);
+  if (!s.pending) {
+    printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio, res.ordenId);
+    if (getTicketState().comanda) printTicket(saleTicket("comanda", {
+      order: s.order, customerName: s.customerName, folio: res.folio, catalog: s.catalog,
+      orderType: s.orderType, sinGluten: s.noteSinGluten, note: s.note, seLoLlevamos: s.seLoLlevamos, baristaId: s.barista?.id,
+      pendiente: true, porVerificar: !!porVerificar,
+    }));
+  }
   void refreshPendientes();
   nudge("ordenes");
   return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total };
@@ -1734,6 +1753,157 @@ function printSaleLabels(
     }
   }).catch((err) => console.error("[pos] label run failed:", err));
   return enlaces;
+}
+
+// ── paper tickets: receipt for the customer, comanda for the bar ──
+/** Ticket lines from cart lines: options as words; prices only on receipts. */
+function ticketLines(order: OrderLine[], catalog: PosCatalog, prices: boolean): TicketLine[] {
+  return order.map((l) => ({
+    qty: l.qty,
+    name: l.name,
+    // The receipt names only options that cost extra; the bar needs them all.
+    mods: modSummary(l, catalog).filter((m) => !prices || m.delta > 0).map((m) => m.name),
+    ...(l.customer ? { customer: l.customer } : {}),
+    ...(prices ? { total: modLinePrice(l, catalog) * l.qty } : {}),
+  }));
+}
+
+interface TicketSale {
+  order: OrderLine[];
+  customerName: string;
+  folio: string;
+  catalog: PosCatalog;
+  orderType?: PosState["orderType"];
+  sinGluten?: boolean;
+  note?: string;
+  seLoLlevamos?: boolean;
+  baristaId?: string | null;
+  at?: string;
+  total?: number;
+  payment?: { method: PayMethodId | "mixto"; tendered: number | null; approvalCode?: string | null } | null;
+  change?: number;
+  pendiente?: boolean;
+  porVerificar?: boolean;
+  copia?: boolean;
+}
+
+function saleTicket(kind: TicketDoc["kind"], t: TicketSale): TicketDoc {
+  const c = t.catalog;
+  const barista = t.baristaId ? c.equipo.find((e) => e.id === t.baristaId)?.name : undefined;
+  const lines = ticketLines(t.order, c, kind === "recibo");
+  return {
+    kind,
+    folio: t.folio,
+    at: t.at ?? new Date().toISOString(),
+    orgName: c.orgName,
+    encabezado: c.recibo.encabezado,
+    pie: c.recibo.pie,
+    customer: t.customerName.trim() || undefined,
+    orderType: t.orderType,
+    seLoLlevamos: t.seLoLlevamos || undefined,
+    sinGluten: t.sinGluten || undefined,
+    note: t.note?.trim() || undefined,
+    barista,
+    lines,
+    total: t.total ?? lines.reduce((sum, l) => sum + (l.total ?? 0), 0),
+    method: t.payment ? PAY_METHOD_LABEL[t.payment.method] : undefined,
+    tendered: t.payment?.method === "efectivo" ? t.payment.tendered : null,
+    change: t.change,
+    approval: t.payment?.approvalCode ?? null,
+    pendiente: t.pendiente || undefined,
+    porVerificar: t.porVerificar || undefined,
+    copia: t.copia || undefined,
+  };
+}
+
+/**
+ * Tickets of an outbox job: the comanda with a new order, the receipt when it
+ * is paid and receipts are automatic. Returns whether a receipt went out.
+ */
+function printJobTicket(job: OutboxItem, folio: string, what: "comanda" | "recibo-auto"): boolean {
+  const t = getTicketState();
+  if (!ticketsOn(t) || (what === "comanda" ? !t.comanda : t.recibo !== "auto")) return false;
+  printTicket(saleTicket(what === "comanda" ? "comanda" : "recibo", {
+    order: job.snapshot.order,
+    customerName: job.snapshot.customerName,
+    folio,
+    catalog: posStore.get().catalog,
+    orderType: job.base.orderType,
+    sinGluten: job.base.sinGluten,
+    note: job.base.note,
+    seLoLlevamos: job.base.seLoLlevamos,
+    baristaId: job.base.baristaId,
+    at: new Date(job.createdAt).toISOString(),
+    total: job.snapshot.total,
+    payment: job.kind === "pagada" ? job.payment : null,
+    change: job.snapshot.change,
+    pendiente: job.kind === "pendiente",
+    porVerificar: job.base.porVerificar === "transferencia",
+  }));
+  return what === "recibo-auto";
+}
+
+/** «Recibo» / «Comanda» on the sale screen: the ticket of the sale just made. */
+function currentSaleTicket(kind: TicketDoc["kind"], copia: boolean): TicketDoc {
+  const s = posStore.get();
+  const job = s.receiptJobId ? s.outbox.find((j) => j.id === s.receiptJobId) : undefined;
+  const pendiente = s.receiptKind === "pendiente";
+  return saleTicket(kind, {
+    order: job?.snapshot.order ?? s.order,
+    customerName: job?.snapshot.customerName ?? s.customerName,
+    folio: job?.printed?.folio ?? s.orderNo,
+    catalog: s.catalog,
+    orderType: job?.base.orderType ?? s.orderType,
+    sinGluten: job?.base.sinGluten ?? s.noteSinGluten,
+    note: job?.base.note ?? s.note,
+    seLoLlevamos: job?.base.seLoLlevamos ?? s.seLoLlevamos,
+    baristaId: job?.base.baristaId ?? s.barista?.id,
+    total: s.lastTotal,
+    payment: pendiente ? null : job?.payment ?? { method: s.lastMethod, tendered: s.lastChange > 0 ? s.lastTotal + s.lastChange : null, approvalCode: s.approvalCode.trim() || null },
+    change: pendiente ? 0 : s.lastChange,
+    pendiente,
+    porVerificar: job?.base.porVerificar === "transferencia",
+    copia,
+  });
+}
+export function printReceipt() {
+  printTicket(currentSaleTicket("recibo", false));
+}
+export function reprintComanda() {
+  printTicket(currentSaleTicket("comanda", true));
+}
+
+/** Receipt or comanda of a stored order, from Pedidos. */
+export function printTicketFor(o: PosOrder, kind: TicketDoc["kind"]) {
+  const s = posStore.get();
+  const { lines } = rebuildLines(o, s.catalog);
+  const pagos = o.pagos ?? [];
+  const pagado = o.status === "pagada";
+  const method = o.paymentMethod;
+  const approval = pagos.find((p) => p.approvalCode)?.approvalCode ?? null;
+  printTicket({
+    ...saleTicket(kind, {
+      order: lines,
+      customerName: o.customerName,
+      folio: o.folio,
+      catalog: s.catalog,
+      orderType: o.orderType,
+      sinGluten: o.sinGluten,
+      note: o.note,
+      seLoLlevamos: o.seLoLlevamos,
+      baristaId: o.baristaId ?? null,
+      at: o.createdAt,
+      total: o.total,
+      payment: null,
+      change: pagado ? o.change : 0,
+      pendiente: o.status === "pendiente",
+      porVerificar: o.porVerificar === "transferencia",
+      copia: true,
+    }),
+    method: pagado && method ? PAY_METHOD_LABEL[method] : undefined,
+    tendered: pagado && method === "efectivo" ? o.tendered : null,
+    approval,
+  });
 }
 
 /**

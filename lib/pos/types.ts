@@ -115,6 +115,8 @@ export interface PosCatalog {
   pairs: Record<string, PosPair[]>;
   /** Shown on the payment pages when set (organizations columns). */
   pago: PosPagoInfo;
+  /** Printed receipt header/footer (organizations.recibo_*). */
+  recibo: PosReciboInfo;
 }
 
 /** Another product that shows up on the same orders as one product. */
@@ -122,6 +124,13 @@ export interface PosPair {
   id: string;
   /** Share (0–100) of the orders with the product that also had this one. */
   pct: number;
+}
+
+/** What the printed customer receipt carries besides the sale. */
+export interface PosReciboInfo {
+  /** Lines under the name: NIT, address, phone… */
+  encabezado: string | null;
+  pie: string | null;
 }
 
 export interface PosPagoInfo {

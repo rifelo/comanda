@@ -26,11 +26,13 @@ import {
   chargePendingSplit,
   editPending,
   printLabelFor,
+  printTicketFor,
   startMerge,
   toggleSeLoLlevamos,
   countCompletados,
   PAY_METHODS,
 } from "../pos-store";
+import { useTicketPrinter } from "@/lib/printer/tickets";
 import { CancelarOverlay } from "./cancelar";
 import { CombinarOverlay } from "./combinar";
 
@@ -233,6 +235,7 @@ function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
   const partial = pendiente && o.paid > 0 && due > 0;
   const mins = ageMinutes(o.createdAt);
   const [menu, setMenu] = React.useState(false);
+  const tickets = useTicketPrinter().modo !== "no";
   const menuRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (!menu) return;
@@ -279,6 +282,12 @@ function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
                   </button>
                 )}
                 <button type="button" role="menuitem" onClick={() => { setMenu(false); printLabelFor(o); }}>Reimprimir etiquetas</button>
+                {tickets && (
+                  <>
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); printTicketFor(o, "recibo"); }}>Imprimir recibo</button>
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); printTicketFor(o, "comanda"); }}>Reimprimir comanda</button>
+                  </>
+                )}
                 {canCancel && !cancelInRow && (
                   <button type="button" role="menuitem" style={{ color: "var(--late)" }} onClick={() => { setMenu(false); onCancel(); }}>Cancelar pedido</button>
                 )}

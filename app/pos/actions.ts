@@ -11,6 +11,7 @@ import { generarFraseCafe } from "@/lib/ai/frase";
 import { MissingGroqKeyError, GroqRateLimitError } from "@/lib/ai/groq";
 import { FRASE_TONO_IDS, fraseBebida, type FraseCategoria, type FraseTono } from "@/lib/pos/frase";
 import { LabelSpecSchema, RELAY_BATCH_MAX, RELAY_TTL_MS, type LabelSpec } from "@/lib/printer/spec";
+import { TicketDocSchema, type TicketDoc } from "@/lib/printer/ticket";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
   PosCatalog,
@@ -802,7 +803,7 @@ export async function encolarEtiquetas(
   const parsed = z.array(LabelSpecSchema).min(1).max(RELAY_BATCH_MAX).safeParse(specs);
   if (!parsed.success) return { ok: false, error: "Etiqueta no válida." };
   const { error } = await supabase.from("pos_print_jobs").insert(
-    parsed.data.map((payload, seq) => ({ organization_id: organizationId, seq, payload, source: station })),
+    parsed.data.map((payload, seq) => ({ organization_id: organizationId, seq, payload, source: station, clase: "etiqueta" })),
   );
   if (error) {
     console.error("[encolarEtiquetas] failed:", error.message);
@@ -823,6 +824,7 @@ export async function reclamarEtiquetas(): Promise<{ ok: true; jobs: LabelSpec[]
     .from("pos_print_jobs")
     .update({ status: "reclamada", claimed_by: station, claimed_at: new Date(now).toISOString() })
     .eq("organization_id", organizationId)
+    .eq("clase", "etiqueta")
     .eq("status", "pendiente")
     .gt("created_at", new Date(now - RELAY_TTL_MS).toISOString())
     .select("payload, created_at, seq");
@@ -847,6 +849,51 @@ export async function reclamarEtiquetas(): Promise<{ ok: true; jobs: LabelSpec[]
       .lt("created_at", new Date(now - 24 * 3600_000).toISOString());
   }
   return { ok: true, jobs };
+}
+
+// ── receipts and comandas relayed to the receipt printer (0064) ───────────────
+/** A station without the receipt printer asks the one that has it to print these. */
+export async function encolarTickets(
+  docs: TicketDoc[],
+): Promise<{ ok: true; n: number } | { ok: false; error: string }> {
+  const { supabase, organizationId, station } = await requirePosAuth();
+  const parsed = z.array(TicketDocSchema).min(1).max(10).safeParse(docs);
+  if (!parsed.success) return { ok: false, error: "Recibo no válido." };
+  const { error } = await supabase.from("pos_print_jobs").insert(
+    parsed.data.map((payload, seq) => ({ organization_id: organizationId, seq, payload, source: station, clase: "ticket" })),
+  );
+  if (error) {
+    console.error("[encolarTickets] failed:", error.message);
+    return { ok: false, error: "No se pudo enviar el recibo." };
+  }
+  return { ok: true, n: parsed.data.length };
+}
+
+/** The receipt printer station takes the waiting tickets (same claim-by-UPDATE as the labels). */
+export async function reclamarTickets(): Promise<{ ok: true; docs: TicketDoc[] } | { ok: false }> {
+  const { supabase, organizationId, station } = await requirePosAuth();
+  const now = Date.now();
+  const { data, error } = await supabase
+    .from("pos_print_jobs")
+    .update({ status: "reclamada", claimed_by: station, claimed_at: new Date(now).toISOString() })
+    .eq("organization_id", organizationId)
+    .eq("clase", "ticket")
+    .eq("status", "pendiente")
+    .gt("created_at", new Date(now - RELAY_TTL_MS).toISOString())
+    .select("payload, created_at, seq");
+  if (error) {
+    console.error("[reclamarTickets] failed:", error.message);
+    return { ok: false };
+  }
+  const rows = ((data ?? []) as Array<{ payload: unknown; created_at: string; seq: number }>).sort(
+    (a, b) => a.created_at.localeCompare(b.created_at) || a.seq - b.seq,
+  );
+  const docs: TicketDoc[] = [];
+  for (const r of rows) {
+    const ok = TicketDocSchema.safeParse(r.payload);
+    if (ok.success) docs.push(ok.data);
+  }
+  return { ok: true, docs };
 }
 
 // ── live AI suggestions ──────────────────────────────────────────────────────

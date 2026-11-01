@@ -39,3 +39,34 @@ export async function updateSede(input: z.infer<typeof Schema>) {
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+// updateRecibo result: { ok: true } | { error: string }
+const ReciboSchema = z.object({
+  recibo_encabezado: z.string().max(300),
+  recibo_pie: z.string().max(200),
+  transferencia_llave: z.string().max(80),
+  transferencia_titular: z.string().max(80),
+  datafono_liquidacion: z.string().max(60),
+});
+
+/** What the POS prints on the receipt and shows on the payment pages (organizations). */
+export async function updateRecibo(input: z.infer<typeof ReciboSchema>) {
+  const parsed = ReciboSchema.safeParse(input);
+  if (!parsed.success) return { error: "Datos inválidos (revisa el largo de los textos)." };
+  const { supabase, profile } = await requireAdmin();
+  const val = (v: string) => v.trim() || null;
+  const d = parsed.data;
+  const { error } = await supabase
+    .from("organizations")
+    .update({
+      recibo_encabezado: val(d.recibo_encabezado),
+      recibo_pie: val(d.recibo_pie),
+      transferencia_llave: val(d.transferencia_llave),
+      transferencia_titular: val(d.transferencia_titular),
+      datafono_liquidacion: val(d.datafono_liquidacion),
+    })
+    .eq("id", profile.organization_id);
+  if (error) return { error: error.message };
+  revalidatePath("/ajustes/sede");
+  return { ok: true };
+}

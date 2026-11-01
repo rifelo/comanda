@@ -86,7 +86,7 @@ export async function getPosCatalog({
     getModificadores(organizationId, client),
     supabase
       .from("organizations")
-      .select("instagram, sticker_url, cup_url, label_art_url, transferencia_llave, transferencia_titular, datafono_liquidacion")
+      .select("instagram, sticker_url, cup_url, label_art_url, transferencia_llave, transferencia_titular, datafono_liquidacion, recibo_encabezado, recibo_pie")
       .eq("id", organizationId)
       .maybeSingle(),
     getEquipo(organizationId),
@@ -274,6 +274,7 @@ export async function getPosCatalog({
       transferenciaTitular: txt(org.transferencia_titular),
       datafonoLiquidacion: txt(org.datafono_liquidacion),
     },
+    recibo: { encabezado: txt(org.recibo_encabezado), pie: txt(org.recibo_pie) },
   };
 }
 

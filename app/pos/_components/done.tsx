@@ -12,7 +12,8 @@
 import * as React from "react";
 import { PAY_METHOD_LABEL } from "@/lib/pos/types";
 import { planSaleLabels } from "@/lib/pos/drink-label";
-import { useCatalog, usePos, resetConversation, retryOutbox, dropOutbox, reprintLabel, printFrase } from "../pos-store";
+import { useCatalog, usePos, resetConversation, retryOutbox, dropOutbox, reprintLabel, printFrase, printReceipt, reprintComanda } from "../pos-store";
+import { useTicketPrinter } from "@/lib/printer/tickets";
 import { usePrinter, connectPrinter, checkPrinter, printInstagramLabel, printStickerLabel, relaysLabels } from "@/lib/printer/serial";
 import { CheckIcon, money, whoOf } from "./pay-common";
 
@@ -91,6 +92,7 @@ export function VentaRegistradaPage() {
           </div>
         )}
 
+        <TicketsLine waiting={registrando && !job?.printed} />
         <LabelsLine />
 
         <button ref={btnRef} type="button" className="btn lg block" onClick={resetConversation}>
@@ -158,6 +160,29 @@ function LabelsLine() {
           {canPrint && tool(s.fraseLoading ? "Pensando…" : "Frase IA", () => void printFrase(), busy || s.fraseLoading)}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The paper receipt for the customer and the bar's comanda (receipt printer,
+ * here or relayed to the PC that has it). Until the folio is known there is
+ * nothing to print on them.
+ */
+function TicketsLine({ waiting }: { waiting: boolean }) {
+  const t = useTicketPrinter();
+  if (t.modo === "no") return null;
+  return (
+    <div className="done-labels">
+      {t.note && <span className="muted" style={{ fontSize: 14 }}>{t.note}</span>}
+      <div className="done-tools">
+        <button type="button" className="btn ghost sm done-tool" onClick={printReceipt} disabled={waiting}>
+          {t.recibo === "auto" ? "Otro recibo" : "Imprimir recibo"}
+        </button>
+        <button type="button" className="btn ghost sm done-tool" onClick={reprintComanda} disabled={waiting}>
+          {t.comanda ? "Reimprimir comanda" : "Imprimir comanda"}
+        </button>
+      </div>
     </div>
   );
 }

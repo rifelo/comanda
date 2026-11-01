@@ -16,7 +16,7 @@ function catalog(menu: PosMenuItem[], pairs: PosCatalog["pairs"] = {}): PosCatal
     ],
     modGroups: {}, byId: Object.fromEntries(menu.map((m) => [m.id, m])), comboById: {},
     catLabel: { jugos: "Jugos", sal: "Salados" }, orgName: "x", instagram: null, sticker: null, cupArt: null, handArt: null,
-    equipo: [], pairs, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
+    equipo: [], pairs, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null }, recibo: { encabezado: null, pie: null },
   };
 }
 
