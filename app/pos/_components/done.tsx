@@ -107,7 +107,7 @@ export function VentaRegistradaPage() {
 }
 
 /**
- * «3 etiquetas en la impresora · Pa' Juan · QR · Cappuccino» plus the
+ * «4 etiquetas en la impresora · Pa' Juan · Cappuccino» plus the
  * reprint actions. New labels go out only for a new order — a stored order
  * that is being charged got its labels when it was sent.
  */
@@ -122,7 +122,7 @@ function LabelsLine() {
   const jobs = fresh ? planSaleLabels({ order: sale.order, people: sale.people, byId: catalog.byId, tableName: sale.customerName.trim() }) : [];
   const what: string[] = [];
   for (const j of jobs) {
-    const t = j.kind === "name" ? `Pa' ${j.name}` : j.kind === "califica" ? "QR" : j.kind === "drink" ? j.item.name : "frase";
+    const t = j.kind === "cliente" ? `Pa' ${j.name || "ti"}` : j.item.name;
     if (!what.includes(t)) what.push(t);
   }
   const busy = p.status === "printing" || p.status === "connecting";

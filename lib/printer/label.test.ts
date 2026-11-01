@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breakDrinkName, drinkKicker, instagramLink, orderNumber, rosterLine } from "./label";
+import { breakDrinkName, capitalizeWords, drinkKicker, instagramLink, orderNumber, rosterLine } from "./label";
 
 describe("drinkKicker", () => {
   it("names the person, uppercased, with the brand's Pa'", () => {
@@ -69,5 +69,13 @@ describe("breakDrinkName", () => {
   it("gives up when the name cannot fit in the lines allowed", () => {
     expect(breakDrinkName("Americano", 1, 60, width)).toBeNull();
     expect(breakDrinkName("   ", 2, 60, width)).toBeNull();
+  });
+});
+
+describe("capitalizeWords", () => {
+  it("capitalizes each word like the canvas's text-transform", () => {
+    expect(capitalizeWords("maría  alejandra ")).toBe("María Alejandra");
+    expect(capitalizeWords("latte de avena")).toBe("Latte De Avena");
+    expect(capitalizeWords("")).toBe("");
   });
 });

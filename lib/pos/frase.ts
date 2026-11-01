@@ -39,6 +39,19 @@ export const FRASES_RESPALDO = [
   "Un gusto tenerte por aquí. Vuelve pronto.",
   "Lo rico de la vida cabe en un vaso.",
   "Date el crédito: llegaste hasta aquí.",
+  // From the 2-label canvas (2026-11): short ones that fit beside the hand.
+  "Tómalo con calma.",
+  "Hoy también se puede.",
+  "Un sorbo y seguimos.",
+  "Respira. Luego el café.",
+  "Lo bueno toma su tiempo.",
+  "Pa' lo que venga hoy.",
+  "Tú puedes con todo esto.",
+  "Primero el café, luego el mundo.",
+  "Despacio también se llega.",
+  "Este café cree en ti.",
+  "Pa' empezar con ganas.",
+  "Que hoy te salga todo.",
 ] as const;
 
 /** A fallback phrase; `seed` picks it so two cups of one order don't repeat when it can be helped. */

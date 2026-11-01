@@ -20,32 +20,35 @@ export function energiaLine(rand: number = Math.random()): string {
 }
 
 /**
- * Labels a named drink carries: name, rating QR, the drink, its phrase.
- * A drink with no name skips the name label (the order number is not printed).
+ * Labels every drink carries since 2026-11 (the «Etiquetas Café Pa' Yo ·
+ * 50 × 30 mm» canvas): the name label (with the cup's phrase and a brand
+ * hand) and the drink label (with the cup's rating QR). It was 4 before:
+ * name, QR, drink and phrase each on its own label.
  */
-export const LABELS_PER_DRINK = 4;
+export const LABELS_PER_DRINK = 2;
 
 /** One job in the label run of a sale, in print order. */
 export type SaleLabelJob =
-  | { kind: "name"; name: string }
   /**
-   * The rating QR of one cup ("" customer = the table / the whole order).
-   * `line` is the cup's ticket line, so the QR is worth that drink; the
-   * person's first cup (`resto`) also carries what has no label (food, bottles).
+   * Label 1 of a cup: «Pa' <name>» and its phrase; "" = «Pa' ti» (a cup with
+   * no name). `cup` is false for the lone name label of an order with no drink.
    */
-  | { kind: "califica"; customer: string; line: number; resto: boolean }
-  | { kind: "drink"; item: DrinkLabelPlanItem }
-  /** The phrase label of this cup (a house phrase, not about the drink). */
-  | { kind: "frase"; productId: string };
+  | { kind: "cliente"; name: string; cup: boolean }
+  /**
+   * Label 2 of a cup: the drink and its rating QR ("" customer = the table /
+   * the whole order). `line` is the cup's ticket line, so the QR is worth that
+   * drink; the person's first cup (`resto`) also carries what has no label
+   * (food, bottles).
+   */
+  | { kind: "vaso"; item: DrinkLabelPlanItem; customer: string; line: number; resto: boolean };
 
 /**
- * The whole label run of a sale. Every prepared drink gets its labels one
- * after the other so each cup's set comes out together: its name ("Pa'
- * <nombre>" or the table label) — only when there is a name, the order
- * number alone is never printed — then its rating QR, the drink label and
- * its phrase. Sets follow the roster order, cups that belong to nobody last.
- * Someone with only food or a bottle gets nothing; an order with no drink
- * prints its name label only when it has a name.
+ * The whole label run of a sale. Every prepared drink gets its two labels
+ * one after the other so each cup's pair comes out together: its name label
+ * («Pa' <nombre>», the table label, or «Pa' ti» when there is no name) and
+ * its drink label with the QR. Pairs follow the roster order, cups that
+ * belong to nobody last. Someone with only food or a bottle gets nothing; an
+ * order with no drink prints its name label only when it has a name.
  */
 export function planSaleLabels(input: {
   order: ReadonlyArray<OrderLine>;
@@ -57,17 +60,15 @@ export function planSaleLabels(input: {
   const cups = planDrinkLabels(input.order, input.people, input.byId);
   const jobs: SaleLabelJob[] = [];
   const group = (name: string, items: DrinkLabelPlanItem[], always: boolean) => {
-    const named = name.trim() !== "";
+    const label = name.trim();
     if (!items.length) {
-      if (always && named) jobs.push({ kind: "name", name });
+      if (always && label) jobs.push({ kind: "cliente", name: label, cup: false });
       return;
     }
     const customer = input.people.includes(name) ? name : "";
     items.forEach((item, i) => {
-      if (named) jobs.push({ kind: "name", name });
-      jobs.push({ kind: "califica", customer, line: item.line, resto: i === 0 });
-      jobs.push({ kind: "drink", item });
-      jobs.push({ kind: "frase", productId: item.productId });
+      jobs.push({ kind: "cliente", name: label, cup: true });
+      jobs.push({ kind: "vaso", item, customer, line: item.line, resto: i === 0 });
     });
   };
   if (input.people.length === 0) {

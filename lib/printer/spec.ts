@@ -36,6 +36,10 @@ export const LabelSpecSchema = z.discriminatedUnion("kind", [
   /** The rating QR of one sale (0049): `url` is that cup's own one-use link. */
   z.object({ kind: z.literal("califica"), url: text(120), cupSrc: text(800).nullable().optional() }),
   z.object({ kind: z.literal("sticker"), src: text(800) }),
+  /** Cup label 1 (2026-11): «Pa'» + name, the cup's phrase and a brand hand. */
+  z.object({ kind: z.literal("cliente"), name: text(120), frase: text(300), handSrc: text(800).nullable().optional() }),
+  /** Cup label 2 (2026-11): the drink and this cup's one-use QR. */
+  z.object({ kind: z.literal("vaso"), drink: text(120), url: text(120), iconSrc: text(800).nullable().optional() }),
 ]);
 export type LabelSpec = z.infer<typeof LabelSpecSchema>;
 
