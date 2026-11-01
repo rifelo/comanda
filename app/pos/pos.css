@@ -451,3 +451,40 @@
   .app .ticket-h .chip svg { display: none; }
 }
 .app .cats { padding: 4px; margin: -4px; }
+/* ── C · Pedidos + Cancelar + Combinar + Personas ── */
+.app .ped-tabs { display: flex; align-items: center; gap: 12px; margin-left: 8px; flex-wrap: wrap; }
+.app .ped-day { display: inline-flex; align-items: center; gap: 6px; }
+.app .ped-day .icon-btn { width: 44px; height: 44px; }
+.app .ped-day .icon-btn:disabled { opacity: 0.35; cursor: default; }
+.app .ped-day-l { font-size: 15px; font-weight: 600; white-space: nowrap; min-width: 140px; text-align: center; }
+.app .ped-alert { flex-shrink: 0; margin: 12px 20px 0; padding: 10px 14px; border-radius: 12px; background: var(--late-soft); color: var(--late); font-size: 15px; font-weight: 600; }
+.app .orders.scroll { overflow-y: auto; }
+.app .order .acts { flex-wrap: wrap; margin-top: auto; }
+.app .order .oh { flex-wrap: wrap; row-gap: 6px; }
+.app .ped-more { width: 44px; height: 44px; margin: -8px -8px -8px 0; flex-shrink: 0; border-radius: 12px; border: none; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.app .ped-more:hover, .app .ped-more[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.app .personas-split .ticket-b > .card { flex-shrink: 0; }
+@media (max-width: 1023px) {
+  .app .topbar.ped-top { height: auto; min-height: 64px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; row-gap: 8px; }
+  .app .ped-top .ped-tabs { order: 10; width: 100%; margin-left: 0; }
+  .app .ped-top .ped-upd { display: none; }
+  .app .sale.personas { overflow-y: auto; }
+  .app .sale.personas > .card { flex: none; }
+  .app .sale.personas > .card .scroll { overflow: visible; }
+  .app .sale.personas > .ticket.personas-split { position: static; transform: none; width: 100% !important; border-radius: 16px; box-shadow: none; flex-shrink: 0; }
+  .app .sale.personas > .ticket.personas-split .ticket-b { overflow: visible; }
+}
+@media (max-width: 600px) {
+  .app .ped-top .ped-refresh { width: 44px; padding: 0; }
+  .app .ped-top .ped-refresh-l, .app .ped-top .ped-hide-ph { display: none; }
+  .app .ped-top .seg { width: 100%; }
+  .app .ped-top .seg button { flex: 1; justify-content: center; padding: 0 10px; }
+  .app .ped-alert { margin: 8px 12px 0; }
+  .app .order { padding: 14px; }
+  .app .order .acts .btn.sm { padding: 0 12px; }
+  .app .sheet .h1 { font-size: 22px; }
+  .app .sheet .btn.lg { height: 60px; font-size: 17px; }
+  .app .sheet .cx-edit { flex-direction: column; align-items: stretch; }
+  .app .sale.personas .h1 { font-size: 22px; }
+  .app .sale.personas .pay2 .btn.lg { height: 60px; font-size: 15px; white-space: normal; text-align: center; line-height: 1.2; padding: 0 12px; }
+}

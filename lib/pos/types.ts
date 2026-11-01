@@ -298,6 +298,8 @@ export interface PosOrder {
   seLoLlevamos: boolean;
   /** «Aún no llega · pagar después»: sent before the transfer showed up. */
   porVerificar: "transferencia" | null;
+  /** Who prepares it (ordenes.barista_id → catalog.equipo); null/absent = nobody credited. */
+  baristaId?: string | null;
   tendered: number | null;
   change: number;
   /** Sum of the payments so far (cached on the order). */

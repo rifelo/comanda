@@ -280,8 +280,8 @@ const CobrarPendienteSchema = z.object({
 });
 const CancelarPendienteSchema = z.object({
   ordenId: z.string().uuid(),
-  /** Chip from the POS cancel sheet (CANCEL_REASONS); prepended to the notes. */
-  motivo: z.string().trim().max(60).optional(),
+  /** «<razón>: <detalle>» from the POS «Cancelar» overlay (CANCEL_REASONS + optional detail); prepended to the notes. */
+  motivo: z.string().trim().max(200).optional(),
 });
 
 export type GuardarPendienteResult =
@@ -293,6 +293,7 @@ export type ListarPendientesResult =
 export type SimpleResult = { ok: true } | { ok: false; error: string };
 
 const YA_NO_PENDIENTE = "El pedido ya fue cobrado o cancelado.";
+const YA_CANCELADO = "El pedido ya estaba cancelado o combinado.";
 
 /**
  * Save an unpaid order. Without `ordenId` a new pending order is created (it
@@ -399,7 +400,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -444,6 +445,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
       seLoLlevamos: Boolean(o.se_lo_llevamos),
       porVerificar: (o.por_verificar as PosOrder["porVerificar"]) ?? null,
+      baristaId: (o.barista_id as string | null) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
       paid: Number(o.paid_cop ?? 0),
@@ -622,10 +624,6 @@ export async function cobrarPendiente(input: unknown): Promise<CrearOrdenResult>
   return { ok: true, folio: res.folio, ordenId: res.ordenId, total: res.total, change: res.change };
 }
 
-/**
- * Void a pending order (never a paid one). Partial payments are not
- * refunded here — the note records them so the cash drawer can be squared.
- */
 const CombinarSchema = z.object({
   targetId: z.string().uuid(),
   sourceIds: z.array(z.string().uuid()).min(1).max(20),
@@ -655,36 +653,64 @@ export async function combinarPendientes(input: unknown): Promise<CombinarResult
   return { ok: true, targetId };
 }
 
+/**
+ * Void an order: unpaid, partly paid or paid (not yet cancelled or merged).
+ * Payments are not refunded here — the overlay tells the cashier to hand the
+ * money back, the note records it, and the arqueo leaves cancelled orders out.
+ */
+
 export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   const parsed = CancelarPendienteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
   const ctx = await requirePosAuth();
   const { supabase, organizationId: orgId } = ctx;
+  // Unpaid orders and paid ones (the overlay tells the cashier to hand the
+  // money back). Already cancelled — or folded into another — never again.
   const { data: cur } = await supabase
     .from("ordenes")
-    .select("paid_cop, notes")
+    .select("status, paid_cop, total_cop, notes")
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
-    .eq("status", "pendiente")
+    .in("status", ["pendiente", "pagada"])
     .maybeSingle();
-  if (!cur) return { ok: false, error: YA_NO_PENDIENTE };
-  const paid = Number(cur.paid_cop ?? 0);
+  if (!cur) return { ok: false, error: YA_CANCELADO };
+  // A direct «Cobrar» sale keeps paid_cop at 0: the whole total was paid.
+  const paid = cur.status === "pagada" ? Math.max(Number(cur.paid_cop ?? 0), Number(cur.total_cop ?? 0)) : Number(cur.paid_cop ?? 0);
   const notes = cancelNotes(cur.notes as string | null, parsed.data.motivo, paid);
   const { data: updated, error } = await supabase
     .from("ordenes")
     .update({ status: "cancelada", notes })
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
-    .eq("status", "pendiente")
+    .eq("status", cur.status as string)
     .select("id");
   if (error) {
     console.error("[cancelarPendiente] update failed:", error);
     return { ok: false, error: "No se pudo cancelar el pedido." };
   }
-  if (!updated?.length) return { ok: false, error: YA_NO_PENDIENTE };
+  if (!updated?.length) return { ok: false, error: YA_CANCELADO };
   // Voided → give the ingredients back.
   await syncOrderConsumption(supabase, orgId, parsed.data.ordenId, actorId(ctx));
   return { ok: true };
+}
+
+const ContarCompletadosSchema = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+/** How many orders of a Bogotá day are complete (paid and delivered) — the «Completados · N» count. */
+export async function contarCompletados(input: unknown = {}): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const parsed = ContarCompletadosSchema.safeParse(input ?? {});
+  if (!parsed.success) return { ok: false, error: "Filtro inválido." };
+  const d = parsed.data.day ?? bogotaDay();
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { count, error } = await supabase
+    .from("ordenes")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .eq("status", "pagada")
+    .not("entregada_at", "is", null)
+    .gte("created_at", `${d}T05:00:00Z`)
+    .lt("created_at", `${shiftDay(d, 1)}T05:00:00Z`);
+  if (error) return { ok: false, error: "No se pudo contar." };
+  return { ok: true, count: count ?? 0 };
 }
 
 // ── se lo llevamos ────────────────────────────────────────────────────────────
