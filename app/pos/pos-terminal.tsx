@@ -30,6 +30,7 @@ import { usePosLive } from "./pos-live";
 import { usePosWindowLease } from "./pos-window";
 import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
+import { CUP_LABEL_ASSETS } from "@/lib/printer/label";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
 import { POS_CSS } from "./_components/theme";
 import { BaristaPicker, TopBar } from "./_components/top-bar";
@@ -265,7 +266,7 @@ function registerOfflineWorker() {
         location.href,
         ...performance.getEntriesByType("resource").map((e) => e.name),
         // Label art loads only when a label prints; product photos when a recipe opens.
-        ...[cat.sticker, cat.cupArt, cat.handArt, ...cat.menu.map((p) => p.image)].filter((u): u is string => !!u).map((u) => new URL(u, location.href).href),
+        ...[cat.sticker, cat.cupArt, cat.handArt, ...CUP_LABEL_ASSETS, ...cat.menu.map((p) => p.image)].filter((u): u is string => !!u).map((u) => new URL(u, location.href).href),
       ].filter((u) => u.startsWith(location.origin) || u.includes("/storage/v1/object/"));
       reg.active?.postMessage({ type: "cache", urls });
     })

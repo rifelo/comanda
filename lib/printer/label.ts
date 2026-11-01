@@ -76,6 +76,46 @@ const monoFont = () => cssFamily("--font-mono", FALLBACK_MONO);
 const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
 
 /**
+ * The cup labels (2026-11, «Etiquetas Café Pa' Yo · 50 × 30 mm» canvas) also
+ * use the menu's faces: Nority slanted for the «PA'» kicker and Delight Light
+ * for the phrase and the call to scan. They are not loaded on /pos, so they
+ * are registered here from /labels/fonts and cached by the POS worker.
+ */
+const NORITY_FAMILY = "PayoLabelNority";
+const DELIGHT_LIGHT_FAMILY = "PayoLabelDelightLight";
+const noritySlanted = () => `"${NORITY_FAMILY}", ${displayFont()}`;
+const delightLight = () => `"${DELIGHT_LIGHT_FAMILY}", ${FALLBACK_SANS}`;
+export const CUP_LABEL_FONTS = ["/labels/fonts/nority-slanted.woff2", "/labels/fonts/delight-light.woff2"] as const;
+/** The three hands of the brand drawn on the name label, one per cup at random. */
+export const CUP_HANDS = ["/labels/mano-taza-asa.svg", "/labels/mano-taza.svg", "/labels/mano-platillo.svg"] as const;
+/** The PA'YO mark on the drink label. */
+export const CUP_ICON = "/labels/payo-icono.svg";
+export const CUP_LABEL_ASSETS: readonly string[] = [...CUP_LABEL_FONTS, ...CUP_HANDS, CUP_ICON];
+
+let cupFacesLoading: Promise<void> | null = null;
+function loadCupFaces(): Promise<void> {
+  if (typeof document === "undefined" || typeof FontFace === "undefined") return Promise.resolve();
+  if (!cupFacesLoading) {
+    const face = async (family: string, url: string, weight: string) => {
+      const f = new FontFace(family, `url(${url})`, { weight, style: "normal" });
+      await f.load();
+      document.fonts.add(f);
+    };
+    cupFacesLoading = Promise.all([
+      face(NORITY_FAMILY, CUP_LABEL_FONTS[0], "400"),
+      face(DELIGHT_LIGHT_FAMILY, CUP_LABEL_FONTS[1], "300"),
+    ]).then(
+      () => undefined,
+      (err) => {
+        cupFacesLoading = null; // try again on the next label
+        console.warn("[label] cup label fonts:", err);
+      },
+    );
+  }
+  return cupFacesLoading;
+}
+
+/**
  * Canvas draws with whatever is loaded at that instant, so a cold label
  * would silently fall back to Arial. Awaited by the print queue before it
  * rasterizes a job.
@@ -87,6 +127,7 @@ export async function ensureLabelFonts(): Promise<void> {
       document.fonts.load(`96px ${displayFont()}`),
       document.fonts.load(`bold 30px ${monoFont()}`),
       document.fonts.load(`bold 30px ${fraseFont()}`),
+      loadCupFaces(),
     ]);
     await document.fonts.ready;
   } catch {
@@ -630,6 +671,213 @@ export function renderDrinkLabel(input: DrinkLabelInput): LabelRaster {
 
   ctx.restore();
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM);
+}
+
+// ── cup labels (2 per drink, since 2026-11) ─────────────────────
+// Drawn in the canvas's own coordinates: 756 × 454 px for 50 × 30 mm
+// (15,12 px per mm) with a 40 / 36 px margin. The content box (676 × 386)
+// is mapped at true size (8 dots per mm) into the 45 × 28 mm ink area,
+// so the design's margins shrink to what the head can reach.
+const CUP_DESIGN_PX_PER_MM = 15.12;
+const CUP_S = PX_PER_MM / CUP_DESIGN_PX_PER_MM;
+const CUP_PAD_X = 40;
+const CUP_PAD_Y = 36;
+const CUP_INNER_W = 756 - CUP_PAD_X * 2; // 676
+const CUP_INNER_H = 454 - CUP_PAD_Y - 32; // 386
+/** Light strokes of Delight Light are ~1 dot wide once scaled: burn the antialiased edge too. */
+const CUP_THRESHOLD = 200;
+
+type Img = CanvasImageSource & { width: number; height: number };
+
+function cupCanvas(): { ctx: CanvasRenderingContext2D; W: number; H: number; toDevice: (x: number, y: number) => [number, number] } {
+  const W = HEAD_WIDTH_PX;
+  const H = LABEL_H_MM * PX_PER_MM;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+  const ox = INK_LEFT - CUP_PAD_X * CUP_S;
+  const oy = Math.round((H - CUP_INNER_H * CUP_S) / 2) - CUP_PAD_Y * CUP_S;
+  ctx.setTransform(CUP_S, 0, 0, CUP_S, ox, oy);
+  ctx.fillStyle = "#000";
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  return { ctx, W, H, toDevice: (x, y) => [ox + x * CUP_S, oy + y * CUP_S] };
+}
+
+/** «maría alejandra» → «María Alejandra» (the canvas's text-transform: capitalize). */
+export function capitalizeWords(s: string): string {
+  return s
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map((w) => (w ? w[0].toLocaleUpperCase("es") + w.slice(1) : w))
+    .join(" ");
+}
+
+export interface CupNameLabelInput {
+  /** Whose cup it is; empty prints «Pa' ti». */
+  name: string;
+  /** The house phrase of this cup. */
+  frase: string;
+  /** One of the brand hands (CUP_HANDS), drawn bottom-right. */
+  hand?: Img | null;
+}
+
+/**
+ * Label 1 of a cup: «PA'» in Nority slanted, the name as big as fits on one
+ * line in the display face, the phrase at the foot in Delight Light and a
+ * hand of the brand in the bottom-right corner.
+ */
+export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
+  const { ctx, W, H, toDevice } = cupCanvas();
+  const L = CUP_PAD_X;
+  const T = CUP_PAD_Y;
+  const B = T + CUP_INNER_H; // 422
+
+  // hand: 150 px wide, 40 px from the right edge, sitting on the bottom margin
+  if (input.hand && input.hand.width > 0 && input.hand.height > 0) {
+    const w = 150;
+    const h = (w * input.hand.height) / input.hand.width;
+    const [dx, dy] = toDevice(756 - CUP_PAD_X - w, B - h);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    stampMark(ctx, input.hand, dx, dy, Math.round(w * CUP_S), Math.round(h * CUP_S), HAND_THRESHOLD);
+    ctx.restore();
+  }
+
+  // «PA'»
+  ctx.font = `40px ${noritySlanted()}`;
+  setTracking(ctx, "2px");
+  ctx.fillText("PA'", L, T);
+  setTracking(ctx, "0px");
+
+  // the name: one line, 110 px down to 40, no wider than 560 px (the canvas's
+  // rule, so a long name shrinks before it reaches the hand); a name too long
+  // even then keeps its first word
+  const NAME_W = 560;
+  let name = capitalizeWords(input.name) || "Ti";
+  let size = 110;
+  const fits = (t: string, px: number) => {
+    ctx.font = `${px}px ${displayFont()}`;
+    return ctx.measureText(t).width <= NAME_W;
+  };
+  while (size > 40 && !fits(name, size)) size -= 2;
+  if (!fits(name, size) && name.includes(" ")) {
+    name = name.split(" ")[0];
+    size = 110;
+    while (size > 40 && !fits(name, size)) size -= 2;
+  }
+  ctx.font = `${size}px ${displayFont()}`;
+  ctx.fillText(fitOneLine(ctx, name, NAME_W), L, T + 40 + 8);
+
+  // phrase: bottom-anchored, 520 px wide (clear of the hand), up to 3 lines
+  const frase = input.frase.replace(/\s+/g, " ").trim();
+  if (frase) {
+    const nameBottom = T + 48 + Math.round(size * 1.05);
+    let fs = 34;
+    let lines: string[] = [];
+    for (; fs >= 22; fs -= 2) {
+      ctx.font = `300 ${fs}px ${delightLight()}`;
+      lines = wrap(ctx, frase, 520);
+      if (lines.length <= 3 && B - lines.length * Math.round(fs * 1.12) >= nameBottom + 8) break;
+    }
+    ctx.font = `300 ${fs}px ${delightLight()}`;
+    lines = lines.slice(0, 3);
+    const lh = Math.round(fs * 1.12);
+    let y = B - lines.length * lh;
+    for (const l of lines) {
+      ctx.fillText(l, L, y);
+      y += lh;
+    }
+  }
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, CUP_THRESHOLD);
+}
+
+export interface CupDrinkLabelInput {
+  /** Product name, as on the menu. */
+  drink: string;
+  /** This cup's one-use rating / points link. */
+  url: string;
+  /** The PA'YO mark, top-left. */
+  icon?: Img | null;
+}
+
+/**
+ * Label 2 of a cup: the PA'YO mark, the drink in the display face (two
+ * lines at most), «Escanea y suma tus puntos.» at the foot and, on the
+ * right, the cup's own QR as big as the label allows.
+ */
+export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
+  const { ctx, W, H, toDevice } = cupCanvas();
+  const L = CUP_PAD_X;
+  const T = CUP_PAD_Y;
+  const B = T + CUP_INNER_H;
+  const QR = 330;
+  const colW = CUP_INNER_W - 28 - QR; // 318
+
+  // mark: 96 px wide
+  let y = T;
+  if (input.icon && input.icon.width > 0 && input.icon.height > 0) {
+    const w = 96;
+    const h = (w * input.icon.height) / input.icon.width;
+    const [dx, dy] = toDevice(L, T);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    stampMark(ctx, input.icon, dx, dy, Math.round(w * CUP_S), Math.round(h * CUP_S), HAND_THRESHOLD);
+    ctx.restore();
+    y = T + h + 10;
+  }
+
+  // call to scan, bottom-anchored
+  ctx.font = `300 30px ${delightLight()}`;
+  const scan = wrap(ctx, "Escanea y suma tus puntos.", colW);
+  const scanTop = B - scan.length * 34;
+  scan.forEach((l, i) => ctx.fillText(l, L, scanTop + i * 34));
+
+  // drink: 48 px / 54, two lines; smaller (or three lines) only when it must
+  const drink = capitalizeWords(input.drink);
+  const room = scanTop - 12 - y;
+  let size = 48;
+  let lines: string[] = [];
+  for (const maxLines of [2, 3]) {
+    for (size = 48; size >= 26; size -= 2) {
+      ctx.font = `${size}px ${displayFont()}`;
+      lines = wrap(ctx, drink, colW);
+      const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      if (lines.length <= maxLines && widest <= colW && lines.length * Math.round(size * 1.125) <= room) break;
+    }
+    if (size >= 26) break;
+  }
+  if (size < 26) size = 26;
+  ctx.font = `${size}px ${displayFont()}`;
+  lines = wrap(ctx, drink, colW).slice(0, 3).map((l) => fitOneLine(ctx, l, colW));
+  const lh = Math.round(size * 1.125);
+  lines.forEach((l, i) => ctx.fillText(l, L, y + i * lh));
+
+  // QR: whole dots per module, centred in the 330 × 386 box on the right
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const qr = createQr(input.url, { errorCorrectionLevel: "M" });
+  const n = qr.modules.size;
+  const box = Math.floor(QR * CUP_S);
+  const mod = Math.max(2, Math.floor(box / n));
+  const qrPx = n * mod;
+  const [bx, by] = toDevice(756 - CUP_PAD_X - QR, T);
+  const qx = Math.round(bx + (box - qrPx) / 2);
+  const qy = Math.round(by + (CUP_INNER_H * CUP_S - qrPx) / 2);
+  ctx.fillStyle = "#000";
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (qr.modules.get(r, c)) ctx.fillRect(qx + c * mod, qy + r * mod, mod, mod);
+    }
+  }
+
+  return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, CUP_THRESHOLD);
 }
 
 /**

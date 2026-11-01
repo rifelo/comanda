@@ -59,7 +59,7 @@ import {
   transcribeAudio,
 } from "./actions";
 import { nudge } from "./pos-live";
-import { printOrderLabel, printMessageLabel, printDrinkLabel, printCalificaLabel } from "@/lib/printer/serial";
+import { printMessageLabel, printCupNameLabel, printCupDrinkLabel } from "@/lib/printer/serial";
 import { getTicketState, printTicket, ticketsOn } from "@/lib/printer/tickets";
 import type { TicketDoc, TicketLine } from "@/lib/printer/ticket";
 import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
@@ -1713,10 +1713,9 @@ let labelChain: Promise<void> = Promise.resolve();
 
 /**
  * Everything that prints when an order is registered. Every prepared drink
- * gets its labels in a row — its name ("Pa' Juan" or the table label, only
- * when there is a name: the order number is never printed on its own), its
- * rating QR, the drink label and a house phrase (planSaleLabels) — whether
- * it is alone or one of many in the order. The phrases are the fixed house
+ * gets its two labels in a row (planSaleLabels): the name label — «Pa' Juan»,
+ * the table label or «Pa' ti» — with a house phrase and a brand hand, then
+ * the drink label with its rating QR. The phrases are the fixed house
  * phrases, rotated so two cups don't repeat; no AI and no waiting. Each QR
  * is a one-use link made here and registered in the background. Nothing
  * blocks the sale.
@@ -1726,12 +1725,12 @@ function printSaleLabels(
   folio: string,
   ordenId: string | null,
 ): EnlaceVenta[] {
-  const { orgName, instagram, cupArt } = s.catalog;
+  void folio; // the cup labels carry no folio since 2026-11 (the canvas has none)
   const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim() });
   const enlaces: EnlaceVenta[] = [];
   const codes = new Map<SaleLabelJob, string>();
   for (const j of jobs) {
-    if (j.kind !== "califica") continue;
+    if (j.kind !== "vaso") continue;
     const codigo = nuevoCodigo();
     codes.set(j, codigo);
     enlaces.push({ codigo, customer: j.customer || null, linea: j.line, resto: j.resto });
@@ -1743,13 +1742,10 @@ function printSaleLabels(
   labelChain = labelChain.then(async () => {
     let k = 0;
     for (const j of jobs) {
-      if (j.kind === "name") printOrderLabel({ name: j.name, folio, orgName });
-      else if (j.kind === "califica") printCalificaLabel(urlCalificacion(codes.get(j)!), cupArt);
-      else if (j.kind === "drink") printDrinkLabel({ name: j.item.name, spec: j.item.spec, desc: j.item.desc, customer: j.item.customer, brand: orgName });
-      else {
-        printMessageLabel(fraseRespaldo(base + k), instagram);
+      if (j.kind === "cliente") {
+        printCupNameLabel(j.name, fraseRespaldo(base + k));
         k += 1;
-      }
+      } else printCupDrinkLabel(j.item.name, urlCalificacion(codes.get(j)!));
     }
   }).catch((err) => console.error("[pos] label run failed:", err));
   return enlaces;

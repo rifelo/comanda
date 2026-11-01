@@ -35,7 +35,7 @@ import {
 } from "./transport";
 import type { LabelSpec } from "./spec";
 import { energiaLine } from "@/lib/pos/drink-label";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderCalificaLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderCalificaLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput, renderCupNameLabel, renderCupDrinkLabel, CUP_HANDS, CUP_ICON } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -495,6 +495,19 @@ function jobFor(spec: LabelSpec): Job {
       return { raster: async () => renderMessageLabel({ text: spec.text, handle: spec.handle }), folio: FRASE_FOLIO, name: spec.text };
     case "sticker":
       return { raster: async () => renderImageLabel(await loadImage(spec.src)), folio: STICKER_FOLIO, name: "Sticker" };
+    case "cliente":
+      return {
+        // The hand is decoration: without it the label still names the cup.
+        raster: async () => renderCupNameLabel({ name: spec.name, frase: spec.frase, hand: spec.handSrc ? await loadImage(spec.handSrc).catch(() => null) : null }),
+        folio: CLIENTE_FOLIO,
+        name: spec.name.trim() || "Pa' ti",
+      };
+    case "vaso":
+      return {
+        raster: async () => renderCupDrinkLabel({ drink: spec.drink, url: spec.url, icon: spec.iconSrc ? await loadImage(spec.iconSrc).catch(() => null) : null }),
+        folio: VASO_FOLIO,
+        name: spec.drink,
+      };
     case "drink":
       return {
         raster: () => renderDrinkLabel(spec.input),
@@ -560,6 +573,22 @@ export function printDrinkLabel(input: DrinkLabelInput): void {
   submit({ kind: "drink", input: { brand: labelDefaults.orgName, ...input, spec: [energiaLine()] } });
 }
 export const DRINK_FOLIO = "BEBIDA";
+
+/**
+ * Cup label 1: «Pa' <nombre>» (or «Pa' ti»), the cup's phrase and one of the
+ * three brand hands, picked here so a relayed label prints the same one.
+ */
+export function printCupNameLabel(name: string, frase: string, rand: number = Math.random()): void {
+  const handSrc = CUP_HANDS[Math.min(CUP_HANDS.length - 1, Math.floor(rand * CUP_HANDS.length))];
+  submit({ kind: "cliente", name, frase, handSrc });
+}
+export const CLIENTE_FOLIO = "CLIENTE";
+
+/** Cup label 2: the drink and this cup's one-use rating / points QR. */
+export function printCupDrinkLabel(drink: string, url: string): void {
+  submit({ kind: "vaso", drink, url, iconSrc: CUP_ICON });
+}
+export const VASO_FOLIO = "VASO";
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
