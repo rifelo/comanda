@@ -275,7 +275,7 @@ async function loadRentabilidad(db: Db, orgId: string, date: string): Promise<Re
       items,
       costos,
       costosOpcion,
-      cobrosNoEfectivo: resumen.cobros.transferencia.monto + resumen.cobros.tarjeta.monto,
+      cobrosNoEfectivo: resumen.cobros.transferencia.monto + resumen.cobros.datafono.monto,
       gastosDia: gastos,
       fijos,
     });

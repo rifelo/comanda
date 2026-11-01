@@ -11,7 +11,7 @@ export interface ShareItem {
   qty: number;
   unitPrice: number;
 }
-/** One person's part of the bill (customer null = the unassigned lines, "Mesa"). */
+/** One person's part of the bill (customer null = the unassigned lines, «Sin nombre»). */
 export interface PersonShare {
   customer: string | null;
   label: string;
@@ -21,7 +21,7 @@ export interface PersonShare {
 
 /**
  * Split stored lines by person: roster order first, then names that only
- * exist on lines (line order), then the unassigned lines as "Mesa". People
+ * exist on lines (line order), then the unassigned lines as «Sin nombre». People
  * with nothing on the ticket are skipped — there is nothing to charge.
  */
 export function splitByPerson(
@@ -37,7 +37,7 @@ export function splitByPerson(
     if (!mine.length) continue;
     out.push({
       customer: who,
-      label: who ?? "Mesa",
+      label: who ?? "Sin nombre",
       items: mine.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.unitPrice })),
       amount: mine.reduce((s, it) => s + it.qty * it.unitPrice, 0),
     });

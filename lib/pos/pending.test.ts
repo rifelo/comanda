@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { bogotaDay, bogotaTime, dayLabel, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
+import { ageLabel, bogotaClock, bogotaDay, bogotaTime, dayLabel, folioTag, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
 import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
   id: "p-latte", name: "Latte", catId: "c", sub: "", sku: "BC-007", price: 7500,
-  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "", printsLabel: true, spec: ["1 SHOT · 9 G"], image: null, recipe: [], prep: [],
+  gluten: false, fav: false, stock: "ok", mods: ["g-size", "g-extras"], desc: "", printsLabel: true, spec: ["1 SHOT · 9 G"], image: null, recipe: [], prep: [], script: null,
 };
 const tinto: PosMenuItem = { ...latte, id: "p-tinto", name: "Tinto", price: 3000, mods: [] };
 const catalog: PosCatalog = {
@@ -16,11 +16,11 @@ const catalog: PosCatalog = {
   byId: { "p-latte": latte, "p-tinto": tinto },
   comboById: { "cb-1": { id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 } },
   catLabel: {}, orgName: "Cafe", instagram: null, sticker: null, cupArt: null, handArt: null,
-  equipo: [],
+  equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
 };
 
 const order = (items: PendingOrder["items"]): PendingOrder => ({
-  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, entregadaAt: null, paymentMethod: null, tendered: null, change: 0, paid: 0, pagos: [], items, mergedInto: null, mergedIntoFolio: null,
+  id: "o1", folio: "A-3", status: "pendiente", orderType: "aqui", total: 0, sinGluten: false, note: "", customerName: "", customerNames: [], createdAt: "2026-09-14T10:00:00Z", paidAt: null, entregadaAt: null, paymentMethod: null, seLoLlevamos: false, porVerificar: null, tendered: null, change: 0, paid: 0, pagos: [], items, mergedInto: null, mergedIntoFolio: null,
 });
 
 describe("sanitizeMods", () => {
@@ -129,5 +129,24 @@ describe("Bogotá days", () => {
   });
   it("formats Bogotá clock time", () => {
     expect(bogotaTime("2026-09-16T19:05:00Z")).toBe("14:05");
+  });
+});
+
+describe("Pedidos card labels", () => {
+  it("shows the folio number with four digits", () => {
+    expect(folioTag("A-1246")).toBe("#1246");
+    expect(folioTag("A-73")).toBe("#0073");
+    expect(folioTag("…")).toBe("…");
+  });
+  it("says how long an order has waited", () => {
+    const now = Date.parse("2026-10-31T15:00:00Z");
+    expect(ageLabel("2026-10-31T14:59:40Z", now)).toBe("ahora");
+    expect(ageLabel("2026-10-31T14:46:00Z", now)).toBe("14 min");
+    expect(ageLabel("2026-10-31T13:50:00Z", now)).toBe("1 h 10 min");
+    expect(ageLabel("2026-10-31T13:00:00Z", now)).toBe("2 h");
+  });
+  it("formats the delivery time without a leading zero", () => {
+    expect(bogotaClock("2026-10-31T14:31:00Z")).toBe("9:31");
+    expect(bogotaClock("2026-10-31T22:05:00Z")).toBe("17:05");
   });
 });

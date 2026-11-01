@@ -44,21 +44,21 @@ export function entregaCaja(contado: number, baseDejada: number): number {
   return contado - baseDejada;
 }
 
-export type MetodoPago = "efectivo" | "tarjeta" | "transferencia";
+export type MetodoPago = "efectivo" | "datafono" | "transferencia";
 
 export interface ResumenPagos {
   efectivo: number;
-  tarjeta: number;
+  datafono: number;
   transferencia: number;
   count: number;
 }
 
 export function resumenPagos(pagos: ReadonlyArray<{ method: MetodoPago | string; amount_cop: number }>): ResumenPagos {
-  const out: ResumenPagos = { efectivo: 0, tarjeta: 0, transferencia: 0, count: 0 };
+  const out: ResumenPagos = { efectivo: 0, datafono: 0, transferencia: 0, count: 0 };
   for (const p of pagos) {
     const amount = Number(p.amount_cop) || 0;
     if (p.method === "efectivo") out.efectivo += amount;
-    else if (p.method === "tarjeta") out.tarjeta += amount;
+    else if (p.method === "datafono") out.datafono += amount;
     else if (p.method === "transferencia") out.transferencia += amount;
     else continue;
     out.count += 1;

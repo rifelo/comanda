@@ -174,6 +174,32 @@ export function dayLabel(day: string, today: string = bogotaDay()): string {
   return base;
 }
 
+/** "A-1246" → "#1246", "A-73" → "#0073" (the canvas shows four digits); anything else as it is. */
+export function folioTag(folio: string): string {
+  const m = /(\d+)\s*$/.exec(folio);
+  return m ? `#${m[1].padStart(4, "0")}` : folio;
+}
+
+/** Whole minutes an order has waited. */
+export function ageMinutes(iso: string, now: number = Date.now()): number {
+  return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
+}
+/** How long an order has waited: "ahora" · "6 min" · "1 h 10 min" (the card's age). */
+export function ageLabel(iso: string, now: number = Date.now()): string {
+  const mins = ageMinutes(iso, now);
+  if (mins < 1) return "ahora";
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+/** "9:31" in Bogotá (no leading zero on the hour), for «Entregado · 9:31». */
+export function bogotaClock(iso: string | number): string {
+  const d = new Date(new Date(iso).getTime() - 5 * 3_600_000);
+  return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
 /** "14:05" in Bogotá for an ISO timestamp. */
 export function bogotaTime(iso: string): string {
   const d = new Date(new Date(iso).getTime() - 5 * 3_600_000);

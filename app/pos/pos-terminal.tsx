@@ -1,34 +1,28 @@
 "use client";
 
 /**
- * Punto de venta — Square-style register for a coffee shop.
+ * Comanda POS — the register, from the design canvas «Tablet PA'YO ·
+ * Rediseño», page «Comanda POS» (tokens and classes in ./pos.css).
  *
- * One full-screen view, tablet-first. Two layouts, picked by CSS alone (see
- * POS_CSS) so the first paint is already the right one:
+ * One client app; every screen has its own URL (pos-routes.ts):
  *
- *   · wide (≥ 900 px — the register PC, a tablet in landscape): catalog and
- *     ticket side by side, as drawn below.
- *   · narrow (< 900 px — a tablet in portrait, carried around the tables):
- *     the catalog takes the whole width and the ticket slides over it from a
- *     bar at the bottom that always shows the count and the total.
+ *   /pos                        Venta: Favoritos, categories, search, combos,
+ *                               pending-orders strip, ticket (name, «¿Quién
+ *                               prepara?», Efectivo · Transferencia · …)
+ *   /pos/item/<id>              Opciones del producto + «Recomiéndale»
+ *   /pos/pay/efectivo           cash keypad (3 taps from Favoritos)
+ *   /pos/pay/transferencia      transfer checklist
+ *   /pos/pay/datafono           Bold voucher (record only)
+ *   /pos/done                   Venta registrada (closes itself when no change)
+ *   /pos/pedidos                Pendientes · Completados (+ Cancelar, Combinar)
+ *   /pos/pedidos/<id>/personas  split by person
  *
- *   ┌ top bar: station · search · assistant toggle · account/unlink ─────────┐
- *   │ catalog (tabs → tile grid, big touch targets)   │ ticket (lines, total,│
- *   │                                                 │ "Cobrar $X")          │
- *   └─────────────────────────────────────────────────┴───────────────────────┘
+ * Overlays over any screen: Receta (hold a tile), barista picker, assistant,
+ * Etiquetas, Puntos, the offline bar and the printer toast. Below 1024 px the
+ * ticket collapses into a cart bar that keeps Efectivo + Transferencia.
  *
- *   · Tap a tile → added; tiles with modifiers open the *item sheet* (size,
- *     milk, extras, qty) before landing on the ticket. Tap a ticket line to
- *     edit it in the same sheet.
- *   · "Cobrar" → *tender* screen: efectivo (quick amounts + keypad, change
- *     computed live), tarjeta, transferencia → confirm → *receipt* → "Nuevo".
- *   · The AI assistant lives in a slide-in drawer (mic, suggestions,
- *     transcript). When closed, its top suggestion shows as a slim strip above
- *     the grid so the cashier never has to leave the sale to use it.
- *
- * All state/logic lives in pos-store.ts; this file only renders.
+ * All state/logic lives in pos-store.ts; this file only picks the screen.
  */
-
 
 import * as React from "react";
 import { FAV_CAT, type PosCatalog } from "@/lib/pos/types";
@@ -37,17 +31,25 @@ import { usePosWindowLease } from "./pos-window";
 import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
-import { C, F, POS_CSS } from "./_components/theme";
+import { POS_CSS } from "./_components/theme";
 import { BaristaPicker, TopBar } from "./_components/top-bar";
-import { Catalog } from "./_components/catalog";
+import { Catalog, CartBar } from "./_components/catalog";
 import { Ticket } from "./_components/ticket";
-import { OrdenesScreen } from "./_components/ordenes";
-import { ItemSheet, RecetaSheet } from "./_components/sheets";
+import { OfflineBar, PrinterToast } from "./_components/estados";
+import { RecetaSheet } from "./_components/sheets";
+import { OpcionesPage } from "./_components/opciones";
+import { EfectivoPage } from "./_components/pay-efectivo";
+import { TransferenciaPage } from "./_components/pay-transferencia";
+import { DatafonoPage } from "./_components/pay-datafono";
+import { VentaRegistradaPage } from "./_components/done";
+import { PedidosPage } from "./_components/ordenes";
+import { PersonasPage } from "./_components/personas";
 import { PuntosScreen } from "./_components/puntos";
 import { EtiquetasScreen } from "./_components/etiquetas";
-import { TenderScreen } from "./_components/tender";
-import { ReceiptScreen } from "./_components/receipt";
 import { AiDrawer } from "./_components/ai";
+import { usePosRouting } from "./pos-routes";
+import { useAppClass } from "./pos-theme";
+import "./pos.css";
 
 // ════════════════════════════════════════════════════════════════
 // Root
@@ -154,7 +156,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
   }, [orderSig]);
 
   // Open (unpaid) orders: load on mount and keep the badge fresh while the
-  // tab is visible — another register may send or settle orders too.
+  // tab is visible (every 15 s) — another register may send or settle orders too.
   React.useEffect(() => {
     hydratePendientes();
     watchConnectivity();
@@ -163,9 +165,12 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
     registerOfflineWorker();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshPendientes();
-    }, 30_000);
+    }, 15_000);
     return () => window.clearInterval(id);
   }, []);
+
+  // Each screen has a URL; the first run reads the one the register opened on.
+  usePosRouting(true);
 
   // Escape closes whatever is on top.
   React.useEffect(() => {
@@ -175,6 +180,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       if (st.sheet) posStore.set({ sheet: null });
       else if (st.view === "tender") cancelTender();
       else if (st.view === "ordenes") closeOrdenes();
+      else if (st.view === "personas") closeOrdenes();
       else if (st.view === "etiquetas") closeEtiquetas();
       else if (st.view === "puntos") closePuntos();
       else if (st.aiOpen) posStore.set({ aiOpen: false });
@@ -184,32 +190,37 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const appClass = useAppClass();
+  const itemPage = s.view === "sale" && (s.sheet?.mode === "add" || s.sheet?.mode === "edit");
+  const saleShown = (s.view === "sale" && !itemPage) || s.view === "etiquetas" || s.view === "puntos";
+
   return (
-    <div className="pos-root cmd-paper" onContextMenu={(e) => { e.preventDefault(); }} style={{ height: "100dvh", display: "flex", flexDirection: "column", background: C.paper, fontFamily: F.mono, color: C.ink, overflow: "hidden" }}>
+    <div className={appClass} onContextMenu={(e) => { e.preventDefault(); }}>
+      {/* Etiquetas / Puntos / the assistant still use the older inline styles (theme.tsx). */}
       <style>{POS_CSS}</style>
-      {/* A full-screen view (cobro, recibo, pedidos…) covers the sale: make
-          what is underneath inert so taps, focus and screen readers only
-          reach the view on top. */}
-      <div inert={s.view !== "sale"} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <TopBar mode={mode} />
-        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
-          <Catalog />
-          {/* Narrow layout only: dims the catalog behind the open ticket; a tap closes it. */}
-          <div aria-hidden className={"pos-scrim" + (s.ticketOpen ? " open" : "")} onClick={() => posStore.set({ ticketOpen: false })} />
-          <Ticket />
+      <OfflineBar />
+      {saleShown && (
+        <div inert={s.view !== "sale"} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <TopBar mode={mode} />
+          <div className="sale">
+            <Catalog />
+            <Ticket />
+          </div>
+          <CartBar />
           {s.aiOpen && <AiDrawer />}
         </div>
-      </div>
-      {s.sheet && (s.sheet.mode === "receta"
-        ? <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />
-        : <ItemSheet key={s.sheet.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet.idx}`} />)}
-      {s.view === "ordenes" && <OrdenesScreen />}
+      )}
+      {itemPage && <OpcionesPage key={s.sheet?.mode === "add" ? `add:${s.sheet.productId}` : `edit:${s.sheet?.mode === "edit" ? s.sheet.idx : ""}`} />}
+      {s.view === "tender" && (s.payMethod === "efectivo" ? <EfectivoPage /> : s.payMethod === "transferencia" ? <TransferenciaPage /> : <DatafonoPage />)}
+      {s.view === "done" && <VentaRegistradaPage />}
+      {s.view === "ordenes" && <PedidosPage />}
+      {s.view === "personas" && <PersonasPage />}
       {s.view === "etiquetas" && <EtiquetasScreen />}
       {s.view === "puntos" && <PuntosScreen />}
+      {s.sheet?.mode === "receta" && <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />}
       {s.baristaPicker && <BaristaPicker />}
+      <PrinterToast />
       {ventana.role === "secondary" && <OtraVentana onTakeOver={ventana.takeOver} />}
-      {s.view === "tender" && <TenderScreen />}
-      {s.view === "done" && <ReceiptScreen />}
     </div>
   );
 }
@@ -221,17 +232,17 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
  */
 function OtraVentana({ onTakeOver }: { onTakeOver: () => void }) {
   return (
-    <div role="alertdialog" aria-modal aria-label="Otra ventana del POS" style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(20,14,8,.78)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ width: "min(520px, 94vw)", background: C.paperLt, border: `2px solid ${C.red}`, borderRadius: 10, padding: "24px 26px", fontFamily: F.mono, color: C.ink }}>
-        <div style={{ fontFamily: F.slab, fontSize: 26, lineHeight: 1.1 }}>Ya hay otra ventana del POS abierta<span style={{ color: C.red }}>.</span></div>
-        <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: "12px 0 18px", color: C.ink2 }}>
+    <div className="scrim" style={{ position: "fixed", zIndex: 60 }}>
+      <section className="sheet" role="alertdialog" aria-modal="true" aria-labelledby="otra-ventana" style={{ maxWidth: 560, border: "2px solid var(--late)" }}>
+        <h2 id="otra-ventana" className="h1">Ya hay otra ventana del POS abierta</h2>
+        <p className="muted" style={{ fontSize: 16, lineHeight: 1.5 }}>
           En este PC solo una ventana puede cobrar y manejar la etiquetadora. Usa la otra ventana, o cierra esta. Si la otra ya no sirve, puedes seguir en esta: la otra quedará bloqueada.
         </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button type="button" className="cmd-btn ghost" onClick={() => window.close()} style={{ height: 46 }}>Cerrar esta ventana</button>
-          <button type="button" className="cmd-btn red" onClick={() => { if (window.confirm("La otra ventana quedará bloqueada y la etiquetadora pasará a esta. ¿Seguir aquí?")) onTakeOver(); }} style={{ height: 46 }}>Seguir en esta ventana</button>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => window.close()}>Cerrar esta ventana</button>
+          <button type="button" className="btn danger" style={{ flex: 1 }} onClick={() => { if (window.confirm("La otra ventana quedará bloqueada y la etiquetadora pasará a esta. ¿Seguir aquí?")) onTakeOver(); }}>Seguir en esta ventana</button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

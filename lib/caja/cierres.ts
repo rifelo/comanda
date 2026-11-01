@@ -191,7 +191,7 @@ export async function sumPagosVentana(
   ]);
   if (pagos.error || directas.error) {
     console.error("[sumPagosVentana]", pagos.error ?? directas.error);
-    return { efectivo: 0, tarjeta: 0, transferencia: 0, count: 0 };
+    return { efectivo: 0, datafono: 0, transferencia: 0, count: 0 };
   }
   const sinFilas = cobrosDirectos(
     ((directas.data ?? []) as Array<{ payment_method: string | null; total_cop: number; orden_pagos: unknown[] | null }>).map((o) => ({
@@ -343,7 +343,7 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
       ventana_hasta: ventana.hasta,
       base_inicial_cop: data.baseInicial,
       efectivo_cop: pagos.efectivo,
-      tarjeta_cop: pagos.tarjeta,
+      tarjeta_cop: pagos.datafono,
       transferencia_cop: pagos.transferencia,
       pagos_count: pagos.count,
       ingresos_cop: mov.ingresos,
