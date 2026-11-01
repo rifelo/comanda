@@ -14,7 +14,7 @@ const catalog: PosCatalog = {
     "g-base": { id: "g-base", name: "Base", type: "single", required: true, options: [{ name: "En agua", delta: 0 }, { name: "En leche", delta: 1000 }] },
   },
   byId: { "p-latte": latte, "p-torta": torta },
-  comboById: {}, catLabel: {}, orgName: "Café", instagram: null, sticker: null, cupArt: null, handArt: null, equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
+  comboById: {}, catLabel: {}, orgName: "Café", instagram: null, sticker: null, cupArt: null, handArt: null, equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null }, recibo: { encabezado: null, pie: null },
 };
 
 const pedido = (over: Partial<PedidoAgente> = {}): PedidoAgente => ({

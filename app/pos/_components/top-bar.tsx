@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { signOutLocal } from "@/app/login/actions";
 import { desvincularPos } from "../actions";
 import { StationCtx, usePos, posStore, openOrdenes, closeOrdenes, openEtiquetas, openPuntos, setBarista, closeBaristaPicker } from "../pos-store";
+import { printTicketTest, setTicketSettings, useTicketPrinter, type TicketSettings } from "@/lib/printer/tickets";
 import { usePrinter, connectPrinter, checkPrinter, printTestLabel, relaysLabels, type PrinterStatus } from "@/lib/printer/serial";
 import { useDesktopApp, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
 import { setDark, useIsDark } from "../pos-theme";
@@ -218,6 +219,8 @@ function MoreMenu({ mode }: { mode: "device" | "user" }) {
               </button>
             )}
             <hr />
+            <TicketMenuItems onTest={go(() => printTicketTest(s.catalog.orgName))} />
+            <hr />
             <button type="button" role="menuitemcheckbox" aria-checked={!!dark} onClick={() => setDark(!dark)}>
               <span className="grow">Modo oscuro</span>
               <span className={"switch" + (dark ? " on" : "")} aria-hidden><span /></span>
@@ -238,6 +241,41 @@ function MoreMenu({ mode }: { mode: "device" | "user" }) {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * The receipt printer (DIG-E200I, a Windows printer): «Aquí» on the PC it is
+ * plugged into, «A la caja» on the tablets that send it their tickets.
+ */
+function TicketMenuItems({ onTest }: { onTest: () => void }) {
+  const t = useTicketPrinter();
+  const sw = (on: boolean) => <span className={"switch" + (on ? " on" : "")} aria-hidden><span /></span>;
+  const modos: Array<[TicketSettings["modo"], string]> = [["aqui", "Aquí"], ["caja", "A la caja"], ["no", "No"]];
+  return (
+    <>
+      <div className="menu-label" style={{ padding: "6px 14px 2px", fontSize: 13, color: "var(--muted)" }}>Recibos y comandas</div>
+      <div role="radiogroup" aria-label="Recibos y comandas" style={{ display: "flex", gap: 6, padding: "4px 10px 8px" }}>
+        {modos.map(([m, label]) => (
+          <button key={m} type="button" role="radio" aria-checked={t.modo === m} className="btn sm ghost" style={{ flex: 1, justifyContent: "center", ...(t.modo === m ? { background: "var(--strong)", color: "var(--on-strong)", borderColor: "var(--strong)" } : {}) }} onClick={() => setTicketSettings({ modo: m })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {t.modo !== "no" && (
+        <>
+          <button type="button" role="menuitemcheckbox" aria-checked={t.recibo === "auto"} onClick={() => setTicketSettings({ recibo: t.recibo === "auto" ? "pedir" : "auto" })}>
+            <span className="grow">Recibo con cada venta</span>
+            {sw(t.recibo === "auto")}
+          </button>
+          <button type="button" role="menuitemcheckbox" aria-checked={t.comanda} onClick={() => setTicketSettings({ comanda: !t.comanda })}>
+            <span className="grow">Comanda para la barra</span>
+            {sw(t.comanda)}
+          </button>
+        </>
+      )}
+      {t.modo === "aqui" && <button type="button" role="menuitem" onClick={onTest}>Imprimir recibo de prueba</button>}
     </>
   );
 }

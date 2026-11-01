@@ -38,6 +38,7 @@ export default function OfflinePage() {
             Reintentar
           </a>
           {/* Full navigation (not next/link) so pos-sw.js can answer offline. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/pos" className={buttonClass({ variant: "ghost", block: true })}>
             Abrir el punto de venta
           </a>

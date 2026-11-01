@@ -16,7 +16,7 @@ const catalog: PosCatalog = {
   byId: { "p-latte": latte, "p-tinto": tinto },
   comboById: { "cb-1": { id: "cb-1", name: "Desayuno", items: ["p-tinto"], price: 9000, desc: "", saving: 500 } },
   catLabel: {}, orgName: "Cafe", instagram: null, sticker: null, cupArt: null, handArt: null,
-  equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null },
+  equipo: [], pairs: {}, pago: { transferenciaLlave: null, transferenciaTitular: null, datafonoLiquidacion: null }, recibo: { encabezado: null, pie: null },
 };
 
 const order = (items: PendingOrder["items"]): PendingOrder => ({
