@@ -121,11 +121,11 @@ export function ItemSheet() {
 // ════════════════════════════════════════════════════════════════
 // Recipe sheet — long-press on a tile: photo, description, ingredients
 // ════════════════════════════════════════════════════════════════
-export function RecetaSheet({ productId }: { productId: string }) {
+export function RecetaSheet({ productId, onClose, onAdd }: { productId: string; onClose?: () => void; onAdd?: () => void }) {
   const catalog = useCatalog();
   const p = catalog.byId[productId];
   const [zoom, setZoom] = React.useState(false);
-  const close = () => posStore.set({ sheet: null });
+  const close = onClose ?? (() => posStore.set({ sheet: null }));
   React.useEffect(() => { if (!p) close(); }, [p]);
   // Escape closes the zoomed photo first, before the root handler closes the sheet.
   React.useEffect(() => {
@@ -197,7 +197,7 @@ export function RecetaSheet({ productId }: { productId: string }) {
         </div>
         <div style={{ borderTop: `1px solid ${C.rule}`, padding: "12px 20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 13, color: C.muted }}>Mantén presionado un producto para ver su receta.</span>
-          <button className="cmd-btn" onClick={() => { close(); tapItem(p.id); }} disabled={p.stock === "sin"} style={{ marginLeft: "auto", height: 48, padding: "0 18px", fontSize: 15 }}>Agregar al pedido</button>
+          <button className="cmd-btn" onClick={() => { if (onAdd) onAdd(); else { close(); tapItem(p.id); } }} disabled={p.stock === "sin"} style={{ marginLeft: "auto", height: 48, padding: "0 18px", fontSize: 15 }}>Agregar al pedido</button>
         </div>
       </div>
       {zoom && p.image && (

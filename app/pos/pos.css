@@ -319,3 +319,126 @@
   .app .combo { height: 60px; }
   .app .ocard { min-height: 64px; }
 }
+
+/* ── B · opciones + pagos + venta registrada ── */
+.app .flow .grow { display: flex; flex-direction: column; min-width: 0; }
+.app .flow-t, .app .flow-s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .flow-s { font-size: 14px; }
+.app .flow-short { display: none; }
+/* pay pages: poster/amounts on the left, tools on the right, the confirm under them */
+.app .body.pay-grid { display: grid; grid-template-columns: minmax(0, 1fr) 460px; grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "main side" "main act"; column-gap: 24px; row-gap: 12px; }
+.app .body.pay-grid.pay-cash { grid-template-columns: minmax(0, 1fr) 520px; row-gap: 14px; }
+.app .pay-main { grid-area: main; min-height: 0; min-width: 0; }
+.app .pay-side { grid-area: side; min-height: 0; min-width: 0; }
+.app .pay-col { display: flex; flex-direction: column; gap: 12px; }
+.app .pay-cash .pay-col { gap: 14px; }
+.app .pay-cash .pay-main { gap: 16px; }
+.app .pay-act { grid-area: act; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.app .btn.pay-go { height: 88px; font-size: 24px; }
+.app .pay-help { font-size: 13px; text-align: center; }
+.app .pay-err { background: var(--late-soft); color: var(--late); border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; }
+.app .pay-amt { padding: 24px 28px; }
+.app .pay-state { justify-content: center; align-items: center; gap: 8px; text-align: center; }
+.app .pay-state-t { font-size: 20px; font-weight: 700; }
+.app .pay-state-s { font-size: 15px; font-weight: 600; }
+.app .pay-cash .key { height: 92px; font-size: 32px; touch-action: manipulation; }
+.app .pay-cash .key.alt { font-size: 20px; }
+.app .pay-cash .bill { height: 72px; font-size: 22px; touch-action: manipulation; }
+.app .pay-poster { justify-content: center; align-items: center; gap: 18px; text-align: center; }
+.app .pay-poster-t { font-size: 24px; font-weight: 700; }
+.app .pay-poster-s { font-size: 17px; line-height: 1.4; }
+.app .pay-pills { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding-top: 6px; }
+.app .pay-pill { height: 44px; font-size: 16px; padding: 0 16px; }
+/* opciones: options + the add bar on the left, «Recomiéndale» on the right */
+.app .body.opc-body { display: grid; grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "main rail" "act rail"; column-gap: 24px; row-gap: 16px; }
+.app .body.opc-body:not(:has(.opc-rail)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "act"; }
+.app .opc-main { grid-area: main; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+.app .opc-grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 12px; }
+.app .opc-act { grid-area: act; display: flex; align-items: center; gap: 16px; min-width: 0; }
+.app .opc-act .counter button { width: 64px; height: 64px; font-size: 28px; }
+.app .opc-act .counter button:disabled { opacity: 0.4; cursor: default; }
+.app .opc-act .counter input { width: 84px; height: 64px; font-size: 26px; }
+.app .btn.opc-go { height: 80px; font-size: 24px; justify-content: space-between; padding: 0 28px; }
+.app .btn.opc-quitar { align-self: flex-start; color: var(--late); }
+.app .btn.opc-go { min-width: 0; }
+.app .opc-rail { grid-area: rail; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; }
+.app .opc-recs { display: flex; flex-direction: column; gap: 12px; }
+.app .opc-disp { margin-top: auto; flex-shrink: 0; }
+.app .rec .add { touch-action: manipulation; transition: background 0.15s; }
+/* venta registrada */
+.app .done-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
+.app .done-card { width: 640px; max-width: 100%; padding: 36px; gap: 20px; align-items: center; text-align: center; position: relative; overflow: hidden; margin: auto 0; }
+.app .done-ico { width: 72px; height: 72px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.app .done-auto { position: absolute; left: 0; top: 0; height: 4px; width: 0; background: var(--ok); animation-name: pos-done-auto; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes pos-done-auto { from { width: 0; } to { width: 100%; } }
+.app .done-note { font-size: 14px; line-height: 1.45; max-width: 520px; }
+.app .done-fail { width: 100%; background: var(--late-soft); color: var(--late); border-radius: 12px; padding: 12px 14px; font-size: 15px; font-weight: 600; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.app .done-total { width: 100%; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.app .done-change { width: 100%; background: var(--brand-soft); border: 2px solid var(--brand); border-radius: 14px; padding: 20px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.app .done-labels { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.app .done-labels .status { white-space: normal; height: auto; min-height: 44px; padding: 8px 14px; }
+.app .done-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.app .btn.done-tool { height: 44px; font-size: 14px; padding: 0 14px; }
+.app .done-frase { width: 100%; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 10px; font-size: 15px; line-height: 1.45; }
+/* short landscape (1280×800 minus browser chrome) */
+@media (max-height: 760px) and (min-width: 1024px) {
+  .app .pay-cash .key { height: 72px; }
+  .app .pay-cash .bill { height: 60px; }
+  .app .btn.pay-go { height: 76px; }
+  .app .pay-amt { padding: 16px 24px; }
+  .app .pay-state .huge { font-size: 96px; }
+}
+/* register 1920×1080 */
+@media (min-width: 1600px) and (min-height: 960px) {
+  .app .body.pay-grid { grid-template-columns: minmax(0, 1fr) 560px; }
+  .app .body.pay-grid.pay-cash { grid-template-columns: minmax(0, 1fr) 620px; }
+  .app .body.opc-body { grid-template-columns: minmax(0, 1fr) 500px; }
+  .app .pay-cash .key { height: 108px; font-size: 36px; }
+  .app .pay-cash .bill { height: 84px; }
+  .app .done-card { width: 760px; }
+  .app .done-change .huge { font-size: 120px; }
+  .app .pay-amt .huge.sm { font-size: 88px; }
+}
+/* < 1024 px: one column that scrolls; the confirm / add bar stays at the bottom */
+@media (max-width: 1023px) {
+  .app .body.pay-grid, .app .body.pay-grid.pay-cash, .app .body.opc-body, .app .body.opc-body:not(:has(.opc-rail)) { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: auto; align-content: start; overflow-y: auto; row-gap: 16px; }
+  .app .body.pay-grid { grid-template-areas: "main" "side" "act"; }
+  .app .body.opc-body { grid-template-areas: "main" "rail" "act"; }
+  .app .body.opc-body:not(:has(.opc-rail)) { grid-template-areas: "main" "act"; }
+  .app .pay-act, .app .opc-act { position: sticky; bottom: 0; z-index: 2; background: var(--bg); padding: 12px 0 4px; }
+  .app .opc-main, .app .opc-rail { overflow: visible; }
+  .app .pay-poster { padding: 28px 20px; }
+  .app .pay-state .huge, .app .pay-poster .huge { font-size: 88px; }
+  .app .pay-main, .app .pay-side { min-height: auto; }
+  .app .pay-state { flex: none; padding: 18px; }
+  .app .pay-amt { padding: 18px 24px; }
+  .app .pay-cash .key { height: 72px; }
+  .app .pay-cash .bill { height: 60px; }
+}
+/* phone 390×844 */
+@media (max-width: 600px) {
+  .app .flow .clock, .app .flow-long { display: none; }
+  .app .flow-short { display: inline; }
+  .app .btn.flow-alt { height: 44px; padding: 0 12px; font-size: 14px; }
+  .app .pay-amt { padding: 14px 18px; }
+  .app .pay-amt .huge.sm { font-size: 44px; }
+  .app .pay-state { padding: 16px; }
+  .app .pay-state .huge, .app .pay-poster .huge { font-size: 56px; }
+  .app .pay-state-t { font-size: 17px; }
+  .app .pay-cash .keypad .key { height: 60px; font-size: 26px; }
+  .app .pay-cash .bill { height: 56px; font-size: 18px; }
+  .app .btn.pay-go { height: 72px; font-size: 20px; }
+  .app .pay-poster-t { font-size: 20px; }
+  .app .pay-poster-s { font-size: 15px; }
+  .app .pay-pill { height: auto; min-height: 40px; white-space: normal; font-size: 14px; padding: 6px 12px; }
+  .app .opc-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .app .opt.lg { min-height: 64px; font-size: 17px; padding: 0 14px; }
+  .app .opc-act { flex-wrap: wrap; gap: 10px; }
+  .app .opc-act .counter button { width: 52px; height: 56px; }
+  .app .opc-act .counter input { width: 64px; height: 56px; font-size: 22px; }
+  .app .btn.opc-go { flex: 1 1 100%; order: 3; height: 64px; font-size: 18px; padding: 0 18px; }
+  .app .done-wrap { padding: 12px; }
+  .app .done-card { padding: 22px 18px; gap: 16px; }
+  .app .done-change .huge { font-size: 64px; }
+  .app .done-card .btn.lg { height: auto; min-height: 64px; padding: 10px 16px; font-size: 17px; white-space: normal; }
+}
