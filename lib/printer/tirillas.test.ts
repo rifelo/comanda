@@ -32,7 +32,7 @@ describe("renderPrecuentaHtml (JSON del spec)", () => {
   it("pinta el artboard: marca, Pa' nombre, mesa, ítems, subtotal, total y cierre", () => {
     const html = renderPrecuentaHtml(data);
     for (const t of ["Café Pa&#39;Yo", "Yopal, Casanare", ">Franchesco<", "Mesa 4", "Pedido #128", "01 nov 2026", "4:32 p. m.",
-      "Leche de avena", "2 × $7.000", "$14.000", "5 productos", "Subtotal $43.000", "$43.000", "Tómalo con calma.",
+      "chip inv\" style=\"margin:0 3px 1px 0\">Leche de avena<", "chip inv\" style=\"margin:0\">Pedido #128<", "2 × $7.000", "$14.000", "5 productos", "Subtotal $43.000", "$43.000", "Tómalo con calma.",
       "Precuenta · no es factura de venta", "/labels/mano-taza-asa.svg", "Dela Gothic One", "Nority Display", "Delight"]) {
       expect(html).toContain(t);
     }

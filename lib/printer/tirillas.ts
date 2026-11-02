@@ -235,9 +235,9 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
   }
   o.push(`<div class="grid2" style="margin-top:${d.cliente?.trim() ? 9 : 12}px;gap:2.5px 6px;font-size:9.5px;line-height:11.5px">`);
   // Mesa | Pedido como en el canvas; sin mesa (autoservicio) el pedido pasa a la izquierda.
-  o.push(d.mesa?.trim()
-    ? `<span>Mesa ${esc(d.mesa.trim())}</span><span>Pedido ${esc(d.pedido)}</span>`
-    : `<span>Pedido ${esc(d.pedido)}</span><span></span>`);
+  // The order number as a black label: what the customer says at the bar.
+  const ped = `<span><span class="chip inv" style="margin:0">Pedido ${esc(d.pedido)}</span></span>`;
+  o.push(d.mesa?.trim() ? `<span>Mesa ${esc(d.mesa.trim())}</span>${ped}` : `${ped}<span></span>`);
   o.push(`<span>${esc(d.fecha)}</span><span>${esc(d.hora)}</span></div>`);
   o.push(`<div class="cut" style="margin-top:12px"></div>`);
 
@@ -245,7 +245,8 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
   o.push(`<div style="margin-top:11px;display:flex;flex-direction:column;gap:7.5px">`);
   for (const it of d.items) {
     const sub: string[] = [];
-    if (it.detalle?.length) sub.push(esc(it.detalle.join(" · ")));
+    // Options as black labels, like on the comanda.
+    if (it.detalle?.length) sub.push(`<span style="display:block;margin-top:1.5px">${it.detalle.map((x) => `<span class="chip inv" style="margin:0 3px 1px 0">${esc(x)}</span>`).join("")}</span>`);
     if (it.cantidad > 1 && it.unitario != null) sub.push(`${it.cantidad} × ${pesos(it.unitario)}`);
     o.push(`<div style="display:flex;align-items:flex-start;gap:5px">`);
     o.push(`<span style="flex:0 0 17.5px;font-size:10.5px;line-height:13px">${it.cantidad}</span>`);
@@ -264,8 +265,8 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
     o.push(`<div style="margin-top:6px;text-align:center"><span class="chip inv" style="font-size:10px;line-height:13px;padding:2px 6px">${d.estado === "por-verificar" ? "TRANSFERENCIA POR VERIFICAR" : "PENDIENTE DE PAGO"}</span></div>`);
   } else if (d.pago) {
     const p = d.pago;
-    o.push(`<div style="margin-top:6px;display:flex;flex-direction:column;gap:1px;font-size:9.5px;line-height:11.5px">`);
-    o.push(`<div class="row"><span>Pago</span><span class="b">${esc(p.metodo)}</span></div>`);
+    o.push(`<div style="margin-top:6px;text-align:center"><span class="chip inv" style="font-size:10px;line-height:13px;padding:2px 6px">PAGADO · ${esc(p.metodo.toUpperCase())}</span></div>`);
+    o.push(`<div style="margin-top:3px;display:flex;flex-direction:column;gap:1px;font-size:9.5px;line-height:11.5px">`);
     if (p.recibido != null && p.recibido > 0) o.push(`<div class="row"><span>Recibido</span><span>${pesos(p.recibido)}</span></div>`);
     if (p.cambio != null && p.cambio > 0) o.push(`<div class="row b"><span>Cambio</span><span>${pesos(p.cambio)}</span></div>`);
     if (p.aprobacion?.trim()) o.push(`<div class="row"><span>Aprobación</span><span>${esc(p.aprobacion.trim())}</span></div>`);

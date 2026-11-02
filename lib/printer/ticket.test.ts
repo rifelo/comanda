@@ -43,6 +43,7 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     expect(html).toContain("$17.000");
     expect(html).toContain("Subtotal $20.500");
     expect(html).toContain("$29.500");
+    expect(html).toContain("PAGADO · EFECTIVO");
     expect(html).toContain("Comprobante de venta · no es factura de venta");
     expect(html).toContain("@page { margin: 0; }");
     expect(html).not.toContain("size: 80mm");
