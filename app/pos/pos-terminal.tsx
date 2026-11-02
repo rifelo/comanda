@@ -32,7 +32,9 @@ import { usePosWindowLease } from "./pos-window";
 import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, closeVentas, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
 import { CUP_LABEL_ASSETS } from "@/lib/printer/label";
-import { setTicketLogo } from "@/lib/printer/tickets";
+import { recetasDelMenu } from "@/lib/printer/ticket";
+import { TIRILLA_ASSETS } from "@/lib/printer/tirillas";
+import { setTicketLogo, setTicketRecetas } from "@/lib/printer/tickets";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
 import { POS_CSS } from "./_components/theme";
 import { BaristaPicker, TopBar } from "./_components/top-bar";
@@ -106,6 +108,8 @@ export function PosTerminal({
   }, [station, catalog.orgName, catalog.handArt]);
   // The receipt's logo, cached on this device for offline printing.
   React.useEffect(() => { setTicketLogo(catalog.recibo.logo); }, [catalog.recibo.logo]);
+  // The comanda's recipes come from this catalog, by SKU.
+  React.useEffect(() => { setTicketRecetas(recetasDelMenu(catalog.menu)); }, [catalog.menu]);
 
   return (
     <CatalogCtx.Provider value={catalog}>
@@ -273,7 +277,7 @@ function registerOfflineWorker() {
         location.href,
         ...performance.getEntriesByType("resource").map((e) => e.name),
         // Label art loads only when a label prints; product photos when a recipe opens.
-        ...[cat.sticker, cat.cupArt, cat.handArt, ...CUP_LABEL_ASSETS, ...cat.menu.map((p) => p.image)].filter((u): u is string => !!u).map((u) => new URL(u, location.href).href),
+        ...[cat.sticker, cat.cupArt, cat.handArt, ...CUP_LABEL_ASSETS, ...TIRILLA_ASSETS, ...cat.menu.map((p) => p.image)].filter((u): u is string => !!u).map((u) => new URL(u, location.href).href),
       ].filter((u) => u.startsWith(location.origin) || u.includes("/storage/v1/object/"));
       reg.active?.postMessage({ type: "cache", urls });
     })

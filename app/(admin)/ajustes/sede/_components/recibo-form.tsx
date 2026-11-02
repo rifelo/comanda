@@ -5,6 +5,7 @@ import { updateRecibo } from "../_actions";
 import { Button, Field, TextArea } from "@/components/ui";
 
 export type ReciboInitial = {
+  recibo_nombre: string;
   recibo_encabezado: string;
   recibo_pie: string;
   transferencia_llave: string;
@@ -39,9 +40,10 @@ export function ReciboForm({ initial }: { initial: ReciboInitial }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <Field label="Nombre en el recibo" hint="Va grande debajo del ícono, en la precuenta y la comanda. Vacío = el nombre de la organización." maxLength={60} placeholder="Café Pa'Yo" {...field("recibo_nombre")} />
       <TextArea
         label="Encabezado del recibo"
-        hint="Va debajo del nombre: NIT, dirección, teléfono… una cosa por línea."
+        hint="Va debajo del nombre: ciudad, redes, NIT, teléfono… una cosa por línea."
         rows={4}
         maxLength={300}
         placeholder={"NIT 123.456.789-0\nCalle 00 # 00-00, Barrio\nTel. 300 000 0000"}
@@ -49,10 +51,10 @@ export function ReciboForm({ initial }: { initial: ReciboInitial }) {
       />
       <TextArea
         label="Pie del recibo"
-        hint="El cierre: «¡Gracias por tu visita!», tu Instagram, la clave del wifi…"
+        hint="La frase grande del cierre. Vacío = «Tómalo con calma.»"
         rows={2}
         maxLength={200}
-        placeholder="¡Gracias por tu visita! · @cafepayo"
+        placeholder="Tómalo con calma."
         {...field("recibo_pie")}
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-line pt-5">

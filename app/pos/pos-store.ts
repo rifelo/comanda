@@ -61,7 +61,7 @@ import {
 } from "./actions";
 import { nudge } from "./pos-live";
 import { printMessageLabel, printCupNameLabel, printCupDrinkLabel } from "@/lib/printer/serial";
-import { getTicketState, printTicket, ticketsOn } from "@/lib/printer/tickets";
+import { comandaHace, getTicketState, printTicket, ticketsOn } from "@/lib/printer/tickets";
 import type { TicketDoc, TicketLine } from "@/lib/printer/ticket";
 import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
 
@@ -1383,7 +1383,7 @@ async function persistPending(porVerificar?: "transferencia"): Promise<{ ok: tru
   posStore.set({ sending: false });
   if (!s.pending) {
     printSaleLabels({ order: s.order, people: s.people, customerName: s.customerName, catalog: s.catalog }, res.folio, res.ordenId);
-    if (getTicketState().comanda) printTicket(saleTicket("comanda", {
+    if (getTicketState().comanda) printComanda(saleTicket("comanda", {
       order: s.order, customerName: s.customerName, folio: res.folio, catalog: s.catalog,
       orderType: s.orderType, sinGluten: s.noteSinGluten, note: s.note, seLoLlevamos: s.seLoLlevamos, baristaId: s.barista?.id,
       pendiente: true, porVerificar: !!porVerificar,
@@ -1800,14 +1800,32 @@ function printSaleLabels(
 // ── paper tickets: receipt for the customer, comanda for the bar ──
 /** Ticket lines from cart lines: options as words; prices only on receipts. */
 function ticketLines(order: OrderLine[], catalog: PosCatalog, prices: boolean): TicketLine[] {
-  return order.map((l) => ({
-    qty: l.qty,
-    name: l.name,
-    // The receipt names only options that cost extra; the bar needs them all.
-    mods: modSummary(l, catalog).filter((m) => !prices || m.delta > 0).map((m) => m.name),
-    ...(l.customer ? { customer: l.customer } : {}),
-    ...(prices ? { total: modLinePrice(l, catalog) * l.qty } : {}),
-  }));
+  return order.flatMap((l): TicketLine[] => {
+    // The bar works product by product: a combo on the comanda is its
+    // products, each with its own recipe (the receipt keeps the combo price).
+    if (!prices && l.kind === "combo") {
+      const combo = catalog.comboById[l.id];
+      return (l.items ?? combo?.items ?? []).flatMap((pid) => {
+        const p = catalog.byId[pid];
+        return p ? [{ qty: l.qty, name: p.name, mods: [l.name], sku: p.sku, ...(l.customer ? { customer: l.customer } : {}) }] : [];
+      });
+    }
+    const sku = l.kind === "item" ? catalog.byId[l.id]?.sku : undefined;
+    return [{
+      qty: l.qty,
+      name: l.name,
+      // The receipt names only options that cost extra; the bar needs them all.
+      mods: modSummary(l, catalog).filter((m) => !prices || m.delta > 0).map((m) => m.name),
+      ...(sku ? { sku } : {}),
+      ...(l.customer ? { customer: l.customer } : {}),
+      ...(prices ? { total: modLinePrice(l, catalog) * l.qty } : {}),
+    }];
+  });
+}
+
+/** The automatic comanda: only orders with a prepared drink (food and bottles alone don't go to the bar). */
+function printComanda(doc: TicketDoc) {
+  if (comandaHace(doc)) printTicket(doc);
 }
 
 interface TicketSale {
@@ -1837,7 +1855,7 @@ function saleTicket(kind: TicketDoc["kind"], t: TicketSale): TicketDoc {
     kind,
     folio: t.folio,
     at: t.at ?? new Date().toISOString(),
-    orgName: c.orgName,
+    orgName: c.recibo.nombre || c.orgName,
     encabezado: c.recibo.encabezado,
     pie: c.recibo.pie,
     customer: t.customerName.trim() || undefined,
@@ -1865,7 +1883,7 @@ function saleTicket(kind: TicketDoc["kind"], t: TicketSale): TicketDoc {
 function printJobTicket(job: OutboxItem, folio: string, what: "comanda" | "recibo-auto"): boolean {
   const t = getTicketState();
   if (!ticketsOn(t) || (what === "comanda" ? !t.comanda : t.recibo !== "auto")) return false;
-  printTicket(saleTicket(what === "comanda" ? "comanda" : "recibo", {
+  (what === "comanda" ? printComanda : printTicket)(saleTicket(what === "comanda" ? "comanda" : "recibo", {
     order: job.snapshot.order,
     customerName: job.snapshot.customerName,
     folio,

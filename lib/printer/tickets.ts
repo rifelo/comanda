@@ -17,7 +17,7 @@
  *   · no    — no paper tickets from this device (the default).
  */
 import * as React from "react";
-import { renderTicketHtml, type Papel, type TicketDoc } from "./ticket";
+import { renderTicketHtml, tieneBebidas, type Papel, type RecetaLookup, type TicketDoc } from "./ticket";
 
 export interface TicketSettings {
   /** Where this device's tickets go. */
@@ -115,6 +115,21 @@ export function setTicketLogo(url: string | null | undefined): void {
     .catch(() => { /* offline: keep the remembered one */ });
 }
 
+// ── recipes (comanda de barra) ──────────────────────────────────
+/**
+ * The station's catalog by SKU: the comanda prints each drink's recipe from
+ * here, so a relayed ticket carries only the SKU and the recipe is always the
+ * one in the catalog right now.
+ */
+let recetas: RecetaLookup | undefined;
+export function setTicketRecetas(fn: RecetaLookup | undefined): void {
+  recetas = fn;
+}
+/** A comanda goes out only for orders with a prepared drink. */
+export function comandaHace(doc: Pick<TicketDoc, "lines">): boolean {
+  return tieneBebidas(doc, recetas);
+}
+
 // ── relay (stations without the printer) ────────────────────────
 type TicketRelay = (docs: TicketDoc[]) => Promise<boolean>;
 let relay: TicketRelay | null = null;
@@ -143,13 +158,20 @@ function printHtml(html: string): Promise<void> {
     frame.onload = () => {
       const w = frame.contentWindow;
       if (!w) return finish();
-      try {
-        w.focus();
-        w.print();
-      } catch (err) {
-        console.warn("[tickets] print failed:", err);
-      }
-      finish();
+      // Images are in by onload; the brand faces may still be on their way
+      // (first print, or offline before the SW cached them): wait for them,
+      // but never more than 3 s — Arial Black is an acceptable fallback.
+      const fonts = frame.contentDocument?.fonts;
+      const ready = fonts ? Promise.race([fonts.ready, new Promise((r) => window.setTimeout(r, 3000))]) : Promise.resolve();
+      void ready.then(() => {
+        try {
+          w.focus();
+          w.print();
+        } catch (err) {
+          console.warn("[tickets] print failed:", err);
+        }
+        finish();
+      });
     };
     frame.srcdoc = html;
     document.body.appendChild(frame);
@@ -160,7 +182,7 @@ function printHtml(html: string): Promise<void> {
 /** Print here, now (ticket station, or a ticket claimed from another station). */
 export function printTicketHere(doc: TicketDoc): void {
   loadLogo();
-  const html = renderTicketHtml(doc, { papel: getTicketState().papel, logo: logo?.data ?? null });
+  const html = renderTicketHtml(doc, { papel: getTicketState().papel, logo: logo?.data ?? null, recetas });
   chain = chain.then(() => printHtml(html)).catch((err) => console.warn("[tickets]", err));
 }
 
@@ -202,14 +224,15 @@ export function printTicketTest(orgName: string): void {
     at: new Date().toISOString(),
     orgName,
     encabezado: "Prueba de impresión · 80 mm",
+    customer: "Prueba",
     lines: [
-      { qty: 1, name: "Cappuccino", mods: ["Mediano", "Leche deslactosada"], total: 8500 },
+      { qty: 1, name: "Cappuccino", mods: ["Leche deslactosada"], total: 8500 },
       { qty: 2, name: "Pan de bono", mods: [], total: 7000 },
     ],
     total: 15500,
     method: "Efectivo",
     tendered: 20000,
     change: 4500,
-    pie: "Si este texto se ve completo y centrado, el ancho está bien.",
+    pie: "Si se ve completo, el ancho está bien.",
   });
 }
