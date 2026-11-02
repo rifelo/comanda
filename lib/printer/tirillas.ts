@@ -230,7 +230,7 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
   if (d.cliente?.trim()) {
     o.push(`<div style="margin-top:12px;display:flex;flex-direction:column;gap:1px">`);
     o.push(`<span class="nority" style="font-style:italic;font-size:10px;line-height:10px;letter-spacing:.5px">Pa'</span>`);
-    o.push(`<span class="dela nowrap" style="font-size:22px;line-height:24px;text-transform:capitalize">${esc(d.cliente.trim())}</span>`);
+    o.push(`<span class="dela" style="font-size:22px;line-height:24px;text-transform:capitalize;overflow-wrap:anywhere">${esc(d.cliente.trim())}</span>`);
     o.push(`</div>`);
   }
   o.push(`<div class="grid2" style="margin-top:${d.cliente?.trim() ? 9 : 12}px;gap:2.5px 6px;font-size:9.5px;line-height:11.5px">`);
@@ -285,7 +285,8 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
 
 // ── comanda de barra ────────────────────────────────────────────
 /**
- * Made to be read in a second from arm's length at the bar (owner, 1-nov-2026:
+ * Long names wrap to a second line (never «…»): the name is how the order is
+ * called out. Made to be read in a second from arm's length at the bar (owner, 1-nov-2026:
  * «simpler, bigger text, understand the proportions faster»): big order
  * number and name, then per drink its options as black chips and the
  * ingredient amounts in large type, one per line. No prep sentences (they are
@@ -296,7 +297,7 @@ export function renderComandaBarraHtml(d: ComandaData, papel: Papel = "80"): str
   // Cabecera: número grande, hora; Pa' nombre; barista.
   o.push(`<div class="row" style="padding-top:3px"><span class="nority" style="font-size:11px;line-height:12px;letter-spacing:.5px">Comanda${d.copia ? " · copia" : ""}</span><span class="b" style="font-size:13px;line-height:14px">${esc(d.hora)}</span></div>`);
   o.push(`<div class="dela" style="font-size:34px;line-height:36px;margin-top:2px">${esc(d.pedido)}</div>`);
-  if (d.cliente?.trim()) o.push(`<div class="dela nowrap" style="font-size:20px;line-height:23px">Pa' ${esc(d.cliente.trim())}</div>`);
+  if (d.cliente?.trim()) o.push(`<div class="dela" style="font-size:20px;line-height:23px;overflow-wrap:anywhere">Pa' ${esc(d.cliente.trim())}</div>`);
   if (d.barista) o.push(`<div style="font-size:12px;line-height:14px;margin-top:1px">Prepara: <span class="b">${esc(d.barista)}</span></div>`);
   if (d.avisos?.length || d.estado) {
     o.push(`<div style="margin-top:5px">${(d.avisos ?? []).map((a) => `<span class="chip inv big">${esc(a)}</span>`).join("")}${d.estado ? `<span class="chip big">${esc(d.estado)}</span>` : ""}</div>`);
