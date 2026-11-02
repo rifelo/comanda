@@ -9,6 +9,7 @@ import {
   type ComandaData,
   type ComandaOtro,
   type ComandaPaso,
+  type ComandaProporcion,
   type Papel,
   type PrecuentaData,
   paso,
@@ -94,27 +95,44 @@ export type { Papel };
 export interface RecetaInfo {
   /** A prepared drink (gets the cup labels). Food and bottles: false. */
   bebida: boolean;
-  /** «2 shots · 18 g · etiquetas: nombre + bebida». */
-  spec?: string;
+  /** Ingredients with their amounts, in recipe order (no packaging, no labels). */
+  proporciones?: ComandaProporcion[];
+  /** «Vaso 12 oz doble pared · Tapa domo Darnel 12 oz». */
+  envase?: string;
+  /** Written steps, used only when the recipe has no ingredient lines. */
   pasos: ComandaPaso[];
 }
 export type RecetaLookup = (sku: string) => RecetaInfo | null;
 
 const cantidad = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10).replace(".", ","));
+/** What goes around the drink, not in it: its own short line on the comanda. */
+const ENVASE = /\b(vaso|tapa|domo|pitillo|aislador|sleeve|servilleta|mezclador|cuchar|bolsa para|portavaso)/i;
+/** «Leche entera Gran Vía (bolsa 900 ml)» → «Leche entera Gran Vía»; «Cafe Okana» → «Café Okana». */
+const limpio = (name: string) => name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\bcafe\b/i, "Café").replace(/\s+/g, " ").trim();
 
 /**
- * The comanda's view of a catalog product: drinks (the ones that get cup
- * labels) with their preparation steps, or — when no steps were written in
- * Recetas — the ingredient lines, so the bar always has the quantities.
+ * The comanda's view of a catalog product: for a drink (the ones that get
+ * cup labels), its ingredients with amounts in recipe order — the thing the
+ * bar needs at a glance — plus the container; the label stickers are left
+ * out. Written prep steps are kept only as a fallback for drinks whose
+ * recipe has no ingredient lines.
  */
-export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "spec" | "prep" | "recipe">): RecetaInfo {
+export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe">): RecetaInfo {
   if (!p.printsLabel) return { bebida: false, pasos: [] };
-  // The cup-label spec is in capitals («VASO PET 12 OZ»); the comanda reads it in lower case, acronyms kept.
-  const spec = [...p.spec.map((s) => s.toLowerCase().replace(/\bpet\b/g, "PET")), "etiquetas: nombre + bebida"].join(" · ");
-  const pasos = p.prep.length
-    ? p.prep.map(paso)
-    : p.recipe.map((r) => ({ titulo: r.name, detalle: [`${cantidad(r.qty)} ${r.unit}`.trim(), r.note].filter(Boolean).join(", ") }));
-  return { bebida: true, spec, pasos };
+  const proporciones: ComandaProporcion[] = [];
+  const envase: string[] = [];
+  for (const r of p.recipe) {
+    if (/^etiqueta/i.test(r.unit) || /etiqueta/i.test(r.name)) continue;
+    if (ENVASE.test(r.name)) { envase.push(limpio(r.name)); continue; }
+    const unit = /^(und|unidad|unidades)$/i.test(r.unit) ? "" : r.unit;
+    proporciones.push({ cantidad: `${cantidad(r.qty)}${unit ? ` ${unit}` : ""}`, nombre: limpio(r.name), ...(r.note?.trim() ? { nota: r.note.trim() } : {}) });
+  }
+  return {
+    bebida: true,
+    ...(proporciones.length ? { proporciones } : {}),
+    ...(envase.length ? { envase: envase.join(" · ") } : {}),
+    pasos: proporciones.length ? [] : p.prep.map(paso),
+  };
 }
 
 /** SKU → recipe for the whole menu (what the station passes to setTicketRecetas). */
@@ -177,7 +195,7 @@ export function toComandaBarra(d: TicketDoc, opts: { logo?: string | null; recet
   for (const l of d.lines) {
     const r = l.sku ? opts.recetas?.(l.sku) ?? null : null;
     const cliente = several && l.customer?.trim() ? l.customer.trim() : undefined;
-    if (r?.bebida) bebidas.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente, spec: r.spec, pasos: r.pasos });
+    if (r?.bebida) bebidas.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente, proporciones: r.proporciones, envase: r.envase, pasos: r.pasos });
     else otros.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente });
   }
   const avisos: string[] = [];

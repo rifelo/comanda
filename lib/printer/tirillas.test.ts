@@ -45,17 +45,24 @@ describe("renderPrecuentaHtml (JSON del spec)", () => {
 });
 
 describe("renderComandaBarraHtml (JSON del spec)", () => {
-  it("bebidas con modificador, spec y pasos con casilla; lo demás sin receta", () => {
+  it("número grande, opciones en negro y las proporciones de cada bebida; lo demás sin receta", () => {
     const html = renderComandaBarraHtml({
       marca, pedido: "#128", hora: "4:32 p. m.", cliente: "Franchesco", barista: "Andrés",
-      bebidas: [{ nombre: "Latte frío de arándanos", cantidad: 1, modificadores: ["Leche de avena"], spec: "Vaso PET 12 oz · frío · etiquetas: nombre + bebida",
-        pasos: [{ titulo: "Espresso doble", detalle: "18 g → 36 g en 25–30 s" }, { titulo: "Hielo", detalle: "hasta el borde" }] }],
+      bebidas: [{ nombre: "Latte frío de arándanos", cantidad: 1, modificadores: ["Leche de avena"],
+        proporciones: [{ cantidad: "100 g", nombre: "Hielo" }, { cantidad: "18 g", nombre: "Café Okana", nota: "Espresso doble" }],
+        envase: "vaso darnel pet x 12Oz · Tapa domo Darnel 12 oz", pasos: [] }],
       otros: [{ nombre: "Rollo de canela", cantidad: 1, modificadores: [] }],
     });
-    for (const t of ["Comanda de barra", "Pedido #128", "Barista: Andrés", "×1", ">Leche de avena<", "Vaso PET 12 oz",
-      "Espresso doble</span> · 18 g → 36 g en 25–30 s", "class=\"box\"", "También en el pedido", "1 × Rollo de canela",
-      "Marca cada paso.", "Uso interno · no entregar al cliente", "/labels/mano-taza.svg"]) {
+    for (const t of ["#128", "Pa' Franchesco", "Prepara: <span class=\"b\">Andrés", "1×</span>", "chip inv big\">Leche de avena<",
+      ">100 g</td>", ">18 g</td>", "Café Okana<span", "· Espresso doble", "Tapa domo Darnel 12 oz", "También en el pedido",
+      "1× Rollo de canela", "Uso interno · no entregar al cliente"]) {
       expect(html).toContain(t);
     }
+    expect(html).not.toContain("mano-taza");
+  });
+
+  it("sin ingredientes en la receta: pasos numerados", () => {
+    const html = renderComandaBarraHtml({ marca, pedido: "#1", hora: "", bebidas: [{ nombre: "Tinto", cantidad: 1, modificadores: [], pasos: [{ titulo: "Servir" }] }] });
+    expect(html).toContain("1. Servir");
   });
 });

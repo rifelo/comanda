@@ -72,14 +72,27 @@ export interface ComandaPaso {
   detalle?: string;
 }
 
+/** One ingredient with its amount: what the bar reads first. */
+export interface ComandaProporcion {
+  /** «18 g», «150 ml», «1». */
+  cantidad: string;
+  /** «Café», «Leche entera». */
+  nombre: string;
+  /** «Espresso doble», «Cold foam» (small, after the name). */
+  nota?: string;
+}
+
 export interface ComandaBebida {
   nombre: string;
   cantidad: number;
   modificadores: string[];
   /** Para quién es, cuando el pedido trae varias personas. */
   cliente?: string;
-  /** «Vaso PET 12 oz · frío · etiquetas: nombre + bebida». */
-  spec?: string;
+  /** Ingredients with amounts, in recipe order. The heart of the comanda. */
+  proporciones?: ComandaProporcion[];
+  /** «Vaso 12 oz doble pared · Tapa domo». */
+  envase?: string;
+  /** Only when the recipe has no ingredient lines: the written steps. */
   pasos: ComandaPaso[];
 }
 
@@ -155,7 +168,7 @@ export const TIRILLA_FONTS = [
   "/labels/fonts/delight-light.woff2",
   "/labels/fonts/delight-bold.woff2",
 ] as const;
-/** Las manos del cierre: taza con asa en la precuenta, taza en la comanda. */
+/** Las manos del cierre (la comanda ya no lleva ilustración). */
 export const TIRILLA_ART = ["/labels/mano-taza-asa.svg", "/labels/mano-taza.svg"] as const;
 export const TIRILLA_ASSETS: readonly string[] = [...TIRILLA_FONTS, ...TIRILLA_ART];
 
@@ -182,6 +195,8 @@ body { width: 100%; max-width: 72mm; padding: 0 1mm 6mm; font-family: "Delight",
 .chip { display: inline-block; padding: 1.5px 4.5px; border: 1px solid ${INK}; font-size: 9px; line-height: 11px; font-weight: 700; margin: 0 3px 3px 0; }
 .chip.inv { background: ${INK}; color: #fff; }
 .box { flex: 0 0 11px; height: 11px; margin-top: 0.5px; border: 1px solid ${INK}; }
+.chip.big { font-size: 13px; line-height: 16px; padding: 2px 6px; border-width: 2px; }
+.cut2 { border-top: 2px solid ${INK}; }
 .copia { text-align: center; font-weight: 700; font-size: 9px; letter-spacing: 1px; margin-top: 4px; }
 `;
 
@@ -268,64 +283,61 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
 }
 
 // ── comanda de barra ────────────────────────────────────────────
+/**
+ * Made to be read in a second from arm's length at the bar (owner, 1-nov-2026:
+ * «simpler, bigger text, understand the proportions faster»): big order
+ * number and name, then per drink its options as black chips and the
+ * ingredient amounts in large type, one per line. No prep sentences (they are
+ * on the recipe sheet in the POS), no illustration.
+ */
 export function renderComandaBarraHtml(d: ComandaData, papel: Papel = "80"): string {
   const o: string[] = [];
-  const m = d.marca;
-  o.push(`<div class="row" style="align-items:center;gap:6px;padding-top:4px">`);
-  o.push(m.logo ? `<img src="${esc(m.logo)}" alt="" style="width:37.5px;height:auto;display:block">` : `<span></span>`);
-  o.push(`<span class="nority" style="font-size:14px;line-height:14px;letter-spacing:.75px;text-align:right">Comanda de barra${d.copia ? " · copia" : ""}</span></div>`);
-
-  o.push(`<div class="grid2" style="margin-top:10px;gap:2px 6px;font-size:9.5px;line-height:11.5px">`);
-  o.push(`<span class="b">Pedido ${esc(d.pedido)}</span><span>${esc(d.hora)}</span>`);
-  o.push(d.cliente?.trim() ? `<span class="nowrap">Pa' <span class="b">${esc(d.cliente.trim())}</span></span>` : `<span></span>`);
-  o.push(d.barista ? `<span class="nowrap">Barista: ${esc(d.barista)}</span>` : `<span></span>`);
-  o.push(`</div>`);
+  // Cabecera: número grande, hora; Pa' nombre; barista.
+  o.push(`<div class="row" style="padding-top:3px"><span class="nority" style="font-size:11px;line-height:12px;letter-spacing:.5px">Comanda${d.copia ? " · copia" : ""}</span><span class="b" style="font-size:13px;line-height:14px">${esc(d.hora)}</span></div>`);
+  o.push(`<div class="dela" style="font-size:34px;line-height:36px;margin-top:2px">${esc(d.pedido)}</div>`);
+  if (d.cliente?.trim()) o.push(`<div class="dela nowrap" style="font-size:20px;line-height:23px">Pa' ${esc(d.cliente.trim())}</div>`);
+  if (d.barista) o.push(`<div style="font-size:12px;line-height:14px;margin-top:1px">Prepara: <span class="b">${esc(d.barista)}</span></div>`);
   if (d.avisos?.length || d.estado) {
-    o.push(`<div style="margin-top:6px">${(d.avisos ?? []).map((a) => `<span class="chip inv">${esc(a)}</span>`).join("")}${d.estado ? `<span class="chip">${esc(d.estado)}</span>` : ""}</div>`);
+    o.push(`<div style="margin-top:5px">${(d.avisos ?? []).map((a) => `<span class="chip inv big">${esc(a)}</span>`).join("")}${d.estado ? `<span class="chip big">${esc(d.estado)}</span>` : ""}</div>`);
   }
   if (d.nota?.trim()) {
-    o.push(`<div style="margin-top:6px;border:1px solid ${INK};padding:3px 5px;font-size:10px;line-height:12px;font-weight:700;white-space:pre-line">${esc(d.nota.trim())}</div>`);
+    o.push(`<div style="margin-top:5px;border:2px solid ${INK};padding:4px 6px;font-size:15px;line-height:18px;font-weight:700;white-space:pre-line">${esc(d.nota.trim())}</div>`);
   }
 
   for (const b of d.bebidas) {
-    o.push(`<div class="cut" style="margin-top:10px"></div>`);
-    o.push(`<div style="margin-top:11px;display:flex;flex-direction:column;gap:3.5px">`);
-    o.push(`<div class="row"><span class="dela" style="font-size:13.5px;line-height:15.5px;text-transform:capitalize">${esc(b.nombre)}</span><span class="nority" style="font-size:16px;line-height:15.5px;flex-shrink:0">×${b.cantidad}</span></div>`);
-    if (b.cliente) o.push(`<span style="font-size:9.5px;line-height:11.5px">Pa' <span class="b">${esc(b.cliente)}</span></span>`);
-    if (b.modificadores.length) o.push(`<div>${b.modificadores.map((x) => `<span class="chip">${esc(x)}</span>`).join("")}</div>`);
-    if (b.spec) o.push(`<span style="font-size:8.5px;line-height:10px">${esc(b.spec)}</span>`);
-    o.push(`</div>`);
-    if (b.pasos.length) {
-      o.push(`<div style="margin-top:7px;display:flex;flex-direction:column;gap:4.5px;font-size:9.5px;line-height:11.5px">`);
-      for (const p of b.pasos) {
-        // «Título · detalle» like the canvas; a step written as a plain
-        // sentence in Recetas stays at text weight (all-bold sentences read worse).
-        const txt = p.detalle ? `<span class="b">${esc(p.titulo)}</span> · ${esc(p.detalle)}` : esc(p.titulo);
-        o.push(`<div style="display:flex;gap:5px;align-items:flex-start"><span class="box"></span><span>${txt}</span></div>`);
+    o.push(`<div class="cut2" style="margin-top:8px"></div>`);
+    o.push(`<div style="margin-top:7px;display:flex;align-items:baseline;gap:6px">`);
+    o.push(`<span class="dela" style="font-size:24px;line-height:24px;flex-shrink:0">${b.cantidad}×</span>`);
+    o.push(`<span class="dela" style="font-size:18px;line-height:21px">${esc(b.nombre)}</span></div>`);
+    if (b.cliente) o.push(`<div style="font-size:13px;line-height:16px;margin-top:2px">Pa' <span class="b">${esc(b.cliente)}</span></div>`);
+    if (b.modificadores.length) o.push(`<div style="margin-top:4px">${b.modificadores.map((x) => `<span class="chip inv big">${esc(x)}</span>`).join("")}</div>`);
+    if (b.proporciones?.length) {
+      o.push(`<table style="margin-top:4px;border-collapse:collapse;width:100%">`);
+      for (const p of b.proporciones) {
+        o.push(`<tr><td class="b" style="font-size:18px;line-height:22px;white-space:nowrap;text-align:right;padding:1px 8px 1px 0;width:1%;vertical-align:baseline">${esc(p.cantidad)}</td>`);
+        o.push(`<td style="font-size:15px;line-height:18px;font-weight:400;vertical-align:baseline;padding:1px 0">${esc(p.nombre)}${p.nota ? `<span style="font-size:11px;font-weight:300"> · ${esc(p.nota)}</span>` : ""}</td></tr>`);
       }
+      o.push(`</table>`);
+    } else if (b.pasos.length) {
+      o.push(`<div style="margin-top:4px;display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:16px;font-weight:400">`);
+      b.pasos.forEach((p, i) => o.push(`<div>${i + 1}. ${p.detalle ? `<span class="b">${esc(p.titulo)}</span> · ${esc(p.detalle)}` : esc(p.titulo)}</div>`));
       o.push(`</div>`);
     } else {
-      o.push(`<div style="margin-top:5px;font-size:9px;line-height:11px">Sin receta en el catálogo: prepárala como de costumbre.</div>`);
+      o.push(`<div style="margin-top:4px;font-size:12px;line-height:15px">Sin receta en el catálogo.</div>`);
     }
+    if (b.envase) o.push(`<div style="margin-top:3px;font-size:12px;line-height:15px">${esc(b.envase)}</div>`);
   }
 
   // Comida y botellas: sin receta, solo para cuadrar el pedido.
   if (d.otros?.length) {
-    o.push(`<div class="cut" style="margin-top:10px"></div>`);
-    o.push(`<div style="margin-top:10px" class="nority"><span style="font-size:11px;line-height:12px;letter-spacing:.5px">También en el pedido</span></div>`);
-    o.push(`<div style="margin-top:6px;display:flex;flex-direction:column;gap:4.5px;font-size:9.5px;line-height:11.5px">`);
+    o.push(`<div class="cut2" style="margin-top:8px"></div>`);
+    o.push(`<div class="nority" style="margin-top:6px;font-size:11px;line-height:12px;letter-spacing:.5px">También en el pedido</div>`);
     for (const x of d.otros) {
       const extra = [x.modificadores.join(" · "), x.cliente ? `Pa' ${x.cliente}` : ""].filter(Boolean).join(" · ");
-      o.push(`<div style="display:flex;gap:5px;align-items:flex-start"><span class="box"></span><span><span class="b">${x.cantidad} × ${esc(x.nombre)}</span>${extra ? ` · ${esc(extra)}` : ""}</span></div>`);
+      o.push(`<div style="margin-top:3px;font-size:15px;line-height:18px"><span class="b">${x.cantidad}× ${esc(x.nombre)}</span>${extra ? `<span style="font-size:12px"> · ${esc(extra)}</span>` : ""}</div>`);
     }
-    o.push(`</div>`);
   }
-
-  o.push(`<div class="cut" style="margin-top:12px"></div>`);
-  o.push(`<div class="row" style="margin-top:11px;align-items:center;gap:7.5px">`);
-  o.push(`<div style="display:flex;flex-direction:column;gap:2.5px"><span class="nority" style="font-size:14px;line-height:14px;letter-spacing:.5px">${lineas(m.pie?.trim() || "Tómalo con calma.")}</span>`);
-  o.push(`<span style="font-size:8.5px;line-height:10.5px">Marca cada paso. Si algo no cuadra, pregunta antes de servir.</span>`);
-  o.push(`<span style="font-size:8px;line-height:10px">Uso interno · no entregar al cliente</span></div>`);
-  o.push(`<img src="${TIRILLA_ART[1]}" alt="" style="width:50px;height:auto;display:block;flex-shrink:0"></div>`);
+  o.push(`<div class="cut2" style="margin-top:8px"></div>`);
+  o.push(`<div style="margin-top:4px;text-align:center;font-size:9px;line-height:11px">Uso interno · no entregar al cliente</div>`);
   return page(`Comanda ${d.pedido}`, o.join(""), papel);
 }

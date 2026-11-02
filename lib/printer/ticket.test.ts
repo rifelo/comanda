@@ -28,7 +28,7 @@ describe("formatting", () => {
 describe("renderTicketHtml → tirillas del canvas", () => {
   const recetas: RecetaLookup = (sku) =>
     sku === "BC-003"
-      ? { bebida: true, spec: "taza 8 oz · etiquetas: nombre + bebida", pasos: [{ titulo: "Espresso doble", detalle: "18 g → 36 g" }] }
+      ? { bebida: true, proporciones: [{ cantidad: "18 g", nombre: "Café Okana", nota: "Espresso doble" }], envase: "Vaso 12 oz doble pared", pasos: [] }
       : sku === "PA-001"
         ? { bebida: false, pasos: [] }
         : null;
@@ -57,14 +57,13 @@ describe("renderTicketHtml → tirillas del canvas", () => {
 
   it("comanda: recipe from the catalog by SKU, food listed without recipe, no prices", () => {
     const html = renderTicketHtml({ ...conSku, kind: "comanda", seLoLlevamos: true, note: "sin azúcar", barista: "Pipe" }, { recetas });
-    expect(html).toContain("Comanda de barra");
-    expect(html).toContain("Pedido #A-1240");
+    expect(html).toContain("#A-1240");
     expect(html).toContain("SE LO LLEVAMOS");
-    expect(html).toContain("Espresso doble</span> · 18 g → 36 g");
-    expect(html).toContain("taza 8 oz · etiquetas: nombre + bebida");
+    expect(html).toContain(">18 g</td>");
+    expect(html).toContain("Vaso 12 oz doble pared");
     expect(html).toContain("También en el pedido");
-    expect(html).toContain("1 × Pan de bono");
-    expect(html).toContain("Barista: Pipe");
+    expect(html).toContain("1× Pan de bono");
+    expect(html).toContain("Prepara: <span class=\"b\">Pipe");
     expect(html).toContain("sin azúcar");
     expect(html).not.toContain("$17.000");
   });
@@ -75,21 +74,40 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     expect(tieneBebidas(base, recetas)).toBe(false); // no SKU → not a known drink
   });
 
-  it("the catalog recipe: written steps first, ingredient lines otherwise; food has none", () => {
-    const drink = { printsLabel: true, spec: ["VASO PET 12 OZ", "2 SHOTS · 18 G"], prep: ["Espresso doble: 18 g → 36 g", "Verter"], recipe: [] };
+  it("the catalog recipe: amounts in order, container apart, label stickers out; food has none", () => {
+    const drink = {
+      printsLabel: true,
+      prep: ["Pon 100 g de hielo"],
+      recipe: [
+        { name: "Hielo", qty: 100, unit: "g", note: "Primero, en el vaso" },
+        { name: "Cafe Okana", qty: 18, unit: "g", note: "Espresso doble" },
+        { name: "Leche entera Gran Vía (bolsa 900 ml)", qty: 150, unit: "ml", note: null },
+        { name: "Pulpa de mora (bolsa 125 g)", qty: 1, unit: "und", note: null },
+        { name: "Jarabe", qty: 12.5, unit: "ml", note: null },
+        { name: "vaso darnel pet x 12Oz", qty: 1, unit: "und", note: null },
+        { name: "Tapa domo Darnel 12 oz", qty: 1, unit: "und", note: null },
+        { name: "Etiqueta térmica Niimbot 30×50 (rollo 230)", qty: 4, unit: "etiqueta", note: "Nombre, QR" },
+      ],
+    };
     expect(recetaDe(drink)).toEqual({
       bebida: true,
-      spec: "vaso PET 12 oz · 2 shots · 18 g · etiquetas: nombre + bebida",
-      pasos: [{ titulo: "Espresso doble", detalle: "18 g → 36 g" }, { titulo: "Verter" }],
+      proporciones: [
+        { cantidad: "100 g", nombre: "Hielo", nota: "Primero, en el vaso" },
+        { cantidad: "18 g", nombre: "Café Okana", nota: "Espresso doble" },
+        { cantidad: "150 ml", nombre: "Leche entera Gran Vía" },
+        { cantidad: "1", nombre: "Pulpa de mora" },
+        { cantidad: "12,5 ml", nombre: "Jarabe" },
+      ],
+      envase: "vaso darnel pet x 12Oz · Tapa domo Darnel 12 oz",
+      pasos: [],
     });
-    expect(recetaDe({ ...drink, prep: [], recipe: [{ name: "Leche", qty: 230, unit: "ml", note: null }, { name: "Café", qty: 18.5, unit: "g", note: "molido fino" }] }).pasos)
-      .toEqual([{ titulo: "Leche", detalle: "230 ml" }, { titulo: "Café", detalle: "18,5 g, molido fino" }]);
+    expect(recetaDe({ ...drink, recipe: [] })).toEqual({ bebida: true, pasos: [{ titulo: "Pon 100 g de hielo" }] });
     expect(recetaDe({ ...drink, printsLabel: false })).toEqual({ bebida: false, pasos: [] });
   });
 
-  it("logo on both tirillas; 58 mm shrinks the same layout", () => {
+  it("logo on the precuenta only; 58 mm shrinks the same layout", () => {
     expect(renderTicketHtml(base, { logo: "data:image/svg+xml;base64,AAA" })).toContain('src="data:image/svg+xml;base64,AAA"');
-    expect(renderTicketHtml({ ...conSku, kind: "comanda" }, { logo: "x.svg", recetas })).toContain('src="x.svg"');
+    expect(renderTicketHtml({ ...conSku, kind: "comanda" }, { logo: "x.svg", recetas })).not.toContain("x.svg"); // the comanda has no logo
     expect(renderTicketHtml(base, { papel: "58" })).toContain("zoom: 0.66");
     expect(renderTicketHtml(base)).not.toContain("zoom");
   });
