@@ -264,6 +264,7 @@ function TicketMenuItems({ onTest }: { onTest: () => void }) {
   const t = useTicketPrinter();
   const sw = (on: boolean) => <span className={"switch" + (on ? " on" : "")} aria-hidden><span /></span>;
   const modos: Array<[TicketSettings["modo"], string]> = [["aqui", "Aquí"], ["caja", "A la caja"], ["no", "No"]];
+  const papeles: Array<[TicketSettings["papel"], string]> = [["80", "80 mm"], ["58", "58 mm"]];
   return (
     <>
       <div className="menu-label" style={{ padding: "6px 14px 2px", fontSize: 13, color: "var(--muted)" }}>Recibos y comandas</div>
@@ -286,7 +287,19 @@ function TicketMenuItems({ onTest }: { onTest: () => void }) {
           </button>
         </>
       )}
-      {t.modo === "aqui" && <button type="button" role="menuitem" onClick={onTest}>Imprimir recibo de prueba</button>}
+      {t.modo === "aqui" && (
+        <>
+          <div role="radiogroup" aria-label="Papel" style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 8px" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)", padding: "0 4px" }}>Papel</span>
+            {papeles.map(([p, label]) => (
+              <button key={p} type="button" role="radio" aria-checked={t.papel === p} className="btn sm ghost" style={{ flex: 1, justifyContent: "center", ...(t.papel === p ? { background: "var(--strong)", color: "var(--on-strong)", borderColor: "var(--strong)" } : {}) }} onClick={() => setTicketSettings({ papel: p })}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button type="button" role="menuitem" onClick={onTest}>Imprimir recibo de prueba</button>
+        </>
+      )}
     </>
   );
 }

@@ -32,6 +32,7 @@ import { usePosWindowLease } from "./pos-window";
 import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, closeVentas, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
 import { CUP_LABEL_ASSETS } from "@/lib/printer/label";
+import { setTicketLogo } from "@/lib/printer/tickets";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
 import { POS_CSS } from "./_components/theme";
 import { BaristaPicker, TopBar } from "./_components/top-bar";
@@ -103,6 +104,8 @@ export function PosTerminal({
   React.useEffect(() => {
     setLabelDefaults({ station, orgName: catalog.orgName, art: catalog.handArt });
   }, [station, catalog.orgName, catalog.handArt]);
+  // The receipt's logo, cached on this device for offline printing.
+  React.useEffect(() => { setTicketLogo(catalog.recibo.logo); }, [catalog.recibo.logo]);
 
   return (
     <CatalogCtx.Provider value={catalog}>

@@ -17,7 +17,7 @@
  *   · no    — no paper tickets from this device (the default).
  */
 import * as React from "react";
-import { renderTicketHtml, type TicketDoc } from "./ticket";
+import { renderTicketHtml, type Papel, type TicketDoc } from "./ticket";
 
 export interface TicketSettings {
   /** Where this device's tickets go. */
@@ -26,6 +26,8 @@ export interface TicketSettings {
   recibo: "auto" | "pedir";
   /** A comanda for the bar with every new order. */
   comanda: boolean;
+  /** Paper roll on this station's printer (58 mm roll in the 80 mm printer). */
+  papel: Papel;
 }
 export interface TicketState extends TicketSettings {
   /** Spanish, user-facing: what happened to the last ticket. */
@@ -33,7 +35,7 @@ export interface TicketState extends TicketSettings {
 }
 
 const KEY = "pos:tickets";
-const DEFAULTS: TicketSettings = { modo: "no", recibo: "pedir", comanda: true };
+const DEFAULTS: TicketSettings = { modo: "no", recibo: "pedir", comanda: true, papel: "80" };
 const INITIAL: TicketState = { ...DEFAULTS, note: null };
 
 let state: TicketState = INITIAL;
@@ -68,9 +70,49 @@ export function setTicketSettings(patch: Partial<TicketSettings>) {
   load();
   set({ ...patch, note: null });
   try {
-    const { modo, recibo, comanda } = state;
-    window.localStorage.setItem(KEY, JSON.stringify({ modo, recibo, comanda }));
+    const { modo, recibo, comanda, papel } = state;
+    window.localStorage.setItem(KEY, JSON.stringify({ modo, recibo, comanda, papel }));
   } catch { /* private mode */ }
+}
+
+// ── receipt logo ────────────────────────────────────────────────
+/**
+ * The org's one-ink logo, kept as a data: URI so the hidden iframe prints it
+ * at once (no load race) and offline; remembered per device with its URL.
+ */
+const LOGO_KEY = "pos:tickets-logo";
+let logo: { url: string; data: string } | null = null;
+let logoLoaded = false;
+function loadLogo() {
+  if (logoLoaded || typeof window === "undefined") return;
+  logoLoaded = true;
+  try {
+    const raw = window.localStorage.getItem(LOGO_KEY);
+    if (raw) logo = JSON.parse(raw) as { url: string; data: string };
+  } catch { /* private mode */ }
+}
+export function setTicketLogo(url: string | null | undefined): void {
+  loadLogo();
+  if (!url) {
+    logo = null;
+    try { window.localStorage.removeItem(LOGO_KEY); } catch { /* private mode */ }
+    return;
+  }
+  if (logo?.url === url) return;
+  void fetch(url)
+    .then(async (r) => {
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const data = await new Promise<string>((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result));
+        fr.onerror = () => rej(fr.error);
+        fr.readAsDataURL(blob);
+      });
+      logo = { url, data };
+      try { window.localStorage.setItem(LOGO_KEY, JSON.stringify(logo)); } catch { /* full / private */ }
+    })
+    .catch(() => { /* offline: keep the remembered one */ });
 }
 
 // ── relay (stations without the printer) ────────────────────────
@@ -90,7 +132,7 @@ function printHtml(html: string): Promise<void> {
     frame.setAttribute("aria-hidden", "true");
     frame.tabIndex = -1;
     // Off screen but laid out at paper width, so the page measures right.
-    Object.assign(frame.style, { position: "fixed", left: "-10000px", top: "0", width: "80mm", height: "100px", border: "0" });
+    Object.assign(frame.style, { position: "fixed", left: "-10000px", top: "0", width: "72mm", height: "100px", border: "0" });
     let done = false;
     const finish = () => {
       if (done) return;
@@ -117,7 +159,8 @@ function printHtml(html: string): Promise<void> {
 
 /** Print here, now (ticket station, or a ticket claimed from another station). */
 export function printTicketHere(doc: TicketDoc): void {
-  const html = renderTicketHtml(doc);
+  loadLogo();
+  const html = renderTicketHtml(doc, { papel: getTicketState().papel, logo: logo?.data ?? null });
   chain = chain.then(() => printHtml(html)).catch((err) => console.warn("[tickets]", err));
 }
 

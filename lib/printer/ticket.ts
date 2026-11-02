@@ -94,14 +94,17 @@ function porPersona(lines: TicketLine[]): Array<{ who: string; lines: TicketLine
 
 // ── HTML ────────────────────────────────────────────────────────
 /**
- * 80 mm roll, 72 mm printable. Pure black on white, no images: a thermal head
- * turns greys into dither. Sizes in pt so the driver's DPI doesn't matter.
+ * 80 mm roll, 72 mm printable. The page takes the width the driver reports
+ * (the DIG-E200I / Gainscha driver says 72 mm): forcing an 80 mm page made the
+ * browser lay out wider than the head and the right edge was lost. Pure black
+ * on white, no images: a thermal head turns greys into dither. Sizes in pt so
+ * the driver's DPI doesn't matter.
  */
 const CSS = `
-@page { size: 80mm auto; margin: 0; }
+@page { margin: 0; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: #fff; color: #000; }
-body { width: 72mm; padding: 1mm 1.5mm 8mm; font: 10.5pt/1.3 Arial, Helvetica, sans-serif; }
+body { width: 100%; max-width: 72mm; padding: 1mm 2mm 8mm; font: 10.5pt/1.3 Arial, Helvetica, sans-serif; }
 .c { text-align: center; }
 .b { font-weight: 700; }
 .s { font-size: 9pt; }
@@ -125,16 +128,55 @@ td.r { text-align: right; white-space: nowrap; padding-left: 2mm; }
 .item { font-size: 13pt; font-weight: 700; line-height: 1.2; margin-top: 1.4mm; }
 .item .qn { display: inline-block; min-width: 9mm; font-size: 15pt; font-weight: 800; }
 .item .mods { font-size: 10.5pt; font-weight: 400; padding-left: 9mm; }
+.logo { display: block; width: 46mm; height: auto; margin: 0 auto 1.5mm; }
 .note { border: 2px solid #000; padding: 1.2mm 1.6mm; margin-top: 2mm; font-size: 11pt; font-weight: 700; white-space: pre-line; }
 `;
 
-function page(title: string, body: string): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head><body>${body}</body></html>`;
+/**
+ * 58 mm roll in the 80 mm printer (what PA'YO has loaded): the head still
+ * draws 72 mm, but only part of the page lands on the paper. Measured on the
+ * DIG-E200I (ruler + photos, 1-nov-2026): the text sits in a 47 mm column
+ * from 13 to 60 mm, which leaves room for the roll drifting a little to one
+ * side. One size smaller than on 80 mm.
+ */
+const CSS_58 = `
+body { width: 72mm; max-width: none; padding: 1mm 12mm 8mm 13mm; font-size: 9.5pt; }
+.org { font-size: 14pt; }
+.s, .mods { font-size: 8.5pt; }
+.xs { font-size: 7.5pt; }
+td.q { width: 7mm; }
+td.r { padding-left: 1.5mm; }
+.tot { font-size: 13pt; }
+.tag { font-size: 9pt; padding: 0.3mm 1.2mm; }
+.folio { font-size: 24pt; }
+.who { font-size: 14pt; }
+.persona { font-size: 10.5pt; }
+.item { font-size: 11pt; }
+.item .qn { min-width: 7mm; font-size: 13pt; }
+.item .mods { font-size: 9.5pt; padding-left: 7mm; }
+.note { font-size: 10pt; }
+.logo { width: 38mm; }
+`;
+
+/** Paper roll on the printer: 80 mm (full width) or 58 mm. */
+export type Papel = "80" | "58";
+
+export interface TicketPrintOptions {
+  papel?: Papel;
+  /** One-ink logo as a data: URI (or URL) for the top of the receipt. */
+  logo?: string | null;
 }
 
-function reciboBody(d: TicketDoc): string {
+function page(title: string, body: string, papel: Papel): string {
+  const css = papel === "58" ? CSS + CSS_58 : CSS;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body>${body}</body></html>`;
+}
+
+function reciboBody(d: TicketDoc, logo: string | null): string {
   const out: string[] = [];
-  out.push(`<div class="c org">${esc(d.orgName)}</div>`);
+  out.push(logo
+    ? `<img class="logo" src="${esc(logo)}" alt="${esc(d.orgName)}">`
+    : `<div class="c org">${esc(d.orgName)}</div>`);
   if (d.encabezado?.trim()) out.push(`<div class="c s pre">${esc(d.encabezado.trim())}</div>`);
   out.push(`<hr>`);
   out.push(`<div class="row b"><span>Pedido #${esc(d.folio)}</span>${d.copia ? `<span>COPIA</span>` : ""}</div>`);
@@ -195,8 +237,9 @@ function comandaBody(d: TicketDoc): string {
   return out.join("");
 }
 
-export function renderTicketHtml(d: TicketDoc): string {
+export function renderTicketHtml(d: TicketDoc, opts: TicketPrintOptions = {}): string {
+  const papel = opts.papel ?? "80";
   return d.kind === "recibo"
-    ? page(`Recibo ${d.folio}`, reciboBody(d))
-    : page(`Comanda ${d.folio}`, comandaBody(d));
+    ? page(`Recibo ${d.folio}`, reciboBody(d, opts.logo ?? null), papel)
+    : page(`Comanda ${d.folio}`, comandaBody(d), papel);
 }
