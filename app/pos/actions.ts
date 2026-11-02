@@ -12,6 +12,7 @@ import { MissingGroqKeyError, GroqRateLimitError } from "@/lib/ai/groq";
 import { FRASE_TONO_IDS, fraseBebida, type FraseCategoria, type FraseTono } from "@/lib/pos/frase";
 import { LabelSpecSchema, RELAY_BATCH_MAX, RELAY_TTL_MS, type LabelSpec } from "@/lib/printer/spec";
 import { TicketDocSchema, type TicketDoc } from "@/lib/printer/ticket";
+import { ESTACION_VIVA_MS, LatidoSchema, type EstadoImpresoras, type Latido, type TicketEstacion } from "@/lib/printer/estaciones";
 import { transcribeSegment, MissingSttKeyError, RateLimitError } from "@/lib/ai/transcribe";
 import type {
   PosCatalog,
@@ -933,18 +934,93 @@ export async function reclamarEtiquetas(): Promise<{ ok: true; jobs: LabelSpec[]
 /** A station without the receipt printer asks the one that has it to print these. */
 export async function encolarTickets(
   docs: TicketDoc[],
-): Promise<{ ok: true; n: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; n: number; ids: string[] } | { ok: false; error: string }> {
   const { supabase, organizationId, station } = await requirePosAuth();
   const parsed = z.array(TicketDocSchema).min(1).max(10).safeParse(docs);
   if (!parsed.success) return { ok: false, error: "Recibo no válido." };
-  const { error } = await supabase.from("pos_print_jobs").insert(
-    parsed.data.map((payload, seq) => ({ organization_id: organizationId, seq, payload, source: station, clase: "ticket" })),
-  );
+  const { data, error } = await supabase
+    .from("pos_print_jobs")
+    .insert(parsed.data.map((payload, seq) => ({ organization_id: organizationId, seq, payload, source: station, clase: "ticket" })))
+    .select("id");
   if (error) {
     console.error("[encolarTickets] failed:", error.message);
     return { ok: false, error: "No se pudo enviar el recibo." };
   }
-  return { ok: true, n: parsed.data.length };
+  return { ok: true, n: parsed.data.length, ids: ((data ?? []) as Array<{ id: string }>).map((r) => r.id) };
+}
+
+/** How many of these relayed tickets no station has taken yet (the sender checks a bit later). */
+export async function ticketsSinTomar(ids: string[]): Promise<{ ok: true; sinTomar: number } | { ok: false }> {
+  const parsed = z.array(z.string().uuid()).min(1).max(20).safeParse(ids);
+  if (!parsed.success) return { ok: false };
+  const { supabase, organizationId } = await requirePosAuth();
+  const { data, error } = await supabase
+    .from("pos_print_jobs")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("status", "pendiente")
+    .in("id", parsed.data);
+  if (error) return { ok: false };
+  return { ok: true, sinTomar: (data ?? []).length };
+}
+
+/**
+ * Heartbeat of the receipt printer (0068). The station («Aquí») reports it is
+ * open and whether its prints skip the dialog; any other device clears its
+ * row in case it was the station before. Everyone gets back the open
+ * stations and how many tickets are waiting for one.
+ */
+export async function latidoImpresoras(input: Latido): Promise<({ ok: true } & EstadoImpresoras) | { ok: false }> {
+  const parsed = LatidoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false };
+  const { deviceId, estacion } = parsed.data;
+  const { supabase, organizationId, station } = await requirePosAuth();
+  const now = Date.now();
+  const write = estacion
+    ? supabase.from("pos_ticket_estaciones").upsert(
+        {
+          organization_id: organizationId,
+          device_id: deviceId,
+          nombre: station.slice(0, 80),
+          equipo: estacion.equipo || null,
+          silencioso: estacion.silencioso,
+          papel: estacion.papel,
+          visto_at: new Date(now).toISOString(),
+        },
+        { onConflict: "organization_id,device_id" },
+      )
+    : supabase.from("pos_ticket_estaciones").delete().eq("organization_id", organizationId).eq("device_id", deviceId);
+  const { error: werr } = await write;
+  if (werr) console.error("[latidoImpresoras] write failed:", werr.message);
+  const [vivas, cola] = await Promise.all([
+    supabase
+      .from("pos_ticket_estaciones")
+      .select("device_id, nombre, equipo, silencioso, visto_at")
+      .eq("organization_id", organizationId)
+      .gt("visto_at", new Date(now - ESTACION_VIVA_MS).toISOString())
+      .order("visto_at", { ascending: false }),
+    supabase
+      .from("pos_print_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("clase", "ticket")
+      .eq("status", "pendiente")
+      .gt("created_at", new Date(now - RELAY_TTL_MS).toISOString()),
+  ]);
+  if (vivas.error) {
+    console.error("[latidoImpresoras] read failed:", vivas.error.message);
+    return { ok: false };
+  }
+  const estaciones: TicketEstacion[] = (
+    (vivas.data ?? []) as Array<{ device_id: string; nombre: string; equipo: string | null; silencioso: boolean | null; visto_at: string }>
+  ).map((r) => ({
+    deviceId: r.device_id,
+    nombre: r.nombre,
+    equipo: r.equipo,
+    silencioso: r.silencioso,
+    hace: Math.max(0, Math.round((now - Date.parse(r.visto_at)) / 1000)),
+  }));
+  return { ok: true, estaciones, enEspera: cola.count ?? 0 };
 }
 
 /** The receipt printer station takes the waiting tickets (same claim-by-UPDATE as the labels). */

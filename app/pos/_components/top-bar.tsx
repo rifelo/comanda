@@ -10,7 +10,8 @@ import { useRouter } from "next/navigation";
 import { signOutLocal } from "@/app/login/actions";
 import { desvincularPos } from "../actions";
 import { StationCtx, usePos, posStore, openOrdenes, closeOrdenes, openEtiquetas, openPuntos, openVentas, setBarista, closeBaristaPicker } from "../pos-store";
-import { printTicketTest, setTicketSettings, useTicketPrinter, type TicketSettings } from "@/lib/printer/tickets";
+import { printTicketTest, setTicketSettings, ticketDeviceId, useTicketPrinter, type TicketSettings, type TicketState } from "@/lib/printer/tickets";
+import { resumenImpresora } from "@/lib/printer/estaciones";
 import { usePrinter, connectPrinter, checkPrinter, printTestLabel, relaysLabels, type PrinterStatus } from "@/lib/printer/serial";
 import { useDesktopApp, installApp, toggleFullscreen } from "@/lib/pwa/desktop";
 import { setDark, useIsDark } from "../pos-theme";
@@ -42,6 +43,7 @@ export function TopBar({ mode }: { mode: "device" | "user" }) {
       </label>
       <span className="grow" />
       <PrinterStatusChip />
+      <TicketStatusChip />
       <ConnectionStatus />
       <VentasButton />
       <PedidosButton />
@@ -133,6 +135,28 @@ function PrinterStatusChip() {
     <button type="button" className="status bad" onClick={() => (off ? void checkPrinter() : void connectPrinter())} aria-label={label} title={p.note ?? undefined}>
       <span className="led" /><PrinterIcon /><span className="txt">{label}</span>
     </button>
+  );
+}
+
+const noSub = () => () => {};
+
+/** The receipt printer's state in one line (menu, chip and its tooltip). */
+function useResumenTickets(t: TicketState) {
+  // localStorage id: known only in the browser (null while server-rendering).
+  const deviceId = React.useSyncExternalStore(noSub, ticketDeviceId, () => null);
+  if (!deviceId) return null;
+  return resumenImpresora(t.modo, { deviceId, silencioso: t.silencioso }, t.impresoras);
+}
+
+/** Shown only when this device's receipts and comandas won't come out on their own. */
+function TicketStatusChip() {
+  const t = useTicketPrinter();
+  const r = useResumenTickets(t);
+  if (!r?.problema) return null;
+  return (
+    <span className="status bad" role="status" aria-label={r.texto} title={r.texto}>
+      <span className="led" /><PrinterIcon /><span className="txt">Recibos: revisar</span>
+    </span>
   );
 }
 
@@ -289,6 +313,7 @@ function TicketMenuItems({ onTest }: { onTest: () => void }) {
           </button>
         ))}
       </div>
+      <TicketResumen t={t} />
       {t.modo !== "no" && (
         <>
           <button type="button" role="menuitemcheckbox" aria-checked={t.recibo === "auto"} onClick={() => setTicketSettings({ recibo: t.recibo === "auto" ? "pedir" : "auto" })}>
@@ -315,6 +340,17 @@ function TicketMenuItems({ onTest }: { onTest: () => void }) {
         </>
       )}
     </>
+  );
+}
+
+/** Where this device's tickets end up, under the «Aquí / A la caja / No» buttons. */
+function TicketResumen({ t }: { t: TicketState }) {
+  const r = useResumenTickets(t);
+  if (!r || t.modo === "no") return null;
+  return (
+    <div role="status" style={{ padding: "0 14px 8px", fontSize: 13, lineHeight: 1.35, maxWidth: 300, color: r.problema ? "var(--late)" : "var(--muted)" }}>
+      {r.texto}
+    </div>
   );
 }
 
