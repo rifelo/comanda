@@ -230,7 +230,7 @@ function MoreMenu({ mode }: { mode: "device" | "user" }) {
               </button>
             )}
             <hr />
-            <TicketMenuItems onTest={go(() => printTicketTest(s.catalog.orgName))} />
+            <TicketMenuItems onTest={go(() => printTicketTest(s.catalog.recibo.nombre || s.catalog.orgName))} />
             <hr />
             <button type="button" role="menuitemcheckbox" aria-checked={!!dark} onClick={() => setDark(!dark)}>
               <span className="grow">Modo oscuro</span>

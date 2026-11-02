@@ -109,7 +109,7 @@ export function PosTerminal({
   // The receipt's logo, cached on this device for offline printing.
   React.useEffect(() => { setTicketLogo(catalog.recibo.logo); }, [catalog.recibo.logo]);
   // The comanda's recipes come from this catalog, by SKU.
-  React.useEffect(() => { setTicketRecetas(recetasDelMenu(catalog.menu)); }, [catalog.menu]);
+  React.useEffect(() => { setTicketRecetas(recetasDelMenu(catalog.menu, catalog.modGroups)); }, [catalog.menu, catalog.modGroups]);
 
   return (
     <CatalogCtx.Provider value={catalog}>

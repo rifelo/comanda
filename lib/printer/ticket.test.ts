@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fechaBogota, pesos, recetaDe, renderTicketHtml, tieneBebidas, TicketDocSchema, type RecetaLookup, type TicketDoc } from "./ticket";
+import { cantidad, conOpciones, fechaBogota, pesos, recetaDe, recetasDelMenu, renderTicketHtml, tieneBebidas, TicketDocSchema, type RecetaLookup, type TicketDoc } from "./ticket";
 
 const base: TicketDoc = {
   kind: "recibo",
@@ -72,7 +72,10 @@ describe("renderTicketHtml → tirillas del canvas", () => {
   it("only orders with a prepared drink get a comanda", () => {
     expect(tieneBebidas(conSku, recetas)).toBe(true);
     expect(tieneBebidas({ lines: [conSku.lines[1]] }, recetas)).toBe(false);
-    expect(tieneBebidas(base, recetas)).toBe(false); // no SKU → not a known drink
+    // When in doubt it prints: no SKU, unknown SKU, or recipes not loaded yet.
+    expect(tieneBebidas(base, recetas)).toBe(true);
+    expect(tieneBebidas({ lines: [{ ...conSku.lines[1], sku: "ZZ-404" }] }, recetas)).toBe(true);
+    expect(tieneBebidas({ lines: [conSku.lines[1]] }, undefined)).toBe(true);
   });
 
   it("the catalog recipe: amounts in order, container apart, label stickers out; food has none", () => {
@@ -104,6 +107,40 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     });
     expect(recetaDe({ ...drink, recipe: [] })).toEqual({ bebida: true, pasos: [{ titulo: "Pon 100 g de hielo" }] });
     expect(recetaDe({ ...drink, printsLabel: false })).toEqual({ bebida: false, pasos: [] });
+  });
+
+  it("options change the amounts: added, raised, and swapped out with a negative amount", () => {
+    const recipe = [
+      { name: "Pulpa de mora", qty: 1, unit: "und", note: null },
+      { name: "vaso darnel pet x 12Oz", qty: 1, unit: "und", note: null },
+    ];
+    expect(conOpciones(recipe, [
+      { opcion: "En leche", recipe: [{ name: "Leche entera", qty: 200, unit: "ml" }] },
+      { opcion: "16 oz", recipe: [{ name: "Vaso Darnel PET 16 oz", qty: 1, unit: "und" }, { name: "vaso darnel pet x 12Oz", qty: -1, unit: "und" }] },
+    ])).toEqual([
+      { name: "Pulpa de mora", qty: 1, unit: "und", note: null },
+      { name: "Leche entera", qty: 200, unit: "ml", note: "En leche" },
+      { name: "Vaso Darnel PET 16 oz", qty: 1, unit: "und", note: "16 oz" },
+    ]);
+    // Through the catalog lookup, by option name within the product's groups.
+    const menu = [{ sku: "JU-001", printsLabel: true, prep: [], recipe, mods: ["g1"] }] as unknown as Parameters<typeof recetasDelMenu>[0];
+    const groups = { g1: { id: "g1", name: "Base", type: "single" as const, required: true, options: [
+      { name: "En agua", delta: 0 }, { name: "En leche", delta: 1000, recipe: [{ name: "Leche entera", qty: 200, unit: "ml" }] }] } };
+    const look = recetasDelMenu(menu, groups);
+    expect(look("JU-001", ["En leche"])?.proporciones).toEqual([
+      { cantidad: "1", nombre: "Pulpa de mora" },
+      { cantidad: "200 ml", nombre: "Leche entera", nota: "En leche" },
+    ]);
+    expect(look("JU-001", ["En agua"])?.proporciones).toEqual([{ cantidad: "1", nombre: "Pulpa de mora" }]);
+    expect(look("XX", [])).toBeNull();
+  });
+
+  it("amounts never round a small quantity down to 0", () => {
+    expect(cantidad(18)).toBe("18");
+    expect(cantidad(12.5)).toBe("12,5");
+    expect(cantidad(0.04)).toBe("0,04");
+    expect(cantidad(2.25)).toBe("2,25");
+    expect(cantidad(150.04)).toBe("150");
   });
 
   it("logo on the precuenta only; 58 mm shrinks the same layout", () => {

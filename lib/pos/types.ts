@@ -70,6 +70,11 @@ export interface PosCombo {
 export interface PosModOption {
   name: string;
   delta: number;
+  /**
+   * What choosing it changes in the drink (modifier_option_receta): amounts
+   * per unit, negative = takes that ingredient out (16 oz: +vaso 16, −vaso 12).
+   */
+  recipe?: Array<{ name: string; qty: number; unit: string }>;
 }
 
 export interface PosModGroup {
