@@ -21,11 +21,25 @@ import { initials, Overlay, useNow } from "./ticket";
 // Top bar
 // ════════════════════════════════════════════════════════════════
 export function TopBar({ mode }: { mode: "device" | "user" }) {
+  const search = usePos().search;
   return (
     <header className="topbar">
       {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark */}
       <img className="logo" src="/icons/icon.svg" alt="Café Pa' Yo" style={{ width: 36, height: 36, borderRadius: 9 }} />
       <PersonChip mode={mode} />
+      {/* Search lives in the top bar (Venta.dc.html), leaving the row below to the filters. */}
+      <label className="search tb-search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+        <input
+          type="search"
+          placeholder="Buscar"
+          aria-label="Buscar producto"
+          value={search}
+          onChange={(e) => posStore.set({ search: e.target.value })}
+          enterKeyHint="search"
+          autoComplete="off"
+        />
+      </label>
       <span className="grow" />
       <PrinterStatusChip />
       <ConnectionStatus />

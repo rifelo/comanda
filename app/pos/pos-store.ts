@@ -16,6 +16,7 @@
  *    live catalog ids. A typed fallback input is always available.
  */
 
+import type { FiltroTemp } from "@/lib/pos/temperatura";
 import * as React from "react";
 import {
   FAV_CAT,
@@ -151,6 +152,8 @@ export interface PosState {
   sheet: { mode: "add"; productId: string } | { mode: "edit"; idx: number } | { mode: "receta"; productId: string } | null;
   /** Free-text search over the catalog (name / sku / description). */
   search: string;
+  /** «Caliente / Frío» filter over the catalog (lib/pos/temperatura.ts). */
+  temp: FiltroTemp;
   /** Assistant drawer open? */
   aiOpen: boolean;
   /**
@@ -267,6 +270,7 @@ export const POS_INITIAL: PosState = {
   baristaPicker: false,
   sheet: null,
   search: "",
+  temp: "todo",
   aiOpen: false,
   ticketOpen: false,
   customerName: "",

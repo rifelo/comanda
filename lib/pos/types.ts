@@ -111,6 +111,8 @@ export interface PosCatalog {
   cupArt: string | null;
   /** Brand line art at the foot of the name label (organizations.label_art_url), null = none. */
   handArt: string | null;
+  /** Customer names of past orders, most frequent first (autocomplete of «¿A nombre de quién?»). */
+  nombres?: { nombre: string; veces: number }[];
   /** The team who can be on the bar (for «Barista: …»): staff with an active sede membership. */
   equipo: PosBarista[];
   /**

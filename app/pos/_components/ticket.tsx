@@ -8,6 +8,7 @@
  */
 import * as React from "react";
 import { posMoney } from "@/lib/pos/types";
+import { claveNombre, partesCoincidencia, sugerirNombres, type NombreFrecuente } from "@/lib/pos/nombres";
 import { useCatalog, usePos, posStore, orderTotal, modLinePrice, modSummary, clearTicket, setActivePerson, addPerson, nameTicket, renamePerson, removePerson, linesOf, startTender, savePending, discardPendingEdit, setSeLoLlevamos, nombrarUna, type OrderLine } from "../pos-store";
 import { relaysLabels, type PrinterStatus } from "@/lib/printer/serial";
 import { C, F } from "./theme";
@@ -158,13 +159,13 @@ export function Ticket() {
             </div>
           ) : (
             <>
-              {(s.people.length > 1 || addingPerson) && (
+              {addingPerson && (
                 <div className="tk-chips">
                   <PeopleChips onEdit={setEditPerson} adding={addingPerson} setAdding={setAddingPerson} />
                 </div>
               )}
               <div ref={listRef} className="tk-lines scroll">
-                {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} onNombre={setNombreDe} />)}
+                <GruposPedido onNombre={setNombreDe} onEditPerson={setEditPerson} />
               </div>
               {(noteOpen || s.note) && (
                 <textarea
@@ -183,7 +184,7 @@ export function Ticket() {
                 <button type="button" className={"btn ghost sm" + (s.seLoLlevamos ? " on" : "")} aria-pressed={s.seLoLlevamos} onClick={() => setSeLoLlevamos(!s.seLoLlevamos)}>
                   {s.seLoLlevamos ? "✓ Se lo llevamos" : "Llevar"}
                 </button>
-                {s.people.length > 0 && s.people.length < 2 && !addingPerson && (
+                {s.people.length > 0 && !addingPerson && (
                   <button type="button" className="btn ghost sm" onClick={() => setAddingPerson(true)}>+ Persona</button>
                 )}
                 <button type="button" className="btn ghost sm" onClick={() => { if (noteOpen || s.note) { posStore.set({ note: "" }); setNoteOpen(false); } else setNoteOpen(true); }}>
@@ -238,30 +239,98 @@ export function NameField() {
   const current = s.people[0] ?? "";
   const [text, setText] = React.useState(current);
   const [focused, setFocused] = React.useState(false);
+  const [hi, setHi] = React.useState(0);
   const shown = focused ? text : current;
-  const commit = () => {
-    const t = text.trim();
+  const commit = (raw: string) => {
+    const t = raw.trim();
     if (!current) { if (t) nameTicket(t); }
     else if (!t) removePerson(current);
     else if (t !== current) renamePerson(current, t);
   };
+  const opciones = useOpcionesNombre(text, s.people.filter((p) => p !== current));
+  const pick = (name: string, el?: HTMLInputElement | null) => { setText(name); commit(name); setFocused(false); el?.blur(); };
   return (
-    <input
-      className="field"
-      type="text"
-      value={shown}
-      onFocus={() => { setText(current); setFocused(true); }}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
-      onBlur={() => { commit(); setFocused(false); }}
-      placeholder="¿A nombre de quién?"
-      aria-label="Nombre del cliente"
-      enterKeyHint="done"
-      autoComplete="off"
-      autoCapitalize="words"
-      maxLength={40}
-      style={{ height: 48 }}
-    />
+    <div className="nf">
+      <input
+        className="field"
+        type="text"
+        value={shown}
+        onFocus={() => { setText(current); setFocused(true); setHi(0); }}
+        onChange={(e) => { setText(e.target.value); setHi(0); }}
+        onKeyDown={(e) => {
+          const n = opciones.items.length;
+          if (e.key === "ArrowDown" && n) { e.preventDefault(); setHi((h) => (h + 1) % n); }
+          else if (e.key === "ArrowUp" && n) { e.preventDefault(); setHi((h) => (h - 1 + n) % n); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setText(current); (e.target as HTMLInputElement).blur(); }
+          else if (e.key === "Enter") {
+            e.preventDefault();
+            const o = opciones.items[hi];
+            if (o && text.trim()) pick(o.nombre, e.currentTarget); else (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onBlur={() => { if (focused) commit(text); setFocused(false); }}
+        placeholder="¿A nombre de quién?"
+        aria-label="Nombre del cliente"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={focused && opciones.items.length > 0}
+        aria-controls="nf-list"
+        enterKeyHint="done"
+        autoComplete="off"
+        autoCapitalize="words"
+        maxLength={40}
+        style={{ height: 48 }}
+      />
+      {focused && (opciones.items.length > 0 || text.trim()) && (
+        <ListaNombres id="nf-list" texto={text} opciones={opciones} hi={hi} onPick={(n) => pick(n)} />
+      )}
+    </div>
+  );
+}
+
+/** What the name list offers for the text typed: matching names, or the most frequent ones while empty. */
+function useOpcionesNombre(texto: string, excluir: ReadonlyArray<string>): { titulo: string; items: NombreFrecuente[] } {
+  const nombres = useCatalog().nombres ?? [];
+  const key = excluir.join("|");
+  return React.useMemo(() => {
+    const t = texto.trim();
+    if (t) return { titulo: "Clientes frecuentes", items: sugerirNombres(t, nombres, { max: 3, excluir }) };
+    const fuera = new Set(excluir.map(claveNombre));
+    return { titulo: "Frecuentes", items: nombres.filter((n) => !fuera.has(claveNombre(n.nombre))).slice(0, 5) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- excluir is compared by content (key)
+  }, [texto, nombres, key]);
+}
+
+/**
+ * The suggestions under a name field (NombreAuto.dc.html): the typed part in
+ * bold, how many orders carried the name, and «Usar «…» · nombre nuevo».
+ * Options pick on pointer-down so the field doesn't blur first.
+ */
+function ListaNombres({ id, texto, opciones, hi, onPick }: { id: string; texto: string; opciones: { titulo: string; items: NombreFrecuente[] }; hi: number; onPick: (name: string) => void }) {
+  const t = texto.trim();
+  const exacto = opciones.items.some((o) => claveNombre(o.nombre) === claveNombre(t));
+  return (
+    <div className="ac" id={id} role="listbox" aria-label="Nombres sugeridos">
+      {opciones.items.length > 0 && <span className="acl">{opciones.titulo}</span>}
+      {opciones.items.map((o, k) => {
+        const [a, b, c] = partesCoincidencia(o.nombre, t);
+        return (
+          <button key={o.nombre} type="button" role="option" aria-selected={k === hi && !!t} className="opt2" onPointerDown={(e) => { e.preventDefault(); onPick(o.nombre); }}>
+            <span className="avatar">{initials(o.nombre)}</span>
+            <span className="grow" style={{ minWidth: 0 }}>
+              <span className="nm">{a}<b>{b}</b>{c}</span>
+              <span className="ns">{o.veces} pedido{o.veces === 1 ? "" : "s"}</span>
+            </span>
+          </button>
+        );
+      })}
+      {t && !exacto && (
+        <button type="button" role="option" aria-selected={false} className="opt2 new" onPointerDown={(e) => { e.preventDefault(); onPick(t); }}>
+          <span className="avatar plus">+</span>
+          <span className="grow">Usar «{t}» · nombre nuevo</span>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -313,33 +382,73 @@ function NombreSheet({ idx, onClose }: { idx: number; onClose: () => void }) {
   const s = usePos();
   const line = s.order[idx];
   const [text, setText] = React.useState("");
+  const [hi, setHi] = React.useState(0);
   const ref = React.useRef<HTMLInputElement>(null);
-  React.useEffect(() => { ref.current?.focus(); }, []);
+  const enPedido = s.people.filter((p) => p !== line?.customer);
+  const opciones = useOpcionesNombre(text, s.people);
+  const frecuentes = useOpcionesNombre("", s.people).items.slice(0, 6);
   if (!line) return null;
   const pick = (name: string | null) => { nombrarUna(idx, name); onClose(); };
-  const otros = s.people.filter((p) => p !== line.customer);
   return (
-    <Overlay onClose={onClose} labelledBy="nb-t" maxWidth={520}>
+    <Overlay onClose={onClose} labelledBy="nb-t" maxWidth={600}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
         <div className="grow">
-          <h2 id="nb-t" className="h1">¿Para quién es?</h2>
+          <h2 id="nb-t" className="h1">¿Para quién es este {line.name}?</h2>
           <span className="muted" style={{ fontSize: 15 }}>
-            {line.name}{line.qty > 1 ? ` · se separa 1 de los ${line.qty}` : ""}{line.customer ? ` · hoy: ${line.customer}` : ""}
+            {line.qty > 1 ? `Hay ${line.qty} en el pedido · se separa 1` : "1 en el pedido"} · {line.customer ? `hoy: ${line.customer}` : "hoy sin nombre"}
           </span>
         </div>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
       </div>
-      {otros.length > 0 && (
-        <div role="group" aria-label="Personas del pedido" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {otros.map((p) => (
-            <button key={p} type="button" className="who-chip" style={{ height: 48, fontSize: 15 }} onClick={() => pick(p)}>{p}</button>
-          ))}
+      {enPedido.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="label">En este pedido</span>
+          <div className="pchips" role="group" aria-label="Personas del pedido">
+            {enPedido.map((p) => (
+              <button key={p} type="button" className="pchip" onClick={() => pick(p)}>
+                <span className="avatar">{initials(p)}</span>{p} <span className="muted" style={{ fontWeight: 600 }}>{linesOf(s.order, p)}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
-      <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) pick(text); }} style={{ display: "flex", gap: 8 }}>
-        <input ref={ref} className="field" value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder="Nombre nuevo" aria-label="Nombre nuevo" autoCapitalize="words" style={{ flex: 1, height: 52, fontSize: 17 }} />
-        <button type="submit" className="btn" disabled={!text.trim()} style={{ height: 52 }}>Asignar</button>
-      </form>
-      {line.customer && <button type="button" className="btn ghost block" style={{ height: 48 }} onClick={() => pick(null)}>Quitar nombre</button>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <label className="label" htmlFor="nb-x">Otro nombre</label>
+        <div className="nf">
+          <input
+            id="nb-x"
+            ref={ref}
+            className="field"
+            value={text}
+            onChange={(e) => { setText(e.target.value); setHi(0); }}
+            onKeyDown={(e) => {
+              const n = opciones.items.length;
+              if (e.key === "ArrowDown" && n) { e.preventDefault(); setHi((h) => (h + 1) % n); }
+              else if (e.key === "ArrowUp" && n) { e.preventDefault(); setHi((h) => (h - 1 + n) % n); }
+              else if (e.key === "Enter" && text.trim()) { e.preventDefault(); pick(opciones.items[hi]?.nombre ?? text); }
+            }}
+            maxLength={40}
+            placeholder="Escribe un nombre"
+            aria-label="Nombre nuevo"
+            aria-controls="nb-list"
+            autoCapitalize="words"
+            autoComplete="off"
+            style={{ height: 56, fontSize: 18 }}
+          />
+          {text.trim() && <ListaNombres id="nb-list" texto={text} opciones={opciones} hi={hi} onPick={(n) => pick(n)} />}
+        </div>
+      </div>
+      {!text.trim() && frecuentes.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="label">Frecuentes</span>
+          <div className="pchips" role="group" aria-label="Clientes frecuentes">
+            {frecuentes.map((f) => <button key={f.nombre} type="button" className="pchip new" onClick={() => pick(f.nombre)}>{f.nombre}</button>)}
+          </div>
+        </div>
+      )}
+      {line.customer && <button type="button" className="btn ghost block" style={{ height: 52 }} onClick={() => pick(null)}>Sin nombre</button>}
     </Overlay>
   );
 }
@@ -370,12 +479,16 @@ function PersonSheet({ name, onClose }: { name: string; onClose: () => void }) {
 }
 
 /** One ticket line; tap = edit it on the options page (qty, options, person). */
-export function TicketLine({ idx, line, onNombre }: { idx: number; line: OrderLine; onNombre?: (idx: number) => void }) {
+export function TicketLine({ idx, line, onNombre, enGrupo = false }: { idx: number; line: OrderLine; onNombre?: (idx: number) => void; enGrupo?: boolean }) {
   const catalog = useCatalog();
   const unit = modLinePrice(line, catalog);
   const sub = lineSub(line, catalog, { sinNombre: !!onNombre });
   // The name is its own button beside the line (never nested in it): «Pa' Ana» or «+ Nombre».
-  const nombre = onNombre ? (
+  const nombre = onNombre && enGrupo && line.customer ? (
+    <button type="button" className="move" onClick={() => onNombre(idx)} aria-label={`${line.name} es para ${line.customer}. Pasar a otra persona o quitar nombre`}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M7 7h11l-3-3M17 17H6l3 3" /></svg>
+    </button>
+  ) : onNombre ? (
     <button type="button" className={"who-pill" + (line.customer ? " on" : "")} onClick={() => onNombre(idx)} aria-label={line.customer ? `${line.name} es para ${line.customer}. Cambiar o quitar nombre` : `Ponerle nombre a ${line.name}`}>
       {line.customer ? `Pa' ${line.customer}` : "+ Nombre"}
     </button>
@@ -404,6 +517,54 @@ export function TicketLine({ idx, line, onNombre }: { idx: number; line: OrderLi
     );
   if (!nombre) return row;
   return <div className="line-row">{row}{nombre}</div>;
+}
+
+/**
+ * The order as the bar reads it (NombreAuto.dc.html): one group per person —
+ * «Pa' Laura · 2 ítems · $ 15.500», the active one highlighted — and «Sin
+ * nombre» last. Tapping a group header makes that person the one new items
+ * go to (tapping it again renames). Lines without a name carry «+ Nombre»;
+ * named ones a ↔ to give that drink to someone else. No names yet: a flat list.
+ */
+function GruposPedido({ onNombre, onEditPerson }: { onNombre: (idx: number) => void; onEditPerson: (name: string) => void }) {
+  const s = usePos();
+  const catalog = useCatalog();
+  const idxs = s.order.map((_, i) => i);
+  if (!s.order.some((l) => l.customer)) {
+    return <>{idxs.map((i) => <TicketLine key={i} idx={i} line={s.order[i]} onNombre={onNombre} />)}</>;
+  }
+  const quienes = [...s.people.filter((p) => s.order.some((l) => l.customer === p)), ...[...new Set(s.order.map((l) => l.customer).filter((c): c is string => !!c && !s.people.includes(c)))]];
+  const grupos = [
+    ...quienes.map((p) => ({ key: p, nombre: p as string | null, lineas: idxs.filter((i) => s.order[i].customer === p) })),
+    { key: "", nombre: null, lineas: idxs.filter((i) => !s.order[i].customer) },
+  ].filter((g) => g.lineas.length);
+  return (
+    <>
+      {grupos.map((g) => {
+        const on = !!g.nombre && s.activePerson === g.nombre;
+        const n = g.lineas.reduce((a, i) => a + s.order[i].qty, 0);
+        const sub = g.lineas.reduce((a, i) => a + modLinePrice(s.order[i], catalog) * s.order[i].qty, 0);
+        return (
+          <div key={g.key} className={"tk-grp" + (on ? " on" : "")} role="group" aria-label={g.nombre ? `Pa' ${g.nombre}` : "Sin nombre"}>
+            {g.nombre ? (
+              <button type="button" className="tk-gh" onClick={() => (on ? onEditPerson(g.nombre!) : setActivePerson(g.nombre))} aria-label={on ? `Pa' ${g.nombre}: lo nuevo va para ${g.nombre}. Cambiar nombre` : `Agregar lo siguiente para ${g.nombre}`}>
+                <span className="avatar">{initials(g.nombre)}</span>
+                <span className="grow" style={{ minWidth: 0 }}>Pa&apos; {g.nombre}</span>
+                <span className="gs">{n} ítem{n === 1 ? "" : "s"} · {money(sub)}</span>
+              </button>
+            ) : (
+              <div className="tk-gh muted">
+                <span className="avatar none">?</span>
+                <span className="grow">Sin nombre</span>
+                <span className="gs">{n} ítem{n === 1 ? "" : "s"} · {money(sub)}</span>
+              </div>
+            )}
+            {g.lineas.map((i) => <TicketLine key={i} idx={i} line={s.order[i]} onNombre={onNombre} enGrupo />)}
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 /** Tile badge helper for the catalog: how many of a product are on the ticket. */

@@ -764,3 +764,64 @@
    categories scroll instead of squashing. */
 .app .grid-wrap { flex: 1; min-height: 0; container-type: size; display: flex; flex-direction: column; }
 .app .grid-wrap > .grid { flex: 1; height: 100%; grid-auto-rows: calc((100cqh - (var(--rows) - 1) * var(--g)) / var(--rows)); }
+
+/* Hot/cold filter and tile pictures (VentaFotos.dc.html, owner 2-nov-2026) */
+.app .temp { display: inline-flex; background: var(--surface-2); border-radius: 999px; padding: 4px; gap: 4px; flex-shrink: 0; }
+.app .temp button { height: 40px; padding: 0 14px; border-radius: 999px; border: none; background: transparent; color: var(--muted); font-family: inherit; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.app .temp button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+.app .temp .hot svg { color: #b5651d; }
+.app .temp .cold svg { color: #2f6f95; }
+.app.dark .temp .hot svg { color: #f0a868; }
+.app.dark .temp .cold svg { color: #8cc4e6; }
+.app .grid .tile:not(.combo-tile) { padding: 0; gap: 0; justify-content: flex-start; overflow: hidden; }
+.app .tile .timg { position: relative; flex: 1 1 50%; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--muted); }
+.app .tile .timg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.app .tile .timg.hot { background: #fbeedd; color: #b5651d; }
+.app .tile .timg.cold { background: #e6f0f6; color: #2f6f95; }
+.app.dark .tile .timg.hot { background: rgba(240, 168, 104, 0.14); color: #f0a868; }
+.app.dark .tile .timg.cold { background: rgba(140, 196, 230, 0.14); color: #8cc4e6; }
+.app .tile .tbadge { position: absolute; left: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.92); }
+.app .tile .tbadge.hot { color: #b5651d; }
+.app .tile .tbadge.cold { color: #2f6f95; }
+.app .tile .txt { flex: 0 0 auto; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; padding: 12px 14px 14px; min-height: 0; }
+.app .tile.off .timg { opacity: 0.5; }
+.app .tile .qty { z-index: 1; }
+@media (min-width: 1600px) and (min-height: 960px) { .app .tile .txt { padding: 16px 20px 18px; } }
+/* phones: tiles are too small for a picture */
+@media (max-width: 600px) { .app .tile .timg { display: none; } .app .grid .tile:not(.combo-tile) { padding: 10px; justify-content: space-between; } .app .tile .txt { padding: 0; flex: 1; } .app .temp button { padding: 0 10px; } }
+
+.app .tb-search { flex: 0 1 320px; min-width: 160px; }
+.app .tb-search input { height: 44px; }
+@media (max-width: 900px) { .app .tb-search { flex: 1 1 160px; } }
+
+/* Name autocomplete + order grouped by person (NombreAuto / NombreBebida.dc.html, owner 2-nov-2026) */
+.app .nf { position: relative; }
+.app .ac { position: absolute; left: 0; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16); padding: 8px; display: flex; flex-direction: column; gap: 2px; z-index: 30; }
+.app .ac .acl { font-size: 12px; font-weight: 700; color: var(--muted); padding: 6px 10px 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.app .ac .opt2 { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 10px; border-radius: 10px; border: none; background: transparent; color: var(--text); font-family: inherit; text-align: left; cursor: pointer; }
+.app .ac .opt2[aria-selected="true"], .app .ac .opt2:hover { background: var(--brand-soft); }
+.app .ac .opt2 .avatar { width: 36px; height: 36px; font-size: 13px; flex-shrink: 0; }
+.app .ac .opt2 .avatar.plus { background: var(--brand); color: var(--on-brand); font-size: 18px; }
+.app .ac .nm { display: block; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .ac .nm b { font-weight: 800; }
+.app .ac .ns { display: block; font-size: 13px; color: var(--muted); }
+.app .ac .new { border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; margin-top: 4px; font-size: 15px; font-weight: 600; }
+.app .ticket-h .nf { width: 100%; }
+.app .tk-grp { padding: 4px 0 6px; border-bottom: 1px solid var(--line); }
+.app .tk-grp:last-child { border-bottom: none; }
+.app .tk-grp.on { background: var(--brand-soft); margin: 0 -18px; padding: 4px 18px 6px; }
+.app .tk-gh { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0; border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; }
+.app .tk-gh.muted { color: var(--muted); cursor: default; }
+.app .tk-gh .avatar { width: 30px; height: 30px; font-size: 11px; flex-shrink: 0; }
+.app .tk-grp.on .tk-gh .avatar { background: var(--brand); color: var(--on-brand); }
+.app .tk-gh .avatar.none { background: transparent; border: 1px dashed var(--line); }
+.app .tk-gh .gs { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.app .tk-grp .line-row { border-bottom: none; }
+.app .tk-grp .line { min-height: 52px; padding-left: 4px; }
+.app .tk-grp .move { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.app .tk-lines { overflow-y: auto; }
+.app .pchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.app .pchip { height: 44px; padding: 0 14px 0 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-family: inherit; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.app .pchip .avatar { width: 32px; height: 32px; font-size: 12px; flex-shrink: 0; }
+.app .pchip.new { padding: 0 14px; }
+.app .pchip:active { background: var(--brand-soft); border-color: var(--brand); }
