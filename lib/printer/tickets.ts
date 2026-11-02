@@ -18,6 +18,7 @@
  */
 import * as React from "react";
 import { renderTicketHtml, tieneBebidas, type Papel, type RecetaLookup, type TicketDoc } from "./ticket";
+import { DIALOGO_MS, TICKET_ATASCADO_MS, destinoTicket, equipoDe, type EstadoImpresoras, type Latido } from "./estaciones";
 
 export interface TicketSettings {
   /** Where this device's tickets go. */
@@ -32,11 +33,21 @@ export interface TicketSettings {
 export interface TicketState extends TicketSettings {
   /** Spanish, user-facing: what happened to the last ticket. */
   note: string | null;
+  /**
+   * Did this browser's last print go straight to the printer (Edge with
+   * --kiosk-printing) or open the print dialog? null = hasn't printed yet.
+   * Remembered per device.
+   */
+  silencioso: boolean | null;
+  /** The open receipt printer stations and the relay queue (heartbeat); null = not known yet. */
+  impresoras: EstadoImpresoras | null;
 }
 
 const KEY = "pos:tickets";
 const DEFAULTS: TicketSettings = { modo: "no", recibo: "pedir", comanda: true, papel: "80" };
-const INITIAL: TicketState = { ...DEFAULTS, note: null };
+const INITIAL: TicketState = { ...DEFAULTS, note: null, silencioso: null, impresoras: null };
+const SILENCIOSO_KEY = "pos:tickets-silencioso";
+const DEVICE_KEY = "pos:device-id";
 
 let state: TicketState = INITIAL;
 let loaded = false;
@@ -51,7 +62,57 @@ function load() {
   try {
     const raw = window.localStorage.getItem(KEY);
     if (raw) state = { ...state, ...DEFAULTS, ...(JSON.parse(raw) as Partial<TicketSettings>) };
+    const sil = window.localStorage.getItem(SILENCIOSO_KEY);
+    if (sil === "1" || sil === "0") state = { ...state, silencioso: sil === "1" };
   } catch { /* private mode: defaults */ }
+}
+
+// ── where the printer is (heartbeat, lib/printer/estaciones) ────
+let deviceIdMem: string | null = null;
+/** A random id for this browser, kept in localStorage: tells the stations apart. */
+export function ticketDeviceId(): string {
+  if (deviceIdMem) return deviceIdMem;
+  let id: string | null = null;
+  try { id = window.localStorage.getItem(DEVICE_KEY); } catch { /* private mode */ }
+  if (!id || id.length < 8) {
+    id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { window.localStorage.setItem(DEVICE_KEY, id); } catch { /* private mode */ }
+  }
+  deviceIdMem = id;
+  return id;
+}
+
+/** What this device reports on its heartbeat. */
+export function ticketLatido(): Latido {
+  const s = getTicketState();
+  return {
+    deviceId: ticketDeviceId(),
+    estacion: s.modo === "aqui"
+      ? { equipo: equipoDe(navigator.userAgent).slice(0, 80), silencioso: s.silencioso, papel: s.papel }
+      : null,
+  };
+}
+
+/** The heartbeat's answer: the open stations and the queue. */
+export function setTicketImpresoras(impresoras: EstadoImpresoras | null): void {
+  load();
+  set({ impresoras });
+}
+
+const DIALOGO_NOTE = "Este equipo abrió el cuadro de impresión. Ciérralo y abre el POS con el acceso «Co-manda POS» para imprimir directo.";
+function markSilencioso(silencioso: boolean) {
+  load();
+  if (state.silencioso === silencioso) return;
+  set({ silencioso, note: silencioso ? null : DIALOGO_NOTE });
+  try { window.localStorage.setItem(SILENCIOSO_KEY, silencioso ? "1" : "0"); } catch { /* private mode */ }
+  onSilencioso?.();
+}
+/** Lets the heartbeat report a change at once instead of on the next tick. */
+let onSilencioso: (() => void) | null = null;
+export function setOnTicketSilencioso(fn: (() => void) | null): void {
+  onSilencioso = fn;
 }
 
 export function getTicketState(): TicketState {
@@ -131,10 +192,15 @@ export function comandaHace(doc: Pick<TicketDoc, "lines">): boolean {
 }
 
 // ── relay (stations without the printer) ────────────────────────
-type TicketRelay = (docs: TicketDoc[]) => Promise<boolean>;
+/** Queue tickets for the station; resolves the job ids, or null when it failed. */
+type TicketRelay = (docs: TicketDoc[]) => Promise<string[] | null>;
+/** How many of those jobs no station has taken yet; null = couldn't check. */
+type TicketCheck = (ids: string[]) => Promise<number | null>;
 let relay: TicketRelay | null = null;
-export function setTicketRelay(fn: TicketRelay | null) {
+let check: TicketCheck | null = null;
+export function setTicketRelay(fn: TicketRelay | null, checker: TicketCheck | null = null) {
   relay = fn;
+  check = checker;
 }
 
 // ── printing ────────────────────────────────────────────────────
@@ -166,7 +232,11 @@ function printHtml(html: string): Promise<void> {
       void ready.then(() => {
         try {
           w.focus();
+          // print() blocks while a dialog is open: its length tells whether
+          // this browser prints straight to the printer.
+          const t0 = performance.now();
           w.print();
+          markSilencioso(performance.now() - t0 < DIALOGO_MS);
         } catch (err) {
           console.warn("[tickets] print failed:", err);
         }
@@ -186,34 +256,67 @@ export function printTicketHere(doc: TicketDoc): void {
   chain = chain.then(() => printHtml(html)).catch((err) => console.warn("[tickets]", err));
 }
 
+/**
+ * Should this device take relayed tickets? Only a station that prints here —
+ * not one that opens the dialog while another prints straight (it relays
+ * its own tickets there, and would otherwise grab them back).
+ */
+export function tomaTickets(): boolean {
+  const s = getTicketState();
+  return destinoTicket(s.modo, { deviceId: ticketDeviceId(), silencioso: s.silencioso }, s.impresoras?.estaciones ?? null).donde === "aqui";
+}
+
 /** This device prints tickets, here or through the station. */
 export function ticketsOn(s: TicketSettings = getTicketState()): boolean {
   return s.modo !== "no";
 }
 
 /**
- * Print a ticket wherever the printer is: here when this is the ticket
- * station, relayed to it when the device sends to the register, nowhere when
- * paper tickets are off here. Never throws, never blocks the sale.
+ * Print a ticket wherever the printer is (lib/printer/estaciones
+ * destinoTicket): here when this is the ticket station and it prints
+ * straight; relayed to the station otherwise — also from a station whose
+ * browser opens the print dialog while another one prints straight. A
+ * relayed ticket nobody takes within a few seconds is reported. Never
+ * throws, never blocks the sale.
  */
 export function printTicket(doc: TicketDoc): void {
   const s = getTicketState();
-  const [sent, failed] = doc.kind === "recibo"
-    ? ["Recibo enviado a la caja con impresora", "No se pudo enviar el recibo a la caja."]
-    : ["Comanda enviada a la caja con impresora", "No se pudo enviar la comanda a la caja."];
-  if (s.modo === "no") return;
-  if (s.modo === "aqui") {
+  const que = doc.kind === "recibo" ? "El recibo" : "La comanda";
+  const d = destinoTicket(s.modo, { deviceId: ticketDeviceId(), silencioso: s.silencioso }, s.impresoras?.estaciones ?? null);
+  if (d.donde === "ninguno") return;
+  if (d.donde === "aqui") {
     printTicketHere(doc);
-    set({ note: null });
+    if (s.silencioso !== false) set({ note: null });
     return;
   }
   if (!relay) {
     set({ note: "No se pudo enviar a la caja: recarga el punto de venta." });
     return;
   }
+  const donde = d.estacion ? d.estacion.nombre : null;
   void relay([doc])
-    .then((ok) => set({ note: ok ? sent : failed }))
-    .catch(() => set({ note: failed }));
+    .then((ids) => {
+      if (!ids) return set({ note: `${que} no se pudo enviar a la caja. Revisa el internet y usa «Reimprimir».` });
+      set({
+        note: donde
+          ? `${que} se envió a ${donde}.`
+          : `${que} quedó en espera: ninguna caja con impresora está abierta (espera hasta 5 min).`,
+      });
+      if (!check || !ids.length) return;
+      window.setTimeout(() => {
+        void check!(ids)
+          .then((sinTomar) => {
+            if (sinTomar == null) return;
+            if (sinTomar > 0) {
+              set({ note: `${que} no ha salido: ${donde ? `${donde} no lo ha tomado` : "no hay caja con impresora abierta"}. Abre el POS en el equipo con la impresora.` });
+            } else if (donde) {
+              set({ note: `${que} llegó a ${donde}.` });
+            }
+          })
+          .catch(() => { /* offline: the note stays */ });
+      }, TICKET_ATASCADO_MS);
+    })
+    .catch(() => set({ note: `${que} no se pudo enviar a la caja. Revisa el internet y usa «Reimprimir».` }));
 }
 
 /** «Imprimir prueba» in the menu: a short receipt to check paper width and darkness. */

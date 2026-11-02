@@ -3,8 +3,9 @@ import * as React from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { printerStore, printRelayedLabel, setPrintRelay, usePrinter } from "@/lib/printer/serial";
-import { getTicketState, printTicketHere, setTicketRelay, useTicketPrinter } from "@/lib/printer/tickets";
-import { encolarEtiquetas, encolarTickets, reclamarEtiquetas, reclamarTickets } from "./actions";
+import { printTicketHere, setOnTicketSilencioso, setTicketImpresoras, setTicketRelay, ticketLatido, tomaTickets, useTicketPrinter } from "@/lib/printer/tickets";
+import { LATIDO_MS } from "@/lib/printer/estaciones";
+import { encolarEtiquetas, encolarTickets, latidoImpresoras, reclamarEtiquetas, reclamarTickets, ticketsSinTomar } from "./actions";
 
 /**
  * What keeps the stations of one business in step:
@@ -58,7 +59,7 @@ export async function claimLabels() {
 let claimingTickets = false;
 /** Take the waiting receipts/comandas and print them here (receipt printer station only). */
 export async function claimTickets() {
-  if (claimingTickets || getTicketState().modo !== "aqui") return;
+  if (claimingTickets || !tomaTickets()) return;
   claimingTickets = true;
   try {
     const res = await reclamarTickets();
@@ -75,7 +76,8 @@ const POLL_MS = 15_000;
 export function usePosLive(organizationId: string, onOrders: () => void) {
   const printer = usePrinter();
   const ready = printer.status === "ready" || printer.status === "printing";
-  const ticketStation = useTicketPrinter().modo === "aqui";
+  const tickets = useTicketPrinter();
+  const ticketStation = tickets.modo === "aqui";
   const onOrdersRef = React.useRef(onOrders);
   React.useEffect(() => { onOrdersRef.current = onOrders; }, [onOrders]);
 
@@ -88,11 +90,18 @@ export function usePosLive(organizationId: string, onOrders: () => void) {
       }
       return res.ok;
     });
-    setTicketRelay(async (docs) => {
-      const res = await encolarTickets(docs);
-      if (res.ok) nudge("print");
-      return res.ok;
-    });
+    setTicketRelay(
+      async (docs) => {
+        const res = await encolarTickets(docs);
+        if (!res.ok) return null;
+        nudge("print");
+        return res.ids;
+      },
+      async (ids) => {
+        const res = await ticketsSinTomar(ids);
+        return res.ok ? res.sinTomar : null;
+      },
+    );
     const supabase = createSupabaseBrowserClient();
     const ch = supabase
       .channel(`pos:${organizationId}`)
@@ -117,6 +126,28 @@ export function usePosLive(organizationId: string, onOrders: () => void) {
     }, POLL_MS);
     return () => window.clearInterval(id);
   }, [ready]);
+
+  // Where the receipt printer is: the station reports itself, every device that
+  // prints tickets learns which station is open (lib/printer/estaciones).
+  const ticketsOn = tickets.modo !== "no";
+  React.useEffect(() => {
+    let alive = true;
+    const beat = async () => {
+      try {
+        const res = await latidoImpresoras(ticketLatido());
+        if (alive) setTicketImpresoras(res.ok ? { estaciones: res.estaciones, enEspera: res.enEspera } : null);
+      } catch {
+        // Offline: keep the last known list; the next beat retries.
+      }
+    };
+    void beat(); // also clears this device's row when it stops being the station
+    setOnTicketSilencioso(() => void beat());
+    if (!ticketsOn) return () => { alive = false; setOnTicketSilencioso(null); };
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible" || ticketStation) void beat();
+    }, LATIDO_MS);
+    return () => { alive = false; window.clearInterval(id); setOnTicketSilencioso(null); };
+  }, [ticketsOn, ticketStation, tickets.papel]);
 
   // Same for the receipt printer station.
   React.useEffect(() => {
