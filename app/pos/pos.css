@@ -725,3 +725,21 @@
   .app .tile { min-height: 120px; padding: 16px; }
 }
 .app .vt-stale > section, .app .vt-stale > aside { opacity: 0.5; transition: opacity 0.15s; }
+.app .ticket-f .pay-later { height: 52px; font-size: 16px; }
+
+/* opciones as a modal over the sale (Opciones.dc.html: 1120 px sheet) */
+.app .opc-scrim { padding: 28px; }
+.app .sheet.opc-sheet { max-width: 1120px; max-height: calc(100dvh - 56px); gap: 18px; padding: 24px 28px; }
+.app .opc-head { display: flex; align-items: center; gap: 12px; }
+.app .opc-sub { font-size: 15px; display: block; margin-top: 2px; }
+.app .opc-sheet .body.opc-body { padding: 0; grid-template-columns: minmax(0, 1fr) 340px; }
+.app .opc-sheet .opc-main { overflow-y: auto; overscroll-behavior: contain; }
+.app .opc-sheet .opc-rail { border-left: 1px solid var(--line); padding-left: 24px; }
+.app .opc-sheet .btn.opc-go { height: 64px; font-size: 20px; }
+.app .opc-sheet .opc-act .counter button { width: 56px; height: 56px; font-size: 24px; }
+.app .opc-sheet .opc-act .counter input { width: 72px; height: 56px; font-size: 22px; }
+@media (max-width: 900px) {
+  .app .opc-scrim { padding: 12px; }
+  .app .opc-sheet .body.opc-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "act" "rail"; overflow-y: auto; }
+  .app .opc-sheet .opc-rail { border-left: none; padding-left: 0; }
+}

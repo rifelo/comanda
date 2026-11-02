@@ -19,7 +19,7 @@ import type { ModSelection, PosModGroup } from "@/lib/pos/types";
 import { recomendacionesFor, disponibilidadDe } from "@/lib/pos/recomendaciones";
 import { useCatalog, usePos, posStore, modLinePrice, posDefaultMods, addItem, addCombo, addLineWithMods, replaceLine, removeLine } from "../pos-store";
 import { RecetaSheet } from "./sheets";
-import { CheckIcon, FlowHeader, listaY, money } from "./pay-common";
+import { CheckIcon, listaY, money } from "./pay-common";
 
 const NOTE_MAX = 500;
 
@@ -122,11 +122,20 @@ export function OpcionesPage() {
       ? "Guardar cambios"
       : "Agregar al pedido";
 
+  // Opciones.dc.html: a modal over the sale (scrim + 1120 px sheet); a tap on the scrim or × closes without adding.
   return (
-    <>
-      <FlowHeader back={close} backLabel={edit ? "Volver sin cambiar" : "Volver sin agregar"} title={name} subtitle={subtitle}>
-        {p && <button type="button" className="btn ghost sm flow-alt" onClick={() => setReceta(true)}>Ver receta</button>}
-      </FlowHeader>
+    <div className="scrim opc-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <section className="sheet opc-sheet" role="dialog" aria-modal="true" aria-labelledby="opc-t">
+      <div className="opc-head">
+        <div className="grow" style={{ minWidth: 0 }}>
+          <h2 id="opc-t" className="h1">{name}</h2>
+          {subtitle ? <span className="muted opc-sub">{subtitle}</span> : null}
+        </div>
+        {p && <button type="button" className="btn ghost sm" onClick={() => setReceta(true)}>Ver receta</button>}
+        <button type="button" className="icon-btn" onClick={close} aria-label={edit ? "Cerrar sin cambiar" : "Cerrar sin agregar"}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
 
       <div className="body opc-body">
         <section className="opc-main scroll" aria-label="Opciones">
@@ -196,11 +205,12 @@ export function OpcionesPage() {
 
         {p && <Recomiendale productId={p.id} productName={p.name} />}
       </div>
+    </section>
 
       {receta && p && (
         <RecetaSheet productId={p.id} onClose={() => setReceta(false)} onAdd={() => { setReceta(false); commit(); }} />
       )}
-    </>
+    </div>
   );
 }
 

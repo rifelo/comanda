@@ -203,7 +203,8 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
 
   const appClass = useAppClass();
   const itemPage = s.view === "sale" && (s.sheet?.mode === "add" || s.sheet?.mode === "edit");
-  const saleShown = (s.view === "sale" && !itemPage) || s.view === "etiquetas" || s.view === "puntos";
+  // The options modal sits over the sale view (Opciones.dc.html), which stays rendered but inert.
+  const saleShown = s.view === "sale" || s.view === "etiquetas" || s.view === "puntos";
 
   return (
     <div className={appClass} onContextMenu={(e) => { e.preventDefault(); }}>
@@ -211,7 +212,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       <style>{POS_CSS}</style>
       <OfflineBar />
       {saleShown && (
-        <div inert={s.view !== "sale"} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div inert={s.view !== "sale" || itemPage} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <TopBar mode={mode} />
           <div className="sale">
             <Catalog />

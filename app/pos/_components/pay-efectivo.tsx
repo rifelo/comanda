@@ -70,6 +70,7 @@ export function EfectivoPage() {
     <>
       <FlowHeader back={cancelTender} backLabel="Volver al pedido" title="Cobrar en efectivo" subtitle={orderSubtitle(s)}>
         <button type="button" className="btn ghost sm flow-alt" onClick={() => posStore.set({ payMethod: "transferencia", sendError: null })}><span className="flow-long">Cambiar a transferencia</span><span className="flow-short">Transferencia</span></button>
+        <button type="button" className="btn ghost sm flow-alt" onClick={() => posStore.set({ payMethod: "datafono", sendError: null })}><span className="flow-long">Datáfono · otro pago</span><span className="flow-short">Datáfono</span></button>
       </FlowHeader>
 
       <div className="body pay-grid pay-cash">

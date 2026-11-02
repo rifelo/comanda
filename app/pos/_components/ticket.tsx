@@ -213,16 +213,12 @@ export function Ticket() {
           <div className="total"><span className="t">Total</span><span className={"v" + (empty ? " muted" : "")}>{money(total)}</span></div>
           {hasMissing && <span role="alert" style={{ fontSize: 13, color: "var(--late)", fontWeight: 600 }}>Quita el producto no disponible para continuar.</span>}
           {s.sendError && s.view === "sale" && <span role="alert" style={{ fontSize: 13, color: "var(--late)", fontWeight: 600 }}>{s.sendError}</span>}
-          <button type="button" className="btn lg block" disabled={!canSend} onClick={() => startTender("efectivo")}>Efectivo</button>
-          <button type="button" className="btn strong lg block" disabled={!canSend} onClick={() => startTender("transferencia")}>Transferencia</button>
-          {!empty && (
-            <div className="pay2">
-              <button type="button" className="btn ghost sm" disabled={!canSend} onClick={() => startTender("datafono")}>Datáfono · otro pago</button>
-              <button type="button" className="btn ghost sm" disabled={!canSend} onClick={() => void savePending()}>
-                {s.sending ? "Guardando…" : editing ? "Guardar cambios" : "Enviar · pagar después"}
-              </button>
-            </div>
-          )}
+          {/* Venta.dc.html: one «Pagar» (opens cash; transfer and datáfono are one tap away
+              in its header) and «Pagar después». */}
+          <button type="button" className="btn lg block" disabled={!canSend} onClick={() => startTender("efectivo")}>Pagar</button>
+          <button type="button" className="btn ghost lg block pay-later" disabled={!canSend} onClick={() => void savePending()}>
+            {s.sending ? "Guardando…" : editing ? "Guardar cambios" : "Pagar después"}
+          </button>
         </div>
       </aside>
       {editPerson && <PersonSheet name={editPerson} onClose={() => setEditPerson(null)} />}

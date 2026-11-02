@@ -8,7 +8,7 @@
  */
 import * as React from "react";
 import { FAV_CAT, COMBO_CAT, type PosCatalog, type PosMenuItem, type PosCombo, type PosOrder } from "@/lib/pos/types";
-import { useCatalog, usePos, posStore, orderTotal, tapItem, showRecipe, addCombo, applyAct, dismissSuggestion, startTender, openOrdenes, marcarEntregada, queuedOrders, type SuggestionCardState } from "../pos-store";
+import { useCatalog, usePos, posStore, orderTotal, tapItem, showRecipe, addCombo, applyAct, dismissSuggestion, startTender, savePending, openOrdenes, marcarEntregada, queuedOrders, type SuggestionCardState } from "../pos-store";
 import { money, qtyOnTicket, useNow } from "./ticket";
 
 /** How many products Favoritos shows (6 × 2 on the 1280 × 800 tablet). */
@@ -284,8 +284,8 @@ export function CartBar() {
       </button>
       {count > 0 && (
         <div className="pay2">
-          <button type="button" className="btn lg" disabled={!canPay} onClick={() => startTender("efectivo")}>Efectivo</button>
-          <button type="button" className="btn strong lg" disabled={!canPay} onClick={() => startTender("transferencia")}>Transferencia</button>
+          <button type="button" className="btn lg" disabled={!canPay} onClick={() => startTender("efectivo")}>Pagar</button>
+          <button type="button" className="btn ghost lg" disabled={!canPay} onClick={() => void savePending()}>Pagar después</button>
         </div>
       )}
     </div>
