@@ -18,6 +18,7 @@ import {
 } from "./types";
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
 import { rankPairs, rankTopSellers, TOP_SELLERS_DAYS, type SoldLine } from "./top-sellers";
+import { rankNombres, type NombreFrecuente } from "./nombres";
 
 /**
  * Build the live POS catalog for an org from the catálogo/combos/modificadores
@@ -55,6 +56,7 @@ export async function getPosCatalog({
     equipo,
     vendidas,
     { data: optRecetaRows },
+    nombres,
   ] = await Promise.all([
     supabase
       .from("productos")
@@ -97,6 +99,7 @@ export async function getPosCatalog({
       .from("modifier_option_receta")
       .select("option_id, qty, ingredientes(name, unit)")
       .eq("organization_id", organizationId),
+    getNombres(supabase, organizationId),
   ]);
 
   // ── categories: resolve each product's top-level tab + sub label ──────────
@@ -285,6 +288,7 @@ export async function getPosCatalog({
     cupArt: ((orgRow as { cup_url?: string | null } | null)?.cup_url ?? "").trim() || null,
     handArt: ((orgRow as { label_art_url?: string | null } | null)?.label_art_url ?? "").trim() || null,
     equipo,
+    nombres,
     pairs: rankPairs(vendidas, names),
     pago: {
       transferenciaLlave: txt(org.transferencia_llave),
@@ -321,6 +325,28 @@ async function getVendidas(supabase: SupabaseClient, organizationId: string): Pr
       ordenId: o.id as string,
     })),
   );
+}
+
+/** Names written on the orders of the last 120 days, ranked (lib/pos/nombres.ts). */
+async function getNombres(supabase: SupabaseClient, organizationId: string): Promise<NombreFrecuente[]> {
+  const desde = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("ordenes")
+    .select("customer_names, customer_name, orden_items(customer_name)")
+    .eq("organization_id", organizationId)
+    .neq("status", "cancelada")
+    .gte("created_at", desde)
+    .limit(10000);
+  if (error) {
+    console.error("[getNombres]", error);
+    return [];
+  }
+  return rankNombres((data ?? []).map((o) => ({
+    nombres: [
+      ...((o.customer_names as string[] | null) ?? []),
+      ...(((o.orden_items as { customer_name: string | null }[] | null) ?? []).map((i) => i.customer_name)),
+    ],
+  })));
 }
 
 /**

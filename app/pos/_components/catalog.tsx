@@ -10,6 +10,7 @@ import * as React from "react";
 import { FAV_CAT, COMBO_CAT, type PosCatalog, type PosMenuItem, type PosCombo, type PosOrder } from "@/lib/pos/types";
 import { useCatalog, usePos, posStore, orderTotal, tapItem, showRecipe, addCombo, applyAct, dismissSuggestion, startTender, savePending, openOrdenes, marcarEntregada, queuedOrders, type SuggestionCardState } from "../pos-store";
 import { money, qtyOnTicket, useNow } from "./ticket";
+import { filtrarTemp, temperaturaDe, type FiltroTemp } from "@/lib/pos/temperatura";
 
 /** How many products Favoritos shows (6 × 2 on the 1280 × 800 tablet). */
 const FAV_MAX = 12;
@@ -51,9 +52,21 @@ export function Catalog() {
   } else if (cat === COMBO_CAT) combos = catalog.combos;
   else if (cat === FAV_CAT) items = favoritos(catalog);
   else items = catalog.menu.filter((p) => p.catId === cat);
+  // «Caliente / Frío»: on Favoritos it opens up to every product of that
+  // temperature (favorites first); inside a category or a search it narrows.
+  const temp = s.temp;
+  if (temp !== "todo") {
+    if (!q && !filter && cat === FAV_CAT) {
+      const favs = filtrarTemp(items, temp);
+      const seen = new Set(favs.map((p) => p.id));
+      items = [...favs, ...filtrarTemp(catalog.menu, temp).filter((p) => !seen.has(p.id))];
+    } else items = filtrarTemp(items, temp);
+    combos = [];
+  }
 
   const inTicket = qtyOnTicket(s.order);
-  const label = q ? "Resultados" : filter ? filter.label : catalog.catLabel[cat] ?? (cat === FAV_CAT ? "Favoritos" : cat);
+  const label = (temp !== "todo" ? (temp === "frio" ? "Fríos · " : "Calientes · ") : "") + (q ? "Resultados" : filter ? filter.label : catalog.catLabel[cat] ?? (cat === FAV_CAT ? "Favoritos" : cat));
+  const setTemp = (t: FiltroTemp) => { posStore.set({ temp: t, highlightId: null }); gridRef.current?.scrollTo({ top: 0 }); };
   const topSuggestion = !s.aiOpen ? s.suggestions[0] : undefined;
   const nothing = items.length === 0 && combos.length === 0;
 
@@ -66,23 +79,16 @@ export function Catalog() {
   return (
     <section className="catalog" aria-label="Productos">
       <div className="cats" role="group" aria-label="Categorías">
+        <div className="temp" role="group" aria-label="Temperatura">
+          <button type="button" aria-pressed={temp === "todo"} onClick={() => setTemp("todo")}>Todo</button>
+          <button type="button" className="hot" aria-pressed={temp === "caliente"} onClick={() => setTemp(temp === "caliente" ? "todo" : "caliente")}><TempIcon t="caliente" size={20} />Caliente</button>
+          <button type="button" className="cold" aria-pressed={temp === "frio"} onClick={() => setTemp(temp === "frio" ? "todo" : "frio")}><TempIcon t="frio" size={20} />Frío</button>
+        </div>
         {catalog.cats.map((c) => (
           <button key={c.id} type="button" className="cat" aria-pressed={!filter && !q && cat === c.id} onClick={() => setCat(c.id)}>
             {c.label}
           </button>
         ))}
-        <label className="search">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
-          <input
-            type="search"
-            placeholder="Buscar"
-            aria-label="Buscar producto"
-            value={s.search}
-            onChange={(e) => posStore.set({ search: e.target.value })}
-            enterKeyHint="search"
-            autoComplete="off"
-          />
-        </label>
       </div>
 
       {topSuggestion && <SuggestionStrip g={topSuggestion} more={s.suggestions.length - 1} />}
@@ -145,6 +151,43 @@ export function useLongPress(onLong: () => void) {
   };
 }
 
+/** Snowflake (frío) or steaming cup (caliente), drawn in the current color. */
+function TempIcon({ t, size }: { t: "caliente" | "frio"; size: number }) {
+  return t === "frio"
+    ? <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5" /></svg>
+    : <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 9h12v4a6 6 0 0 1-6 6h0a6 6 0 0 1-6-6z" /><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H16.5" /><path d="M8 3.5c0 1 1 1.5 1 2.5M12 3.5c0 1 1 1.5 1 2.5" /></svg>;
+}
+
+/**
+ * The picture of a tile (VentaFotos.dc.html): the product photo when it has
+ * one (with a hot/cold badge), else the drawing of what it is — a cup on
+ * amber (caliente), a glass with ice or a bottle on blue (frío), a plate (food).
+ */
+function TileArt({ p }: { p: PosMenuItem }) {
+  const t = temperaturaDe(p);
+  if (p.image) {
+    return (
+      <span className="timg">
+        {/* eslint-disable-next-line @next/next/no-img-element -- product photos are already sized by the catalog upload */}
+        <img src={p.image} alt="" loading="lazy" decoding="async" />
+        {t && <span className={"tbadge " + (t === "frio" ? "cold" : "hot")}><TempIcon t={t} size={16} /></span>}
+      </span>
+    );
+  }
+  const bottle = /envasad|kombucha/i.test(p.sub);
+  return (
+    <span className={"timg " + (t === "frio" ? "cold" : t === "caliente" ? "hot" : "food")}>
+      {t === "caliente"
+        ? <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 9h12v4a6 6 0 0 1-6 6h0a6 6 0 0 1-6-6z" /><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H16.5" /><path d="M8 3.5c0 1 1 1.5 1 2.5M12 3.5c0 1 1 1.5 1 2.5" /></svg>
+        : t === "frio" && bottle
+          ? <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M8 3h8v3l1.5 2.5V20a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V8.5L8 6z" /><path d="M6.5 12h11" /></svg>
+          : t === "frio"
+            ? <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 4h12l-1.5 15a2 2 0 0 1-2 1.8h-5a2 2 0 0 1-2-1.8z" /><path d="M6.6 9h10.8" /><rect x="9" y="11.5" width="3" height="3" rx="0.6" /><rect x="12.5" y="14" width="3" height="3" rx="0.6" /></svg>
+            : <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 15h18" /><path d="M5 15a7 7 0 0 1 14 0" /><path d="M12 6V4" /></svg>}
+    </span>
+  );
+}
+
 function ProductTile({ p, qty, hl }: { p: PosMenuItem; qty: number; hl: boolean }) {
   const out = p.stock === "sin";
   const hold = useLongPress(() => showRecipe(p.id));
@@ -163,8 +206,11 @@ function ProductTile({ p, qty, hl }: { p: PosMenuItem; qty: number; hl: boolean 
       onContextMenu={hold.onContextMenu}
       aria-label={`${p.name}, ${money(p.price)}${out ? ", agotado" : ""}${qty ? `, ${qty} en el pedido` : ""}`}
     >
-      <span className="n">{p.name}</span>
-      {out ? <span className="tag">Agotado</span> : <span className="p">{money(p.price)}</span>}
+      <TileArt p={p} />
+      <span className="txt">
+        <span className="n">{p.name}</span>
+        {out ? <span className="tag">Agotado</span> : <span className="p">{money(p.price)}</span>}
+      </span>
       {qty > 0 && <span className="qty" aria-hidden>{qty}</span>}
     </button>
   );
@@ -172,7 +218,7 @@ function ProductTile({ p, qty, hl }: { p: PosMenuItem; qty: number; hl: boolean 
 
 function ComboTile({ c, qty }: { c: PosCombo; qty: number }) {
   return (
-    <button type="button" data-id={c.id} className="tile" onClick={() => addCombo(c.id)} aria-label={`Combo ${c.name}, ${money(c.price)}`}>
+    <button type="button" data-id={c.id} className="tile combo-tile" onClick={() => addCombo(c.id)} aria-label={`Combo ${c.name}, ${money(c.price)}`}>
       <span className="n">{c.name}</span>
       <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span className="p">{money(c.price)}</span>
