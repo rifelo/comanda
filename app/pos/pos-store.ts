@@ -597,6 +597,26 @@ export function setLinePerson(idx: number, name: string | null) {
     sent: false,
   }));
 }
+/**
+ * Give ONE drink of a line a name (a new one joins the roster) or take its
+ * name off (null). A line of several splits: one unit moves to its own line
+ * right below, the rest keep theirs — «the second latte is for Ana».
+ */
+export function nombrarUna(idx: number, raw: string | null) {
+  const name = raw === null ? null : addPerson(raw, { activate: false });
+  if (raw !== null && !name) return;
+  posStore.set((s) => {
+    const line = s.order[idx];
+    if (!line || (line.customer ?? null) === name) return s;
+    const one = { ...line, qty: 1 };
+    if (name) one.customer = name;
+    else delete one.customer;
+    const order = line.qty > 1
+      ? [...s.order.slice(0, idx), { ...line, qty: line.qty - 1 }, one, ...s.order.slice(idx + 1)]
+      : s.order.map((l, k) => (k === idx ? one : l));
+    return { ...s, order, sent: false };
+  });
+}
 /** Lines assigned to a person ("" / null = the unassigned ones). */
 export function linesOf(order: ReadonlyArray<OrderLine>, name: string | null): number {
   return order.reduce((n, l) => n + ((l.customer ?? "") === (name ?? "") ? l.qty : 0), 0);

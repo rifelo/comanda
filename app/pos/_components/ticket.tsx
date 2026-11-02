@@ -8,7 +8,7 @@
  */
 import * as React from "react";
 import { posMoney } from "@/lib/pos/types";
-import { useCatalog, usePos, posStore, orderTotal, modLinePrice, modSummary, clearTicket, setActivePerson, addPerson, nameTicket, renamePerson, removePerson, linesOf, startTender, savePending, discardPendingEdit, setSeLoLlevamos, openBaristaPicker, type OrderLine } from "../pos-store";
+import { useCatalog, usePos, posStore, orderTotal, modLinePrice, modSummary, clearTicket, setActivePerson, addPerson, nameTicket, renamePerson, removePerson, linesOf, startTender, savePending, discardPendingEdit, setSeLoLlevamos, nombrarUna, type OrderLine } from "../pos-store";
 import { relaysLabels, type PrinterStatus } from "@/lib/printer/serial";
 import { C, F } from "./theme";
 
@@ -24,9 +24,9 @@ export function initials(name: string): string {
 }
 
 /** «Pa' Juan» line / cart summary: who it's for and the options picked. */
-export function lineSub(line: OrderLine, catalog: Parameters<typeof modSummary>[1]): string {
+export function lineSub(line: OrderLine, catalog: Parameters<typeof modSummary>[1], opts: { sinNombre?: boolean } = {}): string {
   const parts: string[] = [];
-  if (line.customer) parts.push(`Pa' ${line.customer}`);
+  if (line.customer && !opts.sinNombre) parts.push(`Pa' ${line.customer}`);
   if (line.kind === "combo") {
     const c = catalog.comboById[line.id];
     if (c) parts.push(c.items.map((id) => catalog.byId[id]?.name).filter(Boolean).join(" + ") || c.desc);
@@ -108,9 +108,6 @@ export const personChip = (on: boolean, dashed = false): React.CSSProperties => 
 export const sinImpresora = (p: { status: PrinterStatus; relay: boolean }) =>
   !relaysLabels(p) && (p.status === "disconnected" || p.status === "off" || p.status === "error");
 
-const ChevronDown = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
-);
 
 // ════════════════════════════════════════════════════════════════
 // Ticket
@@ -121,10 +118,11 @@ export function Ticket() {
   const total = orderTotal(s.order, catalog);
   const [editPerson, setEditPerson] = React.useState<string | null>(null);
   const [noteOpen, setNoteOpen] = React.useState(false);
+  const [addingPerson, setAddingPerson] = React.useState(false);
+  const [nombreDe, setNombreDe] = React.useState<number | null>(null);
   const editing = s.pending?.mode === "edit" ? s.pending : null;
   const hasMissing = s.order.some((l) => l.missing);
   const canSend = s.order.length > 0 && !s.sending && !hasMissing;
-  const count = s.order.reduce((n, l) => n + l.qty, 0);
   const comboSaved = s.order.filter((l) => l.kind === "combo").reduce((acc, l) => acc + (catalog.comboById[l.id]?.saving ?? 0) * l.qty, 0);
   const listRef = React.useRef<HTMLDivElement>(null);
   const prevCount = React.useRef(s.order.length);
@@ -139,9 +137,11 @@ export function Ticket() {
     <>
       {s.ticketOpen && <button type="button" className="tk-shade" aria-label="Cerrar el pedido" tabIndex={-1} onClick={() => posStore.set({ ticketOpen: false })} />}
       <aside className={"ticket" + (s.ticketOpen ? " open" : "")} aria-labelledby="tk">
+        {/* One row: who it's for and who prepares. The rest of the panel is the list (owner, 2-nov-2026). */}
         <div className="ticket-h">
-          <h1 id="tk" className="h2 grow">{editing ? `Pedido #${editing.folio}` : "Pedido nuevo"}</h1>
-          <BaristaChip />
+          <h1 id="tk" className="sr-only">{editing ? `Pedido #${editing.folio}` : "Pedido nuevo"}</h1>
+          {editing && <span className="tk-folio">#{editing.folio}</span>}
+          <div className="grow" style={{ minWidth: 0 }}><NameField /></div>
           <button type="button" className="icon-btn tk-close" onClick={() => posStore.set({ ticketOpen: false })} aria-label="Cerrar el pedido">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
@@ -158,21 +158,13 @@ export function Ticket() {
             </div>
           ) : (
             <>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 0 6px" }}>
-                <span className="label">¿A nombre de quién?</span>
-                <NameField />
-              </label>
-              <div className="tk-chips">
-                <button type="button" className="who-chip" aria-pressed={s.seLoLlevamos} onClick={() => setSeLoLlevamos(!s.seLoLlevamos)}>
-                  <span className={"tk-box" + (s.seLoLlevamos ? " on" : "")} aria-hidden>
-                    {s.seLoLlevamos && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>}
-                  </span>
-                  Se lo llevamos
-                </button>
-                <PeopleChips onEdit={setEditPerson} />
-              </div>
+              {(s.people.length > 1 || addingPerson) && (
+                <div className="tk-chips">
+                  <PeopleChips onEdit={setEditPerson} adding={addingPerson} setAdding={setAddingPerson} />
+                </div>
+              )}
               <div ref={listRef} className="tk-lines scroll">
-                {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} />)}
+                {s.order.map((l, i) => <TicketLine key={i} idx={i} line={l} onNombre={setNombreDe} />)}
               </div>
               {(noteOpen || s.note) && (
                 <textarea
@@ -186,16 +178,22 @@ export function Ticket() {
                   style={{ minHeight: 64, marginTop: 8, fontSize: 15 }}
                 />
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 0 4px" }}>
-                <span className="muted" style={{ fontSize: 14 }}>{count} ítem{count === 1 ? "" : "s"}</span>
-                <span className="grow" />
-                <button type="button" className="btn ghost sm" style={{ height: 44, fontSize: 14 }} onClick={() => { if (noteOpen || s.note) { posStore.set({ note: "" }); setNoteOpen(false); } else setNoteOpen(true); }}>
+              {/* The extras, small and out of the list's way. */}
+              <div className="tk-tools">
+                <button type="button" className={"btn ghost sm" + (s.seLoLlevamos ? " on" : "")} aria-pressed={s.seLoLlevamos} onClick={() => setSeLoLlevamos(!s.seLoLlevamos)}>
+                  {s.seLoLlevamos ? "✓ Se lo llevamos" : "Llevar"}
+                </button>
+                {s.people.length > 0 && s.people.length < 2 && !addingPerson && (
+                  <button type="button" className="btn ghost sm" onClick={() => setAddingPerson(true)}>+ Persona</button>
+                )}
+                <button type="button" className="btn ghost sm" onClick={() => { if (noteOpen || s.note) { posStore.set({ note: "" }); setNoteOpen(false); } else setNoteOpen(true); }}>
                   {noteOpen || s.note ? "Quitar nota" : "Nota"}
                 </button>
+                <span className="grow" />
                 {editing ? (
-                  <button type="button" className="btn ghost sm" style={{ height: 44, fontSize: 14 }} onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido #${editing.folio}?`)) discardPendingEdit(); }}>Descartar</button>
+                  <button type="button" className="btn ghost sm" onClick={() => { if (window.confirm(`¿Descartar los cambios del pedido #${editing.folio}?`)) discardPendingEdit(); }}>Descartar</button>
                 ) : (
-                  <button type="button" className="btn ghost sm" style={{ height: 44, fontSize: 14 }} onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }}>Vaciar</button>
+                  <button type="button" className="btn ghost sm" onClick={() => { if (window.confirm("¿Vaciar el pedido?")) clearTicket(); }}>Vaciar</button>
                 )}
               </div>
             </>
@@ -222,24 +220,12 @@ export function Ticket() {
         </div>
       </aside>
       {editPerson && <PersonSheet name={editPerson} onClose={() => setEditPerson(null)} />}
+      {nombreDe !== null && s.order[nombreDe] && <NombreSheet idx={nombreDe} onClose={() => setNombreDe(null)} />}
     </>
   );
 }
 
 /** «Prepara <barista>» → «¿Quién prepara?». Hidden when the org has no team on the bar. */
-function BaristaChip() {
-  const s = usePos();
-  if (!s.catalog.equipo.length) return null;
-  const b = s.barista;
-  const first = b ? b.name.split(" ")[0] : "";
-  return (
-    <button type="button" className={"chip" + (b ? "" : " ask")} onClick={openBaristaPicker} aria-label={b ? `¿Quién prepara? ${b.name}` : "¿Quién prepara? Nadie elegido"}>
-      {b ? <span className="avatar">{initials(b.name)}</span> : null}
-      {b ? `Prepara ${first}` : "¿Quién prepara?"}
-      <ChevronDown />
-    </button>
-  );
-}
 
 /**
  * The name that goes on the cup. The field holds the order's first person:
@@ -268,7 +254,7 @@ export function NameField() {
       onChange={(e) => setText(e.target.value)}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
       onBlur={() => { commit(); setFocused(false); }}
-      placeholder="Nombre para el vaso"
+      placeholder="¿A nombre de quién?"
       aria-label="Nombre del cliente"
       enterKeyHint="done"
       autoComplete="off"
@@ -284,9 +270,8 @@ export function NameField() {
  * active one gets what is added next; tapping the active chip edits it.
  * «+ persona» adds another inline.
  */
-function PeopleChips({ onEdit }: { onEdit: (name: string) => void }) {
+function PeopleChips({ onEdit, adding, setAdding }: { onEdit: (name: string) => void; adding: boolean; setAdding: (v: boolean) => void }) {
   const s = usePos();
-  const [adding, setAdding] = React.useState(false);
   const [text, setText] = React.useState("");
   const ref = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => { if (adding) ref.current?.focus(); }, [adding]);
@@ -320,6 +305,45 @@ function PeopleChips({ onEdit }: { onEdit: (name: string) => void }) {
   );
 }
 
+/**
+ * Name ONE drink: someone already on the order, a new name, or no name.
+ * A line of several gives away just one (nombrarUna splits it).
+ */
+function NombreSheet({ idx, onClose }: { idx: number; onClose: () => void }) {
+  const s = usePos();
+  const line = s.order[idx];
+  const [text, setText] = React.useState("");
+  const ref = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => { ref.current?.focus(); }, []);
+  if (!line) return null;
+  const pick = (name: string | null) => { nombrarUna(idx, name); onClose(); };
+  const otros = s.people.filter((p) => p !== line.customer);
+  return (
+    <Overlay onClose={onClose} labelledBy="nb-t" maxWidth={520}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div className="grow">
+          <h2 id="nb-t" className="h1">¿Para quién es?</h2>
+          <span className="muted" style={{ fontSize: 15 }}>
+            {line.name}{line.qty > 1 ? ` · se separa 1 de los ${line.qty}` : ""}{line.customer ? ` · hoy: ${line.customer}` : ""}
+          </span>
+        </div>
+      </div>
+      {otros.length > 0 && (
+        <div role="group" aria-label="Personas del pedido" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {otros.map((p) => (
+            <button key={p} type="button" className="who-chip" style={{ height: 48, fontSize: 15 }} onClick={() => pick(p)}>{p}</button>
+          ))}
+        </div>
+      )}
+      <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) pick(text); }} style={{ display: "flex", gap: 8 }}>
+        <input ref={ref} className="field" value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder="Nombre nuevo" aria-label="Nombre nuevo" autoCapitalize="words" style={{ flex: 1, height: 52, fontSize: 17 }} />
+        <button type="submit" className="btn" disabled={!text.trim()} style={{ height: 52 }}>Asignar</button>
+      </form>
+      {line.customer && <button type="button" className="btn ghost block" style={{ height: 48 }} onClick={() => pick(null)}>Quitar nombre</button>}
+    </Overlay>
+  );
+}
+
 /** Rename or take a person off the order (their lines stay, unassigned). */
 function PersonSheet({ name, onClose }: { name: string; onClose: () => void }) {
   const s = usePos();
@@ -346,10 +370,16 @@ function PersonSheet({ name, onClose }: { name: string; onClose: () => void }) {
 }
 
 /** One ticket line; tap = edit it on the options page (qty, options, person). */
-export function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
+export function TicketLine({ idx, line, onNombre }: { idx: number; line: OrderLine; onNombre?: (idx: number) => void }) {
   const catalog = useCatalog();
   const unit = modLinePrice(line, catalog);
-  const sub = lineSub(line, catalog);
+  const sub = lineSub(line, catalog, { sinNombre: !!onNombre });
+  // The name is its own button beside the line (never nested in it): «Pa' Ana» or «+ Nombre».
+  const nombre = onNombre ? (
+    <button type="button" className={"who-pill" + (line.customer ? " on" : "")} onClick={() => onNombre(idx)} aria-label={line.customer ? `${line.name} es para ${line.customer}. Cambiar o quitar nombre` : `Ponerle nombre a ${line.name}`}>
+      {line.customer ? `Pa' ${line.customer}` : "+ Nombre"}
+    </button>
+  ) : null;
   const editable = line.kind === "item" && !line.missing;
   const body = (
     <>
@@ -365,12 +395,15 @@ export function TicketLine({ idx, line }: { idx: number; line: OrderLine }) {
       <span className="lp">{money(unit * line.qty)}</span>
     </>
   );
-  if (!editable) return <div className="line" style={line.missing ? { opacity: 0.6 } : undefined}>{body}</div>;
-  return (
-    <button type="button" className="line" onClick={() => posStore.set({ sheet: { mode: "edit", idx } })} aria-label={`${line.qty} ${line.name}${sub ? `, ${sub}` : ""}, ${money(unit * line.qty)}. Editar`}>
-      {body}
-    </button>
-  );
+  const row = !editable
+    ? <div className="line" style={line.missing ? { opacity: 0.6 } : undefined}>{body}</div>
+    : (
+      <button type="button" className="line" onClick={() => posStore.set({ sheet: { mode: "edit", idx } })} aria-label={`${line.qty} ${line.name}${sub ? `, ${sub}` : ""}, ${money(unit * line.qty)}. Editar`}>
+        {body}
+      </button>
+    );
+  if (!nombre) return row;
+  return <div className="line-row">{row}{nombre}</div>;
 }
 
 /** Tile badge helper for the catalog: how many of a product are on the ticket. */
