@@ -54,6 +54,7 @@ export async function getPosCatalog({
     { data: orgRow },
     equipo,
     vendidas,
+    { data: optRecetaRows },
   ] = await Promise.all([
     supabase
       .from("productos")
@@ -91,6 +92,11 @@ export async function getPosCatalog({
       .maybeSingle(),
     getEquipo(organizationId),
     getVendidas(supabase, organizationId),
+    // What an option adds/takes out of the drink: the comanda shows the amounts with it.
+    supabase
+      .from("modifier_option_receta")
+      .select("option_id, qty, ingredientes(name, unit)")
+      .eq("organization_id", organizationId),
   ]);
 
   // ── categories: resolve each product's top-level tab + sub label ──────────
@@ -121,6 +127,14 @@ export async function getPosCatalog({
   };
 
   // ── modifier groups: map to UI shape, keyed by id ─────────────────────────
+  const optRecipe = new Map<string, Array<{ name: string; qty: number; unit: string }>>();
+  for (const r of (optRecetaRows ?? []) as Array<Record<string, unknown>>) {
+    const ing = r.ingredientes as { name: string; unit: string } | null;
+    if (!ing) continue;
+    const arr = optRecipe.get(r.option_id as string) ?? [];
+    arr.push({ name: ing.name, qty: Number(r.qty), unit: ing.unit });
+    optRecipe.set(r.option_id as string, arr);
+  }
   const modGroups: Record<string, PosModGroup> = {};
   for (const g of modGroupsList) {
     modGroups[g.id] = {
@@ -130,7 +144,10 @@ export async function getPosCatalog({
       required: g.required,
       options: g.options
         .filter((o) => o.available)
-        .map((o) => ({ name: o.name, delta: o.price_delta_cop })),
+        .map((o) => {
+          const recipe = optRecipe.get(o.id);
+          return { name: o.name, delta: o.price_delta_cop, ...(recipe ? { recipe } : {}) };
+        }),
     };
   }
   const allGroupIds = Object.keys(modGroups);

@@ -1805,10 +1805,15 @@ function ticketLines(order: OrderLine[], catalog: PosCatalog, prices: boolean): 
     // products, each with its own recipe (the receipt keeps the combo price).
     if (!prices && l.kind === "combo") {
       const combo = catalog.comboById[l.id];
-      return (l.items ?? combo?.items ?? []).flatMap((pid) => {
-        const p = catalog.byId[pid];
-        return p ? [{ qty: l.qty, name: p.name, mods: [l.name], sku: p.sku, ...(l.customer ? { customer: l.customer } : {}) }] : [];
-      });
+      const opts = modSummary(l, catalog).map((m) => m.name);
+      const who = l.customer ? { customer: l.customer } : {};
+      const parts = (l.items ?? combo?.items ?? []).map((pid) => catalog.byId[pid]);
+      // A product no longer in the catalog (or a combo with no items known)
+      // still shows as the combo itself: the bar must see the whole order.
+      if (!parts.length || parts.some((p) => !p)) {
+        return [{ qty: l.qty, name: l.name, mods: opts, ...who }];
+      }
+      return parts.map((p) => ({ qty: l.qty, name: p!.name, mods: [l.name, ...opts], sku: p!.sku, ...who }));
     }
     const sku = l.kind === "item" ? catalog.byId[l.id]?.sku : undefined;
     return [{

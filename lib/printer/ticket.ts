@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PosMenuItem } from "@/lib/pos/types";
+import type { PosMenuItem, PosModGroup } from "@/lib/pos/types";
 import {
   fechaCorta,
   hora12,
@@ -102,9 +102,14 @@ export interface RecetaInfo {
   /** Written steps, used only when the recipe has no ingredient lines. */
   pasos: ComandaPaso[];
 }
-export type RecetaLookup = (sku: string) => RecetaInfo | null;
+/** SKU (+ the options chosen on that line) → what the comanda prints for it. */
+export type RecetaLookup = (sku: string, mods?: readonly string[]) => RecetaInfo | null;
 
-const cantidad = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10).replace(".", ","));
+/** 18 → «18», 12,5 → «12,5», 0,04 → «0,04»: never rounds a small amount down to 0. */
+export function cantidad(n: number): string {
+  const r = Number(n.toFixed(Math.abs(n) < 1 ? 3 : Math.abs(n) < 10 ? 2 : 1));
+  return String(r).replace(".", ",");
+}
 /** What goes around the drink, not in it: its own short line on the comanda. */
 const ENVASE = /\b(vaso|tapa|domo|pitillo|aislador|sleeve|servilleta|mezclador|cuchar|bolsa para|portavaso)/i;
 /** «Leche entera Gran Vía (bolsa 900 ml)» → «Leche entera Gran Vía»; «Cafe Okana» → «Café Okana». */
@@ -117,11 +122,42 @@ const limpio = (name: string) => name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/
  * out. Written prep steps are kept only as a fallback for drinks whose
  * recipe has no ingredient lines.
  */
-export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe">): RecetaInfo {
+export interface OpcionReceta {
+  /** The option's name («En leche», «16 oz»), noted on the lines it changes. */
+  opcion: string;
+  recipe: ReadonlyArray<{ name: string; qty: number; unit: string }>;
+}
+
+/**
+ * The base recipe with the chosen options applied (modifier_option_receta):
+ * an ingredient already in the recipe changes its amount (a negative amount
+ * takes it out — 16 oz swaps the 12 oz cup); a new one is added at the end.
+ * Lines an option touched say so («· En leche»).
+ */
+export function conOpciones(
+  recipe: readonly PosMenuItem["recipe"][number][],
+  opciones: readonly OpcionReceta[],
+): PosMenuItem["recipe"] {
+  const out = recipe.map((r) => ({ ...r }));
+  for (const o of opciones) {
+    for (const x of o.recipe) {
+      const hit = out.find((r) => r.name === x.name);
+      if (hit) {
+        hit.qty += x.qty;
+        hit.note = [hit.note, o.opcion].filter(Boolean).join(" · ");
+      } else if (x.qty > 0) {
+        out.push({ name: x.name, qty: x.qty, unit: x.unit, note: o.opcion });
+      }
+    }
+  }
+  return out.filter((r) => r.qty > 0.0005);
+}
+
+export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe">, opciones: readonly OpcionReceta[] = []): RecetaInfo {
   if (!p.printsLabel) return { bebida: false, pasos: [] };
   const proporciones: ComandaProporcion[] = [];
   const envase: string[] = [];
-  for (const r of p.recipe) {
+  for (const r of opciones.length ? conOpciones(p.recipe, opciones) : p.recipe) {
     if (/^etiqueta/i.test(r.unit) || /etiqueta/i.test(r.name)) continue;
     if (ENVASE.test(r.name)) { envase.push(limpio(r.name)); continue; }
     const unit = /^(und|unidad|unidades)$/i.test(r.unit) ? "" : r.unit;
@@ -135,10 +171,25 @@ export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe">
   };
 }
 
-/** SKU → recipe for the whole menu (what the station passes to setTicketRecetas). */
-export function recetasDelMenu(menu: readonly PosMenuItem[]): RecetaLookup {
-  const bySku = new Map(menu.filter((p) => p.sku).map((p) => [p.sku, recetaDe(p)] as const));
-  return (sku) => bySku.get(sku) ?? null;
+/**
+ * SKU (+ options) → recipe for the whole menu (what the station passes to
+ * setTicketRecetas). Options are matched by name within the product's own
+ * modifier groups, as the line carries them.
+ */
+export function recetasDelMenu(menu: readonly PosMenuItem[], modGroups: Readonly<Record<string, PosModGroup>> = {}): RecetaLookup {
+  const bySku = new Map(menu.filter((p) => p.sku).map((p) => [p.sku, p] as const));
+  return (sku, mods = []) => {
+    const p = bySku.get(sku);
+    if (!p) return null;
+    const opciones: OpcionReceta[] = [];
+    for (const name of mods) {
+      for (const gid of p.mods) {
+        const o = modGroups[gid]?.options.find((x) => x.name === name);
+        if (o?.recipe?.length) { opciones.push({ opcion: o.name, recipe: o.recipe }); break; }
+      }
+    }
+    return recetaDe(p, opciones);
+  };
 }
 
 export interface TicketPrintOptions {
@@ -183,9 +234,20 @@ export function toPrecuenta(d: TicketDoc, logo?: string | null): PrecuentaData {
   };
 }
 
-/** Whether the order has at least one prepared drink (only then a comanda prints). */
+/**
+ * Whether a comanda prints: the order has at least one prepared drink. When
+ * in doubt it prints — recipes not loaded yet (an outbox flush right at
+ * start-up), a line with no SKU or one this catalog doesn't know — because a
+ * missing comanda is worse than an extra one. Only an order whose every line
+ * is known food or bottles skips it.
+ */
 export function tieneBebidas(d: Pick<TicketDoc, "lines">, recetas: RecetaLookup | undefined): boolean {
-  return d.lines.some((l) => (l.sku && recetas?.(l.sku)?.bebida) ?? false);
+  if (!recetas) return true;
+  return d.lines.some((l) => {
+    if (!l.sku) return true;
+    const r = recetas(l.sku, l.mods);
+    return r === null || r.bebida;
+  });
 }
 
 export function toComandaBarra(d: TicketDoc, opts: { logo?: string | null; recetas?: RecetaLookup } = {}): ComandaData {
@@ -193,7 +255,7 @@ export function toComandaBarra(d: TicketDoc, opts: { logo?: string | null; recet
   const otros: ComandaOtro[] = [];
   const several = new Set(d.lines.map((l) => l.customer?.trim() ?? "")).size > 1;
   for (const l of d.lines) {
-    const r = l.sku ? opts.recetas?.(l.sku) ?? null : null;
+    const r = l.sku ? opts.recetas?.(l.sku, l.mods) ?? null : null;
     const cliente = several && l.customer?.trim() ? l.customer.trim() : undefined;
     if (r?.bebida) bebidas.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente, proporciones: r.proporciones, envase: r.envase, pasos: r.pasos });
     else otros.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente });
