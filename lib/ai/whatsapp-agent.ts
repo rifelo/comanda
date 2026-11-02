@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { posMoney, type PosCatalog } from "@/lib/pos/types";
 import type { PedidoAgente } from "@/lib/whatsapp/pedido";
+import { GROQ_TEXT_MODEL } from "@/lib/ai/groq";
 
 /**
  * Sales agent behind the business WhatsApp. It answers about the menu, builds
@@ -172,13 +173,25 @@ export function historialComoMensajes(turnos: Turno[]): Anthropic.Beta.BetaMessa
   return msgs;
 }
 
-export async function responderWhatsapp(input: {
+type Entrada = {
   catalog: PosCatalog;
   local: LocalInfo;
   turnos: Turno[];
   ahora: string;
   herramientas: Herramientas;
-}): Promise<Respuesta> {
+};
+
+/**
+ * WHATSAPP_AGENTE_IA=groq runs the same agent (prompt, tools, validation) on
+ * Groq's free tier — for testing while the Anthropic balance is empty.
+ */
+export async function responderWhatsapp(input: Entrada): Promise<Respuesta> {
+  return process.env.WHATSAPP_AGENTE_IA === "groq" ? responderConGroq(input) : responderConClaude(input);
+}
+
+const RENDIDO = "Te paso con alguien del equipo para terminar, ya te responden 🙌";
+
+async function responderConClaude(input: Entrada): Promise<Respuesta> {
   const messages = historialComoMensajes(input.turnos);
   if (!messages.length || messages[messages.length - 1].role !== "user") return { texto: "", humano: false };
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
@@ -218,7 +231,90 @@ export async function responderWhatsapp(input: {
     messages.push({ role: "user", content: resultados });
   }
   await input.herramientas.pasarAHumano("La conversación se alargó sin cerrar el pedido.");
-  return { texto: "Te paso con alguien del equipo para terminar, ya te responden 🙌", humano: true };
+  return { texto: RENDIDO, humano: true };
+}
+
+type GroqMsg =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+const GROQ_TOOLS = TOOLS.map((t) => ({
+  type: "function" as const,
+  function: { name: t.name, description: t.description, parameters: t.input_schema },
+}));
+
+/**
+ * Groq's free tier allows 8K tokens a minute and counts the reply budget, so
+ * the budget stays small; on a 429 the turn waits once (the webhook's
+ * `after()` has 120 s) instead of failing.
+ */
+async function groqConEspera(key: string, messages: GroqMsg[]): Promise<Response> {
+  const pedir = () =>
+    fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: GROQ_TEXT_MODEL,
+        reasoning_effort: "low",
+        temperature: 0.4,
+        max_completion_tokens: 800,
+        tools: GROQ_TOOLS,
+        messages,
+      }),
+    });
+  for (let intento = 0; ; intento++) {
+    const res = await pedir();
+    if (res.status !== 429 || intento >= 2) return res;
+    const ra = Number(res.headers.get("retry-after") ?? "20");
+    await new Promise((r) => setTimeout(r, Math.min(Number.isFinite(ra) ? ra + 1 : 20, 40) * 1000));
+  }
+}
+
+async function responderConGroq(input: Entrada): Promise<Respuesta> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("Falta GROQ_API_KEY.");
+  const historial = historialComoMensajes(input.turnos);
+  if (!historial.length || historial[historial.length - 1].role !== "user") return { texto: "", humano: false };
+  const messages: GroqMsg[] = [
+    {
+      role: "system",
+      content: `${instrucciones(input.local, menuParaAgente(input.catalog))}\n\nFecha y hora en Yopal ahora: ${input.ahora}.`,
+    },
+    ...historial.map((m) => ({ role: m.role, content: m.content as string }) as GroqMsg),
+  ];
+  let humano = false;
+
+  for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+    const res = await groqConEspera(key, messages);
+    const data = (await res.json().catch(() => null)) as {
+      error?: { message?: string };
+      choices?: { finish_reason?: string; message?: { content?: string | null; tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[] } }[];
+    } | null;
+    if (!res.ok || !data?.choices?.[0]?.message) {
+      throw new Error(`Groq ${res.status}: ${data?.error?.message ?? "sin respuesta"}`);
+    }
+    const msg = data.choices[0].message;
+    // gpt-oss now and then leaves JSON debris at the end ("…¿algo más?\"\"}").
+    const texto = (msg.content ?? "").trim().replace(/["}\]]+$/, "").trim();
+    const llamadas = msg.tool_calls ?? [];
+    if (!llamadas.length) return { texto, humano };
+
+    messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: llamadas });
+    for (const ll of llamadas) {
+      let args: unknown = null;
+      try {
+        args = JSON.parse(ll.function.arguments || "{}");
+      } catch {
+        /* handled as invalid input below */
+      }
+      const uso = { type: "tool_use", id: ll.id, name: ll.function.name, input: args } as Anthropic.Beta.BetaToolUseBlock;
+      const r = await ejecutar(uso, input.herramientas, () => (humano = true));
+      messages.push({ role: "tool", tool_call_id: ll.id, content: r.is_error ? `ERROR: ${r.content}` : r.content });
+    }
+  }
+  await input.herramientas.pasarAHumano("La conversación se alargó sin cerrar el pedido.");
+  return { texto: RENDIDO, humano: true };
 }
 
 async function ejecutar(
