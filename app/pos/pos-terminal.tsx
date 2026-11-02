@@ -29,7 +29,7 @@ import * as React from "react";
 import { FAV_CAT, type PosCatalog } from "@/lib/pos/types";
 import { usePosLive } from "./pos-live";
 import { usePosWindowLease } from "./pos-window";
-import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, hydrateBarista, setBarista, refreshOrdenes, refreshPendientes, closeVentas, type PosSessionPerson } from "./pos-store";
+import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, setBarista, refreshOrdenes, refreshPendientes, closeVentas, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
 import { CUP_LABEL_ASSETS } from "@/lib/printer/label";
 import { recetasDelMenu } from "@/lib/printer/ticket";
@@ -37,7 +37,7 @@ import { TIRILLA_ASSETS } from "@/lib/printer/tirillas";
 import { setTicketLogo, setTicketRecetas } from "@/lib/printer/tickets";
 import { useDesktopAppEvents } from "@/lib/pwa/desktop";
 import { POS_CSS } from "./_components/theme";
-import { BaristaPicker, TopBar } from "./_components/top-bar";
+import { TopBar } from "./_components/top-bar";
 import { Catalog, CartBar } from "./_components/catalog";
 import { Ticket } from "./_components/ticket";
 import { OfflineBar, PrinterToast } from "./_components/estados";
@@ -95,8 +95,7 @@ export function PosTerminal({
       catalog,
       ...(!hasFavs && firstReal && (cur === FAV_CAT || !cur) ? { cat: firstReal } : {}),
     });
-    hydrateBarista();
-    seedBaristaFromPerson(personId);
+    baristaFromPerson(personId);
     // «Ver en POS» from a product page: /pos?buscar=<sku>.
     const q = new URLSearchParams(window.location.search).get("buscar");
     if (q) posStore.set({ search: q.slice(0, 60) });
@@ -120,22 +119,14 @@ export function PosTerminal({
   );
 }
 
-const BARISTA_SEED_KEY = "pos:barista-seed";
 /**
- * «Preparo yo» by default: when the person who signs in is on the team, the
- * bar is credited to them — once per person (a manual pick in «¿Quién
- * prepara?» sticks until somebody else signs in on this register).
+ * Whoever is signed in prepares (owner, 2-nov-2026: no «¿Quién prepara?»
+ * button): the bar is credited to the session's person when they are on the
+ * team, else to nobody (the server then falls back to who created the order).
  */
-function seedBaristaFromPerson(personId: string | null) {
-  if (!personId) return;
-  const st = posStore.get();
-  const me = st.catalog.equipo.find((m) => m.id === personId);
-  if (!me) return;
-  try {
-    if (window.localStorage.getItem(BARISTA_SEED_KEY) === personId) return;
-    window.localStorage.setItem(BARISTA_SEED_KEY, personId);
-  } catch { /* private mode: seed every load */ }
-  setBarista(me);
+function baristaFromPerson(personId: string | null) {
+  const me = personId ? posStore.get().catalog.equipo.find((m) => m.id === personId) ?? null : null;
+  if (posStore.get().barista?.id !== me?.id) setBarista(me);
 }
 
 /** Another station wrote an order: reload what this one shows. */
@@ -231,7 +222,6 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       {s.view === "etiquetas" && <EtiquetasScreen />}
       {s.view === "puntos" && <PuntosScreen />}
       {s.sheet?.mode === "receta" && <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />}
-      {s.baristaPicker && <BaristaPicker />}
       <PrinterToast />
       {ventana.role === "secondary" && <OtraVentana onTakeOver={ventana.takeOver} />}
     </div>

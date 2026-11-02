@@ -743,3 +743,24 @@
   .app .opc-sheet .body.opc-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "act" "rail"; overflow-y: auto; }
   .app .opc-sheet .opc-rail { border-left: none; padding-left: 0; }
 }
+
+/* ticket: one header row (name + who prepares), the list, then small extras (owner, 2-nov-2026) */
+.app .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.app .tk-folio { font-size: 15px; font-weight: 700; flex-shrink: 0; }
+.app .ticket-h .field { height: 44px; font-size: 16px; }
+.app .tk-tools { display: flex; align-items: center; gap: 6px; padding: 8px 0 4px; flex-wrap: wrap; }
+.app .tk-tools .btn.sm { height: 40px; font-size: 13px; padding: 0 10px; }
+.app .tk-tools .btn.on { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+
+/* one drink, one name: the name pill sits beside the line (owner, 2-nov-2026) */
+.app .line-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+.app .line-row:last-child { border-bottom: none; }
+.app .line-row > .line { flex: 1; min-width: 0; border-bottom: none; }
+.app .who-pill { flex-shrink: 0; height: 44px; max-width: 120px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--line); background: transparent; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.app .who-pill.on { border: 1px solid var(--brand); background: var(--brand-soft); color: var(--text); }
+
+/* Same tile size in every category (owner, 2-nov-2026): the grid sits in a size
+   container and each row is half (a third, a quarter…) of THAT height; longer
+   categories scroll instead of squashing. */
+.app .grid-wrap { flex: 1; min-height: 0; container-type: size; display: flex; flex-direction: column; }
+.app .grid-wrap > .grid { flex: 1; height: 100%; grid-auto-rows: calc((100cqh - (var(--rows) - 1) * var(--g)) / var(--rows)); }

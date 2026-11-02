@@ -93,6 +93,9 @@ export function Catalog() {
         </div>
       )}
 
+      {/* The wrapper is a size container: rows are measured against ITS height
+          (2 rows fill it), so every category gets the same tile size. */}
+      <div className="grid-wrap">
       <div ref={gridRef} className="grid" role="group" aria-label={label}>
         {nothing && (
           <div className="empty" style={{ gridColumn: "1 / -1", gridRow: "1 / -1" }}>
@@ -105,6 +108,7 @@ export function Catalog() {
         )}
         {items.map((p) => <ProductTile key={p.id} p={p} qty={inTicket[p.id] ?? 0} hl={s.highlightId === p.id} />)}
         {combos.map((c) => <ComboTile key={c.id} c={c} qty={inTicket[c.id] ?? 0} />)}
+      </div>
       </div>
 
       <CombosRow />
@@ -268,7 +272,6 @@ export function CartBar() {
   const who = s.people[0];
   const names = [...new Set(s.order.map((l) => l.name))].join(", ");
   const title = editing ? `Pedido #${editing.folio}` : count ? `${who ? `Pa' ${who} · ` : ""}${names}` : "Pedido nuevo";
-  const prepara = s.barista ? `Prepara ${s.barista.name.split(" ")[0]}` : "¿Quién prepara?";
   return (
     <div className="cartbar" aria-label="Pedido actual">
       <button type="button" className="cb-open" aria-expanded={s.ticketOpen} aria-label="Ver el pedido" onClick={() => posStore.set({ ticketOpen: true })}>
@@ -276,7 +279,7 @@ export function CartBar() {
         <span className="grow" style={{ minWidth: 0 }}>
           <span className="cb-t">{title}</span>
           <span className="muted cb-s">
-            {count ? <>{prepara}<span className="hint"> · toca para ver o editar</span></> : "Toca un producto · mantenlo para ver la receta"}
+            {count ? "Toca para ver o editar" : "Toca un producto · mantenlo para ver la receta"}
           </span>
         </span>
         <span className="total"><span className="v">{money(total)}</span></span>
