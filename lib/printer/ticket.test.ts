@@ -33,7 +33,8 @@ describe("renderTicketHtml", () => {
     expect(html).toContain("$17.000");
     expect(html).toContain("$29.500");
     expect(html).toContain("no es factura electrónica");
-    expect(html).toContain("size: 80mm auto");
+    expect(html).toContain("@page { margin: 0; }");
+    expect(html).not.toContain("size: 80mm");
   });
 
   it("receipt for a pay-later order says so instead of the payment", () => {
@@ -51,6 +52,20 @@ describe("renderTicketHtml", () => {
     expect(html).toContain("sin azúcar");
     expect(html).toContain("Prepara: Pipe");
     expect(html).not.toContain("$17.000");
+  });
+
+  it("58 mm roll: same content in the narrow column, 80 mm is the default", () => {
+    const narrow = renderTicketHtml(base, { papel: "58" });
+    expect(narrow).toContain("padding: 1mm 12mm 8mm 13mm");
+    expect(narrow).toContain("TOTAL");
+    expect(renderTicketHtml(base)).not.toContain("14mm");
+  });
+
+  it("receipt logo replaces the name in text; the comanda has none", () => {
+    const html = renderTicketHtml(base, { logo: "data:image/svg+xml;base64,AAA" });
+    expect(html).toContain('<img class="logo" src="data:image/svg+xml;base64,AAA" alt="Café PA&#39;YO">');
+    expect(html).not.toContain('class="c org"');
+    expect(renderTicketHtml({ ...base, kind: "comanda" }, { logo: "x.svg" })).not.toContain("<img");
   });
 
   it("relayed payloads are validated", () => {
