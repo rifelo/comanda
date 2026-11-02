@@ -5,6 +5,7 @@ import { syncOrderConsumption } from "@/lib/pos/stock";
 import { responderWhatsapp, type Turno } from "@/lib/ai/whatsapp-agent";
 import { enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
+import { atiendeA } from "./probadores";
 
 /**
  * What happens to a webhook once Meta's signature checked out.
@@ -137,11 +138,15 @@ const ahoraYopal = () =>
   new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "full", timeStyle: "short" }).format(new Date());
 
 export async function responder(p: Pendiente): Promise<void> {
+  // Checked before the read receipt: a customer the agent won't answer must
+  // not see "escribiendo…".
+  const antes = await numero(p.phoneNumberId);
+  if (!antes || !atiendeA(antes.agente_activo, p.waId)) return;
   await marcarLeidoEscribiendo(p.phoneNumberId, p.messageId);
   await new Promise((r) => setTimeout(r, ESPERA_RAFAGA_MS));
 
   const n = await numero(p.phoneNumberId);
-  if (!n?.agente_activo) return;
+  if (!n || !atiendeA(n.agente_activo, p.waId)) return;
   const { data: conv } = await db()
     .from("whatsapp_conversaciones")
     .select("agente_pausado_hasta")
