@@ -11,7 +11,7 @@ export default async function ConfigSedePage() {
   const [{ supabase, profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const { data: org } = await supabase
     .from("organizations")
-    .select("recibo_encabezado, recibo_pie, transferencia_llave, transferencia_titular, datafono_liquidacion, meta_diaria_cop")
+    .select("recibo_nombre, recibo_encabezado, recibo_pie, transferencia_llave, transferencia_titular, datafono_liquidacion, meta_diaria_cop")
     .eq("id", profile.organization_id)
     .maybeSingle();
   const o = (org ?? {}) as Record<string, string | number | null | undefined>;
@@ -32,6 +32,7 @@ export default async function ConfigSedePage() {
       <Card className="mx-4 sm:mx-7">
         <ReciboForm
           initial={{
+            recibo_nombre: String(o.recibo_nombre ?? ""),
             recibo_encabezado: String(o.recibo_encabezado ?? ""),
             recibo_pie: String(o.recibo_pie ?? ""),
             transferencia_llave: String(o.transferencia_llave ?? ""),

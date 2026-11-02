@@ -42,6 +42,7 @@ export async function updateSede(input: z.infer<typeof Schema>) {
 
 // updateRecibo result: { ok: true } | { error: string }
 const ReciboSchema = z.object({
+  recibo_nombre: z.string().max(60),
   recibo_encabezado: z.string().max(300),
   recibo_pie: z.string().max(200),
   transferencia_llave: z.string().max(80),
@@ -64,6 +65,7 @@ export async function updateRecibo(input: z.infer<typeof ReciboSchema>) {
   const { error } = await supabase
     .from("organizations")
     .update({
+      recibo_nombre: val(d.recibo_nombre),
       recibo_encabezado: val(d.recibo_encabezado),
       recibo_pie: val(d.recibo_pie),
       transferencia_llave: val(d.transferencia_llave),

@@ -1,4 +1,18 @@
 import { z } from "zod";
+import type { PosMenuItem } from "@/lib/pos/types";
+import {
+  fechaCorta,
+  hora12,
+  renderComandaBarraHtml,
+  renderPrecuentaHtml,
+  type ComandaBebida,
+  type ComandaData,
+  type ComandaOtro,
+  type ComandaPaso,
+  type Papel,
+  type PrecuentaData,
+  paso,
+} from "./tirillas";
 
 /**
  * Paper tickets for the 80 mm receipt printer (DigitalPOS DIG-E200I on the
@@ -7,9 +21,10 @@ import { z } from "zod";
  *
  * A ticket is data first (TicketDoc), so a tablet with no printer can relay
  * it through pos_print_jobs like the labels; the station that prints turns it
- * into a small HTML page (renderTicketHtml) and hands it to the browser's
- * print — silent when Edge runs with --kiosk-printing and the DIG-E200I is
- * the default printer.
+ * into the tirilla of the canvas (lib/printer/tirillas.ts: Precuenta for the
+ * customer, Comanda de barra with the recipes from ITS catalog by SKU) and
+ * hands it to the browser's print — silent when Edge runs with
+ * --kiosk-printing and the DIG-E200I is the default printer.
  */
 const text = (max: number) => z.string().max(max);
 
@@ -22,6 +37,8 @@ const TicketLineSchema = z.object({
   customer: text(60).optional(),
   /** Line total (qty × unit with options); receipts only. */
   total: z.number().int().optional(),
+  /** Catalog SKU: the station looks the recipe up by it (never sent with the order). */
+  sku: text(40).optional(),
 });
 export type TicketLine = z.infer<typeof TicketLineSchema>;
 
@@ -56,11 +73,8 @@ export const TicketDocSchema = z.object({
 });
 export type TicketDoc = z.infer<typeof TicketDocSchema>;
 
-// ── formatting (deterministic: no ICU differences between devices) ──
-export function pesos(n: number): string {
-  const sign = n < 0 ? "-" : "";
-  return `${sign}$${Math.abs(Math.round(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
-}
+// ── formatting (kept for callers; the tirillas have their own) ──
+export { pesos } from "./tirillas";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 /** «31 oct 2026 · 22:31» in Bogotá time (UTC−5, no DST). */
@@ -72,174 +86,123 @@ export function fechaBogota(iso: string): string {
   const mm = String(d.getUTCMinutes()).padStart(2, "0");
   return `${d.getUTCDate()} ${MESES[d.getUTCMonth()]} ${d.getUTCFullYear()} · ${hh}:${mm}`;
 }
-function horaBogota(iso: string): string {
-  return fechaBogota(iso).split(" · ")[1] ?? "";
-}
 
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
+// ── TicketDoc → the canvas tirillas ─────────────────────────────
+export type { Papel };
 
-/** Lines grouped by person, in first-appearance order; "" = nobody in particular. */
-function porPersona(lines: TicketLine[]): Array<{ who: string; lines: TicketLine[] }> {
-  const groups: Array<{ who: string; lines: TicketLine[] }> = [];
-  for (const l of lines) {
-    const who = l.customer?.trim() ?? "";
-    let g = groups.find((x) => x.who === who);
-    if (!g) groups.push((g = { who, lines: [] }));
-    g.lines.push(l);
-  }
-  return groups;
+/** What the station's catalog knows about a product, by SKU. */
+export interface RecetaInfo {
+  /** A prepared drink (gets the cup labels). Food and bottles: false. */
+  bebida: boolean;
+  /** «2 shots · 18 g · etiquetas: nombre + bebida». */
+  spec?: string;
+  pasos: ComandaPaso[];
 }
+export type RecetaLookup = (sku: string) => RecetaInfo | null;
 
-// ── HTML ────────────────────────────────────────────────────────
-/**
- * 80 mm roll, 72 mm printable. The page takes the width the driver reports
- * (the DIG-E200I / Gainscha driver says 72 mm): forcing an 80 mm page made the
- * browser lay out wider than the head and the right edge was lost. Pure black
- * on white, no images: a thermal head turns greys into dither. Sizes in pt so
- * the driver's DPI doesn't matter.
- */
-const CSS = `
-@page { margin: 0; }
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: #fff; color: #000; }
-body { width: 100%; max-width: 72mm; padding: 1mm 2mm 8mm; font: 10.5pt/1.3 Arial, Helvetica, sans-serif; }
-.c { text-align: center; }
-.b { font-weight: 700; }
-.s { font-size: 9pt; }
-.xs { font-size: 8pt; }
-.org { font-size: 17pt; font-weight: 800; line-height: 1.1; margin-bottom: 1mm; }
-.pre { white-space: pre-line; }
-hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
-hr.solid { border-top: 2px solid #000; }
-table { width: 100%; border-collapse: collapse; }
-td { vertical-align: top; padding: 0.6mm 0; }
-td.q { width: 9mm; font-weight: 700; }
-td.r { text-align: right; white-space: nowrap; padding-left: 2mm; }
-.mods { font-size: 9pt; }
-.row { display: flex; justify-content: space-between; gap: 2mm; }
-.tot { font-size: 16pt; font-weight: 800; }
-.tag { display: inline-block; border: 2px solid #000; padding: 0.4mm 1.6mm; margin: 0.6mm 0.6mm 0 0; font-weight: 800; font-size: 10pt; }
-.tag.inv { background: #000; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.folio { font-size: 30pt; font-weight: 800; line-height: 1; }
-.who { font-size: 17pt; font-weight: 800; line-height: 1.15; }
-.persona { font-size: 12pt; font-weight: 800; margin-top: 2mm; border-bottom: 1px solid #000; }
-.item { font-size: 13pt; font-weight: 700; line-height: 1.2; margin-top: 1.4mm; }
-.item .qn { display: inline-block; min-width: 9mm; font-size: 15pt; font-weight: 800; }
-.item .mods { font-size: 10.5pt; font-weight: 400; padding-left: 9mm; }
-.logo { display: block; width: 46mm; height: auto; margin: 0 auto 1.5mm; }
-.note { border: 2px solid #000; padding: 1.2mm 1.6mm; margin-top: 2mm; font-size: 11pt; font-weight: 700; white-space: pre-line; }
-`;
+const cantidad = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10).replace(".", ","));
 
 /**
- * 58 mm roll in the 80 mm printer (what PA'YO has loaded): the head still
- * draws 72 mm, but only part of the page lands on the paper. Measured on the
- * DIG-E200I (ruler + photos, 1-nov-2026): the text sits in a 47 mm column
- * from 13 to 60 mm, which leaves room for the roll drifting a little to one
- * side. One size smaller than on 80 mm.
+ * The comanda's view of a catalog product: drinks (the ones that get cup
+ * labels) with their preparation steps, or — when no steps were written in
+ * Recetas — the ingredient lines, so the bar always has the quantities.
  */
-const CSS_58 = `
-body { width: 72mm; max-width: none; padding: 1mm 12mm 8mm 13mm; font-size: 9.5pt; }
-.org { font-size: 14pt; }
-.s, .mods { font-size: 8.5pt; }
-.xs { font-size: 7.5pt; }
-td.q { width: 7mm; }
-td.r { padding-left: 1.5mm; }
-.tot { font-size: 13pt; }
-.tag { font-size: 9pt; padding: 0.3mm 1.2mm; }
-.folio { font-size: 24pt; }
-.who { font-size: 14pt; }
-.persona { font-size: 10.5pt; }
-.item { font-size: 11pt; }
-.item .qn { min-width: 7mm; font-size: 13pt; }
-.item .mods { font-size: 9.5pt; padding-left: 7mm; }
-.note { font-size: 10pt; }
-.logo { width: 38mm; }
-`;
+export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "spec" | "prep" | "recipe">): RecetaInfo {
+  if (!p.printsLabel) return { bebida: false, pasos: [] };
+  // The cup-label spec is in capitals («VASO PET 12 OZ»); the comanda reads it in lower case, acronyms kept.
+  const spec = [...p.spec.map((s) => s.toLowerCase().replace(/\bpet\b/g, "PET")), "etiquetas: nombre + bebida"].join(" · ");
+  const pasos = p.prep.length
+    ? p.prep.map(paso)
+    : p.recipe.map((r) => ({ titulo: r.name, detalle: [`${cantidad(r.qty)} ${r.unit}`.trim(), r.note].filter(Boolean).join(", ") }));
+  return { bebida: true, spec, pasos };
+}
 
-/** Paper roll on the printer: 80 mm (full width) or 58 mm. */
-export type Papel = "80" | "58";
+/** SKU → recipe for the whole menu (what the station passes to setTicketRecetas). */
+export function recetasDelMenu(menu: readonly PosMenuItem[]): RecetaLookup {
+  const bySku = new Map(menu.filter((p) => p.sku).map((p) => [p.sku, recetaDe(p)] as const));
+  return (sku) => bySku.get(sku) ?? null;
+}
 
 export interface TicketPrintOptions {
   papel?: Papel;
-  /** One-ink logo as a data: URI (or URL) for the top of the receipt. */
+  /** One-ink icon as a data: URI (or URL) for the top of both tirillas. */
   logo?: string | null;
+  /** Recipes from this station's catalog. Without it every line prints as «otros». */
+  recetas?: RecetaLookup;
 }
 
-function page(title: string, body: string, papel: Papel): string {
-  const css = papel === "58" ? CSS + CSS_58 : CSS;
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body>${body}</body></html>`;
+const marca = (d: TicketDoc, logo: string | null | undefined) => ({
+  nombre: d.orgName,
+  logo: logo ?? null,
+  encabezado: d.encabezado ?? null,
+  pie: d.pie ?? null,
+});
+const pedido = (folio: string) => (folio.startsWith("#") ? folio : `#${folio}`);
+
+export function toPrecuenta(d: TicketDoc, logo?: string | null): PrecuentaData {
+  const items = d.lines.map((l) => ({
+    cantidad: l.qty,
+    nombre: l.name,
+    detalle: l.mods,
+    unitario: l.total != null ? Math.round(l.total / l.qty) : undefined,
+    total: l.total ?? 0,
+  }));
+  const subtotal = items.reduce((s, it) => s + it.total, 0);
+  return {
+    marca: marca(d, logo),
+    cliente: d.customer,
+    pedido: pedido(d.folio),
+    fecha: fechaCorta(d.at),
+    hora: hora12(d.at),
+    items,
+    subtotal,
+    total: d.total ?? subtotal,
+    pago: d.method && !d.pendiente
+      ? { metodo: d.method, recibido: d.tendered ?? null, cambio: d.change, aprobacion: d.approval ?? null }
+      : undefined,
+    estado: d.pendiente ? (d.porVerificar ? "por-verificar" : "pendiente") : undefined,
+    copia: d.copia,
+  };
 }
 
-function reciboBody(d: TicketDoc, logo: string | null): string {
-  const out: string[] = [];
-  out.push(logo
-    ? `<img class="logo" src="${esc(logo)}" alt="${esc(d.orgName)}">`
-    : `<div class="c org">${esc(d.orgName)}</div>`);
-  if (d.encabezado?.trim()) out.push(`<div class="c s pre">${esc(d.encabezado.trim())}</div>`);
-  out.push(`<hr>`);
-  out.push(`<div class="row b"><span>Pedido #${esc(d.folio)}</span>${d.copia ? `<span>COPIA</span>` : ""}</div>`);
-  out.push(`<div class="s">${esc(fechaBogota(d.at))}</div>`);
-  if (d.customer?.trim()) out.push(`<div class="s">Cliente: ${esc(d.customer.trim())}</div>`);
-  out.push(`<hr>`);
-  out.push(`<table>`);
+/** Whether the order has at least one prepared drink (only then a comanda prints). */
+export function tieneBebidas(d: Pick<TicketDoc, "lines">, recetas: RecetaLookup | undefined): boolean {
+  return d.lines.some((l) => (l.sku && recetas?.(l.sku)?.bebida) ?? false);
+}
+
+export function toComandaBarra(d: TicketDoc, opts: { logo?: string | null; recetas?: RecetaLookup } = {}): ComandaData {
+  const bebidas: ComandaBebida[] = [];
+  const otros: ComandaOtro[] = [];
+  const several = new Set(d.lines.map((l) => l.customer?.trim() ?? "")).size > 1;
   for (const l of d.lines) {
-    const mods = l.mods.length ? `<div class="mods">${esc(l.mods.join(" · "))}</div>` : "";
-    const total = l.total != null ? pesos(l.total) : "";
-    out.push(`<tr><td class="q">${l.qty}×</td><td>${esc(l.name)}${mods}</td><td class="r">${total}</td></tr>`);
+    const r = l.sku ? opts.recetas?.(l.sku) ?? null : null;
+    const cliente = several && l.customer?.trim() ? l.customer.trim() : undefined;
+    if (r?.bebida) bebidas.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente, spec: r.spec, pasos: r.pasos });
+    else otros.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente });
   }
-  out.push(`</table>`);
-  out.push(`<hr class="solid">`);
-  if (d.total != null) out.push(`<div class="row tot"><span>TOTAL</span><span>${pesos(d.total)}</span></div>`);
-  if (d.pendiente) {
-    out.push(`<div class="c" style="margin-top:2mm"><span class="tag inv">${d.porVerificar ? "TRANSFERENCIA POR VERIFICAR" : "PENDIENTE DE PAGO"}</span></div>`);
-  } else if (d.method) {
-    out.push(`<div class="row" style="margin-top:1mm"><span>Pago</span><span class="b">${esc(d.method)}</span></div>`);
-    if (d.tendered != null && d.tendered > 0) out.push(`<div class="row"><span>Recibido</span><span>${pesos(d.tendered)}</span></div>`);
-    if (d.change != null && d.change > 0) out.push(`<div class="row b"><span>Cambio</span><span>${pesos(d.change)}</span></div>`);
-    if (d.approval?.trim()) out.push(`<div class="row s"><span>Aprobación</span><span>${esc(d.approval.trim())}</span></div>`);
-  }
-  out.push(`<hr>`);
-  out.push(`<div class="c b pre">${esc(d.pie?.trim() || "¡Gracias por tu visita!")}</div>`);
-  out.push(`<div class="c xs" style="margin-top:2mm">Comprobante de venta · no es factura electrónica</div>`);
-  return out.join("");
-}
-
-function comandaBody(d: TicketDoc): string {
-  const out: string[] = [];
-  out.push(`<div class="row s b"><span>COMANDA${d.copia ? " · COPIA" : ""}</span><span>${esc(horaBogota(d.at))}</span></div>`);
-  out.push(`<div class="folio">#${esc(d.folio)}</div>`);
-  if (d.customer?.trim()) out.push(`<div class="who">Pa' ${esc(d.customer.trim())}</div>`);
-  const tags: string[] = [];
-  if (d.seLoLlevamos) tags.push(`<span class="tag inv">SE LO LLEVAMOS</span>`);
-  if (d.orderType === "llevar") tags.push(`<span class="tag inv">PARA LLEVAR</span>`);
-  if (d.orderType === "domicilio") tags.push(`<span class="tag inv">DOMICILIO</span>`);
-  if (d.sinGluten) tags.push(`<span class="tag">SIN GLUTEN</span>`);
-  if (tags.length) out.push(`<div style="margin-top:1mm">${tags.join("")}</div>`);
-  out.push(`<hr class="solid">`);
-  const groups = porPersona(d.lines);
-  const named = groups.length > 1 || (groups[0]?.who ?? "") !== "";
-  for (const g of groups) {
-    if (named) out.push(`<div class="persona">${g.who ? `Pa' ${esc(g.who)}` : "Sin nombre"}</div>`);
-    for (const l of g.lines) {
-      const mods = l.mods.length ? `<div class="mods">${esc(l.mods.join(" · "))}</div>` : "";
-      out.push(`<div class="item"><span class="qn">${l.qty}</span>${esc(l.name)}${mods}</div>`);
-    }
-  }
-  if (d.note?.trim()) out.push(`<div class="note">${esc(d.note.trim())}</div>`);
-  out.push(`<hr>`);
-  const pie = [
-    d.barista ? `Prepara: ${esc(d.barista)}` : null,
-    d.pendiente ? (d.porVerificar ? "Transferencia por verificar" : "Pendiente de pago") : d.method ? "Pagado" : null,
-  ].filter(Boolean);
-  if (pie.length) out.push(`<div class="row s"><span>${pie[0]}</span><span class="b">${pie[1] ?? ""}</span></div>`);
-  return out.join("");
+  const avisos: string[] = [];
+  if (d.seLoLlevamos) avisos.push("SE LO LLEVAMOS");
+  if (d.orderType === "llevar") avisos.push("PARA LLEVAR");
+  if (d.orderType === "domicilio") avisos.push("DOMICILIO");
+  if (d.sinGluten) avisos.push("SIN GLUTEN");
+  return {
+    marca: marca(d, opts.logo),
+    pedido: pedido(d.folio),
+    hora: hora12(d.at),
+    cliente: d.customer,
+    barista: d.barista,
+    bebidas,
+    otros,
+    avisos,
+    nota: d.note,
+    estado: d.pendiente ? (d.porVerificar ? "Transferencia por verificar" : "Pendiente de pago") : undefined,
+    copia: d.copia,
+  };
 }
 
 export function renderTicketHtml(d: TicketDoc, opts: TicketPrintOptions = {}): string {
   const papel = opts.papel ?? "80";
   return d.kind === "recibo"
-    ? page(`Recibo ${d.folio}`, reciboBody(d, opts.logo ?? null), papel)
-    : page(`Comanda ${d.folio}`, comandaBody(d), papel);
+    ? renderPrecuentaHtml(toPrecuenta(d, opts.logo), papel)
+    : renderComandaBarraHtml(toComandaBarra(d, opts), papel);
 }

@@ -131,6 +131,8 @@ export interface PosReciboInfo {
   /** Lines under the name: NIT, address, phone… */
   encabezado: string | null;
   pie: string | null;
+  /** Brand name under the icon («Café Pa'Yo»); null = the org name. */
+  nombre?: string | null;
   /** One-ink logo printed on top of the receipt (URL or site path). */
   logo?: string | null;
 }
