@@ -39,7 +39,9 @@ export const config = {
   // POS app manifest (app/pos/manifest.ts) — a manifest fetch must never hit
   // the auth round-trip or a login redirect. Same for both service workers
   // (pos-sw.js, sw.js) and the static offline page the app SW precaches.
+  // Fonts (.woff2) too: the printed tickets and labels load them from
+  // /labels/fonts and must not depend on a session cookie.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|pos-sw\\.js|sw\\.js|offline$|.*\\.svg$|.*\\.png$|.*\\.jpg$|.*\\.webmanifest$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|pos-sw\\.js|sw\\.js|offline$|.*\\.svg$|.*\\.woff2$|.*\\.png$|.*\\.jpg$|.*\\.webmanifest$).*)",
   ],
 };
