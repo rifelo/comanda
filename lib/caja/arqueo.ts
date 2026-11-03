@@ -33,6 +33,28 @@ export function esperadoCaja(baseInicial: number, efectivoVentas: number, ingres
   return baseInicial + efectivoVentas + ingresos - salidas;
 }
 
+/** Shortest explanation accepted for a difference. */
+export const NOTA_DIFERENCIA_MIN = 3;
+
+/**
+ * A sent arqueo with a difference nobody has explained yet. Until it is,
+ * the base can't be confirmed and the turno can't be closed. «Comparable»
+ * as on the result screen: with no sales and no movements there is nothing
+ * to compare against.
+ */
+export function faltaJustificar(c: {
+  status: string;
+  diferencia_cop: number;
+  note: string | null;
+  pagos_count: number;
+  esperado_cop: number;
+  base_inicial_cop: number;
+}): boolean {
+  if (c.status === "rechazado") return false;
+  const comparable = c.pagos_count > 0 || c.esperado_cop !== c.base_inicial_cop;
+  return comparable && c.diferencia_cop !== 0 && (c.note ?? "").trim().length < NOTA_DIFERENCIA_MIN;
+}
+
 /** Negative = money missing, positive = money over. */
 export function diferenciaCaja(contado: number, esperado: number): number {
   return contado - esperado;

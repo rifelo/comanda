@@ -8,6 +8,8 @@ import {
   diferenciaCaja,
   entregaCaja,
   esperadoCaja,
+  faltaJustificar,
+  NOTA_DIFERENCIA_MIN,
   resumenPagos,
   totalContado,
   ventanaTurno,
@@ -390,6 +392,15 @@ export type BaseActionResult = { ok: true } | { ok: false; error: string };
 
 /** Whoever closed confirms the planned pieces were set aside in the drawer. */
 export async function confirmarBase(db: Db, scope: { restaurantId: string; by: string }, cierreId: string): Promise<BaseActionResult> {
+  const { data: row } = await db
+    .from("caja_cierres")
+    .select("status, diferencia_cop, note, pagos_count, esperado_cop, base_inicial_cop")
+    .eq("id", cierreId)
+    .eq("restaurant_id", scope.restaurantId)
+    .maybeSingle();
+  if (row && faltaJustificar(row as Parameters<typeof faltaJustificar>[0])) {
+    return { ok: false, error: "Hay una diferencia en el arqueo: explica qué pasó antes de armar la base." };
+  }
   const { data, error } = await db
     .from("caja_cierres")
     .update({ base_confirmada_at: new Date().toISOString(), base_confirmada_by: scope.by })
@@ -458,6 +469,7 @@ export async function ajustarBase(db: Db, scope: { restaurantId: string }, cierr
 
 /** The note on a difference, written on the result step (after the count was sent). */
 export async function notaCierre(db: Db, scope: { restaurantId: string }, cierreId: string, nota: string): Promise<BaseActionResult> {
+  if (nota.trim().length < NOTA_DIFERENCIA_MIN) return { ok: false, error: "Cuenta qué pasó con la diferencia." };
   const { data, error } = await db
     .from("caja_cierres")
     .update({ note: nota.trim() })

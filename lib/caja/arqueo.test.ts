@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  faltaJustificar,
   cobrosDirectos,
   DENOMINACIONES_COP,
   diferenciaCaja,
@@ -94,5 +95,22 @@ describe("cobrosDirectos", () => {
     ]);
     expect(rows).toEqual([{ method: "efectivo", amount_cop: 12000 }, { method: "datafono", amount_cop: 9000 }]);
     expect(resumenPagos(rows)).toEqual({ efectivo: 12000, datafono: 9000, transferencia: 0, count: 2 });
+  });
+});
+
+describe("faltaJustificar", () => {
+  const c = { status: "pendiente", diferencia_cop: 7000, note: null as string | null, pagos_count: 3, esperado_cop: 186400, base_inicial_cop: 179400 };
+  it("a difference with no explanation blocks the close", () => {
+    expect(faltaJustificar(c)).toBe(true);
+    expect(faltaJustificar({ ...c, note: "  " })).toBe(true);
+    expect(faltaJustificar({ ...c, diferencia_cop: -500 })).toBe(true);
+  });
+  it("explained, square, rejected or with nothing to compare: it doesn't", () => {
+    expect(faltaJustificar({ ...c, note: "Di mal una vuelta" })).toBe(false);
+    expect(faltaJustificar({ ...c, diferencia_cop: 0 })).toBe(false);
+    expect(faltaJustificar({ ...c, status: "rechazado" })).toBe(false);
+    expect(faltaJustificar({ ...c, pagos_count: 0, esperado_cop: 179400 })).toBe(false);
+    // No sales but a movement: still comparable.
+    expect(faltaJustificar({ ...c, pagos_count: 0, esperado_cop: 196400 })).toBe(true);
   });
 });
