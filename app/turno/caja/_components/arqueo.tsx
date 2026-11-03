@@ -118,7 +118,7 @@ export function ArqueoFlow(props: {
   return <Base {...props} data={data} steps={steps("base")} onBack={resultado ? () => setPaso("resultado") : props.onSalir} />;
 }
 
-function Conteo({ today, actorName, online, instanceId, instanceName, baseInicial, baseInicialHint, baseDejadaSugerida, pendiente, enviar, onSalir, steps }: Parameters<typeof ArqueoFlow>[0] & { steps: Array<{ label: string; s: StepState }> }) {
+function Conteo({ today, tz, actorName, online, instanceId, instanceName, baseInicial, baseInicialHint, baseDejadaSugerida, movimientos, pendiente, enviar, onSalir, steps }: Parameters<typeof ArqueoFlow>[0] & { steps: Array<{ label: string; s: StepState }> }) {
   const [cant, setCant] = React.useState<Record<string, number>>({});
   const [baseIni, setBaseIni] = React.useState<number>(baseInicial);
   const [editBase, setEditBase] = React.useState(false);
@@ -208,6 +208,7 @@ function Conteo({ today, actorName, online, instanceId, instanceName, baseInicia
             </div>
             <span className="cj-mute" style={{ fontSize: 12, lineHeight: 1.4 }}>{baseInicialHint}</span>
           </div>
+          <EntradasHoy movimientos={movimientos} tz={tz} />
           <div className="cj-grow" />
           {pendiente && <div className="cj-warn amber"><IcoNube size={20} />El conteo está guardado en la tablet: se envía solo cuando vuelva el internet.</div>}
           {!online && !pendiente && <div className="cj-warn amber"><IcoNube size={20} />Sin internet: el arqueo también se puede hacer. Se envía al dueño cuando vuelva.</div>}
@@ -217,6 +218,64 @@ function Conteo({ today, actorName, online, instanceId, instanceName, baseInicia
         </aside>
       </div>
     </>
+  );
+}
+
+/** «2 × $ 5.000 · 24 × $ 500», biggest first. */
+function piezasTexto(lineas: CajaDenominacion[]): string {
+  return [...lineas].filter((l) => l.cantidad > 0).sort((a, b) => b.valor - a.valor).map((l) => `${l.cantidad} × ${plata(l.valor)}`).join(" · ");
+}
+
+/**
+ * The money that came into the drawer today (entradas, voided ones apart),
+ * with the bills and coins each one brought, and those pieces added up. It
+ * shows while counting: it says nothing about the sales, so the count stays
+ * blind, but it tells the person why there is more change in the drawer.
+ */
+export function EntradasHoy({ movimientos, tz }: { movimientos: MovVista[]; tz: string }) {
+  const entradas = movimientos.filter((m) => m.tipo === "ingreso" && !m.anuladoAt && !m.error).sort((a, b) => a.at.localeCompare(b.at));
+  const [abierto, setAbierto] = React.useState(false);
+  const total = entradas.reduce((s, m) => s + m.monto, 0);
+  const porValor = new Map<number, number>();
+  for (const m of entradas) for (const l of m.detalle.denominaciones ?? []) porValor.set(l.valor, (porValor.get(l.valor) ?? 0) + l.cantidad);
+  const piezas = [...porValor].map(([valor, cantidad]) => ({ valor, cantidad }));
+  const anuladas = movimientos.filter((m) => m.tipo === "ingreso" && m.anuladoAt).length;
+  return (
+    <div className="cj-card soft">
+      <button type="button" onClick={() => setAbierto((a) => !a)} aria-expanded={abierto} style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <span className="cj-lab">Entradas de hoy · {entradas.length}</span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <b className="cj-in">+ {plata(total)}</b>
+          <span className="cj-mute" style={{ fontSize: 12 }}>{abierto ? "Ocultar" : "Ver"}</span>
+        </span>
+      </button>
+      {entradas.length === 0 ? (
+        <span className="cj-mute" style={{ fontSize: 13 }}>Hoy no se registró ninguna entrada de plata.</span>
+      ) : (
+        <>
+          {piezas.length > 0 && <span style={{ fontSize: 13 }}>Piezas que entraron: <b>{piezasTexto(piezas)}</b></span>}
+          {abierto && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+              {entradas.map((m) => (
+                <div key={m.key} style={{ display: "flex", flexDirection: "column", gap: 2, borderTop: "1px solid var(--line, #e5e5e5)", paddingTop: 8 }}>
+                  <span className="cj-kv">
+                    <span><b>{MOTIVO_CAJA[m.motivo].label}</b> · {hora(m.at, tz)}{m.by ? ` · ${m.by.split(" ")[0]}` : ""}{m.espera ? " · en espera" : ""}</span>
+                    <b className="cj-in">+ {plata(m.monto)}</b>
+                  </span>
+                  {m.detalle.denominaciones?.length ? (
+                    <span style={{ fontSize: 13 }}>{piezasTexto(m.detalle.denominaciones)}</span>
+                  ) : (
+                    <span className="cj-mute" style={{ fontSize: 12 }}>Sin detalle de billetes</span>
+                  )}
+                  <small className="cj-mute">“{m.justificacion}”</small>
+                </div>
+              ))}
+              {anuladas > 0 && <span className="cj-mute" style={{ fontSize: 12 }}>{anuladas} entrada{anuladas === 1 ? "" : "s"} anulada{anuladas === 1 ? "" : "s"} no se cuenta{anuladas === 1 ? "" : "n"}.</span>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -287,7 +346,7 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
             <div><span><b>Ventas en efectivo</b> · {r.pagos.count} pago{r.pagos.count === 1 ? "" : "s"} del POS</span><span>+ {plata(r.pagos.efectivo)}</span></div>
             {enVentana.map((m) => (
               <div key={m.key}>
-                <span><b>{m.tipo === "ingreso" ? "Entrada" : "Salida"}</b> · {MOTIVO_CAJA[m.motivo].label} · {hora(m.at, tz)}{m.by ? ` · ${m.by.split(" ")[0]}` : ""}<br /><small>“{m.justificacion}”</small></span>
+                <span><b>{m.tipo === "ingreso" ? "Entrada" : "Salida"}</b> · {MOTIVO_CAJA[m.motivo].label} · {hora(m.at, tz)}{m.by ? ` · ${m.by.split(" ")[0]}` : ""}<br /><small>“{m.justificacion}”</small>{m.detalle.denominaciones?.length ? <><br /><small>{piezasTexto(m.detalle.denominaciones)}</small></> : null}</span>
                 <span className={m.tipo === "ingreso" ? "cj-in" : "cj-out"}>{m.tipo === "ingreso" ? "+" : "−"} {plata(m.monto)}</span>
               </div>
             ))}
