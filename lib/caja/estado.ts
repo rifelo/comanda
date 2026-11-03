@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CajaCierre } from "@/lib/types";
 import { inicioDia } from "@/lib/inventario/mermas-db";
-import { localToUtc, ventanaTurno, type ResumenPagos } from "./arqueo";
+import { localToUtc, ventanaDesdeUltimo, ventanaTurno, type ResumenPagos } from "./arqueo";
 import { baseSugerida, getCierreByInstance, listCierresSede, listInstancesForCaja, sumPagosVentana, type BaseSugerida, type CajaInstance } from "./cierres";
 import { comprasPorPagar, listMovimientos, type CajaMovimiento, type CompraPorPagar } from "./movimientos-db";
 import { elegirTurnoCaja } from "./turno";
@@ -39,10 +39,16 @@ type Scope = { orgId: string; restaurantId: string; tz: string; today: string };
 /** The fields of CajaEstado that depend on which turno it is about. */
 type Centro = Pick<CajaEstado, "instanceId" | "finAt" | "ventana" | "pagos" | "porValidar">;
 
-async function centrar(db: SupabaseClient, scope: Scope, instances: CajaInstance[], base: BaseSugerida, instanceId: string | null): Promise<Centro> {
+async function centrar(db: SupabaseClient, scope: Scope, instances: CajaInstance[], base: BaseSugerida, instanceId: string | null, existing: Record<string, CajaCierre> = {}): Promise<Centro> {
   const { orgId, restaurantId, tz, today } = scope;
   const inst = instances.find((i) => i.id === instanceId) ?? null;
-  const ventana = inst ? ventanaTurno({ date: today, inicio: inst.inicio, tz, opened_at: inst.opened_at, closed_at: inst.closed_at }) : null;
+  // Already counted: the window that arqueo used. Else since the last arqueo of the sede.
+  const propio = inst && existing[inst.id]?.status !== "rechazado" ? existing[inst.id] : undefined;
+  const ventana = !inst
+    ? null
+    : propio
+      ? { desde: propio.ventana_desde, hasta: propio.ventana_hasta }
+      : ventanaDesdeUltimo(ventanaTurno({ date: today, inicio: inst.inicio, tz, opened_at: inst.opened_at, closed_at: inst.closed_at }), base.cierre?.ventana_hasta ?? null);
   const pagos = ventana ? await sumPagosVentana(db, { orgId, restaurantId, desde: ventana.desde, hasta: ventana.hasta }) : { efectivo: 0, datafono: 0, transferencia: 0, count: 0 };
   const prev = base.cierre;
   return {
@@ -64,7 +70,12 @@ export async function loadCajaEstado(db: SupabaseClient, scope: Scope & { instan
     listInstancesForCaja(db, restaurantId, today),
     baseSugerida(db, restaurantId),
     listCierresSede(db, restaurantId, 10),
-    listMovimientos(db, { orgId, restaurantId }, inicioDia(today), 200),
+    // Today's, plus any since the last arqueo when that was before today (they count in its expected cash).
+    baseSugerida(db, restaurantId).then((b) => {
+      const hoy = inicioDia(today);
+      const desde = b.cierre && Date.parse(b.cierre.ventana_hasta) < Date.parse(hoy) ? new Date(b.cierre.ventana_hasta).toISOString() : hoy;
+      return listMovimientos(db, { orgId, restaurantId }, desde, 200);
+    }),
     comprasPorPagar(db, orgId),
   ]);
   const existing: Record<string, CajaCierre> = {};
@@ -74,7 +85,7 @@ export async function loadCajaEstado(db: SupabaseClient, scope: Scope & { instan
       if (c) existing[i.id] = c;
     }),
   );
-  const centro = await centrar(db, scope, instances, base, elegirTurnoCaja(instances, existing, scope.instanceId));
+  const centro = await centrar(db, scope, instances, base, elegirTurnoCaja(instances, existing, scope.instanceId), existing);
   const prev = base.cierre;
   const baseInicial = prev && prev.base_validada_ok === false && prev.base_encontrada_cop != null ? prev.base_encontrada_cop : base.monto;
   return { today, instances, existing, ...centro, base, baseInicial, movimientos, porPagar, historial };
@@ -86,6 +97,8 @@ export async function loadCajaEstado(db: SupabaseClient, scope: Scope & { instan
  * person's turno. Same window, payments and pending base as loadCajaEstado.
  */
 export async function recentrarCaja(db: SupabaseClient, scope: Scope, estado: CajaEstado, instanceId: string | null): Promise<CajaEstado> {
-  if (!instanceId || estado.instanceId === instanceId || !estado.instances.some((i) => i.id === instanceId)) return estado;
-  return { ...estado, ...(await centrar(db, scope, estado.instances, estado.base, instanceId)) };
+  // A short task turno doesn't hold the drawer: the picker moves it to the real one.
+  const id = instanceId ? elegirTurnoCaja(estado.instances, estado.existing, instanceId) : null;
+  if (!id || estado.instanceId === id) return estado;
+  return { ...estado, ...(await centrar(db, scope, estado.instances, estado.base, id, estado.existing)) };
 }

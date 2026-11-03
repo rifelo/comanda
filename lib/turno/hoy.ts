@@ -292,14 +292,17 @@ export function pasosCerrar(args: {
   base: { lista: boolean; monto: string };
   entregado: boolean;
   actual?: string | null;
+  /** false = a short task turno: its cash is counted by the real turno, so no arqueo nor base here. */
+  caja?: boolean;
 }): Paso[] {
   const { tareas, conteo, arqueo, base, entregado } = args;
+  const caja = args.caja !== false;
   return marcar(
     [
       { key: "tareas", title: "Tareas de cierre", sub: `${tareas.hechas} de ${tareas.total}`, done: tareas.total === 0 || tareas.hechas >= tareas.total },
       { key: "conteo", title: conteo.debe ? conteo.nombre : "Conteo rápido", sub: !conteo.debe ? "No toca en este turno" : conteo.hecho ? "Enviado" : "Pendiente", done: !conteo.debe || conteo.hecho },
-      { key: "arqueo", title: "Arqueo de caja", sub: arqueo ? "Enviado" : "Contar el efectivo", done: arqueo },
-      { key: "base", title: "Base para mañana", sub: base.monto, done: base.lista },
+      { key: "arqueo", title: "Arqueo de caja", sub: !caja ? "No toca en este turno" : arqueo ? "Enviado" : "Contar el efectivo", done: !caja || arqueo },
+      { key: "base", title: "Base para mañana", sub: !caja ? "No toca en este turno" : base.monto, done: !caja || base.lista },
       { key: "entregar", title: "Entregar", sub: "Novedades y recibo", done: entregado },
     ],
     args.actual,

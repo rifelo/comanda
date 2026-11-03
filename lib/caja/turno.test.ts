@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { elegirTurnoCaja } from "./turno";
+import { elegirTurnoCaja, esTurnoCorto } from "./turno";
 
 // Earliest start first, as listInstancesForCaja returns them.
 const matutino = { id: "mat", status: "open" as const };
@@ -33,5 +33,23 @@ describe("elegirTurnoCaja", () => {
   it("falls back to the last turno, and null on an empty day", () => {
     expect(elegirTurnoCaja([matutino], { mat: { status: "aprobado" } })).toBe("mat");
     expect(elegirTurnoCaja([], {})).toBeNull();
+  });
+});
+
+describe("short task turnos don't hold the drawer", () => {
+  const mat = { id: "mat", status: "open" as const, inicio: "06:00", fin: "13:30" };
+  const basura = { id: "bas", status: "open" as const, inicio: "06:30", fin: "07:30" };
+  const noche = { id: "noc", status: "open" as const, inicio: "12:30", fin: "20:00" };
+  it("tells a task slot from a shift", () => {
+    expect(esTurnoCorto(basura)).toBe(true);
+    expect(esTurnoCorto({ inicio: "11:00", fin: "13:50" })).toBe(false);
+    expect(esTurnoCorto({ inicio: "22:00", fin: "06:00" })).toBe(false);
+    expect(esTurnoCorto({})).toBe(false);
+  });
+  it("«Sacar la basura» as the person's turno moves to the real one", () => {
+    expect(elegirTurnoCaja([mat, basura, noche], {}, "bas")).toBe("noc");
+    expect(elegirTurnoCaja([mat, basura, noche], {}, "mat")).toBe("mat");
+    // A day with only task turnos still has somewhere to count.
+    expect(elegirTurnoCaja([basura], {}, "bas")).toBe("bas");
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ventanaDesdeUltimo,
   faltaJustificar,
   cobrosDirectos,
   DENOMINACIONES_COP,
@@ -112,5 +113,17 @@ describe("faltaJustificar", () => {
     expect(faltaJustificar({ ...c, pagos_count: 0, esperado_cop: 179400 })).toBe(false);
     // No sales but a movement: still comparable.
     expect(faltaJustificar({ ...c, pagos_count: 0, esperado_cop: 196400 })).toBe(true);
+  });
+});
+
+describe("ventanaDesdeUltimo", () => {
+  const turno = { desde: "2026-11-03T00:07:30.000Z", hasta: "2026-11-03T01:13:55.000Z" };
+  it("starts where the last arqueo ended, so a skipped count isn't lost", () => {
+    expect(ventanaDesdeUltimo(turno, "2026-11-01T23:06:41.432Z")).toEqual({ desde: "2026-11-01T23:06:41.432Z", hasta: turno.hasta });
+    expect(ventanaDesdeUltimo(turno, "2026-11-01 23:06:41.432+00")).toEqual({ desde: "2026-11-01T23:06:41.432Z", hasta: turno.hasta });
+  });
+  it("keeps the turno's own window with no previous arqueo, or one ending later", () => {
+    expect(ventanaDesdeUltimo(turno, null)).toEqual(turno);
+    expect(ventanaDesdeUltimo(turno, "2026-11-03T02:00:00.000Z")).toEqual(turno);
   });
 });

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ensureTodayInstances, getTurnoBoard } from "@/lib/turno/server";
 import { loadCajaEstado } from "@/lib/caja/estado";
 import { faltaJustificar } from "@/lib/caja/arqueo";
+import { esTurnoCorto } from "@/lib/caja/turno";
 import { loadRutina } from "@/lib/inventario/conteos";
 import { cajaDelTurno } from "@/lib/turno/reads";
 import { NOMBRE_CONTEO, esTurnoDeCierre } from "@/lib/inventario/rutina";
@@ -66,6 +67,8 @@ export default async function CerrarPage({ searchParams }: { searchParams: Searc
     arqueo: !!vivo && !faltaJustificar(vivo),
     base: { lista: !!vivo?.base_confirmada_at, monto: plata(vivo?.base_dejada_cop ?? estado.base.monto) },
     entregado: closed,
+    // A short task turno («Sacar la basura») doesn't count the drawer while a real turno runs today.
+    caja: !(esTurnoCorto(shift.template) && estado.instances.some((i) => !esTurnoCorto(i))),
   };
   // `?despues=arqueo` (leaving the embedded caja): the first unfinished step from there on,
   // so a skipped count doesn't pull the person back once the cash is done.
