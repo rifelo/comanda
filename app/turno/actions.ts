@@ -1,5 +1,6 @@
 "use server";
 
+import { faltaJustificar } from "@/lib/caja/arqueo";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireTurnoContext, type TurnoContext } from "@/lib/turno/server";
@@ -234,6 +235,15 @@ export async function closeTurnoAs(input: unknown): Promise<Simple> {
     const ctx = await requireTurnoContext();
     const inst = await ownInstance(ctx, parsed.data.shift_instance_id);
     if (!inst) return { ok: false, error: "Turno no encontrado." };
+    // An arqueo with an unexplained difference keeps the turno open.
+    const { data: cierres } = await ctx.admin
+      .from("caja_cierres")
+      .select("status, diferencia_cop, note, pagos_count, esperado_cop, base_inicial_cop")
+      .eq("shift_instance_id", inst.id)
+      .neq("status", "rechazado");
+    if ((cierres ?? []).some((c) => faltaJustificar(c as Parameters<typeof faltaJustificar>[0]))) {
+      return { ok: false, error: "El arqueo tiene una diferencia sin justificar: explica qué pasó en Caja antes de cerrar el turno." };
+    }
     const now = new Date().toISOString();
     const { error } = await ctx.admin
       .from("shift_instances")

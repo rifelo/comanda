@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ensureTodayInstances, getTurnoBoard } from "@/lib/turno/server";
 import { loadCajaEstado } from "@/lib/caja/estado";
+import { faltaJustificar } from "@/lib/caja/arqueo";
 import { loadRutina } from "@/lib/inventario/conteos";
 import { cajaDelTurno } from "@/lib/turno/reads";
 import { NOMBRE_CONTEO, esTurnoDeCierre } from "@/lib/inventario/rutina";
@@ -61,7 +62,8 @@ export default async function CerrarPage({ searchParams }: { searchParams: Searc
   const estadoPasos = {
     tareas: { hechas: cierreTasks.filter((t) => done(t.id)).length, total: cierreTasks.length },
     conteo: { debe: debeConteo, hecho: rutina.hecho, nombre: NOMBRE_CONTEO[rutina.toca] },
-    arqueo: !!vivo,
+    // Sent and, when it has a difference, explained (the turno can't close otherwise).
+    arqueo: !!vivo && !faltaJustificar(vivo),
     base: { lista: !!vivo?.base_confirmada_at, monto: plata(vivo?.base_dejada_cop ?? estado.base.monto) },
     entregado: closed,
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { DENOMINACIONES_COP, totalContado } from "@/lib/caja/arqueo";
+import { DENOMINACIONES_COP, faltaJustificar, NOTA_DIFERENCIA_MIN, totalContado } from "@/lib/caja/arqueo";
 import { describirLineas, planBase, type PlanBase } from "@/lib/caja/base";
 import { MOTIVO_CAJA } from "@/lib/caja/movimientos";
 import type { CierreInput, EnviarCierreResult } from "@/lib/caja/cierres";
@@ -112,8 +112,13 @@ export function ArqueoFlow(props: {
     return ["Contar", "Resultado", "Base"].map((label, i) => ({ label, s: i < at ? "done" : i === at ? "on" : "todo" }));
   };
 
+  // A difference nobody explained yet: the explanation comes before the base, always.
+  const [explicado, setExplicado] = React.useState(false);
   if (paso === "contar" || (!resultado && !cierre)) return <Conteo {...props} steps={steps("contar")} />;
   if (paso === "resultado" && resultado) return <Resultado {...props} r={resultado.r} steps={steps("resultado")} onNext={() => setPaso("base")} />;
+  if (!resultado && cierre && !explicado && faltaJustificar(cierre)) {
+    return <Justificar {...props} cierre={cierre} steps={steps("resultado")} onNext={() => setExplicado(true)} />;
+  }
   const data = resultado ? baseDeResultado(resultado.r, resultado.contadas) : baseDeCierre(cierre!);
   return <Base {...props} data={data} steps={steps("base")} onBack={resultado ? () => setPaso("resultado") : props.onSalir} />;
 }
@@ -289,10 +294,14 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
   const t1 = Date.parse(r.ventana.hasta);
   const enVentana = movimientos.filter((m) => !m.anuladoAt && !m.espera && Date.parse(m.at) >= t0 && Date.parse(m.at) < t1).sort((a, b) => a.at.localeCompare(b.at));
   const tone = !comparable ? "ok" : r.diferencia < 0 ? "bad" : r.diferencia > 0 ? "over" : "ok";
+  const salir = () => {
+    if (hayDif) setError("Hay una diferencia: cuenta qué pasó antes de salir del arqueo.");
+    else onSalir();
+  };
 
   async function siguiente() {
     if (hayDif) {
-      if (nota.trim().length < 3) return;
+      if (nota.trim().length < NOTA_DIFERENCIA_MIN) return;
       setBusy(true);
       setError(null);
       const res = await guardarNota(r.cierreId, nota.trim());
@@ -307,7 +316,7 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
 
   return (
     <>
-      <FlowBar back="Inicio" onBack={onSalir} title="Arqueo de cierre" tone="ink" pick="Arqueo enviado · pendiente de aprobar" steps={steps} />
+      <FlowBar back="Inicio" onBack={salir} title="Arqueo de cierre" tone="ink" pick="Arqueo enviado · pendiente de aprobar" steps={steps} />
       <div className="cj-split">
         <section className="cj-col">
           <div className="cj-vs">
@@ -335,7 +344,7 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
           <div className="cj-grow" />
           {error && <div role="alert" className="cj-warn red"><IcoAlerta />{error}</div>}
           {hayDif && !online && <div className="cj-warn amber"><IcoNube size={20} />Sin internet: la nota se guarda cuando vuelva.</div>}
-          <button type="button" className="cj-btn dark tall" disabled={busy || (hayDif && (nota.trim().length < 3 || !online))} onClick={() => void siguiente()}>
+          <button type="button" className="cj-btn dark tall" disabled={busy || (hayDif && (nota.trim().length < NOTA_DIFERENCIA_MIN || !online))} onClick={() => void siguiente()}>
             {busy ? "Guardando…" : "Siguiente: armar la base"} <IcoSigue />
           </button>
         </section>
@@ -361,6 +370,59 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
             </div>
           </div>
         </aside>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The arqueo was sent but its difference has no explanation (the tablet was
+ * left on the result step, or the page reloaded). Nothing else of the close
+ * moves until it has one: not the base, not «Cerrar el turno».
+ */
+function Justificar({ online, cierre, guardarNota, steps, onNext }: Parameters<typeof ArqueoFlow>[0] & { cierre: CajaCierre; steps: Array<{ label: string; s: StepState }>; onNext: () => void }) {
+  const [nota, setNota] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const d = cierre.diferencia_cop;
+  async function guardar() {
+    if (nota.trim().length < NOTA_DIFERENCIA_MIN) return;
+    setBusy(true);
+    setError(null);
+    const res = await guardarNota(cierre.id, nota.trim());
+    setBusy(false);
+    if (!res.ok) return setError(res.error);
+    onNext();
+  }
+  return (
+    <>
+      <FlowBar back="Inicio" onBack={() => setError("Hay una diferencia: cuenta qué pasó antes de salir del arqueo.")} title="Arqueo de cierre" tone="ink" pick="Falta explicar la diferencia" steps={steps} />
+      <div className="cj-split">
+        <section className="cj-col">
+          <div className="cj-vs">
+            <div className="cj-card"><span className="cj-lab">Contaste</span><span className="cj-slab">{plata(cierre.contado_cop)}</span></div>
+            <div className="cj-card"><span className="cj-lab">Debería haber</span><span className="cj-slab">{plata(cierre.esperado_cop)}</span></div>
+          </div>
+          <div className={`cj-diff ${d < 0 ? "bad" : "over"}`}>
+            <span className="cj-lab" style={{ color: "inherit" }}>Diferencia</span>
+            <b className="cj-slab">{d < 0 ? `Faltan ${plata(-d)}` : `Sobran ${plata(d)}`}</b>
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span className="cj-lab">Hay diferencia: cuéntanos qué pasó · obligatorio</span>
+            <textarea className="cj-textarea" value={nota} onChange={(e) => setNota(e.target.value.slice(0, 300))} aria-label="Nota sobre la diferencia" rows={3} />
+          </label>
+          <div className="cj-chips">
+            {NOTAS_DIF.map((f) => (
+              <button key={f} type="button" className="cj-chip" style={{ minHeight: 48, fontSize: 14 }} aria-pressed={nota === f} onClick={() => setNota(f)}>{f}</button>
+            ))}
+          </div>
+          <div className="cj-grow" />
+          {error && <div role="alert" className="cj-warn red"><IcoAlerta />{error}</div>}
+          {!online && <div className="cj-warn amber"><IcoNube size={20} />Sin internet: la explicación se guarda cuando vuelva.</div>}
+          <button type="button" className="cj-btn dark tall" disabled={busy || !online || nota.trim().length < NOTA_DIFERENCIA_MIN} onClick={() => void guardar()}>
+            {busy ? "Guardando…" : "Siguiente: armar la base"} <IcoSigue />
+          </button>
+        </section>
       </div>
     </>
   );
