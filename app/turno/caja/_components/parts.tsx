@@ -175,3 +175,37 @@ export function MontoGrande({ label, value, tone, sub }: { label: string; value:
     </div>
   );
 }
+
+const PZ_BILLETES = [100000, 50000, 20000, 10000, 5000, 2000];
+const PZ_MONEDAS = [1000, 500, 200, 100, 50];
+
+/** Bills and coins of an entrada or salida, counted piece by piece (the total adds itself). */
+export function PiezasPicker({ piezas, onChange, verbo, tone }: { piezas: Record<number, number>; onChange: (p: Record<number, number>) => void; verbo: "entra" | "sale"; tone: "in" | "out" }) {
+  const fila = (valor: number) => {
+    const c = piezas[valor] ?? 0;
+    return (
+      <div key={valor} className="cj-den" data-on={c > 0 ? "1" : undefined}>
+        <span className="cj-slab cj-den-v">{plata(valor)}</span>
+        <Contador value={c} onChange={(v) => onChange({ ...piezas, [valor]: v })} label={`${valor >= 2000 ? "billetes" : "monedas"} de ${plata(valor)}`} editable={false} />
+        <span className={`cj-den-sub ${c ? (tone === "in" ? "cj-in" : "cj-out") : ""}`}>{c ? plata(c * valor) : "$ 0"}</span>
+      </div>
+    );
+  };
+  return (
+    <>
+      <span className="cj-lab">¿Qué billetes y monedas {verbo}? · cuenta por denominación</span>
+      <div className="cj-den-cols">
+        <div className="cj-den-col"><span className="cj-lab">Billetes</span>{PZ_BILLETES.map(fila)}</div>
+        <div className="cj-den-col"><span className="cj-lab">Monedas</span>{PZ_MONEDAS.map(fila)}</div>
+      </div>
+    </>
+  );
+}
+/** The picker's counts as lines (only the ones used), biggest first. */
+export function lineasPiezas(piezas: Record<number, number>): Array<{ valor: number; cantidad: number }> {
+  return [...PZ_BILLETES, ...PZ_MONEDAS].map((valor) => ({ valor, cantidad: piezas[valor] ?? 0 })).filter((l) => l.cantidad > 0);
+}
+/** «2 × $ 5.000 · 24 × $ 500». */
+export function piezasTexto(lineas: ReadonlyArray<{ valor: number; cantidad: number }>): string {
+  return [...lineas].filter((l) => l.cantidad > 0).sort((a, b) => b.valor - a.valor).map((l) => `${l.cantidad} × ${plata(l.valor)}`).join(" · ");
+}

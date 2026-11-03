@@ -5,7 +5,8 @@ import { errorMovimiento, MOTIVO_CAJA, motivosDe, PLATAFORMAS_DOMICILIO, sugerir
 import type { CompraPorPagar } from "@/lib/caja/movimientos-db";
 import { IcoAlerta, IcoCamara, IcoMotivo, IcoSigue } from "./icons";
 import { compraLabel, plata, type MovPendiente } from "./model";
-import { FlowBar, FOTO_VACIA, FotoCaptura, Keypad, MontoGrande, type FotoValor, type StepState } from "./parts";
+import { FlowBar, FOTO_VACIA, FotoCaptura, Keypad, lineasPiezas, MontoGrande, PiezasPicker, piezasTexto, type FotoValor, type StepState } from "./parts";
+import { totalContado } from "@/lib/caja/arqueo";
 
 export type NuevoMovimiento = Omit<MovPendiente, "clientRef" | "at" | "by">;
 
@@ -32,8 +33,12 @@ export function SalidaFlow({ disponible, porPagar, actorName, online, onCancel, 
   const [compra, setCompra] = React.useState<CompraPorPagar | null>(null);
   const [porque, setPorque] = React.useState("");
   const [foto, setFoto] = React.useState<FotoValor>(FOTO_VACIA);
+  // Optional: which bills and coins left the drawer (the total then adds itself).
+  const [porPiezas, setPorPiezas] = React.useState(false);
+  const [piezas, setPiezas] = React.useState<Record<number, number>>({});
+  const lineas = porPiezas ? lineasPiezas(piezas) : [];
 
-  const n = monto ? Number(monto) : 0;
+  const n = porPiezas ? totalContado(lineas) : monto ? Number(monto) : 0;
   const steps = (p: number): Array<{ label: string; s: StepState }> =>
     ["Motivo", "Monto", "¿Por qué?"].map((label, i) => ({ label, s: i + 1 < p ? "done" : i + 1 === p ? "on" : "todo" }));
   const chip = motivo ? (
@@ -75,7 +80,8 @@ export function SalidaFlow({ disponible, porPagar, actorName, online, onCancel, 
 
   const regla = MOTIVO_CAJA[motivo].foto;
   const compraConFactura = !!compra?.conFactura;
-  const error = errorMovimiento({ tipo: "salida", monto: n, motivo, justificacion: porque, detalle, foto: !!(foto.path || foto.data), compraConFactura });
+  const conPiezas: DetalleMovimiento = lineas.length ? { ...detalle, denominaciones: lineas } : detalle;
+  const error = errorMovimiento({ tipo: "salida", monto: n, motivo, justificacion: porque, detalle: conPiezas, foto: !!(foto.path || foto.data), compraConFactura });
   const cero = sugerirCero(n, disponible);
   const excede = n > disponible;
 
@@ -86,13 +92,24 @@ export function SalidaFlow({ disponible, porPagar, actorName, online, onCancel, 
         <FlowBar back="Atrás" onBack={() => setPaso(1)} title="− Nueva salida" tone="out" pick={chip} steps={steps(2)} />
         <div className="cj-split kp">
           <section className="cj-col">
-            <MontoGrande label="¿Cuánto sale?" value={monto} tone="out" sub={`En el cajón debería haber ${plata(disponible)}`} />
-            <span className="cj-lab">Atajos</span>
-            <div className="cj-four">
-              {ATAJOS.map((v) => (
-                <button key={v} type="button" className="cj-btn" onClick={() => setMonto(String(v))}>{plata(v)}</button>
-              ))}
-            </div>
+            {porPiezas ? (
+              <>
+                <MontoGrande label="¿Cuánto sale? · se calcula solo" value={n ? String(n) : ""} tone="out" sub={lineas.length ? piezasTexto(lineas) : `En el cajón debería haber ${plata(disponible)}`} />
+                <PiezasPicker piezas={piezas} onChange={setPiezas} verbo="sale" tone="out" />
+                <button type="button" className="cj-btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setPorPiezas(false)}>Escribir el monto</button>
+              </>
+            ) : (
+              <>
+                <MontoGrande label="¿Cuánto sale?" value={monto} tone="out" sub={`En el cajón debería haber ${plata(disponible)}`} />
+                <span className="cj-lab">Atajos</span>
+                <div className="cj-four">
+                  {ATAJOS.map((v) => (
+                    <button key={v} type="button" className="cj-btn" onClick={() => setMonto(String(v))}>{plata(v)}</button>
+                  ))}
+                </div>
+                <button type="button" className="cj-btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setPorPiezas(true)}>Contar los billetes que salen</button>
+              </>
+            )}
 
             {motivo === "domicilio" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -151,7 +168,7 @@ export function SalidaFlow({ disponible, porPagar, actorName, online, onCancel, 
             {sigueError && n > 0 && <span className="cj-warn amber"><IcoAlerta size={20} />{sigueError}</span>}
             <button type="button" className="cj-btn dark tall" disabled={!!sigueError} onClick={() => setPaso(3)}>Siguiente: ¿por qué? <IcoSigue /></button>
           </section>
-          <Keypad value={monto} onChange={setMonto} />
+          {!porPiezas && <Keypad value={monto} onChange={setMonto} />}
         </div>
       </>
     );
@@ -228,7 +245,7 @@ export function SalidaFlow({ disponible, porPagar, actorName, online, onCancel, 
                 monto: n,
                 motivo,
                 justificacion: porque.trim(),
-                detalle: limpiar(detalle, motivo),
+                detalle: { ...limpiar(detalle, motivo), ...(lineas.length ? { denominaciones: lineas } : {}) },
                 compraId: motivo === "pago_pedido" ? compra?.id ?? null : null,
                 compraLabel: motivo === "pago_pedido" && compra ? compraLabel(compra.folio, compra.proveedor) : null,
                 compraConFactura: motivo === "pago_pedido" && compraConFactura,

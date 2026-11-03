@@ -8,7 +8,7 @@ import type { CierreInput, EnviarCierreResult } from "@/lib/caja/cierres";
 import type { CajaCierre, CajaDenominacion } from "@/lib/types";
 import { IcoAlerta, IcoCheck, IcoInfo, IcoNube, IcoSigue } from "./icons";
 import { hora, plata, plataSigno, type MovVista } from "./model";
-import { Contador, FlowBar, type StepState } from "./parts";
+import { Contador, FlowBar, piezasTexto, type StepState } from "./parts";
 
 export type ResultadoCierre = Extract<EnviarCierreResult, { ok: true }>;
 type Draft = { cantidades: Record<string, number>; baseInicial: number | null };
@@ -224,11 +224,6 @@ function Conteo({ today, tz, actorName, online, instanceId, instanceName, baseIn
       </div>
     </>
   );
-}
-
-/** «2 × $ 5.000 · 24 × $ 500», biggest first. */
-function piezasTexto(lineas: CajaDenominacion[]): string {
-  return [...lineas].filter((l) => l.cantidad > 0).sort((a, b) => b.valor - a.valor).map((l) => `${l.cantidad} × ${plata(l.valor)}`).join(" · ");
 }
 
 /**

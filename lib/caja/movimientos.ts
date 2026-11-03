@@ -46,7 +46,7 @@ export interface DetalleMovimiento {
   orden?: string;
   /** Consignación: who takes the cash to the bank. */
   quien?: string;
-  /** Sencillo: the pieces that came in. */
+  /** The bills and coins that came in or went out (always on sencillo, optional on the rest). */
   denominaciones?: CajaDenominacion[];
 }
 
@@ -72,7 +72,7 @@ export function errorMovimiento(input: {
   const motivo = input.motivo as MotivoCaja;
   const t = MOTIVO_CAJA[motivo].tipo;
   if (t !== "ambos" && t !== input.tipo) return "Ese motivo no corresponde.";
-  if (motivo === "sencillo" && input.detalle?.denominaciones?.length && totalContado(input.detalle.denominaciones) !== input.monto) return "El total no coincide con las piezas del sencillo.";
+  if (input.detalle?.denominaciones?.length && totalContado(input.detalle.denominaciones) !== input.monto) return "El total no coincide con los billetes y monedas contados.";
   if (motivo === "consignacion" && !input.detalle?.quien?.trim()) return "Escribe quién lleva la plata al banco.";
   if (input.justificacion.trim().length < JUSTIFICACION_CAJA_MIN) return "El ¿por qué? es obligatorio: cuenta de qué es esta plata.";
   if (MOTIVO_CAJA[motivo].foto === "obligatoria" && !input.foto && !input.compraConFactura) return "Falta la foto de la factura (obligatoria).";

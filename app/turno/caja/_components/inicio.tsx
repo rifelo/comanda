@@ -4,6 +4,7 @@ import * as React from "react";
 import { MOTIVO_CAJA, porConfirmar } from "@/lib/caja/movimientos";
 import { IcoAbajo, IcoArriba, IcoCajon, IcoCheck, IcoMas, IcoMenos, IcoMotivo, IcoNube, IcoReloj, IcoAlerta } from "./icons";
 import { hora, plata, type MovVista } from "./model";
+import { piezasTexto } from "./parts";
 
 export interface LineaEstado {
   tone: "ok" | "pend" | "bad" | "mute";
@@ -99,6 +100,7 @@ export function Inicio({ esperado, desglose, estado, arqueo, rows, tz, online, n
                 <span className="cj-row-main">
                   <span className="cj-row-t">{MOTIVO_CAJA[r.motivo].label} {r.by && <span>· {r.by.split(" ")[0]}</span>}</span>
                   <span className="cj-row-q">“{r.justificacion}”{r.compraLabel ? ` · ${r.compraLabel}` : ""}</span>
+                  {r.detalle.denominaciones?.length ? <span className="cj-row-q" style={{ fontStyle: "normal" }}>{piezasTexto(r.detalle.denominaciones)}</span> : null}
                   {r.espera ? (
                     r.error ? <span className="cj-row-s bad"><IcoAlerta size={14} />No se pudo registrar · tócalo para ver</span> : <span className="cj-row-s espera"><IcoNube size={14} />{online ? "Enviando…" : "Guardado en la tablet · se envía al volver el internet"}</span>
                   ) : r.anuladoAt ? (
