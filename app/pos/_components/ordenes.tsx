@@ -308,6 +308,10 @@ function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
             <span className="num" style={{ fontSize: 15, fontWeight: 600 }}>{money(it.qty * it.unitPrice)}</span>
           </li>
         ))}
+        <li style={{ borderTop: "1px solid var(--line)", paddingTop: 6, marginTop: 2 }}>
+          <b style={{ fontSize: 16 }}>Total</b>
+          <span className="num" style={{ fontSize: 18, fontWeight: 800 }}>{money(o.total)}</span>
+        </li>
       </ul>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {pill}
