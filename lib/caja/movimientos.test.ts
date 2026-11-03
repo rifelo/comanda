@@ -36,6 +36,13 @@ describe("errorMovimiento", () => {
     expect(errorMovimiento({ ...ok, monto: 40000, detalle: { denominaciones } })).toBeNull();
     expect(errorMovimiento({ ...ok, monto: 50000, detalle: { denominaciones } })).toMatch(/no coincide/);
   });
+  it("any entrada or salida counted by pieces must add up too", () => {
+    const denominaciones = [{ valor: 50000, cantidad: 2 }, { valor: 10000, cantidad: 1 }];
+    const salida = { tipo: "salida", motivo: "retiro", justificacion: "Se lo llevó el dueño" };
+    expect(errorMovimiento({ ...salida, monto: 110000, detalle: { denominaciones } })).toBeNull();
+    expect(errorMovimiento({ ...salida, monto: 100000, detalle: { denominaciones } })).toMatch(/no coincide/);
+    expect(errorMovimiento({ ...ok, motivo: "aporte", monto: 110000, detalle: { denominaciones } })).toBeNull();
+  });
   it("a supplier payment needs the invoice photo, unless the order already has it", () => {
     const pago = { tipo: "salida", monto: 120000, motivo: "pago_pedido", justificacion: "Llegó la leche" };
     expect(errorMovimiento(pago)).toMatch(/factura/);

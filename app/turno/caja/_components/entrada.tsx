@@ -6,11 +6,8 @@ import { errorMovimiento, MOTIVO_CAJA, motivosDe, type MotivoCaja } from "@/lib/
 import type { CajaDenominacion } from "@/lib/types";
 import { IcoAlerta } from "./icons";
 import { plata } from "./model";
-import { Contador, FlowBar, FOTO_VACIA, FotoCaptura, Keypad, MontoGrande, type FotoValor } from "./parts";
+import { FlowBar, FOTO_VACIA, FotoCaptura, Keypad, lineasPiezas, MontoGrande, PiezasPicker, piezasTexto, type FotoValor } from "./parts";
 import type { NuevoMovimiento } from "./salida";
-
-const BILLETES = [50000, 20000, 10000, 5000, 2000];
-const MONEDAS = [1000, 500, 200, 100, 50];
 
 /**
  * «+ Nueva entrada». Sencillo is counted piece by piece (it changes what
@@ -25,22 +22,13 @@ export function EntradaFlow({ actorName, online, onCancel, onRegistrar }: { acto
   const [porque, setPorque] = React.useState("");
   const [foto, setFoto] = React.useState<FotoValor>(FOTO_VACIA);
 
-  const sencillo = motivo === "sencillo";
-  const lineas: CajaDenominacion[] = [...BILLETES, ...MONEDAS].map((valor) => ({ valor, cantidad: piezas[valor] ?? 0 })).filter((l) => l.cantidad > 0);
+  // Every entrada can say which bills came in; sencillo always does.
+  const [porMonto, setPorMonto] = React.useState(false);
+  const sencillo = motivo === "sencillo" || !porMonto;
+  const lineas: CajaDenominacion[] = lineasPiezas(piezas);
   const n = sencillo ? totalContado(lineas) : monto ? Number(monto) : 0;
   const detalle = sencillo ? { denominaciones: lineas } : {};
   const error = errorMovimiento({ tipo: "ingreso", monto: n, motivo, justificacion: porque, detalle });
-
-  const fila = (valor: number) => {
-    const c = piezas[valor] ?? 0;
-    return (
-      <div key={valor} className="cj-den" data-on={c > 0 ? "1" : undefined}>
-        <span className="cj-slab cj-den-v">{plata(valor)}</span>
-        <Contador value={c} onChange={(v) => setPiezas((p) => ({ ...p, [valor]: v }))} label={`${valor >= 2000 ? "billetes" : "monedas"} de ${plata(valor)}`} editable={false} />
-        <span className="cj-den-sub">{c ? plata(c * valor) : "$ 0"}</span>
-      </div>
-    );
-  };
 
   return (
     <>
@@ -56,19 +44,14 @@ export function EntradaFlow({ actorName, online, onCancel, onRegistrar }: { acto
         <section className="cj-col">
           {sencillo ? (
             <>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <span className="cj-lab">¿Qué sencillo entra? · cuenta por denominación</span>
-                <span className="cj-mute" style={{ fontSize: 12 }}>Esto cambia la base del cajón.</span>
-              </div>
-              <div className="cj-den-cols">
-                <div className="cj-den-col"><span className="cj-lab">Billetes</span>{BILLETES.map(fila)}</div>
-                <div className="cj-den-col"><span className="cj-lab">Monedas</span>{MONEDAS.map(fila)}</div>
-              </div>
+              <PiezasPicker piezas={piezas} onChange={setPiezas} verbo="entra" tone="in" />
+              {motivo !== "sencillo" && <button type="button" className="cj-btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setPorMonto(true)}>No sé los billetes · escribir el monto</button>}
             </>
           ) : (
             <>
               <MontoGrande label="¿Cuánto entra?" value={monto} tone="in" sub={MOTIVO_CAJA[motivo].hint} />
               <Keypad value={monto} onChange={setMonto} />
+              <button type="button" className="cj-btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setPorMonto(false)}>Contar por billetes</button>
             </>
           )}
         </section>
@@ -77,7 +60,7 @@ export function EntradaFlow({ actorName, online, onCancel, onRegistrar }: { acto
           <div className="cj-card" style={{ padding: "18px 20px" }}>
             <span className="cj-lab">Total que entra{sencillo ? " · se calcula solo" : ""}</span>
             <span className="cj-slab cj-in cj-total">+ {plata(n)}</span>
-            {sencillo && lineas.length > 0 && <span className="cj-mute" style={{ fontSize: 13 }}>{lineas.map((l) => `${l.cantidad} × ${plata(l.valor).replace("$ ", "")}`).join(" · ")}</span>}
+            {sencillo && lineas.length > 0 && <span className="cj-mute" style={{ fontSize: 13 }}>{piezasTexto(lineas)}</span>}
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span className="cj-lab">¿Por qué? · obligatorio</span>
@@ -101,7 +84,7 @@ export function EntradaFlow({ actorName, online, onCancel, onRegistrar }: { acto
           >
             Registrar entrada
           </button>
-          <span className="cj-fine">{!n ? (sencillo ? "Cuenta las piezas que entran." : "Escribe el monto.") : error ? "Escribe el ¿por qué? para registrar." : `Queda firmado como ${actorName}.`}</span>
+          <span className="cj-fine">{!n ? (sencillo ? "Cuenta los billetes y monedas que entran." : "Escribe el monto.") : error ? "Escribe el ¿por qué? para registrar." : `Queda firmado como ${actorName}.`}</span>
         </aside>
       </div>
     </>
