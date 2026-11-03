@@ -9,6 +9,7 @@ import {
   entregaCaja,
   esperadoCaja,
   faltaJustificar,
+  ventanaDesdeUltimo,
   NOTA_DIFERENCIA_MIN,
   resumenPagos,
   totalContado,
@@ -317,13 +318,22 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
   if (live) return { ok: false, error: "Ya hay un cierre de caja para este turno." };
 
   const template = inst.template as unknown as { inicio: string };
-  const ventana = ventanaTurno({
+  const { data: ultimo } = await db
+    .from("caja_cierres")
+    .select("ventana_hasta")
+    .eq("restaurant_id", actor.restaurantId)
+    .neq("status", "rechazado")
+    .order("ventana_hasta", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const delTurno = ventanaTurno({
     date: inst.date as string,
     inicio: template.inicio,
     tz: actor.tz,
     opened_at: (inst.opened_at as string | null) ?? null,
     closed_at: (inst.closed_at as string | null) ?? null,
   });
+  const ventana = ventanaDesdeUltimo(delTurno, (ultimo?.ventana_hasta as string | undefined) ?? null);
   const win = { orgId: actor.orgId, restaurantId: actor.restaurantId, desde: ventana.desde, hasta: ventana.hasta };
   const [pagos, mov] = await Promise.all([sumPagosVentana(db, win), sumMovimientosVentana(db, win)]);
 

@@ -33,6 +33,21 @@ export function esperadoCaja(baseInicial: number, efectivoVentas: number, ingres
   return baseInicial + efectivoVentas + ingresos - salidas;
 }
 
+/**
+ * The drawer is never emptied between counts, so the arqueo compares
+ * everything since the last arqueo of the sede (its window end), not since
+ * the turno opened: when a turno skips its count, the next one still
+ * expects that turno's sales and movements. The base it opened with is the
+ * one that arqueo left, so the chain holds. Without a previous arqueo (or
+ * one ending after this window), the turno's own window.
+ */
+export function ventanaDesdeUltimo(turno: { desde: string; hasta: string }, ultimoHasta: string | null): { desde: string; hasta: string } {
+  if (!ultimoHasta) return turno;
+  const u = Date.parse(ultimoHasta);
+  if (!Number.isFinite(u) || u >= Date.parse(turno.hasta)) return turno;
+  return { desde: new Date(u).toISOString(), hasta: turno.hasta };
+}
+
 /** Shortest explanation accepted for a difference. */
 export const NOTA_DIFERENCIA_MIN = 3;
 
