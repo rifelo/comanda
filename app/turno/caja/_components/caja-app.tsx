@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { BASE_CAJA_COP } from "@/lib/caja/base";
 import { esperadoCaja } from "@/lib/caja/arqueo";
 import { MOTIVO_CAJA, porConfirmar } from "@/lib/caja/movimientos";
 import type { CierreInput } from "@/lib/caja/cierres";
@@ -343,7 +344,7 @@ export function CajaApp({ estado, tz, actor, inicial, flow }: {
           cierre={vivo}
           baseInicial={estado.baseInicial}
           baseInicialHint={baseHint}
-          baseDejadaSugerida={estado.base.monto}
+          baseDejadaSugerida={BASE_CAJA_COP}
           movimientos={rows}
           resultado={resultado}
           pendiente={!!cierrePend}

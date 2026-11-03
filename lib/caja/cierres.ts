@@ -15,7 +15,7 @@ import {
   ventanaTurno,
   type ResumenPagos,
 } from "./arqueo";
-import { planBase, type PlanBase } from "./base";
+import { BASE_CAJA_COP, planBase, type PlanBase } from "./base";
 import { sumMovimientosVentana } from "./movimientos-db";
 
 // DB helpers for cash closes (caja_cierres, 0037). Same shape as
@@ -331,7 +331,9 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
   const contado = totalContado(denominaciones);
   const esperado = esperadoCaja(data.baseInicial, pagos.efectivo, mov.ingresos, mov.salidas);
   const diferencia = diferenciaCaja(contado, esperado);
-  const plan = planBase(denominaciones, data.baseDejada);
+  // Always the house float; the tablet can lower it afterwards (ajustarBase) when the pieces don't reach.
+  const baseDejada = BASE_CAJA_COP;
+  const plan = planBase(denominaciones, baseDejada);
 
   const { data: row, error } = await db
     .from("caja_cierres")
@@ -353,7 +355,7 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
       esperado_cop: Math.max(0, esperado),
       contado_cop: contado,
       diferencia_cop: diferencia,
-      base_dejada_cop: data.baseDejada,
+      base_dejada_cop: baseDejada,
       denominaciones,
       base_denominaciones: plan.lineas,
       base_exacta: plan.exacto,
@@ -373,8 +375,8 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
     esperado,
     diferencia,
     baseInicial: data.baseInicial,
-    baseDejada: data.baseDejada,
-    entrega: entregaCaja(contado, data.baseDejada),
+    baseDejada,
+    entrega: entregaCaja(contado, baseDejada),
     pagos,
     ingresos: mov.ingresos,
     salidas: mov.salidas,

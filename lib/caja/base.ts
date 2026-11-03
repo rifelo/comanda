@@ -20,6 +20,13 @@
  */
 import type { CajaCierre, CajaDenominacion } from "@/lib/types";
 
+/**
+ * The float every arqueo leaves in the drawer for the next turno (owner's
+ * rule since 02-nov-2026). «No me alcanzan las piezas · ajustar base» can
+ * still lower it when the counted pieces can't make it.
+ */
+export const BASE_CAJA_COP = 200_000;
+
 export interface PlanBase {
   objetivo: number;
   /** Pieces that stay in the drawer, largest first. */
