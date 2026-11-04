@@ -148,15 +148,20 @@ export async function recibirPedido(input: unknown): Promise<RecibirResult> {
     else await recomputeProductosForIngrediente(admin, orgId, r.ingredienteId).catch((e) => console.error("[recibirPedido] recompute:", e));
   }
 
+  // What the owner already paid for it (online, before it came): the drawer only pays the rest.
+  const { data: previos } = await admin.from("compra_pagos").select("monto_cop").eq("organization_id", orgId).eq("compra_id", d.compraId);
+  const yaPagado = (previos ?? []).reduce((a, r) => a + Number(r.monto_cop), 0);
+  const resta = Math.max(0, d.facturaTotal - yaPagado);
+
   let movimientoId: string | null = null;
-  if (d.pago === "efectivo_caja") {
+  if (d.pago === "efectivo_caja" && resta > 0) {
     const shiftInstanceId = await turnoAbierto(admin, ctx.restaurantId, todayInTz(ctx.sede.tz));
     const r = await crearMovimiento(admin, {
       orgId,
       restaurantId: ctx.restaurantId,
       shiftInstanceId,
       tipo: "salida",
-      monto: d.facturaTotal,
+      monto: resta,
       motivo: "pago_pedido",
       justificacion: justificacionPago({ folio, proveedor, nota: d.nota }),
       compraId: d.compraId,
@@ -174,11 +179,27 @@ export async function recibirPedido(input: unknown): Promise<RecibirResult> {
       factura_foto_path: d.fotoFactura,
       factura_total_cop: d.facturaTotal,
       total_cop: d.facturaTotal,
-      pago_metodo: d.pago,
+      // Nothing left to pay: the owner had paid it all.
+      pago_metodo: resta === 0 && yaPagado > 0 && d.pago !== "pendiente" ? "dueno" : d.pago,
       caja_movimiento_id: movimientoId,
       recibido_nota: d.nota || null,
     })
     .eq("id", d.compraId);
+  // The payment made on reception joins the order's payments (compra_pagos).
+  const pagoAhora = d.pago === "efectivo_caja" ? (movimientoId ? resta : 0) : d.pago === "transferencia" ? resta : 0;
+  if (pagoAhora > 0) {
+    const { error } = await admin.from("compra_pagos").insert({
+      organization_id: orgId,
+      compra_id: d.compraId,
+      fecha: todayInTz(ctx.sede.tz),
+      monto_cop: pagoAhora,
+      medio: d.pago,
+      caja_movimiento_id: movimientoId,
+      registered_by: ctx.actor.profileId,
+      note: "Registrado al recibir en la tablet",
+    });
+    if (error) console.error("[recibirPedido] compra_pagos:", error);
+  }
   // What the team flagged as missing and was waiting for this order is in.
   await admin
     .from("inventario_faltantes")
@@ -192,6 +213,6 @@ export async function recibirPedido(input: unknown): Promise<RecibirResult> {
   revalidatePath("/inventario/pedidos");
   revalidatePath("/caja");
   revalidatePath("/inventario", "layout");
-  if (d.pago === "efectivo_caja" && !movimientoId) return { ok: false, error: `El pedido n.º ${folio} quedó recibido, pero la salida de caja no se guardó: regístrala en Caja → Ingresos y salidas.` };
-  return { ok: true, folio, salida: movimientoId ? d.facturaTotal : null };
+  if (d.pago === "efectivo_caja" && resta > 0 && !movimientoId) return { ok: false, error: `El pedido n.º ${folio} quedó recibido, pero la salida de caja no se guardó: regístrala en Caja → Ingresos y salidas.` };
+  return { ok: true, folio, salida: movimientoId ? resta : null };
 }

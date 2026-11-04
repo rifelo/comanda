@@ -2,6 +2,7 @@ import { ahoraMs, actorOf, requireEquipo } from "@/app/turno/_components/gate";
 import { EquipoShell } from "@/app/turno/_components/equipo";
 import { fechaCorta, todayInTz } from "@/lib/utils";
 import { listCompras } from "@/lib/compras/compras-db";
+import { MEDIO_PAGO } from "@/lib/compras/pagos";
 import { nombrePaquete, piezaDe } from "@/lib/inventario/niveles";
 import { RecibirScreen } from "./recibir-screen";
 
@@ -32,6 +33,8 @@ export default async function RecibirPage() {
           atrasado: !!c.entrega_esperada && c.entrega_esperada < today,
           nota: c.note,
           estimado: c.total_cop,
+          yaPagado: c.pagos.reduce((a, pg) => a + pg.monto, 0),
+          pagadoCon: c.pagos.length ? [...new Set(c.pagos.map((pg) => MEDIO_PAGO[pg.medio]))].join(" + ") : null,
           lineas: c.items.map((it) => {
             const pieza = it.unit ? piezaDe({ unit: it.unit, pack_qty: it.pack_qty, pieza_qty: it.pieza_qty }) : null;
             return {

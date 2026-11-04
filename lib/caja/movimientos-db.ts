@@ -193,15 +193,28 @@ export async function comprasPorPagar(db: SupabaseClient, orgId: string, limit =
   }));
 }
 
-/** Tie a cash payment to the order it paid: the order stops being owed. */
-export async function marcarCompraPagada(db: SupabaseClient, orgId: string, compraId: string, movimientoId: string): Promise<void> {
-  const { error } = await db
+/** Tie a cash payment to the order it paid: the order stops being owed, and the payment joins its compra_pagos. */
+export async function marcarCompraPagada(db: SupabaseClient, orgId: string, compraId: string, movimientoId: string, pago: { monto: number; fecha: string; by: string | null }): Promise<void> {
+  const { data, error } = await db
     .from("compras")
     .update({ pago_metodo: "efectivo_caja", caja_movimiento_id: movimientoId })
     .eq("organization_id", orgId)
     .eq("id", compraId)
-    .is("caja_movimiento_id", null);
+    .is("caja_movimiento_id", null)
+    .select("id");
   if (error) console.error("[marcarCompraPagada]", error);
+  if (!data?.length) return;
+  const { error: e2 } = await db.from("compra_pagos").insert({
+    organization_id: orgId,
+    compra_id: compraId,
+    fecha: pago.fecha,
+    monto_cop: pago.monto,
+    medio: "efectivo_caja",
+    caja_movimiento_id: movimientoId,
+    registered_by: pago.by,
+    note: "Pago a proveedor desde la caja",
+  });
+  if (e2) console.error("[marcarCompraPagada] compra_pagos:", e2);
 }
 
 /**
@@ -235,6 +248,8 @@ export async function anularMovimiento(db: SupabaseClient, scope: { orgId: strin
     console.error("[anularMovimiento]", error);
     return { ok: false, error: "No se pudo anular." };
   }
+  // The cash never left: its payment goes off the order, which is owed again.
+  await db.from("compra_pagos").delete().eq("organization_id", scope.orgId).eq("caja_movimiento_id", id);
   if (m.compra_id) {
     await db.from("compras").update({ pago_metodo: "pendiente", caja_movimiento_id: null }).eq("id", m.compra_id as string).eq("caja_movimiento_id", id);
   }

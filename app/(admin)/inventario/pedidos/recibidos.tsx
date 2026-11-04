@@ -3,6 +3,8 @@ import type { Compra } from "@/lib/compras/compras-db";
 import { diferencias, PAGO_RECEPCION } from "@/lib/compras/recepcion";
 import { cantidadLegible } from "@/lib/inventario/niveles";
 import { posMoney } from "@/lib/pos/types";
+import { totalCompra } from "@/lib/compras/pagos";
+import { PagosCompra } from "./pagos-compra";
 import { fechaCorta, formatTime, todayInTz } from "@/lib/utils";
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--muted)" };
@@ -12,7 +14,7 @@ const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", text
  * the invoice total and how it was paid, what came different from what was
  * ordered, and both photos (signed for an hour; the bucket is private).
  */
-export async function Recibidos({ compras, tz }: { compras: Compra[]; tz: string }) {
+export async function Recibidos({ compras, tz, today }: { compras: Compra[]; tz: string; today: string }) {
   const storage = createSupabaseAdminClient().storage.from("compras-fotos");
   const paths = compras.flatMap((c) => [c.recibido_foto_path, c.factura_foto_path]).filter((p): p is string => !!p);
   const { data: signed } = paths.length ? await storage.createSignedUrls(paths, 3600) : { data: [] };
@@ -53,6 +55,7 @@ export async function Recibidos({ compras, tz }: { compras: Compra[]; tz: string
                   </div>
                 )}
                 {c.recibido_nota && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>«{c.recibido_nota}»</div>}
+                <PagosCompra compraId={c.id} folio={c.folio} total={totalCompra(c)} pagos={c.pagos} today={today} />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 {foto(c.recibido_foto_path, `Lo que llegó · pedido ${c.folio}`)}

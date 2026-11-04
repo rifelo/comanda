@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listFaltantesAbiertos, type FaltanteReporte } from "@/lib/inventario/faltantes-db";
 import { fechaMas, porPedir, type LineaPedir, type PedirItem, type ProveedorPedido, type SolicitudAbierta } from "./compras";
+import type { PagoCompra } from "./pagos";
 
 // DB helpers for purchasing (0047). Same shape as lib/inventario/faltantes-db.ts:
 // they take either the RLS client (admin panel) or the service-role client
@@ -128,13 +129,15 @@ export interface Compra {
   recibido_foto_path: string | null;
   factura_foto_path: string | null;
   factura_total_cop: number | null;
-  pago_metodo: "efectivo_caja" | "transferencia" | "pendiente" | null;
+  pago_metodo: "efectivo_caja" | "transferencia" | "pendiente" | "dueno" | null;
   recibido_nota: string | null;
   items: CompraItem[];
+  /** What was paid for it (compra_pagos, mig 0069), oldest first. */
+  pagos: PagoCompra[];
 }
 
 const COMPRA_SELECT =
-  "id, folio, status, origen, proveedor_id, pedido_at, entrega_esperada, recibido_at, total_cop, note, recibido_foto_path, factura_foto_path, factura_total_cop, pago_metodo, recibido_nota, proveedor:proveedores(name, whatsapp), pidio:profiles!compras_pedido_by_fkey(full_name), recibio:profiles!compras_recibido_by_fkey(full_name), compra_items(id, ingrediente_id, nombre, qty_pedida, qty_recibida, costo_total_cop, vence_el, created_at, ingrediente:ingredientes(name, unit, pack_label, pack_qty, pieza_qty, controla_vencimiento))";
+  "id, folio, status, origen, proveedor_id, pedido_at, entrega_esperada, recibido_at, total_cop, note, recibido_foto_path, factura_foto_path, factura_total_cop, pago_metodo, recibido_nota, proveedor:proveedores(name, whatsapp), pidio:profiles!compras_pedido_by_fkey(full_name), recibio:profiles!compras_recibido_by_fkey(full_name), compra_pagos(id, fecha, monto_cop, medio, referencia, note, created_at), compra_items(id, ingrediente_id, nombre, qty_pedida, qty_recibida, costo_total_cop, vence_el, created_at, ingrediente:ingredientes(name, unit, pack_label, pack_qty, pieza_qty, controla_vencimiento))";
 
 function mapCompra(r: Record<string, unknown>): Compra {
   const prov = r.proveedor as { name: string; whatsapp: string | null } | { name: string; whatsapp: string | null }[] | null;
@@ -180,6 +183,16 @@ function mapCompra(r: Record<string, unknown>): Compra {
     pago_metodo: (r.pago_metodo as Compra["pago_metodo"]) ?? null,
     recibido_nota: (r.recibido_nota as string | null) ?? null,
     items,
+    pagos: ((r.compra_pagos ?? []) as Array<Record<string, unknown>>)
+      .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+      .map((pg): PagoCompra => ({
+        id: pg.id as string,
+        fecha: pg.fecha as string,
+        monto: Number(pg.monto_cop),
+        medio: pg.medio as PagoCompra["medio"],
+        referencia: (pg.referencia as string | null) ?? null,
+        note: (pg.note as string | null) ?? null,
+      })),
   };
 }
 

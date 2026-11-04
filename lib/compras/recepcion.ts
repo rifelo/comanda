@@ -5,12 +5,13 @@
  * app/turno/inventario/recibir/actions.ts.
  */
 
-export const PAGOS_RECEPCION = ["efectivo_caja", "transferencia", "pendiente"] as const;
+export const PAGOS_RECEPCION = ["efectivo_caja", "transferencia", "dueno", "pendiente"] as const;
 export type PagoRecepcion = (typeof PAGOS_RECEPCION)[number];
 
 export const PAGO_RECEPCION: Record<PagoRecepcion, { label: string; hint: string }> = {
   efectivo_caja: { label: "Efectivo de la caja", hint: "Se pagó con plata del cajón: queda una salida de caja" },
   transferencia: { label: "Transferencia", hint: "Lo pagó el dueño por transferencia: la caja no cambia" },
+  dueno: { label: "Ya lo pagó el dueño", hint: "Se pagó antes (en línea, con tarjeta…): la caja no cambia" },
   pendiente: { label: "Queda debiendo", hint: "Todavía no se ha pagado" },
 };
 

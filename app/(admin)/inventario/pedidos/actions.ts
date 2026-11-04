@@ -9,6 +9,7 @@ import { cancelarPedido, crearPedido, loadPorPedir } from "@/lib/compras/compras
 import { registrarEstados } from "@/lib/inventario/faltantes-db";
 import { cantidadLegible, piezaDe } from "@/lib/inventario/niveles";
 import { todayInTz } from "@/lib/utils";
+import { MEDIOS_DUENO, PagoCompraSchema, resumenPago, totalCompra } from "@/lib/compras/pagos";
 
 function revalidate() {
   for (const p of ["/inventario/pedidos", "/notificaciones"]) revalidatePath(p);
@@ -75,6 +76,8 @@ const ManualSchema = z.object({
   llega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   note: z.string().trim().max(300).optional(),
   totalEstimado: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  /** «Ya lo pagué»: what the owner paid when ordering (online, by card…). */
+  pago: z.object({ monto: z.number().int().positive().max(100_000_000), medio: z.enum(MEDIOS_DUENO), referencia: z.string().trim().max(80).optional() }).nullable().optional(),
   // An inventory item (qty typed in its pieces when it has them) or free text.
   lineas: z.array(z.object({
     ingredienteId: z.string().uuid().nullable(),
@@ -118,6 +121,22 @@ export async function registrarPedidoManual(input: unknown): Promise<{ ok: true;
   const res = await crearPedido(supabase, { orgId, userId: user.id, proveedorId: d.proveedorId, entregaDias: dias, today, note: d.note || null, lineas, solicitudIds: [], faltanteIds: [] });
   if (!res.ok) return res;
   if (d.totalEstimado) await supabase.from("compras").update({ total_cop: d.totalEstimado }).eq("id", res.id);
+  if (d.pago) {
+    const { error } = await supabase.from("compra_pagos").insert({
+      organization_id: orgId,
+      compra_id: res.id,
+      fecha: today,
+      monto_cop: d.pago.monto,
+      medio: d.pago.medio,
+      referencia: d.pago.referencia || null,
+      registered_by: user.id,
+    });
+    if (error) {
+      console.error("[registrarPedidoManual] pago:", error);
+      revalidate();
+      return { ok: false, error: `El pedido n.º ${res.folio} quedó registrado, pero el pago no se guardó: regístralo en el pedido.` };
+    }
+  }
   revalidate();
   return { ok: true, folio: res.folio };
 }
@@ -237,6 +256,8 @@ export async function recibirRapido(id: string): Promise<{ ok: true; folio: numb
   const resolved = { resolved_at: ahora, resolved_by: user.id, resolved_note: `Llegó en el pedido n.º ${folio}` };
   await supabase.from("inventario_faltantes").update(resolved).eq("organization_id", orgId).eq("compra_id", id).is("resolved_at", null);
   if (ids.length) await supabase.from("inventario_faltantes").update(resolved).eq("organization_id", orgId).in("ingrediente_id", ids).is("resolved_at", null);
+  // Paid online before it came: it is not owed.
+  await syncPagoMetodo(supabase, orgId, id);
   revalidate();
   revalidatePath("/caja");
   return { ok: true, folio };
@@ -295,4 +316,80 @@ export async function nuevoALista(input: unknown): Promise<{ ok: true; ingredien
   }
   revalidate();
   return { ok: true, ingredienteId: ing.id as string };
+}
+
+/**
+ * After a payment changes: a received order that is now fully paid stops
+ * showing as owed (pago_metodo «dueno»), and one that is owed again goes back
+ * to «pendiente». Orders still on their way keep pago_metodo null: the tablet
+ * sets it on reception.
+ */
+async function syncPagoMetodo(supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"], orgId: string, compraId: string) {
+  const { data: c } = await supabase
+    .from("compras")
+    .select("status, factura_total_cop, total_cop, pago_metodo, compra_pagos(monto_cop, medio)")
+    .eq("organization_id", orgId)
+    .eq("id", compraId)
+    .maybeSingle();
+  if (!c || !["recibido", "cerrada"].includes(c.status as string)) return;
+  const pagos = ((c.compra_pagos ?? []) as { monto_cop: number; medio: string }[]).map((p) => ({ monto: Number(p.monto_cop), medio: p.medio as never }));
+  const r = resumenPago(totalCompra({ factura_total_cop: c.factura_total_cop === null ? null : Number(c.factura_total_cop), total_cop: c.total_cop === null ? null : Number(c.total_cop) }), pagos);
+  const pm = c.pago_metodo as string | null;
+  if (r.debe !== null && r.debe <= 0 && (pm === "pendiente" || pm === null)) await supabase.from("compras").update({ pago_metodo: "dueno" }).eq("id", compraId);
+  if (r.debe !== null && r.debe > 0 && pm === "dueno") await supabase.from("compras").update({ pago_metodo: "pendiente" }).eq("id", compraId);
+}
+
+/**
+ * A payment the owner made for an order outside the drawer: online with a
+ * card, PSE, a transfer, Nequi, their own cash. An order may take several
+ * (deposit + balance). The drawer's cash is never registered here: it goes
+ * out from the tablet so the arqueo counts it.
+ */
+export async function registrarPagoCompra(input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = PagoCompraSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Revisa el monto, la fecha y cómo pagaste." };
+  const d = parsed.data;
+  const [{ user, profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const orgId = profile.organization_id;
+  if (d.fecha > todayInTz(sede?.tz ?? "America/Bogota")) return { ok: false, error: "La fecha del pago no puede ser futura." };
+  const { data: c } = await supabase.from("compras").select("id, status").eq("organization_id", orgId).eq("id", d.compraId).maybeSingle();
+  if (!c) return { ok: false, error: "Ese pedido ya no existe." };
+  if (c.status === "cancelada") return { ok: false, error: "Ese pedido está cancelado." };
+  const { error } = await supabase.from("compra_pagos").insert({
+    organization_id: orgId,
+    compra_id: d.compraId,
+    fecha: d.fecha,
+    monto_cop: d.monto,
+    medio: d.medio,
+    referencia: d.referencia || null,
+    note: d.note || null,
+    registered_by: user.id,
+  });
+  if (error) {
+    console.error("[registrarPagoCompra]", error);
+    return { ok: false, error: "No se pudo guardar el pago." };
+  }
+  await syncPagoMetodo(supabase, orgId, d.compraId);
+  revalidate();
+  revalidatePath("/gastos");
+  return { ok: true };
+}
+
+/** Delete a payment the owner registered by mistake. The drawer's cash is voided from Caja instead. */
+export async function borrarPagoCompra(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Pago inválido." };
+  const { profile, supabase } = await requireAdmin();
+  const orgId = profile.organization_id;
+  const { data: p } = await supabase.from("compra_pagos").select("id, compra_id, medio").eq("organization_id", orgId).eq("id", id).maybeSingle();
+  if (!p) return { ok: false, error: "Ese pago ya no existe." };
+  if (p.medio === "efectivo_caja") return { ok: false, error: "Este pago salió de la caja: se anula desde Caja → Ingresos y salidas." };
+  const { error } = await supabase.from("compra_pagos").delete().eq("organization_id", orgId).eq("id", id);
+  if (error) {
+    console.error("[borrarPagoCompra]", error);
+    return { ok: false, error: "No se pudo borrar el pago." };
+  }
+  await syncPagoMetodo(supabase, orgId, p.compra_id as string);
+  revalidate();
+  revalidatePath("/gastos");
+  return { ok: true };
 }
