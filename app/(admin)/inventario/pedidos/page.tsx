@@ -13,6 +13,7 @@ import { Recibidos } from "./recibidos";
 import { PorPedirMobile, type CaminoView, type ItemUnidad, type NuevoView } from "./por-pedir-mobile";
 import { buildPorPedirMovil, qtyLegible, totales } from "@/lib/compras/por-pedir";
 import { cuando, horaLocal, llegaLabel } from "@/lib/inventario/acabando";
+import { totalCompra } from "@/lib/compras/pagos";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pedidos · Comanda" };
@@ -76,6 +77,8 @@ export default async function ComprasPage() {
       atrasado: !!c.entrega_esperada && c.entrega_esperada < today,
       lineas,
       wa: waLink(c.proveedor_whatsapp, mensajePedido({ negocio: sede?.name ?? "la cafetería", folio: c.folio, lineas, nota: c.note })),
+      total: totalCompra(c),
+      pagos: c.pagos,
     };
   });
 
@@ -141,7 +144,7 @@ export default async function ComprasPage() {
         proveedores={data.proveedores.map((p) => ({ id: p.id, name: p.name, whatsapp: p.whatsapp, dias: p.dias_pedido_idx, entregaDias: p.entrega_dias }))}
         items={data.items.map((i) => { const pieza = piezaDe(i); return { id: i.id, name: i.name, enQue: pieza ? nombrePaquete(i, 2) : i.unit }; })}
         today={today}
-        recibidos={<Recibidos compras={recibidos} tz={tz} />}
+        recibidos={<Recibidos compras={recibidos} tz={tz} today={today} />}
       />
       </div>
     </div>

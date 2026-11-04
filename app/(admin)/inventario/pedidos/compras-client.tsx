@@ -7,6 +7,8 @@ import { parseCount } from "@/lib/inventario/conteo";
 import { NIVELES, type Nivel } from "@/lib/inventario/niveles";
 import { armarPedido, cancelarPedidoAction, descartarSolicitud, guardarDiasProveedor, type ArmarPedidoResult } from "./actions";
 import { NuevoPedido } from "./nuevo-pedido";
+import { PagosCompra } from "./pagos-compra";
+import type { PagoCompra } from "@/lib/compras/pagos";
 
 export interface LineaView {
   key: string;
@@ -38,6 +40,9 @@ export interface PedidoView {
   atrasado: boolean;
   lineas: { nombre: string; cantidad: string }[];
   wa: string | null;
+  /** Estimated total (null = none) and what was paid already. */
+  total: number | null;
+  pagos: PagoCompra[];
 }
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--muted)" };
@@ -71,7 +76,7 @@ export function ComprasClient({ grupos, enCamino, proveedores, items, today, rec
         <div style={label}>Pedidos en camino · {enCamino.length}</div>
         {enCamino.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 10 }}>Ningún pedido pendiente de llegar.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
-          {enCamino.map((p) => <Pedido key={p.id} p={p} />)}
+          {enCamino.map((p) => <Pedido key={p.id} p={p} today={today} />)}
         </div>
       </section>
 
@@ -172,7 +177,7 @@ function Grupo({ g }: { g: GrupoView }) {
   );
 }
 
-function Pedido({ p }: { p: PedidoView }) {
+function Pedido({ p, today }: { p: PedidoView; today: string }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -198,6 +203,7 @@ function Pedido({ p }: { p: PedidoView }) {
         <button type="button" className="cmd-btn ghost sm" onClick={() => void cancelar()} disabled={busy}>{busy ? "…" : "Cancelar pedido"}</button>
         <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Se recibe desde el tablet cuando llegue.</span>
       </div>
+      <PagosCompra compraId={p.id} folio={p.folio} total={p.total} pagos={p.pagos} today={today} />
       {error && <div role="alert" style={{ fontSize: 12, color: "var(--red)", marginTop: 8 }}>{error}</div>}
     </div>
   );

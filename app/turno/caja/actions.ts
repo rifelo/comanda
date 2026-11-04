@@ -219,7 +219,7 @@ export async function registrarMovimientoCaja(input: unknown): Promise<Registrar
     createdAt: at ? new Date(at).toISOString() : undefined,
   });
   if (!r.ok) return { ...r, retry: true };
-  if (d.compraId) await marcarCompraPagada(ctx.admin, ctx.organizationId, d.compraId, r.id);
+  if (d.compraId) await marcarCompraPagada(ctx.admin, ctx.organizationId, d.compraId, r.id, { monto: d.monto, fecha: todayInTz(ctx.sede.tz), by: ctx.actor.profileId });
   revalidatePath("/turno/caja");
   revalidatePath("/caja");
   if (d.compraId) revalidatePath("/inventario/pedidos");

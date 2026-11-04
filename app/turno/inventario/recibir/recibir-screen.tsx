@@ -16,7 +16,11 @@ const label: React.CSSProperties = { fontSize: 11, letterSpacing: ".1em", textTr
 const pick = (on: boolean): React.CSSProperties => ({ ...chip, height: 46, textTransform: "none", letterSpacing: 0, fontSize: 13.5, border: `1.5px solid ${on ? "var(--ink)" : "var(--rule)"}`, background: on ? "var(--ink)" : "transparent", color: on ? "var(--paper-lt)" : "var(--ink)" });
 
 interface Linea { id: string; nombre: string; pedida: number; enQue: string; enInventario: boolean }
-interface Pedido { id: string; folio: number; proveedor: string; pedido: string; llega: string | null; atrasado: boolean; nota: string | null; estimado: number | null; lineas: Linea[] }
+interface Pedido {
+  id: string; folio: number; proveedor: string; pedido: string; llega: string | null; atrasado: boolean; nota: string | null; estimado: number | null; lineas: Linea[];
+  /** What the owner already paid for it (online, before it came), and how. */
+  yaPagado: number; pagadoCon: string | null;
+}
 
 const num = (n: number) => String(n).replace(".", ",");
 
@@ -68,7 +72,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   const [fotoRecibido, setFotoRecibido] = React.useState<string | null>(null);
   const [fotoFactura, setFotoFactura] = React.useState<string | null>(null);
   const [total, setTotal] = React.useState("");
-  const [pago, setPago] = React.useState<PagoRecepcion | null>(null);
+  const [pago, setPago] = React.useState<PagoRecepcion | null>(p.yaPagado > 0 ? "dueno" : null);
   const [nota, setNota] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -80,7 +84,9 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
     const lineas = p.lineas.map((l) => ({ itemId: l.id, recibida: (cant[l.id] ?? "").trim() ? parseCount(cant[l.id]) : null, costo: (costo[l.id] ?? "").trim() ? parseMonto(costo[l.id]) : null }));
     const invalid = errorRecepcion({ lineas, fotoRecibido, fotoFactura, facturaTotal: t, pago });
     if (invalid) return setError(invalid);
-    if (pago === "efectivo_caja" && !window.confirm(`Se registra una salida de caja de ${posMoney(t ?? 0)} por el pedido n.º ${p.folio}. ¿Continuar?`)) return;
+    const resta = Math.max(0, (t ?? 0) - p.yaPagado);
+    if (pago === "efectivo_caja" && resta === 0) return setError("El dueño ya pagó todo el pedido: elige «Ya lo pagó el dueño».");
+    if (pago === "efectivo_caja" && !window.confirm(`Se registra una salida de caja de ${posMoney(resta)} por el pedido n.º ${p.folio}. ¿Continuar?`)) return;
     setBusy(true);
     setError(null);
     const r = await recibirPedido({ compraId: p.id, lineas, fotoRecibido, fotoFactura, facturaTotal: t, pago, nota: nota.trim() || undefined });
@@ -96,6 +102,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
         <div className="font-bold" style={{ fontSize: 26, lineHeight: 1.1 }}>Recibir #{p.folio} · {p.proveedor}</div>
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4 }}>Pedido el {p.pedido}{p.llega ? ` · ${p.atrasado ? "debía llegar" : "llega"} ${p.llega}` : ""}{p.estimado ? ` · estimado ${posMoney(p.estimado)}` : ""}</div>
         {p.nota && <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>«{p.nota}»</div>}
+        {p.yaPagado > 0 && <div style={{ fontSize: 13, color: "var(--green)", fontWeight: 700, marginTop: 6 }}>El dueño ya pagó {posMoney(p.yaPagado)}{p.pagadoCon ? ` (${p.pagadoCon})` : ""}: no se paga de la caja.</div>}
       </div>
 
       <section aria-label="Conteo">
@@ -140,7 +147,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
                 <button key={m} type="button" role="radio" aria-checked={pago === m} title={PAGO_RECEPCION[m].hint} onClick={() => setPago(m)} style={pick(pago === m)}>{PAGO_RECEPCION[m].label}</button>
               ))}
             </div>
-            {pago && <div style={{ fontSize: 12, color: pago === "efectivo_caja" ? "var(--red)" : "var(--muted)", marginTop: 6, fontWeight: pago === "efectivo_caja" ? 600 : 400 }}>{pago === "efectivo_caja" && t ? `Sale ${posMoney(t)} de la caja con la justificación del pedido.` : PAGO_RECEPCION[pago].hint}.</div>}
+            {pago && <div style={{ fontSize: 12, color: pago === "efectivo_caja" ? "var(--red)" : "var(--muted)", marginTop: 6, fontWeight: pago === "efectivo_caja" ? 600 : 400 }}>{pago === "efectivo_caja" && t ? `Sale ${posMoney(Math.max(0, t - p.yaPagado))} de la caja con la justificación del pedido${p.yaPagado > 0 ? ` (el resto ya lo pagó el dueño)` : ""}.` : PAGO_RECEPCION[pago].hint}.</div>}
           </div>
           <input value={nota} onChange={(e) => setNota(e.target.value)} maxLength={300} placeholder="Nota (algo llegó dañado, faltó algo, quién pagó…)" aria-label="Nota de la recepción" style={field} />
         </div>

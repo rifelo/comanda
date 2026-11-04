@@ -7,6 +7,7 @@ import { parseCount } from "@/lib/inventario/conteo";
 import { tokens } from "@/lib/inventario/propuestas";
 import { parseMonto } from "@/lib/caja/movimientos";
 import { registrarPedidoManual } from "./actions";
+import { MEDIO_PAGO, MEDIOS_DUENO } from "@/lib/compras/pagos";
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--muted)" };
 const input: React.CSSProperties = { height: 40, padding: "0 10px", border: "1.5px solid var(--rule)", borderRadius: 4, background: "var(--paper-lt)", color: "var(--ink)", fontSize: 16, outline: "none", minWidth: 0 };
@@ -32,6 +33,11 @@ export function NuevoPedido({ items, proveedores, today }: {
   const [lineas, setLineas] = React.useState<Linea[]>([{ key: 1, item: null, nombre: "", qty: "" }]);
   const [total, setTotal] = React.useState("");
   const [note, setNote] = React.useState("");
+  // «Ya lo pagué»: bought online / paid when ordering.
+  const [pagado, setPagado] = React.useState(false);
+  const [medio, setMedio] = React.useState<(typeof MEDIOS_DUENO)[number]>("tarjeta");
+  const [montoPago, setMontoPago] = React.useState("");
+  const [ref, setRef] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [ok, setOk] = React.useState<string | null>(null);
@@ -61,9 +67,15 @@ export function NuevoPedido({ items, proveedores, today }: {
     }
     const t = total.trim() ? parseMonto(total) : null;
     if (total.trim() && t === null) return setError("El total estimado no es un monto.");
+    let pago: { monto: number; medio: (typeof MEDIOS_DUENO)[number]; referencia?: string } | null = null;
+    if (pagado) {
+      const m = parseMonto(montoPago.trim() || total);
+      if (m === null || m <= 0) return setError("Escribe cuánto pagaste.");
+      pago = { monto: m, medio, referencia: ref.trim() || undefined };
+    }
     setBusy(true);
     setError(null);
-    const r = await registrarPedidoManual({ proveedorId: prov || null, llega, note: note.trim() || undefined, totalEstimado: t, lineas: payload });
+    const r = await registrarPedidoManual({ proveedorId: prov || null, llega, note: note.trim() || undefined, totalEstimado: t ?? pago?.monto ?? null, lineas: payload, pago });
     setBusy(false);
     if (!r.ok) return setError(r.error);
     setOk(`Pedido n.º ${r.folio} registrado: ya aparece en la tablet en «Pedidos por llegar».`);
@@ -71,6 +83,9 @@ export function NuevoPedido({ items, proveedores, today }: {
     setLineas([{ key: 1, item: null, nombre: "", qty: "" }]);
     setTotal("");
     setNote("");
+    setPagado(false);
+    setMontoPago("");
+    setRef("");
     router.refresh();
   }
 
@@ -115,6 +130,31 @@ export function NuevoPedido({ items, proveedores, today }: {
       <button type="button" onClick={add} className="cmd-btn ghost sm" style={{ alignSelf: "flex-start" }}>＋ Otra línea</button>
 
       <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="Nota (cómo se pidió, a quién, forma de pago acordada…)" aria-label="Nota del pedido" style={input} />
+
+      <label className="flex items-center" style={{ gap: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+        <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} style={{ width: 20, height: 20, accentColor: "var(--ink)" }} />
+        Ya lo pagué (en línea, con tarjeta, PSE, transferencia…)
+      </label>
+      {pagado && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 12px", border: "1px dashed var(--rule)", borderRadius: 6 }}>
+          <div role="radiogroup" aria-label="Cómo pagaste" className="flex" style={{ gap: 6, flexWrap: "wrap" }}>
+            {MEDIOS_DUENO.map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={medio === m} onClick={() => setMedio(m)} className={medio === m ? "cmd-btn sm" : "cmd-btn ghost sm"} style={{ textTransform: "none", letterSpacing: 0 }}>{MEDIO_PAGO[m]}</button>
+            ))}
+          </div>
+          <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 160px" }}>
+              <span style={label}>Pagaste</span>
+              <input value={montoPago} onChange={(e) => setMontoPago(e.target.value)} inputMode="numeric" placeholder={total.trim() ? `$ ${total}` : "$"} aria-label="Monto pagado" style={{ ...input, textAlign: "right", fontWeight: 700 }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "2 1 220px" }}>
+              <span style={label}>Referencia (opcional)</span>
+              <input value={ref} onChange={(e) => setRef(e.target.value)} maxLength={80} placeholder="N.º de orden o comprobante" aria-label="Referencia del pago" style={input} />
+            </label>
+          </div>
+          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Queda como pagado: cuando llegue, la tablet no lo paga de la caja.</span>
+        </div>
+      )}
       <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap" }}>
         <button type="submit" className="cmd-btn red" disabled={busy} style={{ height: 44 }}>{busy ? "Guardando…" : "Guardar pedido"}</button>
         {error && <span role="alert" style={{ fontSize: 12.5, color: "var(--red)" }}>{error}</span>}
