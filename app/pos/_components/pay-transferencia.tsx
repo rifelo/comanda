@@ -9,7 +9,7 @@
  * order that is already stored just goes back.
  */
 import * as React from "react";
-import { useCatalog, usePos, posStore, cancelTender, savePending, tenderAmount } from "../pos-store";
+import { useCatalog, usePos, posStore, cancelTender, savePending, tenderAmount, startMixto } from "../pos-store";
 import { Chk, FlowHeader, SendError, canPay, confirmPayment, money, orderSubtitle } from "./pay-common";
 
 export function TransferenciaPage() {
@@ -30,6 +30,7 @@ export function TransferenciaPage() {
     <>
       <FlowHeader back={cancelTender} backLabel="Volver al pedido" title="Cobrar por transferencia" subtitle={orderSubtitle(s)}>
         <button type="button" className="btn ghost sm flow-alt" onClick={() => posStore.set({ payMethod: "efectivo", sendError: null })}><span className="flow-long">Cambiar a efectivo</span><span className="flow-short">Efectivo</span></button>
+        {!s.split && <button type="button" className="btn ghost sm flow-alt" onClick={() => void startMixto()} disabled={s.sending}><span className="flow-long">Pago mixto</span><span className="flow-short">Mixto</span></button>}
       </FlowHeader>
 
       <div className="body pay-grid">

@@ -825,3 +825,15 @@
 .app .pchip .avatar { width: 32px; height: 32px; font-size: 12px; flex-shrink: 0; }
 .app .pchip.new { padding: 0 14px; }
 .app .pchip:active { background: var(--brand-soft); border-color: var(--brand); }
+
+/* «Pago mixto» (pay-mixto.tsx): the side carries methods + amount + keypad, so everything is a notch smaller. */
+.app .pay-mixto .pay-side { gap: 10px; overflow-y: auto; }
+.app .pay-mixto .mx-amt { font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.app .pay-mixto .bill { height: 48px; }
+.app .pay-mixto .key { height: 54px; font-size: 22px; }
+.app .pay-mixto .field { height: 48px; }
+.app .pay-mixto .btn.pay-go { height: 72px; font-size: 20px; }
+@media (min-width: 1600px) and (min-height: 960px) {
+  .app .pay-mixto .key { height: 72px; font-size: 26px; }
+  .app .pay-mixto .bill { height: 56px; }
+}

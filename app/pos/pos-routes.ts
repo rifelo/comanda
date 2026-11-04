@@ -15,13 +15,14 @@
  *   /pos/done                     sale registered
  *   /pos/pedidos                  orders
  *   /pos/pedidos/<id>/personas    split an order by person
+ *   /pos/pedidos/<id>/mixto       pay one order with several methods
  *   /pos/ventas                   «Hoy en ventas» (team-facing numbers)
  *
  * Overlays (receta, cancelar, combinar, etiquetas, puntos, asistente) have
  * no URL of their own.
  */
 import * as React from "react";
-import { posStore, usePos, openOrdenes, openVentas, chargePendingSplit, type PosState, type PayMethod } from "./pos-store";
+import { posStore, usePos, openOrdenes, openVentas, chargePendingSplit, chargePendingMixto, type PosState, type PayMethod } from "./pos-store";
 
 const PAY: readonly PayMethod[] = ["efectivo", "transferencia", "datafono"];
 
@@ -38,6 +39,8 @@ export function pathFor(s: Pick<PosState, "view" | "payMethod" | "pending" | "sh
       return "/pos/ventas";
     case "personas":
       return s.pending ? `/pos/pedidos/${s.pending.id}/personas` : "/pos/pedidos";
+    case "mixto":
+      return s.pending ? `/pos/pedidos/${s.pending.id}/mixto` : "/pos/pedidos";
     default:
       if (s.sheet?.mode === "add") return `/pos/item/${s.sheet.productId}`;
       if (s.sheet?.mode === "edit") {
@@ -74,6 +77,12 @@ export function applyPath(pathname: string, search: string) {
     if (s.pending?.id === parts[1]) return posStore.set({ view: "personas", split: true, sheet: null });
     const o = s.pendientes.find((x) => x.id === parts[1]);
     if (o) return chargePendingSplit(o);
+    return openOrdenes();
+  }
+  if (parts[0] === "pedidos" && parts[1] && parts[2] === "mixto") {
+    if (s.pending?.id === parts[1] && s.pending.mode === "charge") return posStore.set({ view: "mixto", sheet: null });
+    const o = s.pendientes.find((x) => x.id === parts[1]);
+    if (o) return chargePendingMixto(o);
     return openOrdenes();
   }
   if (parts[0] === "pedidos") return s.view === "ordenes" ? undefined : openOrdenes();

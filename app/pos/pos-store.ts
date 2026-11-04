@@ -54,6 +54,7 @@ import {
   listarOrdenes,
   listarPendientes,
   registrarPago,
+  quitarPago,
   combinarPendientes,
   contarCompletados,
   marcarSeLoLlevamos,
@@ -140,7 +141,7 @@ export interface PosState {
    * personas = /pos/pedidos/<id>/personas. Etiquetas and Puntos are tools
    * over the sale (no URL of their own).
    */
-  view: "sale" | "tender" | "done" | "ordenes" | "personas" | "etiquetas" | "puntos" | "ventas";
+  view: "sale" | "tender" | "done" | "ordenes" | "personas" | "mixto" | "etiquetas" | "puntos" | "ventas";
   /** Who is on the bar: every new order is credited to them (ordenes.barista_id). Kept per register. */
   barista: PosBarista | null;
   /** The «¿Quién prepara?» picker is open. */
@@ -181,6 +182,8 @@ export interface PosState {
   lastTotal: number;
   /** Method summary of the last completed sale ("mixto" when paid in parts). */
   lastMethod: PayMethodId | "mixto";
+  /** Parts of the last sale when it was paid with several methods (receipt + done screen); null otherwise. */
+  lastPagos: OrderPayment[] | null;
 
   // ── pending orders ("enviar · pagar después") ──
   /**
@@ -284,6 +287,7 @@ export const POS_INITIAL: PosState = {
   lastChange: 0,
   lastTotal: 0,
   lastMethod: "efectivo",
+  lastPagos: null,
   pending: null,
   split: false,
   splitTarget: null,
@@ -1066,7 +1070,7 @@ function newJobId() {
 export function startTender(method?: PayMethod) {
   const s = posStore.get();
   if (!s.order.length) return;
-  posStore.set({ view: "tender", tendered: null, approvalCode: "", sendError: null, sheet: null, ticketOpen: false, ...(method ? { payMethod: method } : {}) });
+  posStore.set({ view: "tender", tendered: null, approvalCode: "", sendError: null, sheet: null, ticketOpen: false, lastPagos: null, ...(method ? { payMethod: method } : {}) });
 }
 
 /**
@@ -1154,18 +1158,123 @@ export async function startSplit() {
     posStore.set({ view: "personas", split: true, splitTarget: null, tendered: null, sendError: null });
     return;
   }
+  if (!(await storeForCharge())) return;
+  posStore.set({ view: "personas", split: true, splitTarget: null, tendered: null, payMethod: "efectivo", sendError: null });
+}
+/**
+ * Paying in parts works on a stored order: save the ticket as pendiente
+ * (labels and comanda print on that first send) and load it for charging.
+ */
+async function storeForCharge(): Promise<boolean> {
+  const s = posStore.get();
+  if (s.pending?.mode === "charge") return true;
+  if (!s.online) {
+    posStore.set({ sendError: "Sin internet no se puede cobrar por partes: cobra con un solo método o espera la conexión." });
+    return false;
+  }
   const res = await persistPending();
-  if (!res.ok) return;
+  if (!res.ok) return false;
   // Fetch the stored order directly: refreshPendientes is single-flight and
   // persistPending just kicked one off, so awaiting it would return at once.
   const list = await safeAction(listarPendientes());
   const o = list.ok ? list.orders.find((x) => x.id === res.ordenId) : undefined;
   if (!o) {
     posStore.set({ sendError: "El pedido se guardó, pero no se pudo abrir para cobrar. Búscalo en Pedidos." });
-    return;
+    return false;
   }
   loadPending(o, "charge");
-  posStore.set({ view: "personas", split: true, splitTarget: null, tendered: null, payMethod: "efectivo", sendError: null });
+  return true;
+}
+
+// ── «Pago mixto»: one order, several methods ────────────────────
+/**
+ * Open «Pago mixto» (/pos/pedidos/<id>/mixto): the order is paid in parts —
+ * cash, transfer, datáfono — each saved as an orden_pagos row the moment it
+ * is added, so an approved datáfono part is never lost if the rest fails.
+ * `efectivoRecibido`: the cash already handed over on the Efectivo page
+ * («Faltan $X · pagar con otro método») becomes the first part.
+ */
+export async function startMixto(efectivoRecibido?: number) {
+  const s = posStore.get();
+  if (s.sending) return;
+  if (!(await storeForCharge())) return;
+  posStore.set({ view: "mixto", split: false, splitTarget: null, tendered: null, approvalCode: "", payMethod: "efectivo", lastPagos: null, sendError: null });
+  const owed = ticketTotal(posStore.get());
+  if (efectivoRecibido && efectivoRecibido > 0 && owed > 0) {
+    await payMixtoPart({ method: "efectivo", amount: Math.min(efectivoRecibido, owed), tendered: efectivoRecibido, approvalCode: null });
+  }
+}
+/** Add one part. Cash may be more than what is left (the difference is change); the others may not. */
+export async function payMixtoPart(part: { method: PayMethod; amount: number; tendered: number | null; approvalCode: string | null }): Promise<boolean> {
+  const s = posStore.get();
+  if (!s.pending || s.pending.mode !== "charge" || s.sending) return false;
+  const owed = ticketTotal(s);
+  if (part.amount <= 0 || part.amount > owed) {
+    posStore.set({ sendError: "El monto no puede pasar de lo que falta." });
+    return false;
+  }
+  posStore.set({ sending: true, sendError: null });
+  const res = await safeAction(registrarPago({
+    ordenId: s.pending.id,
+    customerName: null,
+    payment: { method: part.method, tendered: part.method === "efectivo" ? part.tendered ?? part.amount : null, approvalCode: part.method === "datafono" ? part.approvalCode : null },
+    amount: part.amount,
+  }));
+  if (!res.ok) {
+    posStore.set({ sending: false, sendError: res.error });
+    return false;
+  }
+  posStore.set((st) => ({ ...st, sending: false, approvalCode: "", pending: st.pending ? { ...st.pending, paid: res.paid, pagos: res.pagos } : st.pending }));
+  if (res.status === "pagada") finishMixto(res);
+  void refreshPendientes();
+  nudge("ordenes");
+  return true;
+}
+function finishMixto(res: { folio: string; ordenId: string; total: number; pagos: OrderPayment[] }) {
+  const s = posStore.get();
+  posStore.set({
+    sent: true,
+    orderNo: res.folio,
+    receiptOrdenId: res.ordenId,
+    view: "done",
+    receiptKind: "pagada",
+    lastTotal: res.total,
+    // Every cash part's change, handed back together at the end.
+    lastChange: res.pagos.reduce((n, p) => n + p.change, 0),
+    lastMethod: summarizeMethod(res.pagos.map((p) => p.method)) ?? s.payMethod,
+    lastPagos: res.pagos.length > 1 ? res.pagos : null,
+  });
+  if (ticketsOn() && getTicketState().recibo === "auto") printReceipt();
+}
+/** Take back one part (entered by mistake, transfer that didn't land). */
+export async function quitarPagoMixto(pagoId: string) {
+  const s = posStore.get();
+  if (!s.pending || s.sending) return;
+  posStore.set({ sending: true, sendError: null });
+  const res = await safeAction(quitarPago({ ordenId: s.pending.id, pagoId }));
+  if (!res.ok) {
+    posStore.set({ sending: false, sendError: res.error });
+    return;
+  }
+  posStore.set((st) => ({ ...st, sending: false, pending: st.pending ? { ...st.pending, paid: res.paid, pagos: res.pagos } : st.pending }));
+  void refreshPendientes();
+  nudge("ordenes");
+}
+/** Leave «Pago mixto»: the order stays in Pedidos with what was paid (or back to a single method when nothing was). */
+export function closeMixto(to: "pedidos" | "metodo") {
+  const s = posStore.get();
+  if (to === "metodo" && s.pending && s.pending.paid === 0) {
+    posStore.set({ view: "tender", payMethod: "efectivo", tendered: null, approvalCode: "", sendError: null });
+    return;
+  }
+  resetConversation();
+  openOrdenes();
+}
+/** Open a stored order's «Pago mixto» from Pedidos or a reload. */
+export function chargePendingMixto(o: PendingOrder) {
+  loadPending(o, "charge");
+  posStore.set({ view: "mixto", tendered: null, payMethod: "efectivo", lastPagos: null });
+  void refreshPendientes();
 }
 /** Take the selected share (or the rest) with the chosen method. */
 export async function paySplit() {
@@ -1937,7 +2046,8 @@ function currentSaleTicket(kind: TicketDoc["kind"], copia: boolean): TicketDoc {
   const s = posStore.get();
   const job = s.receiptJobId ? s.outbox.find((j) => j.id === s.receiptJobId) : undefined;
   const pendiente = s.receiptKind === "pendiente";
-  return saleTicket(kind, {
+  const partes = !pendiente && s.lastPagos ? s.lastPagos : null;
+  const doc = saleTicket(kind, {
     order: job?.snapshot.order ?? s.order,
     customerName: job?.snapshot.customerName ?? s.customerName,
     folio: job?.printed?.folio ?? s.orderNo,
@@ -1954,6 +2064,14 @@ function currentSaleTicket(kind: TicketDoc["kind"], copia: boolean): TicketDoc {
     porVerificar: job?.base.porVerificar === "transferencia",
     copia,
   });
+  if (!partes) return doc;
+  const cash = partes.filter((p) => p.tendered !== null);
+  return {
+    ...doc,
+    partes: partes.map((p) => ({ metodo: PAY_METHOD_LABEL[p.method], monto: p.amount })),
+    tendered: cash.length ? cash.reduce((n, p) => n + (p.tendered ?? 0), 0) : null,
+    approval: partes.find((p) => p.approvalCode)?.approvalCode ?? null,
+  };
 }
 export function printReceipt() {
   printTicket(currentSaleTicket("recibo", false));
@@ -1990,8 +2108,9 @@ export function printTicketFor(o: PosOrder, kind: TicketDoc["kind"]) {
       copia: true,
     }),
     method: pagado && method ? PAY_METHOD_LABEL[method] : undefined,
-    tendered: pagado && method === "efectivo" ? o.tendered : null,
+    tendered: pagado && (method === "efectivo" || method === "mixto") ? o.tendered : null,
     approval,
+    partes: pagado && pagos.length > 1 && new Set(pagos.map((p) => p.method)).size > 1 ? pagos.map((p) => ({ metodo: PAY_METHOD_LABEL[p.method], monto: p.amount })) : undefined,
   });
 }
 

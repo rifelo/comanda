@@ -3,11 +3,11 @@
 /**
  * Datafono.dc.html — /pos/pay/datafono. Record-only: the POS does not talk
  * to the Bold terminal, it registers that the card was charged (with the
- * optional approval number from the voucher). The «Datáfono / Mixto»
- * control of the artboard is left out until mixto has a screen.
+ * optional approval number from the voucher). «Pago mixto» in the header
+ * pays part here and the rest another way.
  */
 import * as React from "react";
-import { useCatalog, usePos, posStore, cancelTender, tenderAmount } from "../pos-store";
+import { useCatalog, usePos, posStore, cancelTender, tenderAmount, startMixto } from "../pos-store";
 import { Chk, FlowHeader, SendError, canPay, confirmPayment, money, orderSubtitle } from "./pay-common";
 
 export function DatafonoPage() {
@@ -25,6 +25,7 @@ export function DatafonoPage() {
       <FlowHeader back={cancelTender} backLabel="Volver al pedido" title="Cobrar con datáfono" subtitle={orderSubtitle(s)}>
         <button type="button" className="btn ghost sm flow-alt" onClick={() => to("efectivo")}>Efectivo</button>
         <button type="button" className="btn ghost sm flow-alt" onClick={() => to("transferencia")}>Transferencia</button>
+        {!s.split && <button type="button" className="btn ghost sm flow-alt" onClick={() => void startMixto()} disabled={s.sending}><span className="flow-long">Pago mixto</span><span className="flow-short">Mixto</span></button>}
       </FlowHeader>
 
       <div className="body pay-grid">

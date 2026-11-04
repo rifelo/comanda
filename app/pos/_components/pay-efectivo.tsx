@@ -10,7 +10,7 @@
  * exacto» · «Confirmar · cambio $X».
  */
 import * as React from "react";
-import { usePos, posStore, cancelTender, tenderAmount } from "../pos-store";
+import { usePos, posStore, cancelTender, tenderAmount, startMixto } from "../pos-store";
 import { FlowHeader, SendError, canPay, confirmPayment, money, orderSubtitle } from "./pay-common";
 
 const MAX = 99_999_999;
@@ -70,7 +70,8 @@ export function EfectivoPage() {
     <>
       <FlowHeader back={cancelTender} backLabel="Volver al pedido" title="Cobrar en efectivo" subtitle={orderSubtitle(s)}>
         <button type="button" className="btn ghost sm flow-alt" onClick={() => posStore.set({ payMethod: "transferencia", sendError: null })}><span className="flow-long">Cambiar a transferencia</span><span className="flow-short">Transferencia</span></button>
-        <button type="button" className="btn ghost sm flow-alt" onClick={() => posStore.set({ payMethod: "datafono", sendError: null })}><span className="flow-long">Datáfono · otro pago</span><span className="flow-short">Datáfono</span></button>
+        <button type="button" className="btn ghost sm flow-alt" onClick={() => posStore.set({ payMethod: "datafono", sendError: null })}><span className="flow-long">Datáfono</span><span className="flow-short">Datáfono</span></button>
+        {!s.split && <button type="button" className="btn ghost sm flow-alt" onClick={() => void startMixto()} disabled={s.sending}><span className="flow-long">Pago mixto</span><span className="flow-short">Mixto</span></button>}
       </FlowHeader>
 
       <div className="body pay-grid pay-cash">
@@ -92,7 +93,13 @@ export function EfectivoPage() {
             <div className="card grow pay-state" style={{ background: "var(--late-soft)", borderColor: "var(--late-soft)", color: "var(--late)" }}>
               <span className="pay-state-t">Faltan</span>
               <span className="huge">{money(-diff)}</span>
-              <span className="pay-state-s" style={{ opacity: 0.85 }}>Pide el resto o cambia a transferencia</span>
+              {!s.split && k.received > 0 ? (
+                <button type="button" className="btn strong" style={{ marginTop: 8, height: 56, fontSize: 17 }} onClick={() => void startMixto(k.received)} disabled={s.sending}>
+                  {s.sending ? "Guardando…" : `Pagar ${money(-diff)} con otro método`}
+                </button>
+              ) : (
+                <span className="pay-state-s" style={{ opacity: 0.85 }}>Pide el resto o cambia a transferencia</span>
+              )}
             </div>
           )}
           {state === "exact" && (
