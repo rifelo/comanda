@@ -85,6 +85,16 @@ export function VentaRegistradaPage() {
           <span className="label">Total</span>
           <span className="amount" style={{ fontSize: change > 0 ? 32 : 48 }}>{money(s.lastTotal)}</span>
         </div>
+        {!pendiente && s.lastPagos && (
+          <ul aria-label="Pagos" style={{ listStyle: "none", margin: 0, padding: 0, width: "100%", display: "flex", flexDirection: "column" }}>
+            {s.lastPagos.map((p) => (
+              <li key={p.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 17, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                <span>{PAY_METHOD_LABEL[p.method]}{p.approvalCode ? ` · aprob. ${p.approvalCode}` : ""}{p.tendered && p.change > 0 ? ` · recibió ${money(p.tendered)}` : ""}</span>
+                <b style={{ fontVariantNumeric: "tabular-nums" }}>{money(p.amount)}</b>
+              </li>
+            ))}
+          </ul>
+        )}
         {change > 0 && (
           <div className="done-change">
             <span className="label" style={{ color: "var(--text)", fontSize: 16 }}>Cambio a entregar</span>

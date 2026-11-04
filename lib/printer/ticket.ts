@@ -66,6 +66,8 @@ export const TicketDocSchema = z.object({
   tendered: z.number().int().nullable().optional(),
   change: z.number().int().optional(),
   approval: text(40).nullable().optional(),
+  /** Paid in parts with several methods («Mixto»): one row per part. */
+  partes: z.array(z.object({ metodo: text(40), monto: z.number().int() })).max(20).optional(),
   /** Sent to pay later («pagar después» / transfer not seen yet). */
   pendiente: z.boolean().optional(),
   porVerificar: z.boolean().optional(),
@@ -227,7 +229,7 @@ export function toPrecuenta(d: TicketDoc, logo?: string | null): PrecuentaData {
     subtotal,
     total: d.total ?? subtotal,
     pago: d.method && !d.pendiente
-      ? { metodo: d.method, recibido: d.tendered ?? null, cambio: d.change, aprobacion: d.approval ?? null }
+      ? { metodo: d.method, recibido: d.tendered ?? null, cambio: d.change, aprobacion: d.approval ?? null, partes: d.partes }
       : undefined,
     estado: d.pendiente ? (d.porVerificar ? "por-verificar" : "pendiente") : undefined,
     copia: d.copia,

@@ -613,6 +613,63 @@ export async function registrarPago(input: unknown): Promise<RegistrarPagoResult
   return applyPago(ctx, ordenId, customerName ?? null, payment, amount);
 }
 
+const QuitarPagoSchema = z.object({ ordenId: z.string().uuid(), pagoId: z.string().uuid() });
+export type QuitarPagoResult = { ok: true; paid: number; pagos: OrderPayment[] } | { ok: false; error: string };
+
+/**
+ * «Pago mixto»: take back one part of an order that is still being paid (the
+ * datáfono part entered by mistake, a transfer that didn't land). Only while
+ * the order is pendiente — once paid, it is cancelled instead.
+ */
+export async function quitarPago(input: unknown): Promise<QuitarPagoResult> {
+  const parsed = QuitarPagoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pago inválido." };
+  const ctx = await requirePosAuth();
+  const { supabase, organizationId: orgId } = ctx;
+  const { ordenId, pagoId } = parsed.data;
+  const { data: orden } = await supabase
+    .from("ordenes")
+    .select("id")
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .maybeSingle();
+  if (!orden) return { ok: false, error: YA_NO_PENDIENTE };
+  const { data: gone, error: delErr } = await supabase
+    .from("orden_pagos")
+    .delete()
+    .eq("id", pagoId)
+    .eq("orden_id", ordenId)
+    .eq("organization_id", orgId)
+    .select("id");
+  if (delErr) {
+    console.error("[quitarPago] delete failed:", delErr);
+    return { ok: false, error: "No se pudo quitar el pago." };
+  }
+  if (!gone?.length) return { ok: false, error: "Ese pago ya no está." };
+  const { data: rows } = await supabase
+    .from("orden_pagos")
+    .select("id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at")
+    .eq("orden_id", ordenId)
+    .eq("organization_id", orgId);
+  const pagos = mapPagos((rows ?? []) as Array<Record<string, unknown>>);
+  const paid = pagos.reduce((n, p) => n + p.amount, 0);
+  const cash = pagos.filter((p) => p.tendered !== null);
+  const { error: updErr } = await supabase
+    .from("ordenes")
+    .update({
+      paid_cop: paid,
+      payment_method: summarizeMethod(pagos.map((p) => p.method)),
+      tendered_cop: cash.length ? cash.reduce((n, p) => n + (p.tendered ?? 0), 0) : null,
+      change_cop: pagos.reduce((n, p) => n + p.change, 0),
+    })
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente");
+  if (updErr) console.error("[quitarPago] update failed:", updErr);
+  return { ok: true, paid, pagos };
+}
+
 /**
  * Settle a pending order in one go: a single payment for whatever is still
  * owed (the stored total, minus any partial payments). Kept for the

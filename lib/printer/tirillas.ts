@@ -59,7 +59,7 @@ export interface PrecuentaData {
   subtotal: number;
   total: number;
   /** Ya pagada: método y vueltas (va debajo del total). */
-  pago?: { metodo: string; recibido?: number | null; cambio?: number; aprobacion?: string | null };
+  pago?: { metodo: string; recibido?: number | null; cambio?: number; aprobacion?: string | null; partes?: { metodo: string; monto: number }[] };
   /** Enviada para pagar después / transferencia sin confirmar. */
   estado?: "pendiente" | "por-verificar";
   copia?: boolean;
@@ -267,6 +267,7 @@ export function renderPrecuentaHtml(d: PrecuentaData, papel: Papel = "80"): stri
     const p = d.pago;
     o.push(`<div style="margin-top:6px;text-align:center"><span class="chip inv" style="font-size:10px;line-height:13px;padding:2px 6px">PAGADO · ${esc(p.metodo.toUpperCase())}</span></div>`);
     o.push(`<div style="margin-top:3px;display:flex;flex-direction:column;gap:1px;font-size:9.5px;line-height:11.5px">`);
+    if (p.partes && p.partes.length > 1) for (const x of p.partes) o.push(`<div class="row"><span>${esc(x.metodo)}</span><span>${pesos(x.monto)}</span></div>`);
     if (p.recibido != null && p.recibido > 0) o.push(`<div class="row"><span>Recibido</span><span>${pesos(p.recibido)}</span></div>`);
     if (p.cambio != null && p.cambio > 0) o.push(`<div class="row b"><span>Cambio</span><span>${pesos(p.cambio)}</span></div>`);
     if (p.aprobacion?.trim()) o.push(`<div class="row"><span>Aprobación</span><span>${esc(p.aprobacion.trim())}</span></div>`);

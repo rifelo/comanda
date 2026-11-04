@@ -49,6 +49,7 @@ import { DatafonoPage } from "./_components/pay-datafono";
 import { VentaRegistradaPage } from "./_components/done";
 import { PedidosPage } from "./_components/ordenes";
 import { PersonasPage } from "./_components/personas";
+import { MixtoPage } from "./_components/pay-mixto";
 import { VentasPage } from "./_components/ventas";
 import { PuntosScreen } from "./_components/puntos";
 import { EtiquetasScreen } from "./_components/etiquetas";
@@ -218,6 +219,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       {s.view === "done" && <VentaRegistradaPage />}
       {s.view === "ordenes" && <PedidosPage />}
       {s.view === "personas" && <PersonasPage />}
+      {s.view === "mixto" && <MixtoPage />}
       {s.view === "ventas" && <VentasPage />}
       {s.view === "etiquetas" && <EtiquetasScreen />}
       {s.view === "puntos" && <PuntosScreen />}
