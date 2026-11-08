@@ -45,7 +45,7 @@ export function CalificaClient({ codigo, estado, items, puntos, instagram }: {
     setError(null);
     let res: Awaited<ReturnType<typeof calificar>>;
     try {
-      res = await calificar({ codigo, estrellas, sugerencia: sugerencia.trim() || undefined, instagram: conUsuario ? usuario.trim() || undefined : undefined });
+      res = await calificar({ codigo, estrellas: estrellas || undefined, sugerencia: sugerencia.trim() || undefined, instagram: conUsuario ? usuario.trim() || undefined : undefined });
     } catch {
       res = { ok: false, error: "No pudimos enviar tu calificación. Revisa tu conexión e intenta de nuevo." };
     }
@@ -89,6 +89,10 @@ export function CalificaClient({ codigo, estado, items, puntos, instagram }: {
             </div>
             <p className="pyc-word" aria-live="polite">{PALABRA[estrellas] || " "}</p>
             <button type="button" className="pym-pill pym-pill--wide pym-pill--solid pyc-cta" disabled={estrellas === 0} onClick={() => setPaso("sugerencia")}>Continuar</button>
+            {/* Points never depend on the review: go straight to the @. */}
+            <button type="button" className="pyc-back" onClick={() => { setEstrellas(0); setPaso("puntos"); }}>
+              {puntos > 0 ? `Solo sumar mis ${puntos} ${puntos === 1 ? "punto" : "puntos"}` : "Solo sumar mis puntos"}
+            </button>
           </section>
         )}
 
@@ -117,8 +121,8 @@ export function CalificaClient({ codigo, estado, items, puntos, instagram }: {
             {error && <p role="alert" className="pyc-error">{error}</p>}
             <div className="pyc-actions">
               <button type="button" className="pym-pill pym-pill--wide pym-pill--solid" disabled={busy || !usuario.trim()} onClick={() => void enviar(true)}>{busy ? "Enviando…" : "Enviar y sumar puntos"}</button>
-              <button type="button" className="pym-pill pym-pill--wide" disabled={busy} onClick={() => void enviar(false)}>Enviar sin puntos</button>
-              <button type="button" className="pyc-back" disabled={busy} onClick={() => setPaso("sugerencia")}>Volver</button>
+              {estrellas > 0 && <button type="button" className="pym-pill pym-pill--wide" disabled={busy} onClick={() => void enviar(false)}>Enviar sin puntos</button>}
+              <button type="button" className="pyc-back" disabled={busy} onClick={() => setPaso(estrellas > 0 ? "sugerencia" : "estrellas")}>Volver</button>
             </div>
           </section>
         )}
@@ -148,18 +152,22 @@ function Gracias({ estrellas, ganados, conSugerencia, pedido, ig, instagram }: {
     return () => window.clearTimeout(t);
   }, [quedan, ig, pausa]);
 
-  const promesa = estrellas <= 3
+  const promesa = estrellas === 0
+    ? "Tus puntos quedaron guardados. ¡Gracias por venir!"
+    : estrellas <= 3
     ? "Gracias por decírnoslo. Vamos a mejorar, y tu próxima visita va a ser mejor que esta."
     : conSugerencia
       ? "Leemos cada mensaje. Vamos a seguir mejorando con lo que nos cuentas."
       : "Nos alegra el día. Vamos a seguir mejorando para que siempre sea así.";
   return (
     <div className="pym-page pyc-page pyc-thanks" role="status" aria-live="polite">
-      <div className="pyc-thanks__stars" aria-label={`${estrellas} de 5 estrellas`}>
-        {[1, 2, 3, 4, 5].map((v) => (
-          <span key={v} className={v <= estrellas ? "pyc-pop pyc-pop--on" : "pyc-pop"} style={{ animationDelay: `${0.15 + v * 0.12}s` }}><Estrella on={v <= estrellas} size={34} /></span>
-        ))}
-      </div>
+      {estrellas > 0 && (
+        <div className="pyc-thanks__stars" aria-label={`${estrellas} de 5 estrellas`}>
+          {[1, 2, 3, 4, 5].map((v) => (
+            <span key={v} className={v <= estrellas ? "pyc-pop pyc-pop--on" : "pyc-pop"} style={{ animationDelay: `${0.15 + v * 0.12}s` }}><Estrella on={v <= estrellas} size={34} /></span>
+          ))}
+        </div>
+      )}
       <h1 className="pyc-thanks__title">¡Gracias!</h1>
       <p className="pyc-thanks__text">{promesa}</p>
       {ganados && ganados.total !== null && (

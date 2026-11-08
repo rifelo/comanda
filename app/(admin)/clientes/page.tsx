@@ -45,6 +45,7 @@ export default async function ClientesPage() {
       .select("id, usada_at, estrellas, sugerencia, customer_name, puntos, items, orden:ordenes(folio), cliente:clientes(instagram)")
       .eq("organization_id", orgId)
       .not("usada_at", "is", null)
+      .not("estrellas", "is", null) // «solo sumar mis puntos» answers have no review
       .gte("usada_at", hace30)
       .order("usada_at", { ascending: false })
       .limit(300),
