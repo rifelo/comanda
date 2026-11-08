@@ -55,6 +55,7 @@ export async function calificacionesDelPeriodo(db: SupabaseClient, orgId: string
     .select("id, orden_id, usada_at, estrellas, sugerencia, customer_name, items, orden:ordenes!inner(folio, barista_id, created_at)")
     .eq("organization_id", orgId)
     .not("usada_at", "is", null)
+    .not("estrellas", "is", null) // «solo sumar mis puntos» answers have no review
     .gte("orden.created_at", desdeIso(desde))
     .lt("orden.created_at", hastaIso(hasta))
     .order("usada_at", { ascending: false })

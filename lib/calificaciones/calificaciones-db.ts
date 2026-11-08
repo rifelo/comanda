@@ -1,7 +1,7 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { modPairsOf } from "@/lib/pos/consumo";
-import { estadoDe, lineasDeQr, puntosDe, type EstadoEnlace, type ItemCalificado } from "./calificaciones";
+import { estadoDe, lineasDeQr, puntosDe, reubicarCopas, type EstadoEnlace, type ItemCalificado, type LineaCopa } from "./calificaciones";
 
 // Ratings behind the cup's QR (0049). Everything here runs with the service
 // role: the customer's page has no session, and the POS registers links for
@@ -53,6 +53,33 @@ export async function registrarEnlaces(
   const { error } = await db.from("calificaciones").upsert(rows, { onConflict: "codigo", ignoreDuplicates: true });
   if (error) console.error("[registrarEnlaces]", error);
   return { ok: !error };
+}
+
+/**
+ * After a pending order's lines were replaced (edit, split by person), move
+ * its cup QRs to where their drinks are now (see reubicarCopas). Two steps so
+ * the 0058 «one paid QR per line» index never sees two QRs on one line midway.
+ * Never throws: a failure only logs (the sale itself is already saved).
+ */
+export async function reubicarEnlaces(ordenId: string, viejas: ReadonlyArray<LineaCopa>, nuevas: ReadonlyArray<LineaCopa>): Promise<void> {
+  try {
+    const db = createSupabaseAdminClient();
+    const { data, error } = await db.from("calificaciones").select("id, linea_position, customer_name").eq("orden_id", ordenId).not("linea_position", "is", null);
+    if (error) throw error;
+    const qrs = (data ?? []).map((r) => ({ id: r.id as string, linea_position: Number(r.linea_position), customer_name: (r.customer_name as string | null) ?? null }));
+    const cambios = reubicarCopas(viejas, nuevas, qrs);
+    if (!cambios.length) return;
+    for (const [i, c] of cambios.entries()) {
+      const { error: e } = await db.from("calificaciones").update({ linea_position: -1 - i }).eq("id", c.id);
+      if (e) throw e;
+    }
+    for (const c of cambios) {
+      const { error: e } = await db.from("calificaciones").update({ linea_position: c.linea_position, customer_name: c.customer_name }).eq("id", c.id);
+      if (e) throw e;
+    }
+  } catch (e) {
+    console.error("[reubicarEnlaces]", ordenId, e);
+  }
 }
 
 export interface EnlaceCalificacion {
@@ -137,7 +164,7 @@ export type EnvioResult =
  * order as it stands) — after the rating is safe, so a points hiccup never
  * loses the stars.
  */
-export async function enviarCalificacion(codigo: string, input: { estrellas: number; sugerencia: string | null; instagram: string | null }): Promise<EnvioResult> {
+export async function enviarCalificacion(codigo: string, input: { estrellas: number | null; sugerencia: string | null; instagram: string | null }): Promise<EnvioResult> {
   const db = createSupabaseAdminClient();
   const ahora = new Date().toISOString();
   const { data: cerradas } = await db

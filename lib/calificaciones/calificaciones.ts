@@ -113,3 +113,71 @@ export function diaDeVisita(iso: string, ahora: Date = new Date()): string {
   const mismoAnio = anio(fecha) === anio(ahora);
   return new Intl.DateTimeFormat("es-CO", { timeZone: tz, day: "numeric", month: "long", ...(mismoAnio ? {} : { year: "numeric" }) }).format(fecha);
 }
+
+/** A ticket line as the cup QRs follow it across an edit. */
+export interface LineaCopa {
+  position: number;
+  kind: string;
+  producto_id: string | null;
+  combo_id: string | null;
+  name: string;
+  mods: unknown;
+  customer_name: string | null;
+}
+export interface QrCopa { id: string; linea_position: number | null; customer_name: string | null }
+
+const modsClave = (mods: unknown) =>
+  JSON.stringify(Object.entries((mods ?? {}) as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))
+    .map(([k, v]) => [k, Array.isArray(v) ? [...v].sort() : v])
+    .sort(([a], [b]) => String(a).localeCompare(String(b))));
+const producto = (l: LineaCopa) => `${l.kind}:${l.producto_id ?? l.combo_id ?? l.name}`;
+const nombre = (s: string | null) => (s ?? "").trim() || null;
+
+/**
+ * Editing a pending order (or giving its lines to people) replaces every line
+ * and renumbers them, but the cup labels — and their QRs — were already
+ * printed. Each QR keeps following ITS drink: the same product with the same
+ * options (else the same product), preferring the same person and then the
+ * nearest place. The QR also takes the person the drink now belongs to, so a
+ * cup given to «Xiommy» later is still worth that cup. A drink that was taken
+ * off the order sends its QRs past the last line (worth no cup). Reprints of
+ * one cup move together. Returns only the QRs that change.
+ */
+export function reubicarCopas(viejas: ReadonlyArray<LineaCopa>, nuevas: ReadonlyArray<LineaCopa>, qrs: ReadonlyArray<QrCopa>): QrCopa[] {
+  const porPos = new Map(viejas.map((l) => [l.position, l]));
+  const usadas = new Set<number>();
+  const destino = new Map<number, LineaCopa | null>();
+  const conCopa = [...new Set(qrs.map((q) => q.linea_position).filter((p): p is number => p !== null && porPos.has(p)))].sort((a, b) => a - b);
+  // Best pairs first, across all cups: exact options, then the same person, then the nearest place.
+  const pares: { p: number; n: LineaCopa; rank: [number, number, number] }[] = [];
+  for (const p of conCopa) {
+    const v = porPos.get(p)!;
+    for (const n of nuevas) {
+      if (producto(n) !== producto(v)) continue;
+      pares.push({ p, n, rank: [Number(modsClave(n.mods) !== modsClave(v.mods)), Number(nombre(n.customer_name) !== nombre(v.customer_name)), Math.abs(n.position - v.position)] });
+    }
+  }
+  pares.sort((x, y) => x.rank[0] - y.rank[0] || x.rank[1] - y.rank[1] || x.rank[2] - y.rank[2] || x.p - y.p);
+  for (const { p, n } of pares) {
+    if (destino.has(p) || usadas.has(n.position)) continue;
+    usadas.add(n.position);
+    destino.set(p, n);
+  }
+  const fuera = new Map<number, number>();
+  let siguiente = Math.max(nuevas.length, ...nuevas.map((n) => n.position + 1), ...qrs.map((q) => (q.linea_position ?? -1) + 1));
+  const out: QrCopa[] = [];
+  for (const q of qrs) {
+    if (q.linea_position === null) continue;
+    const n = destino.get(q.linea_position);
+    let next: QrCopa;
+    if (n) next = { id: q.id, linea_position: n.position, customer_name: nombre(n.customer_name) };
+    else {
+      // Drink gone (or a QR already past the end): park it past the last line, one place per cup.
+      if (!fuera.has(q.linea_position)) fuera.set(q.linea_position, siguiente++);
+      next = { id: q.id, linea_position: fuera.get(q.linea_position)!, customer_name: q.customer_name };
+    }
+    if (next.linea_position !== q.linea_position || nombre(next.customer_name) !== nombre(q.customer_name)) out.push(next);
+  }
+  return out;
+}

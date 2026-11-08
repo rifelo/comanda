@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requirePosContext, requirePosAuth, type PosAuth } from "@/lib/pos/server";
 import { parseCreadoPor, pickBarista, pickCreatedBy, resolvePersonInOrg } from "@/lib/auth-person";
-import { registrarEnlaces } from "@/lib/calificaciones/calificaciones-db";
+import { registrarEnlaces, reubicarEnlaces } from "@/lib/calificaciones/calificaciones-db";
 import { registerPosDevice, unlinkCurrentPosDevice } from "@/lib/pos/devices";
 import { suggestPosActions, MissingApiKeyError } from "@/lib/ai/pos-assistant";
 import { generarFraseCafe } from "@/lib/ai/frase";
@@ -339,15 +339,16 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
 
   const { data: old } = await supabase
     .from("orden_items")
-    .select("id")
+    .select("id, position, kind, producto_id, combo_id, name, mods, customer_name")
     .eq("orden_id", ordenId)
     .eq("organization_id", orgId);
   const oldIds = (old ?? []).map((r) => r.id as string);
 
   // Insert the new lines first so a failure never leaves the order empty.
+  const newRows = itemRows(orgId, ordenId, priced.items);
   const { error: insErr } = await supabase
     .from("orden_items")
-    .insert(itemRows(orgId, ordenId, priced.items));
+    .insert(newRows);
   if (insErr) {
     console.error("[guardarPendiente] insert items failed:", insErr);
     return { ok: false, error: "No se pudieron guardar los productos." };
@@ -360,6 +361,11 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
       .eq("organization_id", orgId);
     if (delErr) console.error("[guardarPendiente] delete old items failed:", delErr);
   }
+  // The cup labels were printed for the old lines: their QRs follow their drinks.
+  await reubicarEnlaces(ordenId, (old ?? []).map((r) => ({
+    position: Number(r.position), kind: r.kind as string, producto_id: (r.producto_id as string | null) ?? null, combo_id: (r.combo_id as string | null) ?? null,
+    name: r.name as string, mods: r.mods, customer_name: (r.customer_name as string | null) ?? null,
+  })), newRows);
   const { error: updErr } = await supabase
     .from("ordenes")
     .update({
@@ -1382,6 +1388,7 @@ export async function listarResenas(): Promise<{ ok: true; resenas: ResenaClient
     .select("id, usada_at, estrellas, sugerencia, customer_name, items, cliente:clientes(instagram), orden:ordenes(barista:profiles!ordenes_barista_id_fkey(full_name))")
     .eq("organization_id", organizationId)
     .not("usada_at", "is", null)
+    .not("estrellas", "is", null) // «solo sumar mis puntos» answers have no review
     .gte("usada_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
     .order("usada_at", { ascending: false })
     .limit(300);
