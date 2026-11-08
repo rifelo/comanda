@@ -1536,6 +1536,9 @@ let refreshAgain = false;
  * a refresh must not leave the badge stale until the next tick.
  */
 const PENDIENTES_KEY = "pos:pendientes";
+/** What a stored order's lines are, ignoring row ids (every save makes new ones). */
+const lineasFirma = (items: PendingOrder["items"]) =>
+  JSON.stringify([...items].sort((a, b) => a.position - b.position).map((i) => [i.kind, i.productoId ?? i.comboId, i.qty, i.customer, i.mods]));
 /** Show the last known queue immediately; the refresh that follows corrects it. */
 export function hydratePendientes() {
   try {
@@ -1564,10 +1567,16 @@ export async function refreshPendientes() {
             // the tender never shows a number the server won't charge.
             const fresh = st.pending?.mode === "charge" ? res.orders.find((o) => o.id === st.pending!.id) : undefined;
             try { window.localStorage.setItem(PENDIENTES_KEY, JSON.stringify(res.orders)); } catch { /* ignore */ }
+            // The lines too: «Dividir por persona» saves the ticket's lines, so
+            // a ticket opened from a stale queue (an edit made a moment ago, or
+            // on another device) would put the old lines back. Not while a
+            // split is being saved — the server copy is behind it then.
+            const relinea = !!fresh && st.pending?.mode === "charge" && !personasSave && lineasFirma(fresh.items) !== lineasFirma(st.pending.items);
             return {
               ...st,
               pendientes: res.orders,
               pendientesError: null,
+              ...(relinea && fresh ? { order: rebuildLines(fresh, st.catalog).lines, people: rebuildPeople(fresh) } : {}),
               pending: fresh && st.pending
                 ? { ...st.pending, total: fresh.total, paid: fresh.paid, pagos: fresh.pagos, items: fresh.items, people: rebuildPeople(fresh) }
                 : st.pending,

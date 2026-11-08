@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diaDeVisita, estadoDe, leerCodigo, lineasDe, lineasDeQr, normalizarInstagram, nuevoCodigo, puntosDe, tuPedido, urlCalificacion } from "./calificaciones";
+import { diaDeVisita, estadoDe, leerCodigo, lineasDe, lineasDeQr, normalizarInstagram, nuevoCodigo, puntosDe, reubicarCopas, tuPedido, urlCalificacion, type LineaCopa, type QrCopa } from "./calificaciones";
 
 describe("codes", () => {
   it("ten characters, none that read alike", () => {
@@ -96,5 +96,53 @@ describe("diaDeVisita", () => {
   });
   it("adds the year for another one", () => {
     expect(diaDeVisita("2025-12-31T20:00:00Z", ahora)).toBe("31 de diciembre de 2025");
+  });
+});
+
+describe("reubicarCopas", () => {
+  const L = (position: number, producto_id: string, customer_name: string | null = null, mods: unknown = {}): LineaCopa =>
+    ({ position, kind: "item", producto_id, combo_id: null, name: producto_id, mods, customer_name });
+  const qr = (id: string, linea_position: number | null, customer_name: string | null = null): QrCopa => ({ id, linea_position, customer_name });
+
+  it("leaves QRs alone when nothing moved", () => {
+    const ls = [L(0, "latte", "Ana"), L(1, "tinto", "Bea")];
+    expect(reubicarCopas(ls, ls, [qr("a", 0, "Ana"), qr("b", 1, "Bea")])).toEqual([]);
+  });
+  it("follows a drink when a line before it is removed", () => {
+    const viejas = [L(0, "capu", "Xiommy"), L(1, "capu", "Liseth"), L(2, "torta")];
+    const nuevas = [L(0, "capu", "Liseth"), L(1, "torta")];
+    expect(reubicarCopas(viejas, nuevas, [qr("x", 0, "Xiommy"), qr("l", 1, "Liseth")])).toEqual([
+      { id: "x", linea_position: 2, customer_name: "Xiommy" },
+      { id: "l", linea_position: 0, customer_name: "Liseth" },
+    ]);
+  });
+  it("takes the person a cup is given to later (split by person)", () => {
+    const viejas = [L(0, "latte"), L(1, "latte")];
+    const nuevas = [L(0, "latte", "Ana"), L(1, "latte", "Bea")];
+    expect(reubicarCopas(viejas, nuevas, [qr("a", 0), qr("b", 1)])).toEqual([
+      { id: "a", linea_position: 0, customer_name: "Ana" },
+      { id: "b", linea_position: 1, customer_name: "Bea" },
+    ]);
+  });
+  it("prefers the exact options, then the same product with other options", () => {
+    const viejas = [L(0, "jugo", null, { base: "En agua" }), L(1, "jugo", null, { base: "En leche" })];
+    // Leche keeps its exact line even though agua comes first; agua takes the other jugo.
+    const nuevas = [L(0, "tinto"), L(1, "jugo", null, { base: "En leche" }), L(2, "jugo", null, { base: "En leche" })];
+    const r = reubicarCopas(viejas, nuevas, [qr("agua", 0), qr("leche", 1)]);
+    expect(r).toEqual([{ id: "agua", linea_position: 2, customer_name: null }]);
+  });
+  it("moves reprints of one cup together and ignores whole-person QRs", () => {
+    const viejas = [L(0, "tinto"), L(1, "latte")];
+    const nuevas = [L(0, "latte")];
+    expect(reubicarCopas(viejas, nuevas, [qr("a", 1), qr("a2", 1), qr("old", null)])).toEqual([
+      { id: "a", linea_position: 0, customer_name: null },
+      { id: "a2", linea_position: 0, customer_name: null },
+    ]);
+  });
+  it("never lands two different cups on one line", () => {
+    const viejas = [L(0, "latte", "Ana"), L(1, "latte", "Ana")];
+    const nuevas = [L(0, "latte", "Ana")];
+    const r = reubicarCopas(viejas, nuevas, [qr("a", 0, "Ana"), qr("b", 1, "Ana")]);
+    expect(r).toEqual([{ id: "b", linea_position: 2, customer_name: "Ana" }]);
   });
 });
