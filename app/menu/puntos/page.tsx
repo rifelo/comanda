@@ -6,7 +6,7 @@ import { instagramDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
 import { salir } from "./actions";
 import { Entrar } from "./puntos-client";
-import { BASE, Icono, Pantalla } from "./shell";
+import { BASE, Icono, MANO, Pantalla } from "./shell";
 import "./mi-payo.css";
 
 export const dynamic = "force-dynamic";
@@ -29,18 +29,21 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
 
   return (
     <Pantalla instagram={instagram} tab="inicio">
-      <section aria-label="Tus puntos" className="pyy-puntos">
+      <section aria-label="Mis puntos" className="pyy-puntos">
         <div className="pyy-puntos__fila">
-          <span className="pyy-k pyy-puntos__k">Mis puntos</span>
-          <a href={`${BASE}/ranking`} className="pyy-puntos__rank">
+          <div className="pyy-col">
+            <span className="pyy-meta">Mis puntos</span>
+            <span className="pyy-puntos__n">{miles(cliente?.puntos ?? 0)}</span>
+          </div>
+          <a href={`${BASE}/ranking`} className="pyy-pill">
             {puesto ? `#${puesto} del mes` : "Ranking"}
           </a>
         </div>
-        <span className="pyy-puntos__n">{miles(cliente?.puntos ?? 0)}</span>
-        <span className="pyy-meta">Cada ${PESOS_POR_PUNTO.toLocaleString("es-CO")} que compras es 1 punto. Los sumas escaneando el QR de tu vaso.</span>
-        <a href={`${BASE}/escanear`} className="pyy-btn pyy-btn--amarillo">
+        <span className="pyy-puntos__txt">Cada ${PESOS_POR_PUNTO.toLocaleString("es-CO")} que compras es 1 punto.</span>
+        <a href={`${BASE}/escanear`} className="pyy-accion">
           <Icono tab="escanear" size={18} />
-          Escanear mi vaso
+          <span>Escanear mi vaso</span>
+          <Flecha />
         </a>
       </section>
 
@@ -49,44 +52,55 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
           <section aria-label="Resumen" className="pyy-tres">
             <div className="pyy-tile">
               <span className="pyy-n">{r.bebidas}</span>
-              <span>bebidas en total</span>
+              <span className="pyy-meta--s">{r.bebidas === 1 ? "bebida" : "bebidas"}</span>
             </div>
             <div className="pyy-tile">
               <span className="pyy-n">{r.esteMes}</span>
-              <span>este mes</span>
+              <span className="pyy-meta--s">este mes</span>
             </div>
             <div className="pyy-tile">
               <span className="pyy-n">{r.racha}</span>
-              <span>{r.racha === 1 ? "semana de racha" : "semanas de racha"}</span>
+              <span className="pyy-meta--s">{r.racha === 1 ? "semana" : "semanas"}</span>
             </div>
           </section>
 
           {r.favorito && (
             <a href={`${BASE}/insights`} className="pyy-fav">
-              <div>
-                <span className="pyy-k pyy-meta">Tu favorito</span>
+              <div className="pyy-fav__art" aria-hidden="true">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={MANO} alt="" />
+              </div>
+              <div className="pyy-col" style={{ flexGrow: 1 }}>
+                <span className="pyy-meta--s">Tu favorito</span>
                 <span className="pyy-fav__nombre">{r.favorito.nombre}</span>
                 <span className="pyy-meta">
                   {r.favorito.veces === 1 ? "1 vez" : `${r.favorito.veces} veces`} · {r.favorito.pct}% de lo que pides
                 </span>
               </div>
-              <span className="pyy-chip">Insights</span>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
             </a>
           )}
 
           <section aria-labelledby="pyy-ult" className="pyy-lista">
-            <h2 id="pyy-ult" className="pyy-h2">Últimos escaneos</h2>
-            {r.ultimos.map((u, i) => (
-              <div key={i} className="pyy-item">
-                <div>
-                  <b>{u.nombre}</b>
-                  <span className="pyy-meta">
-                    {u.cuando} · {u.valor}
-                  </span>
+            <div className="pyy-seccion__head">
+              <h2 id="pyy-ult" className="pyy-h2">Últimos escaneos</h2>
+              <a href={`${BASE}/insights`}>Ver todo</a>
+            </div>
+            <div>
+              {r.ultimos.map((u, i) => (
+                <div key={i} className="pyy-item">
+                  <div>
+                    <b>{u.nombre}</b>
+                    <span className="pyy-meta--s">
+                      {u.cuando} · {u.valor}
+                    </span>
+                  </div>
+                  <span className="pyy-chip">+{u.puntos}</span>
                 </div>
-                <span className="pyy-chip">+{u.puntos}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </section>
         </>
       ) : (
@@ -102,5 +116,13 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
         </button>
       </form>
     </Pantalla>
+  );
+}
+
+function Flecha() {
+  return (
+    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
   );
 }

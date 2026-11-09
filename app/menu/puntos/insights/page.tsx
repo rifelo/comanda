@@ -9,7 +9,7 @@ import { BASE, Pantalla } from "../shell";
 import "../mi-payo.css";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Tus insights · Café Pa' Yo", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Tus estadísticas · Café Pa' Yo", robots: { index: false, follow: false } };
 
 const MOSTRAR_LOGROS = false;
 
@@ -19,7 +19,7 @@ const PERIODOS: { id: PeriodoInsights; label: string }[] = [
   { id: "todo", label: "Todo" },
 ];
 
-/** «Tus insights»: what and when the customer drinks. */
+/** «Tus estadísticas»: what and when the customer drinks. */
 export default async function InsightsPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
   const instagram = await instagramDeSesion();
   if (!instagram) redirect(`${BASE}?ir=insights`);
@@ -37,12 +37,12 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
 
   return (
     <Pantalla instagram={instagram} tab="insights">
-      <header style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="pyy-col">
+          <h1 className="pyy-h1">Tus estadísticas</h1>
           <span className="pyy-meta">
             {cliente ? `Cliente desde ${mesAnio(cliente.desde)} · ` : ""}1 punto por cada ${PESOS_POR_PUNTO.toLocaleString("es-CO")}
           </span>
-          <h1 className="pyy-h1">Tus insights</h1>
         </div>
         <nav aria-label="Periodo" className="pyy-periodo">
           {PERIODOS.map((x) => (
@@ -51,24 +51,24 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             </a>
           ))}
         </nav>
-      </header>
+      </div>
 
       <section aria-label="Resumen" className="pyy-dos">
-        <div className="pyy-big pyy-big--amarillo">
+        <div className="pyy-tile pyy-tile--pale">
           <span className="pyy-n">{r.bebidas}</span>
-          <span>{r.bebidas === 1 ? "bebida pedida" : "bebidas pedidas"}</span>
+          <span className="pyy-meta">{r.bebidas === 1 ? "bebida pedida" : "bebidas pedidas"}</span>
         </div>
-        <div className="pyy-big">
+        <div className="pyy-tile">
           <span className="pyy-n">{miles(r.puntos)}</span>
-          <span>puntos ganados</span>
+          <span className="pyy-meta">puntos ganados</span>
         </div>
-        <div className="pyy-big">
+        <div className="pyy-tile">
           <span className="pyy-n">{pesosCortos(r.gastado)}</span>
-          <span>en tu pausa de café</span>
+          <span className="pyy-meta">en tu pausa de café</span>
         </div>
-        <div className="pyy-big">
+        <div className="pyy-tile">
           <span className="pyy-n">{r.distintas}</span>
-          <span>{r.distintas === 1 ? "bebida distinta" : "bebidas distintas"}</span>
+          <span className="pyy-meta">{r.distintas === 1 ? "bebida distinta" : "bebidas distintas"}</span>
         </div>
       </section>
 
@@ -83,12 +83,10 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           <section aria-labelledby="pyy-top" className="pyy-card">
             <h2 id="pyy-top" className="pyy-h2">Lo que más tomas</h2>
             {r.top.map((d, i) => (
-              <div key={d.nombre} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div key={d.nombre} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <div className="pyy-fila">
-                  <b>
-                    {i + 1}. {d.nombre}
-                  </b>
-                  <span className="pyy-meta">
+                  <b>{d.nombre}</b>
+                  <span className="pyy-meta--s">
                     {d.veces} · {d.pct}%
                   </span>
                 </div>
@@ -99,8 +97,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             ))}
           </section>
 
-          <section aria-labelledby="pyy-mes" className="pyy-card">
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <section aria-labelledby="pyy-mes" className="pyy-card" style={{ gap: 14 }}>
+            <div className="pyy-col">
               <h2 id="pyy-mes" className="pyy-h2">Mes a mes</h2>
               {r.mejorMes && (
                 <span className="pyy-meta">
@@ -111,46 +109,38 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             <div role="img" aria-label={`Bebidas por mes: ${r.meses.map((m) => `${m.label} ${m.v}`).join(", ")}`} className="pyy-meses">
               {r.meses.map((m) => (
                 <div key={m.label}>
-                  <span className="pyy-n" style={{ fontSize: 13 }}>
-                    {m.v}
-                  </span>
+                  <span style={{ fontWeight: 700, fontSize: 12, lineHeight: "16px" }}>{m.v}</span>
                   <div
                     className={`col${r.mejorMes && m.v === r.mejorMes.v ? " on" : ""}${m.v === 0 ? " cero" : ""}`}
-                    style={{ height: `${Math.round((m.v / maxMes) * 110)}px` }}
+                    style={{ height: `${Math.round((m.v / maxMes) * 96)}px` }}
                   />
-                  <span className="pyy-k pyy-meta" style={{ fontSize: 12 }}>
-                    {m.label}
-                  </span>
+                  <span className="pyy-meta--s">{m.label}</span>
                 </div>
               ))}
             </div>
           </section>
 
-          <section aria-labelledby="pyy-hora" className="pyy-card pyy-card--cafe">
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="pyy-k" style={{ fontSize: 13, color: "var(--amarillo)" }}>
-                Tu hora Pa&apos;Yo
-              </span>
-              <h2 id="pyy-hora" className="pyy-h1">{r.horaPico}</h2>
-              <span className="pyy-meta">{r.pctManana}% de tus bebidas son de mañana.</span>
+          <section aria-labelledby="pyy-hora" className="pyy-card pyy-card--pale" style={{ gap: 14 }}>
+            <div className="pyy-col">
+              <span className="pyy-meta--s">Tu hora Pa&apos;Yo</span>
+              <h2 id="pyy-hora" className="pyy-n" style={{ margin: 0, fontSize: 26, lineHeight: "30px" }}>
+                {r.horaPico}
+              </h2>
+              <span style={{ fontSize: 13, lineHeight: "18px" }}>{r.pctManana}% de tus bebidas son de mañana.</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {r.franjas.map((f) => (
                 <div key={f.label} className="pyy-franja">
                   <span>{f.label}</span>
-                  <div className="pista" aria-hidden="true">
-                    <div style={{ width: `${Math.round((f.v / maxFranja) * 100)}%` }} />
+                  <div className="pyy-barra" aria-hidden="true">
+                    <div style={{ width: `${Math.round((f.v / maxFranja) * 100)}%`, minWidth: f.v ? 8 : 0 }} />
                   </div>
-                  <span className="pyy-n" style={{ fontSize: 13, textAlign: "right" }}>
-                    {f.v}
-                  </span>
+                  <span>{f.v}</span>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span className="pyy-k" style={{ fontSize: 13, color: "var(--amarillo)" }}>
-                Por día{r.diaFavorito ? ` · tu día es el ${r.diaFavorito}` : ""}
-              </span>
+              <span className="pyy-meta--s">Por día{r.diaFavorito ? ` · tu día es el ${r.diaFavorito}` : ""}</span>
               <div className="pyy-dias" role="img" aria-label={`Bebidas por día: ${r.dias.map((d) => `${d.label} ${d.v}`).join(", ")}`}>
                 {r.dias.map((d) => (
                   <div key={d.label}>
@@ -166,46 +156,42 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             <h2 id="pyy-temp" className="pyy-h2">Caliente o frío</h2>
             <div role="img" aria-label={`${r.calientes} bebidas calientes y ${r.frias} frías`} className="pyy-mezcla">
               {r.calientes > 0 && (
-                <div className="cal" style={{ width: r.frias ? `${Math.max(30, Math.min(80, Math.round((r.calientes / hechos) * 100)))}%` : "100%" }}>
-                  Calientes {r.calientes}
+                <div className="cal" style={{ width: r.frias ? `${Math.max(34, Math.min(80, Math.round((r.calientes / hechos) * 100)))}%` : "100%" }}>
+                  Calientes · {r.calientes}
                 </div>
               )}
-              {r.frias > 0 && <div className="fri">{r.calientes ? r.frias : `Frías ${r.frias}`}</div>}
+              {r.frias > 0 && <div className="fri">{r.calientes ? r.frias : `Frías · ${r.frias}`}</div>}
             </div>
             <span className="pyy-meta">
               {[r.favCaliente && `Tu caliente: ${r.favCaliente}.`, r.favFria && `Tu fría: ${r.favFria}.`].filter(Boolean).join(" ")}
             </span>
           </section>
 
-          <section aria-label="Datos curiosos" className="pyy-card pyy-card--amarillo">
-            <span className="pyy-scan__lema" style={{ fontSize: 24 }}>
-              Tómalo con calma. O con doble shot.
-            </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div className="pyy-dato">
-                <span className="pyy-n">{r.rachaMasLarga}</span>
-                <span>{r.rachaMasLarga === 1 ? "semana con visita, tu racha más larga" : "semanas seguidas, tu racha más larga"}</span>
-              </div>
-              <div className="pyy-dato">
-                <span className="pyy-n">{r.distintas}</span>
-                <span>{r.distintas === 1 ? "bebida del menú probada" : "bebidas del menú probadas"}</span>
-              </div>
-              {r.primera && (
-                <div className="pyy-dato">
-                  <span className="pyy-n">1ª</span>
-                  <span>
-                    {r.primera.nombre}, el {r.primera.fecha}
-                  </span>
-                </div>
-              )}
+          <section aria-labelledby="pyy-datos" className="pyy-card">
+            <h2 id="pyy-datos" className="pyy-h2">Datos curiosos</h2>
+            <div className="pyy-dato">
+              <span className="pyy-n">{r.rachaMasLarga}</span>
+              <span>{r.rachaMasLarga === 1 ? "semana con visita, tu racha más larga" : "semanas seguidas, tu racha más larga"}</span>
             </div>
+            <div className="pyy-dato">
+              <span className="pyy-n">{r.distintas}</span>
+              <span>{r.distintas === 1 ? "bebida del menú probada" : "bebidas del menú probadas"}</span>
+            </div>
+            {r.primera && (
+              <div className="pyy-dato">
+                <span className="pyy-n">1ra</span>
+                <span>
+                  {r.primera.nombre}, el {r.primera.fecha}
+                </span>
+              </div>
+            )}
           </section>
         </>
       )}
 
       {/* «Tus logros» hidden on the owner's request (2026-11-09); insights() still computes them. */}
       {MOSTRAR_LOGROS && r.logros.length > 0 && (
-        <section aria-labelledby="pyy-logros" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <section aria-labelledby="pyy-logros" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <h2 id="pyy-logros" className="pyy-h2">Tus logros</h2>
           <div className="pyy-logros">
             {r.logros.map((l) => (

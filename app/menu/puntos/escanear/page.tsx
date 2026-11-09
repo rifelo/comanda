@@ -24,7 +24,7 @@ export default async function EscanearPage() {
 
   return (
     <Pantalla instagram={instagram} tab="escanear">
-      <section aria-labelledby="pyy-esc" className="pyy-card pyy-card--amarillo">
+      <section aria-labelledby="pyy-esc" className="pyy-card pyy-card--pale">
         <h1 id="pyy-esc" className="pyy-h1">Escanea tu vaso</h1>
         <ol className="pyy-pasos">
           <li>Abre la cámara de tu celular y apunta al QR que viene en el sticker de tu vaso.</li>
@@ -35,7 +35,7 @@ export default async function EscanearPage() {
             </span>
           </li>
         </ol>
-        <span style={{ fontSize: 13, lineHeight: "18px" }}>Cada QR suma una sola vez. Si se te pasó, pídele a la persona en caja que te ayude.</span>
+        <span className="pyy-meta">Cada QR suma una sola vez. Si se te pasó, pídele a la persona en caja que te ayude.</span>
       </section>
 
       {ultimo ? (
