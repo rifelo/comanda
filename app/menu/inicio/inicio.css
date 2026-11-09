@@ -32,6 +32,7 @@ html body:has(.pyh) { background: #ffffff; }
 .pyh-head { border-bottom: var(--borde); }
 .pyh-head__in { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 14px; padding-bottom: 14px; }
 .pyh-marca { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; font-size: 15px; }
+.pyh-marca span { font-family: var(--f-display); font-weight: 400; font-size: 20px; line-height: 20px; text-transform: uppercase; }
 .pyh-marca img { height: 44px; width: auto; display: block; }
 .pyh-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pyh-nav a:not(.pyh-btn) { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; font-size: 14px; font-weight: 700; color: var(--tenue); text-decoration: none; }
@@ -40,7 +41,8 @@ html body:has(.pyh) { background: #ffffff; }
 .pyh-hero { background: var(--pale); border-radius: 0 0 36px 36px; overflow: hidden; }
 .pyh-hero__in { display: flex; flex-wrap: wrap; align-items: stretch; gap: 24px; padding-top: 40px; }
 .pyh-hero__txt { flex: 1 1 320px; display: flex; flex-direction: column; gap: 18px; padding-bottom: 44px; justify-content: center; }
-.pyh-hero h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.02; letter-spacing: -0.5px; }
+/* Nority, the brand's display face, as on the menu's big titles (owner, 2026-11-09) */
+.pyh-hero h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(36px, 5.6vw, 58px); line-height: .95; text-transform: uppercase; }
 .pyh-hero p { margin: 0; font-size: 17px; line-height: 26px; max-width: 460px; }
 .pyh-hero .pyh-acciones { padding-top: 6px; }
 .pyh-hero__arte { flex: 1 1 260px; min-height: 300px; position: relative; display: flex; align-items: flex-end; justify-content: center; }
