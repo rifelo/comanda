@@ -127,7 +127,7 @@ const limpio = (name: string) => name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/
 export interface OpcionReceta {
   /** The option's name («En leche», «16 oz»), noted on the lines it changes. */
   opcion: string;
-  recipe: ReadonlyArray<{ name: string; qty: number; unit: string }>;
+  recipe: ReadonlyArray<{ name: string; qty: number; unit: string; reemplaza?: string }>;
 }
 
 /**
@@ -143,6 +143,17 @@ export function conOpciones(
   const out = recipe.map((r) => ({ ...r }));
   for (const o of opciones) {
     for (const x of o.recipe) {
+      if (x.reemplaza) {
+        // A swap: that line becomes this ingredient (same amount × qty).
+        const was = out.find((r) => r.name === x.reemplaza);
+        if (was) {
+          was.name = x.name;
+          was.unit = x.unit;
+          was.qty *= x.qty;
+          was.note = [was.note, o.opcion].filter(Boolean).join(" · ");
+        }
+        continue;
+      }
       const hit = out.find((r) => r.name === x.name);
       if (hit) {
         hit.qty += x.qty;

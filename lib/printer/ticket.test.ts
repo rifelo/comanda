@@ -109,6 +109,20 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     expect(recetaDe({ ...drink, printsLabel: false })).toEqual({ bebida: false, pasos: [] });
   });
 
+  it("a swap option replaces that ingredient at the drink's own amount (Deslactosada)", () => {
+    const recipe = [
+      { name: "Cafe Okana", qty: 18, unit: "g", note: null },
+      { name: "Leche entera Gran Vía (bolsa 900 ml)", qty: 250, unit: "ml", note: null },
+    ];
+    expect(conOpciones(recipe, [
+      { opcion: "Deslactosada", recipe: [{ name: "Leche deslactosada Gran Vía (bolsa 900 ml)", qty: 1, unit: "ml", reemplaza: "Leche entera Gran Vía (bolsa 900 ml)" }] },
+    ])).toEqual([
+      { name: "Cafe Okana", qty: 18, unit: "g", note: null },
+      { name: "Leche deslactosada Gran Vía (bolsa 900 ml)", qty: 250, unit: "ml", note: "Deslactosada" },
+    ]);
+    expect(recipe[1].name).toBe("Leche entera Gran Vía (bolsa 900 ml)"); // the catalog's recipe is untouched
+  });
+
   it("options change the amounts: added, raised, and swapped out with a negative amount", () => {
     const recipe = [
       { name: "Pulpa de mora", qty: 1, unit: "und", note: null },

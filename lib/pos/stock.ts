@@ -84,13 +84,13 @@ export async function syncOrderConsumption(
     if (optionIds.length) {
       const { data } = await supabase
         .from("modifier_option_receta")
-        .select("option_id, ingrediente_id, qty")
+        .select("option_id, ingrediente_id, qty, reemplaza_id")
         .eq("organization_id", orgId)
         .in("option_id", optionIds);
-      const m = options as Map<string, { ingredienteId: string; qty: number }[]>;
+      const m = options as Map<string, { ingredienteId: string; qty: number; reemplazaId: string | null }[]>;
       for (const r of data ?? []) {
         const arr = m.get(r.option_id as string) ?? [];
-        arr.push({ ingredienteId: r.ingrediente_id as string, qty: Number(r.qty) });
+        arr.push({ ingredienteId: r.ingrediente_id as string, qty: Number(r.qty), reemplazaId: (r.reemplaza_id as string | null) ?? null });
         m.set(r.option_id as string, arr);
       }
     }

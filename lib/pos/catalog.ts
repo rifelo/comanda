@@ -97,7 +97,7 @@ export async function getPosCatalog({
     // What an option adds/takes out of the drink: the comanda shows the amounts with it.
     supabase
       .from("modifier_option_receta")
-      .select("option_id, qty, ingredientes(name, unit)")
+      .select("option_id, qty, ingredientes!modifier_option_receta_ingrediente_id_fkey(name, unit), reemplaza:ingredientes!modifier_option_receta_reemplaza_id_fkey(name)")
       .eq("organization_id", organizationId),
     getNombres(supabase, organizationId),
   ]);
@@ -130,12 +130,13 @@ export async function getPosCatalog({
   };
 
   // ── modifier groups: map to UI shape, keyed by id ─────────────────────────
-  const optRecipe = new Map<string, Array<{ name: string; qty: number; unit: string }>>();
+  const optRecipe = new Map<string, Array<{ name: string; qty: number; unit: string; reemplaza?: string }>>();
   for (const r of (optRecetaRows ?? []) as Array<Record<string, unknown>>) {
     const ing = r.ingredientes as { name: string; unit: string } | null;
     if (!ing) continue;
     const arr = optRecipe.get(r.option_id as string) ?? [];
-    arr.push({ name: ing.name, qty: Number(r.qty), unit: ing.unit });
+    const reemplaza = (r.reemplaza as { name: string } | null)?.name;
+    arr.push({ name: ing.name, qty: Number(r.qty), unit: ing.unit, ...(reemplaza ? { reemplaza } : {}) });
     optRecipe.set(r.option_id as string, arr);
   }
   const modGroups: Record<string, PosModGroup> = {};
@@ -162,6 +163,9 @@ export async function getPosCatalog({
     if (modGroups[l.group_id as string]) arr.push(l.group_id as string);
     linksByProduct.set(pid, arr);
   }
+  // Groups in their own order (required «Leche» before «Tamaño» / «Sabor extra»), not link order.
+  const groupRank = new Map(modGroupsList.map((g, i) => [g.id, i]));
+  for (const arr of linksByProduct.values()) arr.sort((a, b) => (groupRank.get(a) ?? 0) - (groupRank.get(b) ?? 0));
   const noMappings = (modLinks ?? []).length === 0;
 
   // ── products → menu items ─────────────────────────────────────────────────
