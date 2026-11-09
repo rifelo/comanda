@@ -58,3 +58,4 @@
   .pyc-step, .pyc-pop, .pyc-thanks__title, .pyc-thanks__text, .pyc-earned, .pyc-thanks__go, .pyc-thanks__btn, .pyc-thanks__art { animation: none; opacity: 1; transform: none; }
   .pyc-star { transition: none; }
 }
+.pyc-head__logo { width: 104px; }

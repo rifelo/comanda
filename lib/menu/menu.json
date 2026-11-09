@@ -25,8 +25,8 @@
     ]
   },
   "arte": {
-    "logo": "/menu/art/cafe-payo-logo-principal.svg",
-    "logoSticker": "/menu/art/cafe-payo-logo-sticker-crema.svg",
+    "logo": "/brand/payo-mark.svg",
+    "logoSticker": "/brand/payo-mark.svg",
     "mano-taza.svg": "/menu/art/mano-taza.svg",
     "mano-taza-asa.svg": "/menu/art/mano-taza-asa.svg",
     "mano-copa-vino.svg": "/menu/art/mano-copa-vino.svg",

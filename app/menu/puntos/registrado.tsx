@@ -1,7 +1,7 @@
 import type { Registro } from "@/lib/clientes/mi-payo";
 
 const BASE = "/menu/puntos";
-const LOGO = "/menu/art/cafe-payo-logo-principal.svg";
+const LOGO = "/brand/payo-mark.svg";
 
 /** «Después de escanear el QR» (Claude Design, Mi Pa'Yo). Plain markup: rendered by the QR page's client component. */
 export function Registrado({ r }: { r: Registro }) {

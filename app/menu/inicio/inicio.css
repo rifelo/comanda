@@ -2,15 +2,15 @@
 .pyl-head { min-height: 300px; }
 .pyl-main { display: flex; flex-direction: column; gap: 12px; padding: 24px 20px 32px; }
 .pyl-txt { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.pyl-k { font-family: var(--f-display); font-size: 13px; line-height: 16px; text-transform: uppercase; overflow-wrap: anywhere; }
+.pyl-k { font-family: var(--f-name); font-size: 13px; line-height: 16px; text-transform: uppercase; overflow-wrap: anywhere; }
 
 .pyl-menu { display: flex; align-items: center; gap: 14px; padding: 22px 20px; border-radius: 21px; background: var(--cafe); color: var(--crema) !important; }
 .pyl-menu__icon { flex-shrink: 0; width: 52px; height: 52px; border-radius: 999px; background: var(--amarillo); color: var(--cafe); display: flex; align-items: center; justify-content: center; }
-.pyl-menu__t { font-family: var(--f-display); font-size: clamp(26px, 8vw, 32px); line-height: 1; text-transform: uppercase; color: var(--amarillo); }
+.pyl-menu__t { font-family: var(--f-name); font-size: clamp(26px, 8vw, 32px); line-height: 1; text-transform: uppercase; color: var(--amarillo); }
 .pyl-menu__s { font-size: 14px; line-height: 19px; color: var(--crema-72); }
 
 .pyl-yo { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: 21px; border: 2px solid var(--cafe); background: var(--amarillo); }
-.pyl-yo__n { font-family: var(--f-display); font-size: clamp(40px, 13vw, 52px); line-height: .95; }
+.pyl-yo__n { font-family: var(--f-name); font-size: clamp(40px, 13vw, 52px); line-height: .95; }
 .pyl-yo__n span { font-size: 18px; text-transform: uppercase; }
 .pyl-yo__t { font-family: var(--f-name); font-size: 18px; line-height: 22px; text-transform: uppercase; }
 .pyl-yo__s { font-size: 14px; line-height: 19px; }
@@ -18,7 +18,7 @@
 .pyl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .pyl-door { display: flex; flex-direction: column; gap: 6px; min-height: 132px; padding: 16px; border: 2px solid var(--cafe); border-radius: 21px; }
 .pyl-door svg { margin-bottom: auto; }
-.pyl-door__t { font-family: var(--f-display); font-size: 17px; line-height: 19px; text-transform: uppercase; overflow-wrap: anywhere; }
+.pyl-door__t { font-family: var(--f-name); font-size: 17px; line-height: 19px; text-transform: uppercase; overflow-wrap: anywhere; }
 .pyl-door__s { font-size: 13px; line-height: 17px; color: var(--gris); }
 
 .pyl-menu, .pyl-yo, .pyl-door { transition: transform .12s ease-out; }

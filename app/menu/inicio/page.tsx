@@ -64,7 +64,7 @@ export default async function InicioPage() {
     <div className="pym-page pyl">
       <header className="pym-header pyl-head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${ART}/cafe-payo-logo-principal.svg`} alt="Café Pa' Yo" className="pym-header__logo" />
+        <img src="/brand/payo-mark.svg" alt="Café Pa' Yo" className="pym-header__logo" />
         <h1 className="pym-header__title">{c.header.titulo}</h1>
         <p className="pym-header__text">¿Qué quieres hacer hoy?</p>
         {/* eslint-disable-next-line @next/next/no-img-element */}

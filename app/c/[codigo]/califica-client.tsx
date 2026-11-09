@@ -73,7 +73,7 @@ export function CalificaClient({ codigo, estado, items, puntos, instagram }: {
     <div className="pym-page pyc-page">
       <header className="pyc-head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${ART}/cafe-payo-logo-principal.svg`} alt="Café Pa' Yo" className="pyc-head__logo" />
+        <img src="/brand/payo-mark.svg" alt="Café Pa' Yo" className="pyc-head__logo" />
         <ol className="pyc-dots" aria-label={`Paso ${n} de 3`}>
           {[1, 2, 3].map((i) => <li key={i} className={i <= n ? "pyc-dot pyc-dot--on" : "pyc-dot"} />)}
         </ol>
@@ -205,7 +205,7 @@ function Cerrado({ estado, ig, instagram }: { estado: EstadoEnlace; ig: string |
     <div className="pym-page pyc-page">
       <header className="pyc-head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${ART}/cafe-payo-logo-principal.svg`} alt="Café Pa' Yo" className="pyc-head__logo" />
+        <img src="/brand/payo-mark.svg" alt="Café Pa' Yo" className="pyc-head__logo" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`${ART}/mano-taza.svg`} alt="" className="pym-art pyc-head__art" />
       </header>
