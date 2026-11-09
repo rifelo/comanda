@@ -4,7 +4,7 @@ import * as React from "react";
 import { entrar, type EntrarState } from "./actions";
 
 const HOME = "https://cafepayo.com";
-const LOGO = "/menu/art/cafe-payo-logo-principal.svg";
+const LOGO = "/brand/payo-mark.svg";
 
 /** «Mis puntos — entrar con Instagram»: the first screen of Mi Pa'Yo. */
 export function Entrar({ pesosPorPunto, ir }: { pesosPorPunto: number; ir: string | null }) {

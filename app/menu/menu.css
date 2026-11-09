@@ -170,3 +170,6 @@ html:has(.pym) { scroll-behavior: smooth; }
 @keyframes pym-mano-in { from { transform: translateX(-110px); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pym-mano { animation: none; } }
 .pym-header__home { align-self: flex-start; display: block; border-radius: 8px; }
+/* The brand's sticker mark (hand + cup) replaces the wordmark logo on cafepayo.com (owner, 2026-11-08). */
+.pym-header__logo { width: 112px; }
+.pym-footer__logo { width: 120px; }

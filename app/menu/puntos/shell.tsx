@@ -4,7 +4,7 @@ import { body, display } from "@/app/menu/fonts";
 export const HOME = "https://cafepayo.com";
 export const MENU = "/menu";
 export const BASE = "/menu/puntos";
-export const LOGO = "/menu/art/cafe-payo-logo-principal.svg";
+export const LOGO = "/brand/payo-mark.svg";
 
 type Tab = "inicio" | "insights" | "ranking" | "escanear";
 
