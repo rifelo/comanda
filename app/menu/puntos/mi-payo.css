@@ -122,32 +122,32 @@ body:has(.pyy--oscuro) { background: var(--cafe); }
 .pyy-logros span.falta { border: 2px dashed var(--gris); background: transparent; color: var(--gris); }
 
 /* ranking */
-.pyy-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px; border: 2px solid var(--crema); border-radius: 999px; }
+.pyy-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px; border: var(--linea); border-radius: 999px; }
 .pyy-seg a { min-height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 999px; font-family: var(--f-name); font-size: 13px; text-transform: uppercase; }
-.pyy-seg a[aria-current="true"] { background: var(--amarillo); color: var(--cafe) !important; }
+.pyy-seg a[aria-current="true"] { background: var(--cafe); color: var(--crema) !important; }
 .pyy-podio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; padding-top: 4px; }
 .pyy-podio > div { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.pyy-podio .ava { width: 42px; height: 42px; border-radius: 999px; border: 2px solid var(--crema); background: var(--crema); color: var(--cafe); display: flex; align-items: center; justify-content: center; font-family: var(--f-name); font-size: 20px; text-transform: uppercase; }
+.pyy-podio .ava { width: 42px; height: 42px; border-radius: 999px; border: var(--linea); background: var(--crema); color: var(--cafe); display: flex; align-items: center; justify-content: center; font-family: var(--f-name); font-size: 20px; text-transform: uppercase; }
 .pyy-podio .h { font-size: 12px; line-height: 16px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pyy-podio .bloque { width: 100%; border: 2px solid var(--crema); border-radius: 16px 16px 6px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.pyy-podio .bloque { width: 100%; border: var(--linea); border-radius: 16px 16px 6px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .pyy-podio .bloque b { font-family: var(--f-name); font-weight: 400; font-size: 30px; line-height: 30px; }
 .pyy-podio .bloque span { font-family: var(--f-name); font-size: 13px; }
 .pyy-podio .p1 .ava { width: 52px; height: 52px; font-size: 26px; background: var(--amarillo); }
 .pyy-podio .p1 .bloque { height: 78px; background: var(--amarillo); color: var(--cafe); }
 .pyy-podio .p2 .bloque { height: 62px; }
 .pyy-podio .p3 .bloque { height: 50px; }
-.pyy-podio .yo .h { color: var(--amarillo); }
+.pyy-podio .yo .h { text-decoration: underline; text-underline-offset: 3px; }
 .pyy-pos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.pyy-pos li { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 16px; background: var(--cafe-2); }
-.pyy-pos li.yo { background: var(--amarillo); color: var(--cafe); }
+.pyy-pos li { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 16px; border: 2px solid transparent; background: var(--suave); }
+.pyy-pos li.yo { background: var(--amarillo); border-color: var(--cafe); }
 .pyy-pos .n { font-family: var(--f-name); font-size: 15px; width: 26px; flex-shrink: 0; }
-.pyy-pos .ava { width: 32px; height: 32px; flex-shrink: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-family: var(--f-name); font-size: 14px; text-transform: uppercase; background: var(--crema); color: var(--cafe); }
+.pyy-pos .ava { width: 32px; height: 32px; flex-shrink: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-family: var(--f-name); font-size: 14px; text-transform: uppercase; background: var(--crema); color: var(--cafe); border: var(--linea); }
 .pyy-pos li.yo .ava { background: var(--cafe); color: var(--crema); }
 .pyy-pos li > div:not(.ava) { flex-grow: 1; display: flex; flex-direction: column; min-width: 0; }
 .pyy-pos li b { font-size: 14px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pyy-pos li.yo .pyy-meta { color: var(--cafe); }
 .pyy-pos .pts { font-family: var(--f-name); font-size: 15px; }
-.pyy-yo { margin-top: auto; background: var(--amarillo); color: var(--cafe); border-radius: 21px; padding: 10px 18px; display: flex; align-items: center; gap: 12px; }
+.pyy-yo { margin-top: auto; background: var(--amarillo); color: var(--cafe); border: var(--linea); border-radius: 21px; padding: 10px 18px; display: flex; align-items: center; gap: 12px; }
 .pyy-yo > b { font-family: var(--f-name); font-weight: 400; font-size: 40px; line-height: 44px; }
 .pyy-yo > div { display: flex; flex-direction: column; }
 .pyy-yo > div b { font-size: 15px; line-height: 20px; }

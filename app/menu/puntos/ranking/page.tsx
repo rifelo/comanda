@@ -62,7 +62,7 @@ export default async function RankingPage({
   const podio = [r.podio[1], r.podio[0], r.podio[2]];
 
   return (
-    <Pantalla instagram={instagram} tab="ranking" tono="oscuro">
+    <Pantalla instagram={instagram} tab="ranking">
       <header style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <h1 className="pyy-h2" style={{ fontSize: 26, lineHeight: "28px" }}>
           Ranking Pa&apos;Yo
@@ -85,7 +85,7 @@ export default async function RankingPage({
       </nav>
 
       {r.podio.length === 0 ? (
-        <p className="pyy-vacio" style={{ borderColor: "var(--crema)" }}>
+        <p className="pyy-vacio">
           Nadie ha sumado puntos en este periodo todavía. ¡El primer lugar es
           tuyo si escaneas hoy!
         </p>
