@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
 import { THEME_COLOR, THEME_COOKIE, toAppTheme, type AppTheme } from "@/lib/theme";
 import { RegisterSw } from "@/components/pwa/register-sw";
@@ -54,7 +54,18 @@ const frase = localFont({
   style: "normal",
 });
 
-export const metadata: Metadata = {
+/** The café's customer domain: no «Comanda» app to install there (no manifest, no banner). */
+const MENU_HOSTS = new Set(["cafepayo.com", "www.cafepayo.com"]);
+async function enDominioCafe(): Promise<boolean> {
+  return MENU_HOSTS.has(((await headers()).get("host") ?? "").split(":")[0].toLowerCase());
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  if (await enDominioCafe()) return { title: "Café Pa' Yo", icons: { icon: "/icons/icon.svg" }, formatDetection: { telephone: false } };
+  return metadata;
+}
+
+const metadata: Metadata = {
   title: "Comanda",
   description: "Turnos, caja, inventario y ventas de Café PA'YO.",
   applicationName: "Comanda",
@@ -103,6 +114,7 @@ export default async function RootLayout({
   // Theme from the cookie, server-side, so the first paint matches (no
   // flash). Old paper-theme cookies map to claro/oscuro (lib/theme.ts).
   const theme = await readTheme();
+  const cafe = await enDominioCafe();
 
   return (
     <html
@@ -113,8 +125,8 @@ export default async function RootLayout({
       <body className="bg-bg text-text min-h-full flex flex-col">
         {children}
         <Toaster />
-        <InstallBanner />
-        <RegisterSw />
+        {!cafe && <InstallBanner />}
+        {!cafe && <RegisterSw />}
       </body>
     </html>
   );
