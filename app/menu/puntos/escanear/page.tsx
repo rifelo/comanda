@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Escanear · Café Pa' Yo", robots: {
  */
 export default async function EscanearPage() {
   const instagram = await instagramDeSesion();
-  if (!instagram) redirect(BASE);
+  if (!instagram) redirect(`${BASE}?ir=escanear`);
   const org = menuContent.organizationId;
   const cliente = await cargarCliente(org, instagram);
   const ultimo = cliente ? inicio(await cargarEscaneos(org, cliente.id)).ultimos[0] : undefined;

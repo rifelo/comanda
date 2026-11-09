@@ -20,7 +20,7 @@ const PERIODOS: { id: PeriodoInsights; label: string }[] = [
 /** «Tus insights»: what and when the customer drinks. */
 export default async function InsightsPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
   const instagram = await instagramDeSesion();
-  if (!instagram) redirect(BASE);
+  if (!instagram) redirect(`${BASE}?ir=insights`);
   const p = (await searchParams).p;
   const periodo: PeriodoInsights = p === "mes" || p === "6m" ? p : "todo";
   const org = menuContent.organizationId;

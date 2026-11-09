@@ -16,7 +16,9 @@ export async function entrar(_prev: EntrarState, form: FormData): Promise<Entrar
   const instagram = normalizarInstagram(raw);
   if (!instagram) return { error: raw ? "Ese usuario de Instagram no parece válido. Revísalo e intenta de nuevo." : "Escribe tu usuario de Instagram.", valor: raw };
   await recordarInstagram(instagram);
-  redirect("/menu/puntos");
+  // Back to the screen that asked for the @ (the landing's Ranking, Insights…).
+  const ir = String(form.get("ir") ?? "");
+  redirect(["insights", "ranking", "escanear"].includes(ir) ? `/menu/puntos/${ir}` : "/menu/puntos");
 }
 
 export async function salir(): Promise<void> {

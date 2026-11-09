@@ -49,7 +49,7 @@ export default async function RankingPage({
   searchParams: Promise<{ p?: string }>;
 }) {
   const instagram = await instagramDeSesion();
-  if (!instagram) redirect(BASE);
+  if (!instagram) redirect(`${BASE}?ir=ranking`);
   const p = (await searchParams).p;
   const periodo: PeriodoRanking = p === "semana" || p === "todo" ? p : "mes";
   const org = menuContent.organizationId;

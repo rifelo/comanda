@@ -17,9 +17,9 @@ export const metadata: Metadata = {
 };
 
 /** «Mi Pa'Yo» home: cafepayo.com/puntos (the proxy rewrites it here). Public, no session — the remembered @ picks the customer. */
-export default async function PuntosPage() {
+export default async function PuntosPage({ searchParams }: { searchParams: Promise<{ ir?: string }> }) {
   const instagram = await instagramDeSesion();
-  if (!instagram) return <Entrar pesosPorPunto={PESOS_POR_PUNTO} />;
+  if (!instagram) return <Entrar pesosPorPunto={PESOS_POR_PUNTO} ir={(await searchParams).ir ?? null} />;
 
   const org = menuContent.organizationId;
   const cliente = await cargarCliente(org, instagram);

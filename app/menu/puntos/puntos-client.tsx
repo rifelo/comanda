@@ -3,23 +3,24 @@
 import * as React from "react";
 import { entrar, type EntrarState } from "./actions";
 
-const MENU = "https://cafepayo.com";
+const HOME = "https://cafepayo.com";
 const LOGO = "/menu/art/cafe-payo-logo-principal.svg";
 
 /** «Mis puntos — entrar con Instagram»: the first screen of Mi Pa'Yo. */
-export function Entrar({ pesosPorPunto }: { pesosPorPunto: number }) {
+export function Entrar({ pesosPorPunto, ir }: { pesosPorPunto: number; ir: string | null }) {
   const [state, action, pending] = React.useActionState<EntrarState, FormData>(entrar, { error: null, valor: "" });
   const [usuario, setUsuario] = React.useState(state.valor);
   const pesos = `$${pesosPorPunto.toLocaleString("es-CO")}`;
   return (
     <div className="pyy">
       <header className="pyy-entrar__head">
-        <a href={MENU} aria-label="Café Pa' Yo, ir al menú">
+        <a href={HOME} aria-label="Café Pa' Yo, ir al inicio">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={LOGO} alt="Café Pa' Yo" />
         </a>
       </header>
       <form action={action} className="pyy-entrar">
+        {ir && <input type="hidden" name="ir" value={ir} />}
         <h1 className="pyy-entrar__title">Mis puntos</h1>
         <p>
           Escribe tu usuario de Instagram y mira cuántos puntos llevas. <strong>Cada {pesos} que compras es 1 punto.</strong>
@@ -63,8 +64,8 @@ export function Entrar({ pesosPorPunto }: { pesosPorPunto: number }) {
         <button type="submit" className="pyy-btn pyy-btn--cafe" disabled={pending || !usuario.trim()}>
           {pending ? "Entrando…" : "Ver mis puntos"}
         </button>
-        <a href={MENU} className="pyy-link">
-          Volver al menú
+        <a href={HOME} className="pyy-link">
+          Volver al inicio
         </a>
         <div className="pyy-firma">
           <span>Tómalo con calma. O con doble shot.</span>
