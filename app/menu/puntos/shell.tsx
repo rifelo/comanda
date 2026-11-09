@@ -5,6 +5,8 @@ export const HOME = "https://cafepayo.com";
 export const MENU = "/menu";
 export const BASE = "/menu/puntos";
 export const LOGO = "/brand/payo-mark.svg";
+/** The hand holding a cup (brand illustration). */
+export const MANO = "/menu/art/mano-taza.svg";
 
 type Tab = "inicio" | "insights" | "ranking" | "escanear";
 
@@ -28,7 +30,7 @@ function QrPath() {
 
 export function Icono({ tab, size = 22 }: { tab: Tab; size?: number }) {
   return (
-    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       {ICONOS[tab]}
     </svg>
   );
@@ -36,31 +38,34 @@ export function Icono({ tab, size = 22 }: { tab: Tab; size?: number }) {
 
 const TABS: { tab: Tab; label: string; href: string }[] = [
   { tab: "inicio", label: "Inicio", href: BASE },
-  { tab: "insights", label: "Insights", href: `${BASE}/insights` },
+  { tab: "insights", label: "Estadísticas", href: `${BASE}/insights` },
   { tab: "ranking", label: "Ranking", href: `${BASE}/ranking` },
   { tab: "escanear", label: "Escanear", href: `${BASE}/escanear` },
 ];
 
-/** A screen of the app: yellow bar with the logo and the @, content, bottom tabs. */
-export function Pantalla({ instagram, tab, tono = "crema", children }: { instagram: string; tab: Tab; tono?: "crema" | "oscuro"; children: React.ReactNode }) {
+/** A screen of the app: me + the sticker mark on top, content, icon tabs at the bottom. */
+export function Pantalla({ instagram, tab, children }: { instagram: string; tab: Tab; children: React.ReactNode }) {
   return (
-    <div className={`pyy ${tono === "oscuro" ? "pyy--oscuro" : ""}`}>
+    <div className="pyy">
       <header className="pyy-top">
+        <div className="pyy-top__yo">
+          <span className="pyy-ava" aria-hidden="true">
+            {instagram.replace(/[^a-z0-9]/g, "").charAt(0) || "@"}
+          </span>
+          <span>@{instagram}</span>
+        </div>
         <a href={HOME} aria-label="Café Pa' Yo, ir al inicio">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO} alt="Café Pa' Yo" className="pyy-top__logo" />
+          <img src={LOGO} alt="" className="pyy-top__logo" />
         </a>
-        <div className="pyy-top__yo">
-          <span>@{instagram}</span>
-          <span className="pyy-ava" aria-hidden="true">{instagram.replace(/[^a-z0-9]/g, "").charAt(0) || "@"}</span>
-        </div>
       </header>
       <main className="pyy-main">{children}</main>
       <nav className="pyy-nav" aria-label="Principal">
         {TABS.map((t) => (
-          <a key={t.tab} href={t.href} aria-current={t.tab === tab ? "page" : undefined}>
-            <Icono tab={t.tab} />
-            {t.label}
+          <a key={t.tab} href={t.href} aria-label={t.label} aria-current={t.tab === tab ? "page" : undefined}>
+            <span>
+              <Icono tab={t.tab} />
+            </span>
           </a>
         ))}
       </nav>

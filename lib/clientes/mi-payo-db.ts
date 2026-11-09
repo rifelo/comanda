@@ -129,7 +129,8 @@ export async function registroDeEscaneo(codigo: string, instagram: string, total
     const mio = escaneos.find((e) => e.id === row.id);
     if (!mio) return null;
     const bebidas = mio.items.filter((i) => i.tipo !== "comida");
-    const bebida = (bebidas[0] ?? mio.items[0])?.nombre;
+    const linea = bebidas[0] ?? mio.items[0];
+    const bebida = linea?.nombre;
     if (!bebida) return null;
     const lista = porBebida(escaneos);
     const puntos = Number(row.puntos);
@@ -141,6 +142,7 @@ export async function registroDeEscaneo(codigo: string, instagram: string, total
       nombre: nombreBonito,
       instagram,
       bebida,
+      tipo: linea.tipo,
       valor: pesos(mio.items.reduce((n, i) => n + i.valor, 0)),
       puntos,
       total,

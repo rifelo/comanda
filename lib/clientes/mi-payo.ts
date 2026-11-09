@@ -362,6 +362,8 @@ export interface Registro {
   nombre: string | null;
   instagram: string;
   bebida: string;
+  /** Hot, cold or food: «Caliente» / «Fría» under the drink. */
+  tipo: Tipo;
   /** "$7.000" */
   valor: string;
   puntos: number;

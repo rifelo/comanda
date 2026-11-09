@@ -63,12 +63,10 @@ export default async function RankingPage({
 
   return (
     <Pantalla instagram={instagram} tab="ranking">
-      <header style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <h1 className="pyy-h2" style={{ fontSize: 26, lineHeight: "28px" }}>
-          Ranking Pa&apos;Yo
-        </h1>
+      <div className="pyy-col">
+        <h1 className="pyy-h1">Ranking Pa&apos;Yo</h1>
         <span className="pyy-meta">{nota(periodo)}</span>
-      </header>
+      </div>
 
       <nav aria-label="Periodo" className="pyy-seg">
         {PERIODOS.map((x) => (
