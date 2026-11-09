@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { tuPedido, type EstadoEnlace, type ItemCalificado } from "@/lib/calificaciones/calificaciones";
+import type { Registro } from "@/lib/clientes/mi-payo";
+import { Registrado } from "@/app/menu/puntos/registrado";
 import { calificar } from "./actions";
 
 const ART = "/menu/art";
@@ -36,6 +38,7 @@ export function CalificaClient({ codigo, estado, items, puntos, instagram }: {
   const [error, setError] = React.useState<string | null>(null);
   const [cerrado, setCerrado] = React.useState<EstadoEnlace | null>(estado === "valido" ? null : estado);
   const [ganados, setGanados] = React.useState<{ puntos: number; total: number | null } | null>(null);
+  const [registro, setRegistro] = React.useState<Registro | null>(null);
   const ig = instagram ? `https://www.instagram.com/${instagram}` : null;
   const pedido = tuPedido(items);
 
@@ -56,10 +59,13 @@ export function CalificaClient({ codigo, estado, items, puntos, instagram }: {
       return;
     }
     setGanados({ puntos: res.puntos, total: res.total });
+    setRegistro(res.registro);
     setPaso("gracias");
   }
 
   if (cerrado) return <Cerrado estado={cerrado} ig={ig} instagram={instagram} />;
+  // Points earned: the «¡Listo!» screen of Mi Pa'Yo (drink, total, ranking).
+  if (paso === "gracias" && registro) return <Registrado r={registro} />;
   if (paso === "gracias") return <Gracias estrellas={estrellas} ganados={ganados} conSugerencia={sugerencia.trim().length > 0} pedido={pedido} ig={ig} instagram={instagram} />;
 
   const n = paso === "estrellas" ? 1 : paso === "sugerencia" ? 2 : 3;

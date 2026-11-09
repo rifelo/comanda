@@ -4,6 +4,7 @@ import { cargarEnlace } from "@/lib/calificaciones/calificaciones-db";
 import { body, display } from "@/app/menu/fonts";
 import "@/app/menu/menu.css";
 import "./califica.css";
+import "@/app/menu/puntos/mi-payo.css";
 import { CalificaClient } from "./califica-client";
 
 export const dynamic = "force-dynamic";
