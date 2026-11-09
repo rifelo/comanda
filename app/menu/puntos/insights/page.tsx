@@ -11,6 +11,8 @@ import "../mi-payo.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Tus insights · Café Pa' Yo", robots: { index: false, follow: false } };
 
+const MOSTRAR_LOGROS = false;
+
 const PERIODOS: { id: PeriodoInsights; label: string }[] = [
   { id: "mes", label: "Este mes" },
   { id: "6m", label: "6 meses" },
@@ -201,7 +203,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         </>
       )}
 
-      {r.logros.length > 0 && (
+      {/* «Tus logros» hidden on the owner's request (2026-11-09); insights() still computes them. */}
+      {MOSTRAR_LOGROS && r.logros.length > 0 && (
         <section aria-labelledby="pyy-logros" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <h2 id="pyy-logros" className="pyy-h2">Tus logros</h2>
           <div className="pyy-logros">
