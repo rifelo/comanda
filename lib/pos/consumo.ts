@@ -3,6 +3,8 @@
  * lines of an order into ingredient quantities using the recipes, expanding
  * combos to their products first. A modifier option may carry ingredients of
  * its own (a juice "en leche" takes the milk): they add to the product's.
+ * Or it swaps one (0071): «Deslactosada» takes lactose-free milk in place of
+ * the whole milk, in whatever amount that drink's recipe uses.
  */
 
 export interface ConsumoLine {
@@ -17,8 +19,12 @@ export interface ConsumoLine {
 export type RecipeMap = ReadonlyMap<string, ReadonlyArray<{ ingredienteId: string; qty: number }>>;
 /** combo_id → products bundled (producto_id, qty per combo). */
 export type ComboMap = ReadonlyMap<string, ReadonlyArray<{ productoId: string; qty: number }>>;
-/** option_id → what the option takes per unit sold (modifier_option_receta, 0048). */
-export type OptionRecipeMap = ReadonlyMap<string, ReadonlyArray<{ ingredienteId: string; qty: number }>>;
+/**
+ * option_id → what the option takes per unit sold (modifier_option_receta, 0048).
+ * With `reemplazaId`, `qty` is a factor: the recipe's amount of `reemplazaId`
+ * (× qty) is taken from `ingredienteId` instead.
+ */
+export type OptionRecipeMap = ReadonlyMap<string, ReadonlyArray<{ ingredienteId: string; qty: number; reemplazaId?: string | null }>>;
 
 /**
  * The options chosen on a line, out of its `mods` ({ groupId: name | name[] }).
@@ -39,20 +45,30 @@ export function explodeConsumption(
   options: OptionRecipeMap = new Map(),
 ): Map<string, number> {
   const out = new Map<string, number>();
-  const addProduct = (productoId: string, units: number) => {
-    for (const r of recipes.get(productoId) ?? []) {
-      out.set(r.ingredienteId, round3((out.get(r.ingredienteId) ?? 0) + r.qty * units));
-    }
-  };
+  const add = (m: Map<string, number>, id: string, qty: number) => m.set(id, round3((m.get(id) ?? 0) + qty));
   for (const l of lines) {
     if (l.qty <= 0) continue;
-    for (const oid of l.optionIds ?? []) {
-      for (const r of options.get(oid) ?? []) out.set(r.ingredienteId, round3((out.get(r.ingredienteId) ?? 0) + r.qty * l.qty));
-    }
+    // The line's recipe first, so a swap knows how much the drink uses.
+    const line = new Map<string, number>();
+    const addProduct = (productoId: string, units: number) => {
+      for (const r of recipes.get(productoId) ?? []) add(line, r.ingredienteId, r.qty * units);
+    };
     if (l.kind === "item" && l.productoId) addProduct(l.productoId, l.qty);
     else if (l.kind === "combo" && l.comboId) {
       for (const c of combos.get(l.comboId) ?? []) addProduct(c.productoId, c.qty * l.qty);
     }
+    for (const oid of l.optionIds ?? []) {
+      for (const r of options.get(oid) ?? []) {
+        if (r.reemplazaId) {
+          const moved = round3((line.get(r.reemplazaId) ?? 0) * r.qty);
+          if (moved <= 0) continue;
+          add(line, r.reemplazaId, -moved);
+          if ((line.get(r.reemplazaId) ?? 0) === 0) line.delete(r.reemplazaId);
+          add(line, r.ingredienteId, moved);
+        } else add(line, r.ingredienteId, r.qty * l.qty);
+      }
+    }
+    for (const [id, qty] of line) add(out, id, qty);
   }
   return out;
 }

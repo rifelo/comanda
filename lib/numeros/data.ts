@@ -246,7 +246,8 @@ async function loadRentabilidad(db: Db, orgId: string, date: string): Promise<Re
   const anterior = mesDe(addDays(mes.desde, -1));
   const [prodRes, optRes, gastos2] = await Promise.all([
     db.from("productos").select("id, cost_cop, categoria:producto_categorias(label)").eq("organization_id", orgId),
-    db.from("modifier_option_receta").select("qty, ingrediente:ingredientes(cost_cop), opcion:modifier_options(group_id, name)").eq("organization_id", orgId),
+    // Swaps (0071, Deslactosada) depend on each drink's amount: left out (≈ same cost).
+    db.from("modifier_option_receta").select("qty, ingrediente:ingredientes!modifier_option_receta_ingrediente_id_fkey(cost_cop), opcion:modifier_options(group_id, name)").eq("organization_id", orgId).is("reemplaza_id", null),
     listGastos(db, orgId, anterior.desde, mes.hasta),
   ]);
   const gastosMes = gastos2.filter((g) => g.fecha >= mes.desde);

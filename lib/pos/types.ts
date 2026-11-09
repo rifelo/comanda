@@ -73,8 +73,10 @@ export interface PosModOption {
   /**
    * What choosing it changes in the drink (modifier_option_receta): amounts
    * per unit, negative = takes that ingredient out (16 oz: +vaso 16, −vaso 12).
+   * With `reemplaza`, it uses this ingredient in place of that one, in the
+   * recipe's amount × qty (Deslactosada: leche deslactosada for the entera).
    */
-  recipe?: Array<{ name: string; qty: number; unit: string }>;
+  recipe?: Array<{ name: string; qty: number; unit: string; reemplaza?: string }>;
 }
 
 export interface PosModGroup {

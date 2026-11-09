@@ -65,6 +65,28 @@ describe("modifier options with ingredients", () => {
     );
     expect(Object.fromEntries(out)).toEqual({ pulpa: 375, leche: 400, agua: 210 });
   });
+  it("swaps an ingredient in whatever amount each drink uses (Deslactosada)", () => {
+    const recipes = new Map([
+      ["latte", [{ ingredienteId: "entera", qty: 250 }, { ingredienteId: "cafe", qty: 18 }]],
+      ["capu", [{ ingredienteId: "entera", qty: 180 }, { ingredienteId: "cafe", qty: 18 }]],
+    ]);
+    const options = new Map([["deslac", [{ ingredienteId: "deslactosada", qty: 1, reemplazaId: "entera" }]]]);
+    const out = explodeConsumption(
+      [
+        { kind: "item", productoId: "latte", comboId: null, qty: 2, optionIds: ["deslac"] },
+        { kind: "item", productoId: "capu", comboId: null, qty: 1, optionIds: ["deslac"] },
+        { kind: "item", productoId: "capu", comboId: null, qty: 1, optionIds: ["entera-opt"] },
+      ],
+      recipes, new Map(), options,
+    );
+    expect(Object.fromEntries(out)).toEqual({ cafe: 72, deslactosada: 680, entera: 180 });
+  });
+  it("a swap on a drink without that ingredient does nothing", () => {
+    const recipes = new Map([["tinto", [{ ingredienteId: "cafe", qty: 8 }]]]);
+    const options = new Map([["deslac", [{ ingredienteId: "deslactosada", qty: 1, reemplazaId: "entera" }]]]);
+    const out = explodeConsumption([{ kind: "item", productoId: "tinto", comboId: null, qty: 1, optionIds: ["deslac"] }], recipes, new Map(), options);
+    expect(Object.fromEntries(out)).toEqual({ cafe: 8 });
+  });
   it("reads the chosen options out of the mods json", () => {
     expect(modPairsOf({ g1: "a", g2: ["b", "c"], g3: "", g4: null })).toEqual([{ groupId: "g1", name: "a" }, { groupId: "g2", name: "b" }, { groupId: "g2", name: "c" }]);
     expect(modPairsOf(null)).toEqual([]);
