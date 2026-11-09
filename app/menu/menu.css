@@ -169,3 +169,4 @@ html:has(.pym) { scroll-behavior: smooth; }
 .pym-mano__btn:active { transform: translateY(2px); }
 @keyframes pym-mano-in { from { transform: translateX(-110px); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pym-mano { animation: none; } }
+.pym-header__home { align-self: flex-start; display: block; border-radius: 8px; }

@@ -7,8 +7,8 @@ import { Registrado } from "@/app/menu/puntos/registrado";
 import { calificar } from "./actions";
 
 const ART = "/menu/art";
-/** The menu lives at the root of the café's own domain, whatever host served this page. */
-const MENU = "https://cafepayo.com";
+/** The menu on the café's own domain (its root is the landing), whatever host served this page. */
+const MENU = "https://cafepayo.com/menu";
 const PALABRA = ["", "Mal", "Regular", "Bien", "Muy bien", "Excelente"];
 /** Seconds the thank-you stays before Instagram opens. */
 const ESPERA = 5;

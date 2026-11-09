@@ -93,7 +93,7 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
   return (
     <div className="pym-page">
       <header className="pym-header">
-        <Logo arte={arte} name="logo" className="pym-header__logo" />
+        <a href="https://cafepayo.com" aria-label="Inicio de Café Pa' Yo" className="pym-header__home"><Logo arte={arte} name="logo" className="pym-header__logo" /></a>
         <button type="button" className="pym-share" aria-label="Compartir el menú" onClick={(e) => share(e.currentTarget)}><IconoCompartir /></button>
         <h1 className="pym-header__title">{header.titulo}</h1>
         <p className="pym-header__text">{header.texto}</p>

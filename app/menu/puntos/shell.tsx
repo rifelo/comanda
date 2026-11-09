@@ -1,7 +1,8 @@
 import { body, display } from "@/app/menu/fonts";
 
-/** The menu lives at the root of the café's own domain, whatever host served this page. */
-export const MENU = "https://cafepayo.com";
+/** The café's landing (cafepayo.com "/") and its menu, whatever host served this page. */
+export const HOME = "https://cafepayo.com";
+export const MENU = "/menu";
 export const BASE = "/menu/puntos";
 export const LOGO = "/menu/art/cafe-payo-logo-principal.svg";
 
@@ -45,7 +46,7 @@ export function Pantalla({ instagram, tab, tono = "crema", children }: { instagr
   return (
     <div className={`pyy ${tono === "oscuro" ? "pyy--oscuro" : ""}`}>
       <header className="pyy-top">
-        <a href={MENU} aria-label="Café Pa' Yo, ir al menú">
+        <a href={HOME} aria-label="Café Pa' Yo, ir al inicio">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={LOGO} alt="Café Pa' Yo" className="pyy-top__logo" />
         </a>
