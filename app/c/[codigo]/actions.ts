@@ -3,6 +3,9 @@
 import { z } from "zod";
 import { leerCodigo, normalizarInstagram, type EstadoEnlace } from "@/lib/calificaciones/calificaciones";
 import { enviarCalificacion } from "@/lib/calificaciones/calificaciones-db";
+import type { Registro } from "@/lib/clientes/mi-payo";
+import { registroDeEscaneo } from "@/lib/clientes/mi-payo-db";
+import { recordarInstagram } from "@/lib/clientes/sesion";
 
 const Schema = z.object({
   codigo: z.string().max(20),
@@ -13,7 +16,7 @@ const Schema = z.object({
 });
 
 export type CalificarResult =
-  | { ok: true; puntos: number; total: number | null }
+  | { ok: true; puntos: number; total: number | null; registro: Registro | null }
   | { ok: false; error: string; estado?: EstadoEnlace };
 
 /**
@@ -31,5 +34,9 @@ export async function calificar(input: unknown): Promise<CalificarResult> {
   if (estrellas === null && !instagram) return { ok: false, error: "Escribe tu usuario de Instagram para sumar tus puntos." };
   const res = await enviarCalificacion(codigo, { estrellas, sugerencia: parsed.data.sugerencia || null, instagram });
   if (!res.ok) return { ok: false, estado: res.estado, error: res.estado === "usado" ? "Esta calificación ya fue enviada." : "Este enlace ya no está activo." };
-  return res;
+  if (!instagram) return { ...res, registro: null };
+  // This phone now opens «Mi Pa'Yo» as this @ (cafepayo.com/puntos).
+  await recordarInstagram(instagram);
+  const registro = res.puntos > 0 && res.total !== null ? await registroDeEscaneo(codigo, instagram, res.total) : null;
+  return { ...res, registro };
 }
