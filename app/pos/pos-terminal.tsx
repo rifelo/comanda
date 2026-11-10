@@ -28,6 +28,7 @@
 import * as React from "react";
 import { FAV_CAT, type PosCatalog } from "@/lib/pos/types";
 import { usePosLive } from "./pos-live";
+import { prepararAlerta } from "@/lib/pos/alerta";
 import { usePosWindowLease } from "./pos-window";
 import { CatalogCtx, StationCtx, usePos, posStore, useMicTranscribe, scheduleSuggest, hydrateOutbox, watchConnectivity, hydratePendientes, cancelTender, closeOrdenes, closeEtiquetas, closePuntos, setBarista, refreshOrdenes, refreshPendientes, closeVentas, type PosSessionPerson } from "./pos-store";
 import { usePrinterAutoConnect, setLabelDefaults } from "@/lib/printer/serial";
@@ -160,6 +161,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
   // Open (unpaid) orders: load on mount and keep the badge fresh while the
   // tab is visible (every 15 s) — another register may send or settle orders too.
   React.useEffect(() => {
+    const soltarAlerta = prepararAlerta();
     hydratePendientes();
     watchConnectivity();
     hydrateOutbox();
@@ -168,7 +170,10 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshPendientes();
     }, 15_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      soltarAlerta();
+    };
   }, []);
 
   // Each screen has a URL; the first run reads the one the register opened on.

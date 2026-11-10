@@ -305,6 +305,8 @@ export interface PosOrder {
   folio: string;
   status: OrderStatus;
   orderType: OrderType;
+  /** Where it was taken: at a station, or by the WhatsApp agent. Absent on orders still queued here. */
+  canal?: "pos" | "whatsapp";
   total: number;
   sinGluten: boolean;
   note: string;
