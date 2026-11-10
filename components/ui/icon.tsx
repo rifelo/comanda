@@ -7,6 +7,7 @@ import {
   House,
   ListChecks,
   LogOut,
+  MessageCircle,
   Package,
   ReceiptText,
   Settings,
@@ -21,6 +22,7 @@ import type { IconName } from "@/lib/nav/items";
 
 /** Nav icon names (plain strings in lib/nav) → lucide components. */
 export const NAV_ICONS: Record<IconName, LucideIcon> = {
+  whatsapp: MessageCircle,
   hoy: House,
   tareas: ListChecks,
   caja: Banknote,

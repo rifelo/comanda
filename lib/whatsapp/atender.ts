@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosCatalog } from "@/lib/pos/catalog";
 import { syncOrderConsumption } from "@/lib/pos/stock";
 import { responderWhatsapp, type Turno } from "@/lib/ai/whatsapp-agent";
-import { enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante } from "./cloud-api";
+import { enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA } from "./probadores";
 
@@ -73,6 +73,9 @@ async function guardarMensaje(row: {
   autor: Turno["autor"];
   texto: string;
   orden_id?: string | null;
+  estado?: EstadoEntrega["estado"];
+  error?: string;
+  estado_at?: string;
 }): Promise<boolean> {
   const { error } = await db().from("whatsapp_mensajes").insert(row);
   if (error?.code === "23505") return false;
@@ -204,7 +207,14 @@ export async function responder(p: Pendiente): Promise<void> {
     },
   });
   if (!res.texto) return;
-  const waId = await enviarTexto(p.phoneNumberId, p.waId, res.texto);
+  let waId: string | null = null;
+  let fallo: string | null = null;
+  try {
+    waId = await enviarTexto(p.phoneNumberId, p.waId, res.texto);
+  } catch (e) {
+    fallo = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+    console.error("[whatsapp] envío:", fallo);
+  }
   await guardarMensaje({
     organization_id: n.organization_id,
     conversacion_id: p.conversacionId,
@@ -212,7 +222,34 @@ export async function responder(p: Pendiente): Promise<void> {
     autor: "agente",
     texto: res.texto,
     orden_id: ordenId,
+    ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
   });
+}
+
+const RANGO: Record<EstadoEntrega["estado"], number> = { sent: 1, delivered: 2, read: 3, failed: 4 };
+
+/**
+ * Delivery receipts for what we sent. They can arrive out of order (read
+ * before delivered), so a status only replaces a lower one; failed wins.
+ */
+export async function guardarEstados(estados: EstadoEntrega[]): Promise<void> {
+  if (!estados.length) return;
+  const ids = [...new Set(estados.map((e) => e.messageId))];
+  const { data, error } = await db().from("whatsapp_mensajes").select("id, wa_message_id, estado").in("wa_message_id", ids);
+  if (error) {
+    console.error("[whatsapp] estados:", error);
+    return;
+  }
+  for (const fila of (data ?? []) as { id: string; wa_message_id: string; estado: EstadoEntrega["estado"] | null }[]) {
+    const nuevo = estados
+      .filter((e) => e.messageId === fila.wa_message_id)
+      .sort((a, b) => RANGO[b.estado] - RANGO[a.estado])[0];
+    if (!nuevo || (fila.estado && RANGO[fila.estado] >= RANGO[nuevo.estado])) continue;
+    await db()
+      .from("whatsapp_mensajes")
+      .update({ estado: nuevo.estado, error: nuevo.error, estado_at: (nuevo.at ?? new Date()).toISOString() })
+      .eq("id", fila.id);
+  }
 }
 
 /** Same nudge the stations send each other (app/pos/pos-live.ts), so the order shows at once. */
