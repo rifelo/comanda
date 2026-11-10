@@ -39,6 +39,15 @@ export function isAuthorizedWebhook(rawBody: string, headers: { get(name: string
   return Boolean(appSecret) && isValidSignature(rawBody, headers.get("x-hub-signature-256"), appSecret);
 }
 
+/** Delivery receipt for a message we sent. */
+export interface EstadoEntrega {
+  messageId: string;
+  estado: "sent" | "delivered" | "read" | "failed";
+  /** Meta's code · title · details, when it failed. */
+  error: string | null;
+  at: Date | null;
+}
+
 /** Something a customer wrote to the business. */
 export interface Entrante {
   phoneNumberId: string;
@@ -84,9 +93,10 @@ function textoDe(m: Obj): string | null {
 }
 
 /** Customer messages and team echoes in one webhook (failed delivery statuses are logged; the rest is ignored). */
-export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[] } {
+export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]; estados: EstadoEntrega[] } {
   const entrantes: Entrante[] = [];
   const ecos: Eco[] = [];
+  const estados: EstadoEntrega[] = [];
   for (const entry of arr(obj(body).entry)) {
     for (const change of arr(obj(entry).changes)) {
       const c = obj(change);
@@ -104,7 +114,17 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
         // only shows up here, so log the failures with Meta's reason.
         for (const raw of arr(value.statuses)) {
           const st = obj(raw);
-          if (str(st.status) === "failed") {
+          const estado = str(st.status);
+          const id = str(st.id);
+          if (id && (estado === "sent" || estado === "delivered" || estado === "read" || estado === "failed")) {
+            const errores = arr(st.errors).map((e) => {
+              const o = obj(e);
+              const detalle = str(obj(o.error_data).details);
+              return [o.code, str(o.title) ?? str(o.message), detalle].filter(Boolean).join(" · ");
+            });
+            estados.push({ messageId: id, estado, error: errores.length ? errores.join(" | ") : null, at: when(st.timestamp) });
+          }
+          if (estado === "failed") {
             console.warn("[whatsapp] entrega fallida:", str(st.recipient_id), str(st.id), JSON.stringify(st.errors ?? null).slice(0, 500));
           } else if (process.env.WHATSAPP_LOG_ESTADOS) {
             console.info("[whatsapp] estado:", str(st.status), str(st.recipient_id), str(st.id));
@@ -136,7 +156,7 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
       }
     }
   }
-  return { entrantes, ecos };
+  return { entrantes, ecos, estados };
 }
 
 /** POST to the messages endpoint of whichever provider is configured. */

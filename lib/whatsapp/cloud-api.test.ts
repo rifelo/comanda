@@ -32,6 +32,25 @@ describe("isValidBearer", () => {
 });
 
 describe("leerWebhook", () => {
+  it("reads delivery statuses with Meta's reason when they fail", () => {
+    const out = leerWebhook({
+      entry: [{ changes: [{ field: "messages", value: {
+        metadata: meta,
+        statuses: [
+          { id: "wamid.A", status: "delivered", recipient_id: "573150000000", timestamp: "1794326000" },
+          { id: "wamid.B", status: "failed", recipient_id: "573150000000", timestamp: "1794326001",
+            errors: [{ code: 131031, title: "Business Account locked", error_data: { details: "Business account has been locked." } }] },
+          { id: "wamid.C", status: "deleted" },
+        ],
+      } }] }],
+    });
+    expect(out.entrantes).toEqual([]);
+    expect(out.estados.map((e) => [e.messageId, e.estado, e.error])).toEqual([
+      ["wamid.A", "delivered", null],
+      ["wamid.B", "failed", "131031 · Business Account locked · Business account has been locked."],
+    ]);
+  });
+
   it("reads customer messages with the profile name", () => {
     const out = leerWebhook({
       entry: [{ changes: [{ field: "messages", value: {
@@ -62,10 +81,9 @@ describe("leerWebhook", () => {
     expect(out.ecos).toEqual([{ phoneNumberId: "PNID", waId: "573150000000", messageId: "wamid.9", texto: "Ya te lo enviamos", at: new Date(1761600010 * 1000) }]);
   });
 
-  it("ignores delivery statuses and malformed payloads", () => {
-    expect(leerWebhook({ entry: [{ changes: [{ field: "messages", value: { metadata: meta, statuses: [{ id: "wamid.1", status: "read" }] } }] }] }))
-      .toEqual({ entrantes: [], ecos: [] });
-    expect(leerWebhook(null)).toEqual({ entrantes: [], ecos: [] });
-    expect(leerWebhook({ entry: [{ changes: [{ field: "messages", value: {} }] }] })).toEqual({ entrantes: [], ecos: [] });
+  it("ignores malformed payloads", () => {
+    const vacio = { entrantes: [], ecos: [], estados: [] };
+    expect(leerWebhook(null)).toEqual(vacio);
+    expect(leerWebhook({ entry: [{ changes: [{ field: "messages", value: {} }] }] })).toEqual(vacio);
   });
 });

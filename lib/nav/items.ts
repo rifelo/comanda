@@ -13,6 +13,7 @@
  */
 
 export type IconName =
+  | "whatsapp"
   | "hoy"
   | "tareas"
   | "caja"
@@ -126,6 +127,7 @@ export const DUENO_TABS: NavItem[] = [
 export const MAS_ITEMS: NavItem[] = [
   { id: "caja", href: "/caja", label: "Caja", icon: "caja", sub: "Arqueos, bases y movimientos", match: ["/caja"] },
   { id: "gastos", href: "/gastos", label: "Gastos", icon: "gastos", sub: "Costos fijos y del día", match: ["/gastos"] },
+  { id: "whatsapp", href: "/whatsapp", label: "WhatsApp", icon: "whatsapp", sub: "Conversaciones del agente y entregas", match: ["/whatsapp"] },
   {
     id: "clientes",
     href: "/clientes",
