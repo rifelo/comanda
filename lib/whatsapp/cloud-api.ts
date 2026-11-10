@@ -106,6 +106,8 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
           const st = obj(raw);
           if (str(st.status) === "failed") {
             console.warn("[whatsapp] entrega fallida:", str(st.recipient_id), str(st.id), JSON.stringify(st.errors ?? null).slice(0, 500));
+          } else if (process.env.WHATSAPP_LOG_ESTADOS) {
+            console.info("[whatsapp] estado:", str(st.status), str(st.recipient_id), str(st.id));
           }
         }
         for (const raw of arr(value.messages)) {
