@@ -409,7 +409,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -443,6 +443,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       folio: o.folio as string,
       status: o.status as PosOrder["status"],
       orderType: o.order_type as PosOrder["orderType"],
+      canal: (o.canal as PosOrder["canal"]) ?? "pos",
       total: o.total_cop as number,
       sinGluten: Boolean(o.sin_gluten),
       note: (o.notes as string | null) ?? "",

@@ -16,6 +16,7 @@
  *    live catalog ids. A typed fallback input is always available.
  */
 
+import { pedidosNuevos, sonarAlerta } from "@/lib/pos/alerta";
 import type { FiltroTemp } from "@/lib/pos/temperatura";
 import * as React from "react";
 import {
@@ -1536,6 +1537,8 @@ let refreshAgain = false;
  * a refresh must not leave the badge stale until the next tick.
  */
 const PENDIENTES_KEY = "pos:pendientes";
+/** Pending orders this station has already seen (null until the first server load), for the arrival chime. */
+let pendientesConocidos: Set<string> | null = null;
 /** What a stored order's lines are, ignoring row ids (every save makes new ones). */
 const lineasFirma = (items: PendingOrder["items"]) =>
   JSON.stringify([...items].sort((a, b) => a.position - b.position).map((i) => [i.kind, i.productoId ?? i.comboId, i.qty, i.customer, i.mods]));
@@ -1562,6 +1565,9 @@ export async function refreshPendientes() {
         const res = await listarPendientes();
         setOnline(true);
         if (res.ok) {
+          const nuevos = pedidosNuevos(pendientesConocidos, res.orders, Date.now());
+          pendientesConocidos = new Set([...(pendientesConocidos ?? []), ...res.orders.map((o) => o.id)]);
+          if (nuevos.length) sonarAlerta();
           posStore.set((st) => {
             // A pending order loaded for payment follows the stored total, so
             // the tender never shows a number the server won't charge.
