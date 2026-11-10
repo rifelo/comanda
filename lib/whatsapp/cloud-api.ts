@@ -83,7 +83,7 @@ function textoDe(m: Obj): string | null {
   return null;
 }
 
-/** Customer messages and team echoes in one webhook (statuses and the rest are ignored). */
+/** Customer messages and team echoes in one webhook (failed delivery statuses are logged; the rest is ignored). */
 export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[] } {
   const entrantes: Entrante[] = [];
   const ecos: Eco[] = [];
@@ -99,6 +99,14 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
           const waId = str(obj(ct).wa_id);
           const name = str(obj(obj(ct).profile).name);
           if (waId && name) nombres.set(waId, name);
+        }
+        // Delivery receipts: a reply WhatsApp accepted but could not deliver
+        // only shows up here, so log the failures with Meta's reason.
+        for (const raw of arr(value.statuses)) {
+          const st = obj(raw);
+          if (str(st.status) === "failed") {
+            console.warn("[whatsapp] entrega fallida:", str(st.recipient_id), str(st.id), JSON.stringify(st.errors ?? null).slice(0, 500));
+          }
         }
         for (const raw of arr(value.messages)) {
           const m = obj(raw);
