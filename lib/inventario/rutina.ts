@@ -35,7 +35,7 @@ export function rutinaHoy(input: {
   return { toca, hecho, completoAtrasado: toca === "diario" && due.due, diasDesdeCompleto: due.days };
 }
 
-export const NOMBRE_CONTEO: Record<ConteoKind, string> = { diario: "Conteo rápido", completo: "Conteo completo" };
+export const NOMBRE_CONTEO: Record<ConteoKind, string> = { diario: "Conteo rápido", completo: "Conteo completo", agente: "Verificación de inventario" };
 
 /** A line is ordinary within one piece or this share of what was expected, whichever is larger. */
 export const TOLERANCIA_PCT = 0.1;

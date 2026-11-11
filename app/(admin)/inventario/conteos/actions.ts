@@ -5,6 +5,10 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { aplicarConteo, getConteo } from "@/lib/inventario/conteos";
 import { UNIDADES_STOCK } from "@/lib/inventario/propuestas";
+import { guardarRegla, pedirConteo, revisarLinea } from "@/lib/inventario/agente/db";
+import { REGLAS } from "@/lib/inventario/agente/planificador";
+import { getActiveSede } from "@/lib/data/sede";
+import { todayInTz } from "@/lib/utils";
 
 export type ConteoActionResult = { ok: true; adjusted: number } | { ok: false; error: string };
 
@@ -208,5 +212,73 @@ export async function descartarPropuesta(input: unknown): Promise<PropuestaResul
   if (!prop) return { ok: false, error: "Esta propuesta ya fue resuelta." };
   await cerrarPropuesta(supabase, profile.organization_id, parsed.data.id, user.id, "descartado", null);
   revalidarConteo(prop.conteo_id as string);
+  return { ok: true };
+}
+
+// ── asistente de inventario ──────────────────────────────────────────────────
+export type AgenteActionResult = { ok: true } | { ok: false; error: string };
+
+function revalidarAgente(conteoId?: string) {
+  revalidatePath("/inventario");
+  revalidatePath("/inventario/conteos");
+  if (conteoId) revalidatePath(`/inventario/conteos/${conteoId}`);
+  revalidatePath("/turno/inventario");
+}
+
+const ReglaSchema = z.object({ regla: z.enum(REGLAS), on: z.boolean() });
+
+/** Turn one of the assistant's reasons on or off. */
+export async function guardarReglaAgente(input: unknown): Promise<AgenteActionResult> {
+  const parsed = ReglaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Regla inválida." };
+  const { profile, supabase } = await requireAdmin();
+  const ok = await guardarRegla(supabase, profile.organization_id, parsed.data.regla, parsed.data.on);
+  if (!ok) return { ok: false, error: "No se pudo guardar la regla." };
+  revalidatePath("/inventario/conteos");
+  return { ok: true };
+}
+
+const PedirSchema = z.object({ ingredienteId: z.string().uuid(), detalle: z.string().trim().max(200).optional() });
+
+/** The owner asks the team to count one item today. */
+export async function pedirConteoAgente(input: unknown): Promise<AgenteActionResult> {
+  const parsed = PedirSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Elige un insumo." };
+  const [{ user, profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const res = await pedirConteo(supabase, profile.organization_id, {
+    ingredienteId: parsed.data.ingredienteId,
+    fecha: todayInTz(sede?.tz ?? "America/Bogota"),
+    restaurantId: sede?.id ?? null,
+    motivo: "manual",
+    detalle: parsed.data.detalle || null,
+    creadaPor: user.id,
+  });
+  if (!res.ok) return res;
+  revalidarAgente();
+  return { ok: true };
+}
+
+const RevisarSchema = z.object({
+  lineaId: z.string().uuid(),
+  conteoId: z.string().uuid(),
+  decision: z.enum(["aceptar", "rechazar", "otro_conteo"]),
+  nota: z.string().trim().max(300).optional(),
+});
+
+/** The owner's decision on a line the assistant flagged. */
+export async function revisarLineaAgente(input: unknown): Promise<AgenteActionResult> {
+  const parsed = RevisarSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Decisión inválida." };
+  const [{ user, profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const res = await revisarLinea(supabase, profile.organization_id, {
+    lineaId: parsed.data.lineaId,
+    decision: parsed.data.decision,
+    reviewerId: user.id,
+    hoy: todayInTz(sede?.tz ?? "America/Bogota"),
+    nota: parsed.data.nota || null,
+  });
+  if (!res.ok) return res;
+  revalidarAgente(parsed.data.conteoId);
+  revalidatePath("/inventario/niveles");
   return { ok: true };
 }

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/generate-shifts",
       "schedule": "5 5 * * *"
+    },
+    {
+      "path": "/api/cron/agente-inventario",
+      "schedule": "30 4 * * *"
     }
   ]
 }

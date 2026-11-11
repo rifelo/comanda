@@ -151,6 +151,8 @@ const CreateIngredienteSchema = z
     // means costCop is taken as the manual per-unit cost.
     packCostCop: z.coerce.number().int().min(0).nullable().optional(),
     packQty: z.coerce.number().positive().nullable().optional(),
+    // «auto» = let the inventory assistant decide from sales (null in the db)
+    rotacion: z.enum(["auto", "alta", "baja"]).optional(),
   })
   .refine((d) => !d.unit2 || d.unit2 !== d.unit, {
     message: "La unidad secundaria debe ser distinta de la primaria.",
@@ -182,6 +184,9 @@ const UpdateIngredienteSchema = z
     // means costCop is taken as the manual per-unit cost.
     packCostCop: z.coerce.number().int().min(0).nullable().optional(),
     packQty: z.coerce.number().positive().nullable().optional(),
+    rotacion: z.enum(["auto", "alta", "baja"]).optional(),
+    // safety stock days for the reorder point; null = automatic (3, or 10 for bulk buys)
+    diasSeguridad: z.number().int().min(0).max(90).nullable().optional(),
   })
   .refine((d) => !d.unit2 || d.unit2 !== d.unit, {
     message: "La unidad secundaria debe ser distinta de la primaria.",
@@ -423,6 +428,8 @@ export async function updateIngrediente(input: unknown) {
       cost_cop: costCop,
       pack_cost_cop: byPack ? d.packCostCop : null,
       pack_qty: byPack ? d.packQty : null,
+      ...(d.rotacion ? { rotacion: d.rotacion === "auto" ? null : d.rotacion } : {}),
+      ...(d.diasSeguridad !== undefined ? { dias_seguridad: d.diasSeguridad } : {}),
     })
     .eq("id", d.id)
     .eq("organization_id", profile.organization_id)

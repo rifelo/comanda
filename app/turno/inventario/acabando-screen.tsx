@@ -25,6 +25,7 @@ import { ZONAS } from "@/lib/inventario/niveles";
 import { agregarNoListado, marcarInsumos } from "./actions";
 
 type ZonaAlta = (typeof ZONAS)[number];
+type VerificarItem = { id: string; name: string; ubicacion: string | null };
 type Draft = { nombre: string; zona: ZonaAlta; marca: "poco" | "agotado"; nota: string };
 
 const COLA_KEY = "acabando:cola";
@@ -153,6 +154,13 @@ const CSS = `
 .acab-flash { border: none; border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; color: var(--ok); background: var(--ok-soft); }
 .acab-error { border: none; border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; color: var(--late); background: var(--late-soft); }
 .acab-tools-bottom { display: none; }
+.acab-verif { flex-shrink: 0; box-sizing: border-box; padding: 18px; border: 2px solid var(--brand); border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 14px; }
+.acab-verif-top { display: flex; align-items: center; gap: 14px; }
+.acab-verif-icon { width: 48px; height: 48px; flex-shrink: 0; border-radius: 12px; background: var(--brand-soft); color: var(--text); display: flex; align-items: center; justify-content: center; }
+.acab-verif-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+.acab-vrow { min-height: 60px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); min-width: 0; }
+.acab-vdot { width: 22px; height: 22px; flex-shrink: 0; box-sizing: border-box; border: 2px solid var(--line); border-radius: 999px; }
+.acab-verif-go { height: 56px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 12px; background: var(--brand); color: var(--on-brand); font-size: 17px; font-weight: 700; text-decoration: none; }
 @media (max-width: 1399px) and (min-width: 900px) {
   .acab-actor { display: none; }
   .acab-title { font-size: 24px; }
@@ -173,6 +181,7 @@ const CSS = `
   .acab-add { flex-basis: 100%; min-height: 52px; }
   .acab-main { overflow: visible; padding: 16px; }
   .acab-grid { grid-template-columns: minmax(0, 1fr); }
+  .acab-verif-list { grid-template-columns: minmax(0, 1fr); }
   .acab-row { min-height: 66px; }
   .acab-name { font-size: 16px; }
   .acab-meta { font-size: 12px; }
@@ -217,12 +226,13 @@ const SinRed = () => (
  * without internet it waits there (dashed border + clock) and goes out by
  * itself when the connection is back. The row confirms in place for 4 s.
  */
-export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLlegar }: {
+export function AcabandoScreen({ data, today, actorName, isAdmin, verificar, porLlegar }: {
   data: AcabandoData;
   today: string;
   actorName: string;
   isAdmin: boolean;
-  conteo: { pendiente: boolean; nombre: string };
+  /** Today's open verification tasks from the inventory assistant, in walking order. */
+  verificar: VerificarItem[];
   porLlegar: number;
 }) {
   const router = useRouter();
@@ -404,10 +414,6 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
 
   const tools = (
     <>
-      <Link href="/turno/conteo" className="acab-tool">
-        <span style={{ flex: 1 }}>Contar<br /><small>{conteo.nombre}</small></span>
-        {conteo.pendiente && <span className="acab-badge" style={{ background: "var(--acab-poco)", color: "#1f1a14" }} aria-label="Falta el conteo de hoy">!</span>}
-      </Link>
       <Link href="/turno/inventario/recibir" className="acab-tool">
         <span style={{ flex: 1 }}>Recibir pedido<br /><small>{porLlegar ? `${porLlegar} por llegar` : "nada por llegar"}</small></span>
       </Link>
@@ -485,6 +491,8 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, conteo, porLle
 
         <main className="acab-main">
           {aviso && <div className={aviso.tipo === "ok" ? "acab-flash" : "acab-error"} role={aviso.tipo === "ok" ? "status" : "alert"}>{aviso.texto}</div>}
+
+          {!addOpen && !q && verificar.length > 0 && <VerificarCard items={verificar} />}
 
           {addOpen ? (
             <>
@@ -662,3 +670,29 @@ function Fila({ x, today, conZona, guardado, enEspera, noteOpen, noteDraft, onNo
   );
 }
 
+/** «Verificar insumos» (canvas Main): what the assistant asks to count today, and the door to the count. */
+function VerificarCard({ items }: { items: VerificarItem[] }) {
+  return (
+    <section className="acab-verif" aria-labelledby="acab-verif-t">
+      <div className="acab-verif-top">
+        <span className="acab-verif-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="12" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="M9.5 13l2 2 3.5-4" /></svg>
+        </span>
+        <h2 id="acab-verif-t" className="acab-h2" style={{ fontSize: 22, lineHeight: 1.25 }}>Verificar insumos</h2>
+      </div>
+      <ul className="acab-verif-list">
+        {items.map((v) => (
+          <li key={v.id} className="acab-vrow">
+            <span className="acab-vdot" aria-hidden="true" />
+            <span className="acab-name" style={{ flex: 1, minWidth: 0 }}>{v.name}</span>
+            {v.ubicacion && <span className="acab-tag">{v.ubicacion}</span>}
+          </li>
+        ))}
+      </ul>
+      <Link href="/turno/inventario/verificar" className="acab-verif-go">
+        Empezar a verificar
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </Link>
+    </section>
+  );
+}

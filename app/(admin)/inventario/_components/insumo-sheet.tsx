@@ -47,6 +47,8 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
     cost: editing ? String(editing.cost_cop) : "",
     packCost: editing?.pack_cost_cop != null ? String(editing.pack_cost_cop) : "",
     packQty: editing?.pack_qty != null ? String(editing.pack_qty) : "",
+    rotacion: (editing?.rotacion ?? "auto") as "auto" | "alta" | "baja",
+    seguridad: editing?.dias_seguridad != null ? String(editing.dias_seguridad) : "",
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
@@ -63,6 +65,7 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
     if (!f.name.trim()) er.name = "Escribe el nombre.";
     if (!isEdit && (f.stock === "" || !(num(f.stock) >= 0))) er.stock = "¿Cuánto hay hoy? (0 si nada)";
     if (!(num(f.min) >= 0)) er.min = "Inválido";
+    if (f.seguridad.trim() !== "" && !(Number.isInteger(num(f.seguridad)) && num(f.seguridad) >= 0 && num(f.seguridad) <= 90)) er.seguridad = "Días enteros, de 0 a 90";
     if (f.modo === "paquete") {
       if (!(num(f.packCost) > 0)) er.packCost = "Precio del paquete";
       if (!(num(f.packQty) > 0)) er.packQty = "Unidades por paquete";
@@ -83,7 +86,7 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
       packCostCop: f.modo === "paquete" ? Math.round(num(f.packCost)) : null,
       packQty: f.modo === "paquete" ? num(f.packQty) : null,
     };
-    const r = isEdit ? await updateIngrediente({ id: editing!.id, ...common }) : await createIngrediente({ ...common, stockCurrent: num(f.stock) });
+    const r = isEdit ? await updateIngrediente({ id: editing!.id, ...common, rotacion: f.rotacion, diasSeguridad: f.seguridad.trim() === "" ? null : num(f.seguridad) }) : await createIngrediente({ ...common, stockCurrent: num(f.stock) });
     setSaving(false);
     if (!r.ok) return setError(r.error);
     toast(isEdit ? "Insumo guardado" : "Insumo creado", "ok");
@@ -162,6 +165,38 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
           <Field id="ins-min" label={`Mínimo (${f.unit})`} inputMode="decimal" value={f.min} onChange={(e) => set("min", e.target.value)} error={errors.min} hint="Por debajo: «poco»" />
           <Field id="ins-merma" label="Merma estimada %" inputMode="decimal" value={f.merma} onChange={(e) => set("merma", e.target.value)} />
         </div>
+        {isEdit ? (
+          <div className="flex flex-col gap-2">
+            <span className="ui-label">Rotación</span>
+            <Segmented
+              size="sm"
+              label="Rotación"
+              value={f.rotacion}
+              onChange={(v) => set("rotacion", v)}
+              options={[
+                { value: "auto", label: `Automática${editing?.rotacion_auto ? ` · ${editing.rotacion_auto}` : ""}` },
+                { value: "alta", label: "Alta" },
+                { value: "baja", label: "Baja" },
+              ]}
+            />
+            <p className="ui-sub m-0">
+              {editing?.rotacion_ventana
+                ? `Se vendió ${editing.rotacion_dias ?? 0} de los últimos ${editing.rotacion_ventana} días con ventas. `
+                : "Se calcula cada noche con las ventas de las últimas 2 semanas. "}
+              Alta: se verifica cada día que se vendió. Baja: máximo una vez por semana.
+            </p>
+            <Field
+              id="ins-seg"
+              label="Días de seguridad"
+              inputMode="numeric"
+              value={f.seguridad}
+              onChange={(e) => set("seguridad", e.target.value)}
+              error={errors.seguridad}
+              placeholder="Automático"
+              hint="Vacío: 3 días (10 si es de compra masiva). Se usa en el punto de reorden."
+            />
+          </div>
+        ) : null}
         <p className="ui-sub m-0">
           Zona, presentación (bolsa de 900 ml…), niveles y proveedor:{" "}
           <Link href="/inventario/niveles" className="text-text font-semibold">

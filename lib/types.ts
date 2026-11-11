@@ -324,6 +324,15 @@ export interface Ingrediente {
   proveedor_id: string | null;
   /** Its expiry date is written down when it is received. */
   controla_vencimiento: boolean;
+  /** Rotation pinned by the owner; null = automatic (0075). */
+  rotacion?: "alta" | "baja" | null;
+  /** Rotation computed by the inventory assistant from 14 days of sales. */
+  rotacion_auto?: "alta" | "baja" | null;
+  /** Selling days of this item within `rotacion_ventana` open days. */
+  rotacion_dias?: number | null;
+  rotacion_ventana?: number | null;
+  /** Safety stock in days pinned by the owner; null = automatic (0076). */
+  dias_seguridad?: number | null;
 }
 
 /** Who an item is ordered from (pedidos por WhatsApp). */
@@ -339,7 +348,7 @@ export interface Proveedor {
 }
 
 // ── stock counts (end-of-shift, approved by the owner) ──────────
-export type ConteoKind = "diario" | "completo";
+export type ConteoKind = "diario" | "completo" | "agente";
 export type ConteoStatus = "pendiente" | "aprobado" | "rechazado";
 export interface InventarioConteoItem {
   id: string;
