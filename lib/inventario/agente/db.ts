@@ -343,6 +343,44 @@ async function ultimoConteo(db: Db, orgId: string): Promise<Map<string, string>>
   return out;
 }
 
+export interface VencidaSinContar {
+  ingredienteId: string;
+  /** Day the first of these expired verifications was asked for. */
+  desde: string;
+  /** How many verifications expired since the last count. */
+  veces: number;
+  motivo: Motivo;
+}
+
+/**
+ * Items whose verification expired and that nobody has counted since (any
+ * count line after the expired task's day clears it). Looked at over the
+ * last 60 days.
+ */
+export async function vencidasSinContar(db: Db, orgId: string, hoy: string, ultimo?: Map<string, string>): Promise<Map<string, VencidaSinContar>> {
+  const [{ data }, ult] = await Promise.all([
+    db
+      .from("agente_tareas")
+      .select("ingrediente_id, fecha, motivo")
+      .eq("organization_id", orgId)
+      .eq("estado", "vencida")
+      .gte("fecha", sumarDias(hoy, -60))
+      .order("fecha", { ascending: true }),
+    ultimo ? Promise.resolve(ultimo) : ultimoConteo(db, orgId),
+  ]);
+  const out = new Map<string, VencidaSinContar>();
+  for (const t of data ?? []) {
+    const id = t.ingrediente_id as string;
+    const fecha = t.fecha as string;
+    const contado = ult.get(id);
+    if (contado && contado >= fecha) continue; // counted on or after the day it was asked
+    const prev = out.get(id);
+    if (prev) prev.veces += 1;
+    else out.set(id, { ingredienteId: id, desde: fecha, veces: 1, motivo: t.motivo as Motivo });
+  }
+  return out;
+}
+
 export interface PlanResultado {
   fecha: string;
   diaVentas: string | null;
@@ -390,6 +428,7 @@ export async function planificarDia(
     db.from("agente_tareas").select("ingrediente_id").eq("organization_id", orgId).eq("estado", "pendiente"),
   ]);
   const abiertas = new Set((abiertasRows ?? []).map((r) => r.ingrediente_id as string));
+  const vencidas = await vencidasSinContar(db, orgId, opts.fecha, ultimo);
   const avisoDe = new Map<string, { estado: "bajo" | "agotado"; por: string | null; dias: number }>();
   for (const f of avisos) {
     if (f.estado !== "bajo" && f.estado !== "agotado") continue;
@@ -419,6 +458,7 @@ export async function planificarDia(
       puntoPedido: par.get(i.id)?.consumoDiario ? par.get(i.id)!.puntoReorden : null,
       conProveedor: !!i.proveedor_id,
       abierta: abiertas.has(i.id),
+      vencida: vencidas.has(i.id) ? { desde: vencidas.get(i.id)!.desde, veces: vencidas.get(i.id)!.veces } : null,
     };
   });
   const plan = planificar(candidatos, config, abiertas.size, {

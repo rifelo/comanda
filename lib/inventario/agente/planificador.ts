@@ -19,9 +19,10 @@
 
 import { MASIVO_CONTEO_DIAS } from "./par";
 
-export type Motivo = "vendido_ayer" | "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
+export type Motivo = "pendiente" | "vendido_ayer" | "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
 
 export const MOTIVOS: Record<Motivo, { label: string; desc: string }> = {
+  pendiente: { label: "Pendiente de días anteriores", desc: "Se pidió contar, nadie alcanzó y se venció" },
   vendido_ayer: { label: "Vendido ayer", desc: "Lo que se vendió el día anterior (baja rotación: máximo una vez por semana)" },
   // tasks planned before 2026-11-11 (best sellers); kept so history still reads
   mas_vendido: { label: "Más vendido", desc: "Lo que más costo salió ayer" },
@@ -74,6 +75,8 @@ export interface Candidato {
   conProveedor: boolean;
   /** Already has an open task. */
   abierta: boolean;
+  /** A verification that expired without a count since: when it was first asked and how many times it expired. */
+  vencida?: { desde: string; veces: number } | null;
 }
 
 export interface TareaPlan {
@@ -134,6 +137,15 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
     if (!prev || prev.prioridad < t.prioridad) elegidos.set(t.ingredienteId, t);
   };
   const libres = candidatos.filter((c) => !c.abierta);
+
+  // 0. What expired without being counted comes back first, always (no switch):
+  //    the system still doesn't know how much there is.
+  for (const c of libres) {
+    if (!c.vencida) continue;
+    const [, m, d] = c.vencida.desde.split("-");
+    const veces = c.vencida.veces > 1 ? ` · se venció ${c.vencida.veces} veces` : "";
+    add({ ingredienteId: c.ingredienteId, motivo: "pendiente", detalle: `Venció sin contarse · se pidió el ${d}/${m}${veces}`, prioridad: 500 + Math.min(c.vencida.veces, 10) });
+  }
 
   // 1. What the team flagged while the system still thinks there is enough:
   //    one of the two is wrong. A recent mark only (a mark stays open until

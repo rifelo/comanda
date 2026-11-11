@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { getActiveSede } from "@/lib/data/sede";
 import { getIngredientesView } from "@/lib/db/ingredients";
-import { cargarConfig, diferenciasRepetidas, historialConteos, tareasPanel, type ConteoPanel, type TareaPanel } from "@/lib/inventario/agente/db";
+import { cargarConfig, diferenciasRepetidas, historialConteos, tareasPanel, vencidasSinContar, type ConteoPanel, type TareaPanel } from "@/lib/inventario/agente/db";
 import { MOTIVOS, REGLAS, type Motivo } from "@/lib/inventario/agente/planificador";
 import { posMoney } from "@/lib/pos/types";
 import { todayInTz } from "@/lib/utils";
@@ -24,6 +24,7 @@ import {
   type Tono,
 } from "./_lib/formato";
 import { PedirConteo } from "./_components/pedir-conteo";
+import { PedirAhora } from "./_components/pedir-ahora";
 import { ReglasAgente } from "./_components/reglas-agente";
 
 export const dynamic = "force-dynamic";
@@ -119,11 +120,12 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
   const desdeISO = `${desdeDia}T05:00:00.000Z`;
   const estado: Estado = ESTADOS.some((e) => e.value === sp.estado) ? (sp.estado as Estado) : "todos";
 
-  const [conteos, tareas, config, view] = await Promise.all([
+  const [conteos, tareas, config, view, vencidasMap] = await Promise.all([
     historialConteos(supabase, orgId, desdeISO),
     tareasPanel(supabase, orgId, desdeDia),
     cargarConfig(supabase, orgId),
     getIngredientesView(orgId),
+    vencidasSinContar(supabase, orgId, hoy),
   ]);
 
   // ── KPIs ──
@@ -133,6 +135,9 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
   const cerradas = delPeriodo.filter((t) => t.estado === "hecha" || t.estado === "no_encontrado" || t.estado === "vencida").length;
   const aTiempo = cerradas ? Math.round((hechas / cerradas) * 100) : null;
   const pendientes = tareas.filter((t) => t.estado === "pendiente");
+  const nombreDe = new Map(view.ingredientes.map((i) => [i.id, i.name]));
+  const enLista = new Set(pendientes.map((t) => t.ingredienteId));
+  const vencidas = [...vencidasMap.values()].filter((v) => nombreDe.has(v.ingredienteId)).sort((a, b) => a.desde.localeCompare(b.desde));
   const atrasadas = pendientes.filter((t) => t.fecha < hoy).length;
   const negativos = view.ingredientes.filter((i) => !i.archived && Number(i.stock_current) < 0).length;
   const faltante = conteos.reduce(
@@ -258,6 +263,35 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
                 </div>
               );
             })}
+          </section>
+
+          <section style={{ ...card, padding: 16, borderColor: vencidas.length ? "var(--late)" : "var(--line)" }} className="flex flex-col gap-2.5" aria-labelledby="vc-t">
+            <h2 id="vc-t" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+              Vencidas sin contar{vencidas.length ? <span style={{ color: "var(--late)" }}> · {vencidas.length}</span> : null}
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+              Verificaciones que nadie alcanzó en 3 días. Vuelven solas al día siguiente como «Pendiente de días anteriores».
+            </p>
+            {vencidas.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", borderTop: "1px solid var(--line)", paddingTop: 8 }}>Ninguna. El equipo está al día.</p>
+            ) : (
+              vencidas.map((v) => (
+                <div key={v.ingredienteId} className="flex items-center" style={{ gap: 10, paddingTop: 8, borderTop: "1px solid var(--line)", fontSize: 13 }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontWeight: 600, fontSize: 14 }}>{nombreDe.get(v.ingredienteId)}</span>
+                    <span style={{ display: "block", color: "var(--muted)", fontSize: 12 }}>
+                      Se pidió el {etiquetaDia(v.desde, hoy)}
+                      {v.veces > 1 ? ` · se venció ${v.veces} veces` : ""} · {MOTIVOS[v.motivo]?.label ?? v.motivo}
+                    </span>
+                  </span>
+                  {enLista.has(v.ingredienteId) ? (
+                    <span style={{ fontSize: 12.5, color: "var(--ok)", fontWeight: 600, whiteSpace: "nowrap" }}>En la lista de hoy</span>
+                  ) : (
+                    <PedirAhora ingredienteId={v.ingredienteId} nombre={nombreDe.get(v.ingredienteId) ?? ""} />
+                  )}
+                </div>
+              ))
+            )}
           </section>
 
           <section style={{ ...card, padding: 16 }} className="flex flex-col gap-2.5" aria-labelledby="px-t">

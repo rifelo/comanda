@@ -55,6 +55,14 @@ describe("planificar", () => {
     expect(plan.find((t) => t.ingredienteId === "cafe")).toBeUndefined();
   });
 
+  it("an expired verification comes back first, whatever the rules", () => {
+    const cs = [base({ ingredienteId: "olvidado", vencida: { desde: "2026-11-05", veces: 2 } }), base({ ingredienteId: "vendido", vendido: 5 })];
+    const off = { ...CONFIG_DEFAULT, reglas: { vendido_ayer: true, aviso: false, antes_pedir: false, sin_contar: false } };
+    const plan = planificar(cs, off, 0);
+    expect(plan[0]).toMatchObject({ ingredienteId: "olvidado", motivo: "pendiente" });
+    expect(plan[0].detalle).toBe("Venció sin contarse · se pidió el 05/11 · se venció 2 veces");
+  });
+
   it("classifies rotation from selling days", () => {
     expect(rotacionDe(7, 14)).toBe("alta");
     expect(rotacionDe(6, 14)).toBe("baja");
