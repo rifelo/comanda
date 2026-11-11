@@ -48,6 +48,7 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
     packCost: editing?.pack_cost_cop != null ? String(editing.pack_cost_cop) : "",
     packQty: editing?.pack_qty != null ? String(editing.pack_qty) : "",
     rotacion: (editing?.rotacion ?? "auto") as "auto" | "alta" | "baja",
+    seguridad: editing?.dias_seguridad != null ? String(editing.dias_seguridad) : "",
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
@@ -64,6 +65,7 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
     if (!f.name.trim()) er.name = "Escribe el nombre.";
     if (!isEdit && (f.stock === "" || !(num(f.stock) >= 0))) er.stock = "¿Cuánto hay hoy? (0 si nada)";
     if (!(num(f.min) >= 0)) er.min = "Inválido";
+    if (f.seguridad.trim() !== "" && !(Number.isInteger(num(f.seguridad)) && num(f.seguridad) >= 0 && num(f.seguridad) <= 90)) er.seguridad = "Días enteros, de 0 a 90";
     if (f.modo === "paquete") {
       if (!(num(f.packCost) > 0)) er.packCost = "Precio del paquete";
       if (!(num(f.packQty) > 0)) er.packQty = "Unidades por paquete";
@@ -84,7 +86,7 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
       packCostCop: f.modo === "paquete" ? Math.round(num(f.packCost)) : null,
       packQty: f.modo === "paquete" ? num(f.packQty) : null,
     };
-    const r = isEdit ? await updateIngrediente({ id: editing!.id, ...common, rotacion: f.rotacion }) : await createIngrediente({ ...common, stockCurrent: num(f.stock) });
+    const r = isEdit ? await updateIngrediente({ id: editing!.id, ...common, rotacion: f.rotacion, diasSeguridad: f.seguridad.trim() === "" ? null : num(f.seguridad) }) : await createIngrediente({ ...common, stockCurrent: num(f.stock) });
     setSaving(false);
     if (!r.ok) return setError(r.error);
     toast(isEdit ? "Insumo guardado" : "Insumo creado", "ok");
@@ -183,6 +185,16 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
                 : "Se calcula cada noche con las ventas de las últimas 2 semanas. "}
               Alta: el asistente la verifica cada día que se vendió. Baja: máximo una vez por semana.
             </p>
+            <Field
+              id="ins-seg"
+              label="Días de seguridad"
+              inputMode="numeric"
+              value={f.seguridad}
+              onChange={(e) => set("seguridad", e.target.value)}
+              error={errors.seguridad}
+              placeholder="Automático"
+              hint="Vacío: 3 días (10 si es de compra masiva). Se usa en el punto de reorden."
+            />
           </div>
         ) : null}
         <p className="ui-sub m-0">

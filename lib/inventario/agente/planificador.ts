@@ -17,6 +17,8 @@
  * list. Open tasks from earlier days come back too.
  */
 
+import { MASIVO_CONTEO_DIAS } from "./par";
+
 export type Motivo = "vendido_ayer" | "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
 
 export const MOTIVOS: Record<Motivo, { label: string; desc: string }> = {
@@ -64,6 +66,10 @@ export interface Candidato {
   aviso: { estado: "bajo" | "agotado"; por: string | null; dias: number } | null;
   /** Effective rotation: pinned by the owner, else computed from sales. */
   rotacion: Rotacion;
+  /** Bulk, low-frequency buy (see par.ts): counted weekly by closed boxes, not daily. */
+  masivo: boolean;
+  /** Reorder point (PAR) computed by the assistant; null = not enough data. */
+  puntoPedido: number | null;
   /** Has a supplier (only then «antes de pedir» makes sense). */
   conProveedor: boolean;
   /** Already has an open task. */
@@ -144,12 +150,20 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
     }
   }
   // 2. About to be ordered: a wrong number here is a wrong purchase.
+  //    The threshold is the reorder point (PAR) when the assistant has one,
+  //    else the owner's minimum.
   if (config.reglas.antes_pedir) {
+    const umbral = (c: Candidato) => (c.puntoPedido != null && c.puntoPedido > 0 ? c.puntoPedido : c.stockMin > 0 ? c.stockMin : null);
     const porPedir = libres
-      .filter((c) => c.conProveedor && c.stockMin > 0 && c.stock <= c.stockMin)
-      .sort((a, b) => b.costo * b.stockMin - a.costo * a.stockMin);
+      .filter((c) => {
+        const u = umbral(c);
+        return c.conProveedor && u != null && c.stock <= u;
+      })
+      .sort((a, b) => b.costo * (umbral(b) ?? 0) - a.costo * (umbral(a) ?? 0));
     for (const c of porPedir) {
-      add({ ingredienteId: c.ingredienteId, motivo: "antes_pedir", detalle: c.stock < 0 ? `Para pedir y el sistema marca negativo` : `Para pedir: quedan ${q(c, c.stock)} (pedir con ${q(c, c.stockMin)})`, prioridad: 300 });
+      const u = umbral(c)!;
+      const que = c.puntoPedido ? "punto de reorden" : "mínimo";
+      add({ ingredienteId: c.ingredienteId, motivo: "antes_pedir", detalle: c.stock < 0 ? `Para pedir y el sistema marca negativo` : `Para pedir: quedan ${q(c, c.stock)} (${que} ${q(c, u)})`, prioridad: 300 });
     }
   }
   // 3. Everything sold yesterday. High rotation: every time. Low rotation:
@@ -157,7 +171,7 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
   //    Ordered by sold value × how little we trust its number.
   if (config.reglas.vendido_ayer) {
     const vendidos = libres
-      .filter((c) => c.vendido > 0)
+      .filter((c) => c.vendido > 0 && !c.masivo)
       .filter((c) => c.rotacion === "alta" || c.diasSinContar === null || c.diasSinContar >= BAJA_ROTACION_DIAS)
       .map((c) => ({ c, score: c.vendido * Math.max(c.costo, 0) * desconfianza(c) }))
       .sort((a, b) => b.score - a.score);
@@ -171,9 +185,13 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
   // 4. What nobody has looked at in a long time, one zone per day (the zone
   //    with the most overdue items), so the walk stays one trip.
   if (config.reglas.sin_contar) {
+    // Bulk buys: a weekly count by closed boxes, whatever the zone.
+    for (const c of libres.filter((c) => c.masivo && (c.diasSinContar === null || c.diasSinContar >= MASIVO_CONTEO_DIAS))) {
+      add({ ingredienteId: c.ingredienteId, motivo: "sin_contar", detalle: "Compra masiva: conteo semanal por cajas cerradas", prioridad: 60 });
+    }
     const vencido = (c: Candidato) => c.diasSinContar === null || c.diasSinContar >= config.diasSinContar;
     const porZona = new Map<string, Candidato[]>();
-    for (const c of libres.filter((c) => vencido(c) && !elegidos.has(c.ingredienteId))) {
+    for (const c of libres.filter((c) => !c.masivo && vencido(c) && !elegidos.has(c.ingredienteId))) {
       const z = (c.ubicacion ?? "").trim().toLowerCase() || "—";
       porZona.set(z, [...(porZona.get(z) ?? []), c]);
     }

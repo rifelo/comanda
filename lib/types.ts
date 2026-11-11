@@ -331,6 +331,8 @@ export interface Ingrediente {
   /** Selling days of this item within `rotacion_ventana` open days. */
   rotacion_dias?: number | null;
   rotacion_ventana?: number | null;
+  /** Safety stock in days pinned by the owner; null = automatic (0076). */
+  dias_seguridad?: number | null;
 }
 
 /** Who an item is ordered from (pedidos por WhatsApp). */

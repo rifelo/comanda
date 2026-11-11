@@ -13,6 +13,8 @@ const base = (over: Partial<Candidato>): Candidato => ({
   diasSinContar: 1,
   aviso: null,
   rotacion: "alta",
+  masivo: false,
+  puntoPedido: null,
   conProveedor: false,
   abierta: false,
   ...over,
@@ -37,6 +39,20 @@ describe("planificar", () => {
     ];
     const ids = planificar(cs, { ...CONFIG_DEFAULT, reglas: { ...CONFIG_DEFAULT.reglas, sin_contar: false } }, 0).map((t) => t.ingredienteId).sort();
     expect(ids).toEqual(["alta", "nunca", "viejo"]);
+  });
+
+  it("bulk items: out of «vendido ayer», counted weekly; «antes de pedir» uses the PAR", () => {
+    const cs = [
+      base({ ingredienteId: "vasos", masivo: true, vendido: 30, diasSinContar: 3 }),
+      base({ ingredienteId: "vasosViejo", masivo: true, vendido: 30, diasSinContar: 8 }),
+      base({ ingredienteId: "leche", conProveedor: true, stock: 700, puntoPedido: 750, vendido: 0 }),
+      base({ ingredienteId: "cafe", conProveedor: true, stock: 800, puntoPedido: 750, stockMin: 900, vendido: 0 }),
+    ];
+    const plan = planificar(cs, CONFIG_DEFAULT, 0);
+    expect(plan.find((t) => t.ingredienteId === "vasos")).toBeUndefined();
+    expect(plan.find((t) => t.ingredienteId === "vasosViejo")?.detalle).toContain("Compra masiva");
+    expect(plan.find((t) => t.ingredienteId === "leche")?.motivo).toBe("antes_pedir");
+    expect(plan.find((t) => t.ingredienteId === "cafe")).toBeUndefined();
   });
 
   it("classifies rotation from selling days", () => {

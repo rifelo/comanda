@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listFaltantesAbiertos } from "../faltantes-db";
+import { CONSUMO_VENTANA, LOTE_VENTANA, calcularPar, loteHabitual, type ParResultado } from "./par";
 import { cantidadLegible, piezaDe } from "../niveles";
 import {
   CONFIG_DEFAULT,
@@ -124,6 +125,169 @@ export async function calcularRotacion(db: Db, orgId: string, hasta: string, ids
   return out;
 }
 
+export interface ParFila extends ParResultado {
+  consumoDiario: number;
+  lote: number | null;
+  loteOrigen: "compras" | "presentacion" | null;
+  sinProveedor: boolean;
+  stock: number;
+}
+
+/**
+ * The reorder point (PAR) of every active item, from the last CONSUMO_VENTANA
+ * days of sales + mermas (per selling day), the supplier's delivery days, the
+ * usual purchase (median of the last LOTE_VENTANA days of purchases, else the
+ * pack) and the owner's safety days. Saved in agente_estado_insumo.
+ */
+export async function calcularParOrg(db: Db, orgId: string, hasta: string): Promise<Map<string, ParFila>> {
+  const desde = sumarDias(hasta, -(CONSUMO_VENTANA - 1));
+  const [{ data: ings }, { data: provs }, { data: movs }, { data: compras }] = await Promise.all([
+    db.from("ingredientes").select("id, stock_current, pack_qty, proveedor_id, dias_seguridad").eq("organization_id", orgId).eq("archived", false),
+    db.from("proveedores").select("id, entrega_dias").eq("organization_id", orgId),
+    db
+      .from("ingrediente_movements")
+      .select("ingrediente_id, delta, type, created_at")
+      .eq("organization_id", orgId)
+      .in("type", ["venta", "merma"])
+      .gte("created_at", inicioLocal(desde))
+      .lt("created_at", inicioLocal(sumarDias(hasta, 1)))
+      .limit(200000),
+    db
+      .from("ingrediente_movements")
+      .select("ingrediente_id, delta")
+      .eq("organization_id", orgId)
+      .eq("type", "import")
+      .gt("delta", 0)
+      .gte("created_at", inicioLocal(sumarDias(hasta, -LOTE_VENTANA)))
+      .limit(20000),
+  ]);
+  const entrega = new Map((provs ?? []).map((p) => [p.id as string, Number(p.entrega_dias ?? 1)]));
+  const dias = new Set<string>();
+  const usado = new Map<string, number>();
+  for (const m of movs ?? []) {
+    if (m.type === "venta") dias.add(diaLocal(m.created_at as string));
+    const id = m.ingrediente_id as string;
+    usado.set(id, (usado.get(id) ?? 0) - Number(m.delta));
+  }
+  const abiertos = Math.max(1, dias.size);
+  const comprasDe = new Map<string, number[]>();
+  for (const c of compras ?? []) {
+    const id = c.ingrediente_id as string;
+    comprasDe.set(id, [...(comprasDe.get(id) ?? []), Number(c.delta)]);
+  }
+  const out = new Map<string, ParFila>();
+  const rows = [];
+  const now = new Date().toISOString();
+  for (const i of ings ?? []) {
+    const id = i.id as string;
+    const consumoDiario = Math.max(0, Math.round(((usado.get(id) ?? 0) / abiertos) * 1000) / 1000);
+    const habitual = loteHabitual(comprasDe.get(id) ?? []);
+    const pack = i.pack_qty != null ? Number(i.pack_qty) : null;
+    const lote = habitual ?? (pack && pack > 1 ? pack : null);
+    const loteOrigen = habitual != null ? "compras" : lote != null ? "presentacion" : null;
+    const sinProveedor = !i.proveedor_id;
+    const stock = Number(i.stock_current);
+    const r = calcularPar({
+      consumoDiario,
+      entregaDias: i.proveedor_id ? entrega.get(i.proveedor_id as string) ?? 1 : null,
+      diasSeguridad: i.dias_seguridad != null ? Number(i.dias_seguridad) : null,
+      lote,
+      pack,
+      stock,
+    });
+    out.set(id, { ...r, consumoDiario, lote, loteOrigen, sinProveedor, stock });
+    rows.push({
+      ingrediente_id: id,
+      organization_id: orgId,
+      consumo_diario: consumoDiario,
+      dias_con_venta: dias.size,
+      entrega_dias: r.entregaDias,
+      sin_proveedor: sinProveedor,
+      seguridad_dias: r.seguridadDias,
+      punto_reorden: r.puntoReorden,
+      lote,
+      lote_origen: loteOrigen,
+      masivo: r.masivo,
+      stock,
+      cobertura_dias: r.coberturaDias,
+      pedir: r.pedir,
+      cantidad_sugerida: r.cantidadSugerida,
+      updated_at: now,
+    });
+  }
+  if (rows.length) {
+    const { error } = await db.from("agente_estado_insumo").upsert(rows, { onConflict: "ingrediente_id" });
+    if (error) console.error("[agente] calcularParOrg upsert", error);
+  }
+  return out;
+}
+
+export interface ParPanelFila {
+  ingredienteId: string;
+  name: string;
+  unit: string;
+  pieza: number | null;
+  packLabel: string | null;
+  ubicacion: string | null;
+  proveedor: string | null;
+  consumoDiario: number;
+  entregaDias: number;
+  sinProveedor: boolean;
+  seguridadDias: number;
+  seguridadManual: boolean;
+  puntoReorden: number;
+  lote: number | null;
+  loteOrigen: string | null;
+  masivo: boolean;
+  stock: number;
+  coberturaDias: number | null;
+  pedir: boolean;
+  cantidadSugerida: number | null;
+  updatedAt: string;
+}
+
+/** What the owner's «Punto de reorden» page shows. */
+export async function parPanel(db: Db, orgId: string): Promise<ParPanelFila[]> {
+  const { data, error } = await db
+    .from("agente_estado_insumo")
+    .select("*, ing:ingredientes!inner(name, unit, pieza_qty, pack_qty, pack_label, ubicacion, archived, dias_seguridad, stock_current, prov:proveedores(name))")
+    .eq("organization_id", orgId);
+  if (error) {
+    console.error("[agente] parPanel", error);
+    return [];
+  }
+  return (data ?? [])
+    .map((r) => {
+      const i = r.ing as unknown as { name: string; unit: string; pieza_qty: number | null; pack_qty: number | null; pack_label: string | null; ubicacion: string | null; archived: boolean; dias_seguridad: number | null; stock_current: number; prov: { name: string } | null };
+      return {
+        archived: i.archived,
+        ingredienteId: r.ingrediente_id as string,
+        name: i.name,
+        unit: i.unit,
+        pieza: i.pieza_qty != null && Number(i.pieza_qty) > 1 ? Number(i.pieza_qty) : null,
+        packLabel: i.pack_label,
+        ubicacion: i.ubicacion,
+        proveedor: i.prov?.name ?? null,
+        consumoDiario: Number(r.consumo_diario),
+        entregaDias: Number(r.entrega_dias),
+        sinProveedor: r.sin_proveedor === true,
+        seguridadDias: Number(r.seguridad_dias),
+        seguridadManual: i.dias_seguridad != null,
+        puntoReorden: Number(r.punto_reorden),
+        lote: r.lote != null ? Number(r.lote) : null,
+        loteOrigen: (r.lote_origen as string | null) ?? null,
+        masivo: r.masivo === true,
+        stock: Number(i.stock_current),
+        coberturaDias: r.cobertura_dias != null ? Number(r.cobertura_dias) : null,
+        pedir: r.pedir === true,
+        cantidadSugerida: r.cantidad_sugerida != null ? Number(r.cantidad_sugerida) : null,
+        updatedAt: r.updated_at as string,
+      };
+    })
+    .filter((f) => !f.archived)
+    .map(({ archived: _a, ...f }) => f); // eslint-disable-line @typescript-eslint/no-unused-vars
+}
+
 /** Sales of one local day per item: units consumed and distinct orders. */
 async function ventasDelDia(db: Db, orgId: string, dia: string): Promise<Map<string, { qty: number; pedidos: Set<string> }>> {
   const out = new Map<string, { qty: number; pedidos: Set<string> }>();
@@ -234,7 +398,8 @@ export async function planificarDia(
   }
   const rows = (ings ?? []) as unknown as IngRow[];
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const rotAuto = await calcularRotacion(db, orgId, diaVentas ?? sumarDias(opts.fecha, -1), rows.map((r) => r.id));
+  const hastaVentas = diaVentas ?? sumarDias(opts.fecha, -1);
+  const [rotAuto, par] = await Promise.all([calcularRotacion(db, orgId, hastaVentas, rows.map((r) => r.id)), calcularParOrg(db, orgId, hastaVentas)]);
   const candidatos: Candidato[] = rows.map((i) => {
     const v = ventas.get(i.id);
     const u = ultimo.get(i.id);
@@ -250,6 +415,8 @@ export async function planificarDia(
       diasSinContar: u ? diasEntre(u, opts.fecha) : null,
       aviso: avisoDe.get(i.id) ?? null,
       rotacion: i.rotacion ?? rotAuto.get(i.id) ?? "baja",
+      masivo: par.get(i.id)?.masivo ?? false,
+      puntoPedido: par.get(i.id)?.consumoDiario ? par.get(i.id)!.puntoReorden : null,
       conProveedor: !!i.proveedor_id,
       abierta: abiertas.has(i.id),
     };
