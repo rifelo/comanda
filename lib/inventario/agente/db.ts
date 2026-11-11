@@ -48,7 +48,7 @@ export async function cargarConfig(db: Db, orgId: string): Promise<AgenteConfig 
       antes_pedir: data.regla_antes_pedir !== false,
       sin_contar: data.regla_sin_contar !== false,
     },
-    max: Number(data.max_por_turno ?? CONFIG_DEFAULT.max),
+    max: data.max_por_turno == null ? null : Number(data.max_por_turno),
     diasSinContar: Number(data.dias_sin_contar ?? CONFIG_DEFAULT.diasSinContar),
     ultimoPlan: (data.ultimo_plan as string | null) ?? null,
   };

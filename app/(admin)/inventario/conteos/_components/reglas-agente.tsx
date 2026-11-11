@@ -14,7 +14,7 @@ export function ReglasAgente({
   aTiempo,
   atrasadas,
 }: {
-  max: number;
+  max: number | null;
   diasSinContar: number;
   inicial: Record<string, boolean>;
   aTiempo: number | null;
@@ -34,7 +34,7 @@ export function ReglasAgente({
     }
   }
 
-  const desc = (r: Regla) => (r === "sin_contar" ? `Lo que lleva ${diasSinContar} días sin contarse` : MOTIVOS[r].desc);
+  const desc = (r: Regla) => (r === "sin_contar" ? `Una zona por día, con lo que lleva ${diasSinContar} días sin contarse` : MOTIVOS[r].desc);
 
   return (
     <section className="flex flex-col gap-3" style={{ border: "1px solid var(--line)", borderRadius: 16, background: "var(--surface)", padding: 16 }} aria-labelledby="as-t">
@@ -48,7 +48,7 @@ export function ReglasAgente({
         <h2 id="as-t" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Cómo elige el asistente</h2>
       </div>
       <p style={{ margin: 0, fontSize: 13, lineHeight: "19px", color: "var(--muted)" }}>
-        Pide máximo {max} insumos por turno. Cuenta cuando pasa algo de esto:
+        {max == null ? "Pide todos los insumos que lo necesiten, en las horas de menos movimiento." : `Pide máximo ${max} insumos por día.`} Cuenta cuando pasa algo de esto:
       </p>
       <div className="flex flex-col">
         {REGLAS.map((r) => {

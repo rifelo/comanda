@@ -8,14 +8,18 @@
  *   antes_pedir  it is at or under its reorder point: confirm before buying
  *   mas_vendido  it is among what cost the most in yesterday's sales
  *   sin_contar   nobody has counted it in `diasSinContar` days
- * The owner turns each reason on or off; a turno gets at most `max` items.
- * Open tasks from earlier days come back first and use up the budget.
+ * The owner turns each reason on or off. There is no fixed budget: every
+ * item that needs a check gets one (the owner may still set a cap, `max`).
+ * Two reasons are bounded by what "needed" means: «más vendido» takes the
+ * items that make up most (80 %) of the day's consumed value, and «sin
+ * contar» walks one zone per day so a never-counted shelf doesn't flood the
+ * list. Open tasks from earlier days come back too.
  */
 
 export type Motivo = "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
 
 export const MOTIVOS: Record<Motivo, { label: string; desc: string }> = {
-  mas_vendido: { label: "Más vendido", desc: "Lo que más costo salió ayer" },
+  mas_vendido: { label: "Más vendido", desc: "Lo que suma el 80 % del costo vendido ayer" },
   aviso: { label: "Aviso del equipo", desc: "Alguien marcó «poco» o «se acabó»" },
   antes_pedir: { label: "Antes de pedir", desc: "Confirma antes de proponer una compra" },
   sin_contar: { label: "Sin contar hace días", desc: "Lo que lleva días sin contarse" },
@@ -29,13 +33,14 @@ export type Regla = (typeof REGLAS)[number];
 
 export interface AgenteConfig {
   reglas: Record<Regla, boolean>;
-  max: number;
+  /** Optional cap on items per day (open tasks included); null = every item that needs it. */
+  max: number | null;
   diasSinContar: number;
 }
 
 export const CONFIG_DEFAULT: AgenteConfig = {
   reglas: { mas_vendido: true, aviso: true, antes_pedir: true, sin_contar: true },
-  max: 5,
+  max: null,
   diasSinContar: 14,
 };
 
@@ -67,8 +72,8 @@ export interface TareaPlan {
   prioridad: number;
 }
 
-/** A reason fills at most this many of a turno's slots, so the list stays mixed. */
-export const POR_MOTIVO = 2;
+/** «Más vendido» covers the items that together make up this share of the day's consumed value. */
+export const PARETO = 0.8;
 /** A «poco» / «se acabó» mark older than this no longer asks for a count. */
 export const AVISO_DIAS = 3;
 
@@ -88,12 +93,12 @@ export function desconfianza(c: Pick<Candidato, "stock" | "diasSinContar">): num
 }
 
 /**
- * The tasks for one day. `abiertas` is how many open tasks already exist
- * (they come back before anything new). Ordered by priority, at most
- * `config.max - abiertas`, never two for the same item.
+ * The tasks for one day: every item that needs a check, ordered by priority,
+ * never two for the same item. `abiertas` is how many open tasks already
+ * exist; they only matter when the owner set a cap (`config.max`).
  */
 export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteConfig, abiertas: number, opts: { cantidad?: (c: Candidato, qty: number) => string } = {}): TareaPlan[] {
-  const cupo = Math.max(0, config.max - abiertas);
+  const cupo = config.max == null ? Infinity : Math.max(0, config.max - abiertas);
   if (cupo === 0) return [];
   const q = opts.cantidad ?? ((_c: Candidato, n: number) => fmt(n));
   const elegidos = new Map<string, TareaPlan>();
@@ -105,13 +110,13 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
 
   // 1. What the team flagged while the system still thinks there is enough:
   //    one of the two is wrong. A recent mark only (a mark stays open until
-  //    the item is restocked), and at most `POR_MOTIVO` of them.
+  //    the item is restocked).
   if (config.reglas.aviso) {
     const avisos = libres.filter((c) => {
       if (!c.aviso || c.aviso.dias > AVISO_DIAS) return false;
       return c.aviso.estado === "agotado" ? c.stock > 0 : c.stock > c.stockMin;
     });
-    for (const c of avisos.slice(0, POR_MOTIVO)) {
+    for (const c of avisos) {
       if (!c.aviso) continue;
       const que = c.aviso.estado === "agotado" ? "«se acabó»" : "«poco»";
       add({ ingredienteId: c.ingredienteId, motivo: "aviso", detalle: `${c.aviso.por ?? "El equipo"} marcó ${que}`, prioridad: 400 + (c.aviso.estado === "agotado" ? 50 : 0) });
@@ -122,11 +127,12 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
     const porPedir = libres
       .filter((c) => c.conProveedor && c.stockMin > 0 && c.stock <= c.stockMin)
       .sort((a, b) => b.costo * b.stockMin - a.costo * a.stockMin);
-    for (const c of porPedir.slice(0, POR_MOTIVO)) {
+    for (const c of porPedir) {
       add({ ingredienteId: c.ingredienteId, motivo: "antes_pedir", detalle: c.stock < 0 ? `Para pedir y el sistema marca negativo` : `Para pedir: quedan ${q(c, c.stock)} (pedir con ${q(c, c.stockMin)})`, prioridad: 300 });
     }
   }
-  // 3. What moved the most money yesterday, weighted by how little we trust its number.
+  // 3. What moved the most money yesterday, weighted by how little we trust
+  //    its number: the items that together make up PARETO of that value.
   if (config.reglas.mas_vendido) {
     const vendidos = libres
       .filter((c) => c.vendido > 0)
@@ -134,16 +140,30 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score);
     const top = vendidos[0]?.score ?? 1;
-    for (const { c, score } of vendidos.slice(0, cupo)) {
+    const total = vendidos.reduce((s, x) => s + x.score, 0);
+    let acum = 0;
+    const necesarios = vendidos.filter((x) => {
+      const dentro = acum < total * PARETO;
+      acum += x.score;
+      return dentro;
+    });
+    for (const { c, score } of necesarios) {
       const neg = c.stock < 0 ? " · el sistema marca negativo" : "";
       add({ ingredienteId: c.ingredienteId, motivo: "mas_vendido", detalle: `${q(c, c.vendido)} ayer · ${c.pedidos} ${c.pedidos === 1 ? "pedido" : "pedidos"}${neg}`, prioridad: 100 + Math.round((score / top) * 100) });
     }
   }
-  // 4. Fill what is left with what nobody has looked at in a long time.
+  // 4. What nobody has looked at in a long time, one zone per day (the zone
+  //    with the most overdue items), so the walk stays one trip.
   if (config.reglas.sin_contar) {
-    for (const c of libres) {
+    const vencido = (c: Candidato) => c.diasSinContar === null || c.diasSinContar >= config.diasSinContar;
+    const porZona = new Map<string, Candidato[]>();
+    for (const c of libres.filter((c) => vencido(c) && !elegidos.has(c.ingredienteId))) {
+      const z = (c.ubicacion ?? "").trim().toLowerCase() || "—";
+      porZona.set(z, [...(porZona.get(z) ?? []), c]);
+    }
+    const zona = [...porZona.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))[0]?.[1] ?? [];
+    for (const c of zona) {
       const d = c.diasSinContar;
-      if (d !== null && d < config.diasSinContar) continue;
       add({ ingredienteId: c.ingredienteId, motivo: "sin_contar", detalle: d === null ? "Nunca se ha contado" : `${d} días sin contarse`, prioridad: 10 + Math.min(d ?? 60, 60) });
     }
   }

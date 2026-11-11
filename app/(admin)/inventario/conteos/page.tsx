@@ -264,7 +264,7 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
             <h2 id="px-t" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Próximos conteos</h2>
             {proximos.size === 0 && (
               <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", borderTop: "1px solid var(--line)", paddingTop: 8 }}>
-                Nada programado. Esta noche el asistente elige hasta {config.max} insumos con las ventas del día.
+                Nada programado. Esta noche el asistente elige los insumos que hay que verificar con las ventas del día.
               </p>
             )}
             {[...proximos.entries()].map(([dia, ts]) => (
