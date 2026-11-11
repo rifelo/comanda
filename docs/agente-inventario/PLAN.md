@@ -8,24 +8,29 @@
 
 ---
 
-## 1. Where we start (production data, 2026-11-11)
+## 1. Where we start (production data on **Neon**, 2026-11-11)
+
+> Production runs on Neon since 2026-10-31. Read it with `NEON_DATABASE_URL` from
+> `.env.neon.prod`. **`.e2e/apply-migration.mjs` and `.e2e/reportes/*` still point at
+> the old Supabase copy.**
 
 | Fact | Number | What it means for the agent |
 |---|---|---|
-| Active insumos | 74 | Small enough to verify each one a few times a month |
-| Insumos with **negative stock** | **35 (47 %)** | The system stock is not trustworthy yet: **predictions on these numbers would be wrong** |
-| Insumos with `stock_min` set | 28 | Reorder points mostly missing |
+| Active insumos | 81 | Small enough to verify each one a few times a month |
+| Insumos with **negative stock** | **25 (31 %)** (café Okana −1 268 g, vasos 12 oz −108 / −106) | The system stock is not trustworthy yet: **predictions on these numbers would be wrong** |
+| Insumos with `stock_min` set | 29 | Reorder points mostly missing |
 | Insumos with `stock_objetivo` set | 1 | "Order up to" almost never set |
-| Insumos with a supplier | 25 | Order proposals can't be routed for 2/3 of the list |
-| `venta` movements (recipes deduct stock) | 5 676 since 16-sep | ~2 months of consumption history: **enough to forecast** |
+| Insumos with a supplier | 27 | Order proposals can't be routed for 2/3 of the list |
+| `venta` movements (recipes deduct stock) | 7 923 since 16-sep | ~2 months of consumption history: **enough to forecast** |
 | Purchases (`import` movements) | 67, mostly loaded by script | Stock-in is under-recorded → that is why stock goes negative |
-| Counts ever approved | **1** (20-oct); 4 still `pendiente` since 19-oct | The only correction channel is unused |
-| Barista «hay / poco / agotado» reports | 226 | The team **does** use quick inventory taps: build on that habit |
-| `compras` (purchase orders) | 1 open | The order/receive flow exists but isn't used yet |
+| Counts approved | 3 full (last 4-nov) + 3 daily (last 20-oct) | Counting works but isn't a routine yet |
+| Barista «hay / poco / agotado» reports | 333 | The team **does** use quick inventory taps: build on that habit |
+| `compras` (purchase orders) | 3 open | The order/receive flow exists but isn't used much yet |
+| **Recipes** | see the 2026-11-11 audit | Wrong recipes break the stock even with perfect counts. **Audit them first (F0)** |
 
 **Conclusion:** the agent's first job isn't predicting. It is **making the stock numbers
-trustworthy** by asking for small, well-targeted checks. Prediction only becomes
-useful on top of that. This order (trust → predict → order) shapes the phases below.
+trustworthy**: correct recipes, then small, well-targeted checks. Prediction only
+becomes useful on top of that. This order (trust → predict → order) shapes the phases below.
 
 ## 2. What already exists (reuse, don't rebuild)
 

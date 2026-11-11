@@ -17,9 +17,10 @@ const th: React.CSSProperties = { ...kicker, textAlign: "left", padding: "0 10px
 const td: React.CSSProperties = { padding: "12px 10px", borderTop: "1px solid var(--line)", fontSize: 14, verticalAlign: "top" };
 const pill = (bg: string, fg: string): React.CSSProperties => ({ display: "inline-block", padding: "3px 9px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, background: bg, color: fg, whiteSpace: "nowrap" });
 
-type Ver = "pedir" | "masivos" | "todos";
+type Ver = "pedir" | "mejorar" | "masivos" | "todos";
 const FILTROS: { v: Ver; label: string }[] = [
   { v: "pedir", label: "Para pedir" },
+  { v: "mejorar", label: "Por mejorar" },
   { v: "masivos", label: "Compra masiva" },
   { v: "todos", label: "Todos" },
 ];
@@ -41,15 +42,17 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
     await calcularParOrg(supabase, orgId, todayInTz(sede?.tz ?? "America/Bogota"));
     filas = await parPanel(supabase, orgId);
   }
-  const ver: Ver = sp.ver === "masivos" || sp.ver === "todos" ? sp.ver : "pedir";
+  const ver: Ver = sp.ver === "masivos" || sp.ver === "todos" || sp.ver === "mejorar" ? sp.ver : "pedir";
   const conConsumo = filas.filter((f) => f.consumoDiario > 0);
   const pedir = conConsumo.filter((f) => f.pedir);
   const masivos = filas.filter((f) => f.masivo);
   const sinProveedor = conConsumo.filter((f) => f.sinProveedor).length;
-  const lista = (ver === "pedir" ? pedir : ver === "masivos" ? masivos : filas).sort(
+  const confiables = conConsumo.filter((f) => f.confiabilidad === "alta").length;
+  const mejorar = conConsumo.filter((f) => f.confiabilidad !== "alta");
+  const lista = (ver === "pedir" ? pedir : ver === "mejorar" ? mejorar : ver === "masivos" ? masivos : filas).sort(
     (a, b) => Number(b.pedir) - Number(a.pedir) || (a.coberturaDias ?? 9e9) - (b.coberturaDias ?? 9e9) || a.name.localeCompare(b.name, "es"),
   );
-  const conteo: Record<Ver, number> = { pedir: pedir.length, masivos: masivos.length, todos: filas.length };
+  const conteo: Record<Ver, number> = { pedir: pedir.length, mejorar: mejorar.length, masivos: masivos.length, todos: filas.length };
   const actualizado = filas[0]?.updatedAt;
 
   return (
@@ -73,9 +76,11 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>el lote alcanza {MASIVO_DIAS}+ días</div>
           </div>
           <div style={card}>
-            <div style={kicker}>Con consumo</div>
-            <div className="cmd-num" style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{conConsumo.length}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>de {filas.length} insumos activos</div>
+            <div style={kicker}>PAR confiable</div>
+            <div className="cmd-num" style={{ fontSize: 26, fontWeight: 700, marginTop: 4, color: confiables === conConsumo.length ? "var(--ok)" : "var(--text)" }}>
+              {confiables} <span style={{ fontSize: 15, color: "var(--muted)", fontWeight: 600 }}>de {conConsumo.length}</span>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>insumos con consumo, listos para automatizar la compra</div>
           </div>
           <div style={card}>
             <div style={kicker}>Sin proveedor</div>
@@ -100,11 +105,11 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
         <section style={{ ...card, padding: "16px 6px 6px" }}>
           {lista.length === 0 ? (
             <p style={{ margin: "0 10px 12px", color: "var(--muted)", fontSize: 14 }}>
-              {ver === "pedir" ? "Nada está en su punto de reorden. Bien." : "No hay insumos en esta vista."}
+              {ver === "pedir" ? "Nada está en su punto de reorden. Bien." : ver === "mejorar" ? "Todos los PAR son confiables." : "No hay insumos en esta vista."}
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 920 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1100 }}>
                 <thead>
                   <tr>
                     <th style={th}>Insumo</th>
@@ -116,6 +121,7 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
                     <th style={{ ...th, textAlign: "right" }}>Alcanza</th>
                     <th style={{ ...th, textAlign: "right" }}>Lote</th>
                     <th style={th}>Estado</th>
+                    <th style={th}>Confiabilidad</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -129,13 +135,20 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
         </section>
 
         <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--muted)" }}>
-          Consumo: ventas y mermas de los últimos 28 días, por día con ventas. Seguridad: {SEGURIDAD_NORMAL} días ({SEGURIDAD_MASIVO} en compra masiva); se cambia en la ficha del insumo. Lote: lo que se suele comprar de una vez (compras de los últimos 6 meses) o la presentación. Compra masiva: el lote alcanza {MASIVO_DIAS} días o más; se cuenta una vez por semana por cajas cerradas y se sugiere el lote completo. Entrega: días del proveedor en Proveedores.
+          Confiabilidad: Alta si el stock se verificó hace poco y no está en negativo, el insumo tiene proveedor (lead time real), hay 14 días o más de ventas y no tiene un conteo esperando revisión. Si falla una cosa es Media; si fallan dos o más, Baja. Consumo: ventas y mermas de los últimos 28 días, por día con ventas. Seguridad: {SEGURIDAD_NORMAL} días ({SEGURIDAD_MASIVO} en compra masiva); se cambia en la ficha del insumo. Lote: lo que se suele comprar de una vez (compras de los últimos 6 meses) o la presentación. Compra masiva: el lote alcanza {MASIVO_DIAS} días o más; se cuenta una vez por semana por cajas cerradas y se sugiere el lote completo. Entrega: días del proveedor en Proveedores.
           {actualizado ? ` Calculado ${actualizado.slice(0, 10)}.` : ""}
         </p>
       </div>
     </div>
   );
 }
+
+const CONF: Record<ParPanelFila["confiabilidad"], { label: string; style: React.CSSProperties }> = {
+  alta: { label: "Alta", style: pill("var(--ok-soft)", "var(--ok)") },
+  media: { label: "Media", style: pill("var(--brand-soft)", "var(--text)") },
+  baja: { label: "Baja", style: pill("var(--late-soft)", "var(--late)") },
+  sin_datos: { label: "Sin datos", style: pill("var(--surface-2)", "var(--muted)") },
+};
 
 function Fila({ f }: { f: ParPanelFila }) {
   const q = (n: number) => cantidad(n, { unit: f.unit, pieza: f.pieza, packLabel: f.packLabel });
@@ -175,6 +188,16 @@ function Fila({ f }: { f: ParPanelFila }) {
         ) : (
           <span style={pill("var(--ok-soft)", "var(--ok)")}>Bien</span>
         )}
+      </td>
+      <td style={{ ...td, minWidth: 190 }}>
+        <span style={CONF[f.confiabilidad].style}>{CONF[f.confiabilidad].label}</span>
+        {f.faltan.length && f.confiabilidad !== "alta" ? (
+          <ul style={{ margin: "6px 0 0", padding: 0, listStyle: "none", fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>
+            {f.faltan.map((x) => (
+              <li key={x}>· {x}</li>
+            ))}
+          </ul>
+        ) : null}
       </td>
     </tr>
   );
