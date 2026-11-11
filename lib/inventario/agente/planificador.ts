@@ -6,7 +6,8 @@
  * reason (`Motivo`):
  *   aviso        someone marked the item «poco» / «se acabó» on the tablet
  *   antes_pedir  it is at or under its reorder point: confirm before buying
- *   mas_vendido  it is among what cost the most in yesterday's sales
+ *   vendido_ayer it was sold the day before: every day for high-rotation items,
+ *                at most once a week for low-rotation ones (see `rotacionDe`)
  *   sin_contar   nobody has counted it in `diasSinContar` days
  * The owner turns each reason on or off. There is no fixed budget: every
  * item that needs a check gets one (the owner may still set a cap, `max`).
@@ -16,10 +17,12 @@
  * list. Open tasks from earlier days come back too.
  */
 
-export type Motivo = "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
+export type Motivo = "vendido_ayer" | "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
 
 export const MOTIVOS: Record<Motivo, { label: string; desc: string }> = {
-  mas_vendido: { label: "Más vendido", desc: "Lo que suma el 80 % del costo vendido ayer" },
+  vendido_ayer: { label: "Vendido ayer", desc: "Lo que se vendió el día anterior (baja rotación: máximo una vez por semana)" },
+  // tasks planned before 2026-11-11 (best sellers); kept so history still reads
+  mas_vendido: { label: "Más vendido", desc: "Lo que más costo salió ayer" },
   aviso: { label: "Aviso del equipo", desc: "Alguien marcó «poco» o «se acabó»" },
   antes_pedir: { label: "Antes de pedir", desc: "Confirma antes de proponer una compra" },
   sin_contar: { label: "Sin contar hace días", desc: "Lo que lleva días sin contarse" },
@@ -28,7 +31,7 @@ export const MOTIVOS: Record<Motivo, { label: string; desc: string }> = {
 };
 
 /** Reasons the owner can switch off (manual and segunda always run). */
-export const REGLAS = ["mas_vendido", "aviso", "antes_pedir", "sin_contar"] as const;
+export const REGLAS = ["vendido_ayer", "aviso", "antes_pedir", "sin_contar"] as const;
 export type Regla = (typeof REGLAS)[number];
 
 export interface AgenteConfig {
@@ -39,7 +42,7 @@ export interface AgenteConfig {
 }
 
 export const CONFIG_DEFAULT: AgenteConfig = {
-  reglas: { mas_vendido: true, aviso: true, antes_pedir: true, sin_contar: true },
+  reglas: { vendido_ayer: true, aviso: true, antes_pedir: true, sin_contar: true },
   max: null,
   diasSinContar: 14,
 };
@@ -59,6 +62,8 @@ export interface Candidato {
   diasSinContar: number | null;
   /** Open «poco» / «se acabó» mark, with who reported it and how many days ago. */
   aviso: { estado: "bajo" | "agotado"; por: string | null; dias: number } | null;
+  /** Effective rotation: pinned by the owner, else computed from sales. */
+  rotacion: Rotacion;
   /** Has a supplier (only then «antes de pedir» makes sense). */
   conProveedor: boolean;
   /** Already has an open task. */
@@ -72,8 +77,24 @@ export interface TareaPlan {
   prioridad: number;
 }
 
-/** «Más vendido» covers the items that together make up this share of the day's consumed value. */
-export const PARETO = 0.8;
+export type Rotacion = "alta" | "baja";
+
+/** Days of sales looked at to decide rotation. */
+export const ROTACION_VENTANA = 14;
+/** High rotation: sold on at least this share of the days the café sold anything. */
+export const ROTACION_UMBRAL = 0.5;
+/** A low-rotation item sold yesterday is verified again only after this many days. */
+export const BAJA_ROTACION_DIAS = 7;
+
+/**
+ * Rotation of an item from how many of the café's selling days (in the last
+ * `ROTACION_VENTANA`) it was sold on. With fewer than 3 selling days there is
+ * not enough to tell: low.
+ */
+export function rotacionDe(diasVendido: number, diasAbiertos: number): Rotacion {
+  if (diasAbiertos < 3) return "baja";
+  return diasVendido / diasAbiertos >= ROTACION_UMBRAL ? "alta" : "baja";
+}
 /** A «poco» / «se acabó» mark older than this no longer asks for a count. */
 export const AVISO_DIAS = 3;
 
@@ -131,25 +152,20 @@ export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteC
       add({ ingredienteId: c.ingredienteId, motivo: "antes_pedir", detalle: c.stock < 0 ? `Para pedir y el sistema marca negativo` : `Para pedir: quedan ${q(c, c.stock)} (pedir con ${q(c, c.stockMin)})`, prioridad: 300 });
     }
   }
-  // 3. What moved the most money yesterday, weighted by how little we trust
-  //    its number: the items that together make up PARETO of that value.
-  if (config.reglas.mas_vendido) {
+  // 3. Everything sold yesterday. High rotation: every time. Low rotation:
+  //    only if it hasn't been counted in the last BAJA_ROTACION_DIAS days.
+  //    Ordered by sold value × how little we trust its number.
+  if (config.reglas.vendido_ayer) {
     const vendidos = libres
       .filter((c) => c.vendido > 0)
+      .filter((c) => c.rotacion === "alta" || c.diasSinContar === null || c.diasSinContar >= BAJA_ROTACION_DIAS)
       .map((c) => ({ c, score: c.vendido * Math.max(c.costo, 0) * desconfianza(c) }))
-      .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score);
-    const top = vendidos[0]?.score ?? 1;
-    const total = vendidos.reduce((s, x) => s + x.score, 0);
-    let acum = 0;
-    const necesarios = vendidos.filter((x) => {
-      const dentro = acum < total * PARETO;
-      acum += x.score;
-      return dentro;
-    });
-    for (const { c, score } of necesarios) {
+    const top = vendidos[0]?.score || 1;
+    for (const { c, score } of vendidos) {
       const neg = c.stock < 0 ? " · el sistema marca negativo" : "";
-      add({ ingredienteId: c.ingredienteId, motivo: "mas_vendido", detalle: `${q(c, c.vendido)} ayer · ${c.pedidos} ${c.pedidos === 1 ? "pedido" : "pedidos"}${neg}`, prioridad: 100 + Math.round((score / top) * 100) });
+      const rot = c.rotacion === "alta" ? "alta rotación" : "baja rotación";
+      add({ ingredienteId: c.ingredienteId, motivo: "vendido_ayer", detalle: `${q(c, c.vendido)} ayer · ${c.pedidos} ${c.pedidos === 1 ? "pedido" : "pedidos"} · ${rot}${neg}`, prioridad: 100 + Math.round((score / top) * 100) });
     }
   }
   // 4. What nobody has looked at in a long time, one zone per day (the zone

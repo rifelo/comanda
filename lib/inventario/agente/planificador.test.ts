@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFIG_DEFAULT, desconfianza, diasEntre, lineaAplicaSola, planificar, type Candidato } from "./planificador";
+import { BAJA_ROTACION_DIAS, CONFIG_DEFAULT, desconfianza, diasEntre, lineaAplicaSola, planificar, rotacionDe, type Candidato } from "./planificador";
 
 const base = (over: Partial<Candidato>): Candidato => ({
   ingredienteId: "x",
@@ -12,19 +12,37 @@ const base = (over: Partial<Candidato>): Candidato => ({
   pedidos: 0,
   diasSinContar: 1,
   aviso: null,
+  rotacion: "alta",
   conProveedor: false,
   abierta: false,
   ...over,
 });
 
 describe("planificar", () => {
-  it("picks the sellers that make up 80 % of the value, with no fixed cap", () => {
+  it("verifies every high-rotation item sold yesterday, with no cap", () => {
     const cs = [base({ ingredienteId: "big", vendido: 100 }), base({ ingredienteId: "mid", vendido: 50 }), ...Array.from({ length: 10 }, (_, i) => base({ ingredienteId: `s${i}`, vendido: 1 }))];
     const plan = planificar(cs, CONFIG_DEFAULT, 0);
-    expect(plan.map((t) => t.ingredienteId)).toEqual(["big", "mid"]);
-    const muchos = Array.from({ length: 12 }, (_, i) => base({ ingredienteId: `i${i}`, vendido: 10 }));
-    expect(planificar(muchos, CONFIG_DEFAULT, 0).length).toBe(10);
-    expect(planificar(muchos, { ...CONFIG_DEFAULT, max: 3 }, 0)).toHaveLength(3);
+    expect(plan).toHaveLength(12);
+    expect(plan[0].ingredienteId).toBe("big");
+    expect(plan.every((t) => t.motivo === "vendido_ayer")).toBe(true);
+    expect(planificar(cs, { ...CONFIG_DEFAULT, max: 3 }, 0)).toHaveLength(3);
+  });
+
+  it("verifies a low-rotation item sold yesterday at most once a week", () => {
+    const cs = [
+      base({ ingredienteId: "reciente", rotacion: "baja", vendido: 2, diasSinContar: 2 }),
+      base({ ingredienteId: "viejo", rotacion: "baja", vendido: 2, diasSinContar: BAJA_ROTACION_DIAS }),
+      base({ ingredienteId: "nunca", rotacion: "baja", vendido: 1, diasSinContar: null }),
+      base({ ingredienteId: "alta", rotacion: "alta", vendido: 1, diasSinContar: 0 }),
+    ];
+    const ids = planificar(cs, { ...CONFIG_DEFAULT, reglas: { ...CONFIG_DEFAULT.reglas, sin_contar: false } }, 0).map((t) => t.ingredienteId).sort();
+    expect(ids).toEqual(["alta", "nunca", "viejo"]);
+  });
+
+  it("classifies rotation from selling days", () => {
+    expect(rotacionDe(7, 14)).toBe("alta");
+    expect(rotacionDe(6, 14)).toBe("baja");
+    expect(rotacionDe(2, 2)).toBe("baja");
   });
 
   it("puts team warnings and reorder checks before sales", () => {

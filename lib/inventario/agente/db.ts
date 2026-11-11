@@ -4,13 +4,16 @@ import { listFaltantesAbiertos } from "../faltantes-db";
 import { cantidadLegible, piezaDe } from "../niveles";
 import {
   CONFIG_DEFAULT,
+  ROTACION_VENTANA,
   diasEntre,
   lineaAplicaSola,
+  rotacionDe,
   planificar,
   type AgenteConfig,
   type Candidato,
   type Motivo,
   type Regla,
+  type Rotacion,
 } from "./planificador";
 
 /**
@@ -21,7 +24,7 @@ import {
 type Db = SupabaseClient<any>;
 
 const COL_REGLA: Record<Regla, string> = {
-  mas_vendido: "regla_mas_vendido",
+  vendido_ayer: "regla_vendido_ayer",
   aviso: "regla_aviso",
   antes_pedir: "regla_antes_pedir",
   sin_contar: "regla_sin_contar",
@@ -43,7 +46,7 @@ export async function cargarConfig(db: Db, orgId: string): Promise<AgenteConfig 
   if (!data) return { ...CONFIG_DEFAULT, ultimoPlan: null };
   return {
     reglas: {
-      mas_vendido: data.regla_mas_vendido !== false,
+      vendido_ayer: data.regla_vendido_ayer !== false,
       aviso: data.regla_aviso !== false,
       antes_pedir: data.regla_antes_pedir !== false,
       sin_contar: data.regla_sin_contar !== false,
@@ -76,6 +79,49 @@ interface IngRow {
   pieza_qty: number | null;
   pack_qty: number | null;
   pack_label: string | null;
+  rotacion: Rotacion | null;
+}
+
+/**
+ * Rotation of every active item from the sales of the ROTACION_VENTANA days
+ * ending on `hasta`, saved on the item (rotacion_auto / rotacion_dias /
+ * rotacion_ventana) so the owner sees it. Returns id → computed rotation.
+ */
+export async function calcularRotacion(db: Db, orgId: string, hasta: string, ids: string[]): Promise<Map<string, Rotacion>> {
+  const desde = sumarDias(hasta, -(ROTACION_VENTANA - 1));
+  const { data } = await db
+    .from("ingrediente_movements")
+    .select("ingrediente_id, created_at")
+    .eq("organization_id", orgId)
+    .eq("type", "venta")
+    .gte("created_at", inicioLocal(desde))
+    .lt("created_at", inicioLocal(sumarDias(hasta, 1)))
+    .limit(100000);
+  const abiertos = new Set<string>();
+  const dias = new Map<string, Set<string>>();
+  for (const m of data ?? []) {
+    const d = diaLocal(m.created_at as string);
+    abiertos.add(d);
+    const id = m.ingrediente_id as string;
+    if (!dias.has(id)) dias.set(id, new Set());
+    dias.get(id)!.add(d);
+  }
+  const out = new Map<string, Rotacion>();
+  const grupos = new Map<string, string[]>(); // "alta|12" → ids, so one update per (rotation, days)
+  for (const id of ids) {
+    const n = dias.get(id)?.size ?? 0;
+    const r = rotacionDe(n, abiertos.size);
+    out.set(id, r);
+    const k = `${r}|${n}`;
+    grupos.set(k, [...(grupos.get(k) ?? []), id]);
+  }
+  await Promise.all(
+    [...grupos.entries()].map(([k, g]) => {
+      const [r, n] = k.split("|");
+      return db.from("ingredientes").update({ rotacion_auto: r, rotacion_dias: Number(n), rotacion_ventana: abiertos.size }).in("id", g);
+    }),
+  );
+  return out;
 }
 
 /** Sales of one local day per item: units consumed and distinct orders. */
@@ -171,7 +217,7 @@ export async function planificarDia(
   const [{ data: ings }, ventas, ultimo, avisos, { data: abiertasRows }] = await Promise.all([
     db
       .from("ingredientes")
-      .select("id, name, unit, ubicacion, stock_current, stock_min, cost_cop, proveedor_id, pieza_qty, pack_qty, pack_label")
+      .select("id, name, unit, ubicacion, stock_current, stock_min, cost_cop, proveedor_id, pieza_qty, pack_qty, pack_label, rotacion")
       .eq("organization_id", orgId)
       .eq("archived", false),
     diaVentas ? ventasDelDia(db, orgId, diaVentas) : Promise.resolve(new Map<string, { qty: number; pedidos: Set<string> }>()),
@@ -188,6 +234,7 @@ export async function planificarDia(
   }
   const rows = (ings ?? []) as unknown as IngRow[];
   const byId = new Map(rows.map((r) => [r.id, r]));
+  const rotAuto = await calcularRotacion(db, orgId, diaVentas ?? sumarDias(opts.fecha, -1), rows.map((r) => r.id));
   const candidatos: Candidato[] = rows.map((i) => {
     const v = ventas.get(i.id);
     const u = ultimo.get(i.id);
@@ -202,6 +249,7 @@ export async function planificarDia(
       pedidos: v ? v.pedidos.size : 0,
       diasSinContar: u ? diasEntre(u, opts.fecha) : null,
       aviso: avisoDe.get(i.id) ?? null,
+      rotacion: i.rotacion ?? rotAuto.get(i.id) ?? "baja",
       conProveedor: !!i.proveedor_id,
       abierta: abiertas.has(i.id),
     };
