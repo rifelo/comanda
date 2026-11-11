@@ -146,7 +146,7 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
   const desde = sumarDias(hasta, -(CONSUMO_VENTANA - 1));
   const [{ data: ings }, { data: provs }, { data: movs }, { data: compras }, ultimo, { data: revisar }] = await Promise.all([
     db.from("ingredientes").select("id, stock_current, pack_qty, proveedor_id, dias_seguridad, rotacion, rotacion_auto").eq("organization_id", orgId).eq("archived", false),
-    db.from("proveedores").select("id, entrega_dias").eq("organization_id", orgId),
+    db.from("proveedores").select("id, entrega_dias, dias_pedido_idx").eq("organization_id", orgId),
     db
       .from("ingrediente_movements")
       .select("ingrediente_id, delta, type, created_at")
@@ -172,6 +172,7 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
   ]);
   const enRevision = new Set((revisar ?? []).map((r) => r.ingrediente_id as string));
   const entrega = new Map((provs ?? []).map((p) => [p.id as string, Number(p.entrega_dias ?? 1)]));
+  const diasPedido = new Map((provs ?? []).map((p) => [p.id as string, ((p.dias_pedido_idx as number[] | null) ?? []).map(Number)]));
   const dias = new Set<string>();
   const usado = new Map<string, number>();
   for (const m of movs ?? []) {
@@ -200,6 +201,7 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
     const r = calcularPar({
       consumoDiario,
       entregaDias: i.proveedor_id ? entrega.get(i.proveedor_id as string) ?? 1 : null,
+      diasPedido: i.proveedor_id ? diasPedido.get(i.proveedor_id as string) ?? null : null,
       diasSeguridad: i.dias_seguridad != null ? Number(i.dias_seguridad) : null,
       lote,
       pack,
@@ -226,6 +228,8 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
       sin_proveedor: sinProveedor,
       seguridad_dias: r.seguridadDias,
       punto_reorden: r.puntoReorden,
+      par_nivel: r.parNivel,
+      ciclo_dias: r.cicloDias,
       lote,
       lote_origen: loteOrigen,
       masivo: r.masivo,
@@ -259,7 +263,13 @@ export interface ParPanelFila {
   sinProveedor: boolean;
   seguridadDias: number;
   seguridadManual: boolean;
+  /** consumo diario × días de seguridad */
+  stockSeguridad: number;
+  cicloDias: number;
+  /** ROP */
   puntoReorden: number;
+  /** PAR */
+  parNivel: number;
   lote: number | null;
   loteOrigen: string | null;
   masivo: boolean;
@@ -274,11 +284,13 @@ export interface ParPanelFila {
 }
 
 /** What the owner's «Punto de reorden» page shows. */
-export async function parPanel(db: Db, orgId: string): Promise<ParPanelFila[]> {
-  const { data, error } = await db
+export async function parPanel(db: Db, orgId: string, ingredienteId?: string): Promise<ParPanelFila[]> {
+  let qy = db
     .from("agente_estado_insumo")
     .select("*, ing:ingredientes!inner(name, unit, pieza_qty, pack_qty, pack_label, ubicacion, archived, dias_seguridad, stock_current, prov:proveedores(name))")
     .eq("organization_id", orgId);
+  if (ingredienteId) qy = qy.eq("ingrediente_id", ingredienteId);
+  const { data, error } = await qy;
   if (error) {
     console.error("[agente] parPanel", error);
     return [];
@@ -300,7 +312,10 @@ export async function parPanel(db: Db, orgId: string): Promise<ParPanelFila[]> {
         sinProveedor: r.sin_proveedor === true,
         seguridadDias: Number(r.seguridad_dias),
         seguridadManual: i.dias_seguridad != null,
+        stockSeguridad: Math.round(Number(r.consumo_diario) * Number(r.seguridad_dias) * 1000) / 1000,
+        cicloDias: r.ciclo_dias != null ? Number(r.ciclo_dias) : 7,
         puntoReorden: Number(r.punto_reorden),
+        parNivel: r.par_nivel != null ? Number(r.par_nivel) : Number(r.punto_reorden),
         lote: r.lote != null ? Number(r.lote) : null,
         loteOrigen: (r.lote_origen as string | null) ?? null,
         masivo: r.masivo === true,

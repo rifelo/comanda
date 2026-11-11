@@ -28,9 +28,8 @@ const FILTROS: { v: Ver; label: string }[] = [
 const dias = (n: number | null) => (n == null ? "—" : `${String(n).replace(".", ",")} d`);
 
 /**
- * «Punto de reorden»: when each item should be ordered. PAR = consumo diario ×
- * (días de entrega + días de seguridad). The assistant recomputes it every
- * night; for now it only calculates and warns — orders are still placed by
+ * «Punto de reorden»: ROP (when to order) and PAR (up to how much) per item.
+ * The inventory control recomputes them every night; for now it only calculates and warns — orders are still placed by
  * the owner (Pedidos).
  */
 export default async function ReordenPage({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
@@ -60,7 +59,7 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
       <PageHeader
         back="/inventario"
         title="Punto de reorden"
-        sub="Cuándo pedir cada insumo: consumo diario × (días de entrega + días de seguridad). El control de inventario lo recalcula cada noche; por ahora solo avisa."
+        sub="ROP = cuándo pedir: consumo diario × entrega + seguridad. PAR = hasta cuánto llenar: consumo diario × (entrega + días entre pedidos) + seguridad. Se recalculan cada noche; por ahora solo avisan."
         actions={<Recalcular />}
       />
       <div className="px-4 sm:px-7 pb-10 flex flex-col gap-5" style={{ maxWidth: 1200 }}>
@@ -109,14 +108,16 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1100 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1280 }}>
                 <thead>
                   <tr>
                     <th style={th}>Insumo</th>
                     <th style={{ ...th, textAlign: "right" }}>Consumo / día</th>
                     <th style={{ ...th, textAlign: "right" }}>Entrega</th>
-                    <th style={{ ...th, textAlign: "right" }}>Seguridad</th>
-                    <th style={{ ...th, textAlign: "right" }}>Punto de reorden</th>
+                    <th style={{ ...th, textAlign: "right" }} title="Stock de seguridad: consumo diario × días de seguridad">Stock de seguridad</th>
+                    <th style={{ ...th, textAlign: "right" }}>Entre pedidos</th>
+                    <th style={{ ...th, textAlign: "right" }} title="Punto de reorden: cuando el stock llega aquí, se pide">ROP</th>
+                    <th style={{ ...th, textAlign: "right" }} title="Nivel PAR: hasta dónde llena cada pedido">PAR</th>
                     <th style={{ ...th, textAlign: "right" }}>Stock</th>
                     <th style={{ ...th, textAlign: "right" }}>Alcanza</th>
                     <th style={{ ...th, textAlign: "right" }}>Lote</th>
@@ -135,7 +136,7 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
         </section>
 
         <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--muted)" }}>
-          Confiabilidad: Alta si el stock se verificó hace poco y no está en negativo, el insumo tiene proveedor (lead time real), hay 14 días o más de ventas y no tiene un conteo esperando revisión. Si falla una cosa es Media; si fallan dos o más, Baja. Consumo: ventas y mermas de los últimos 28 días, por día con ventas. Seguridad: {SEGURIDAD_NORMAL} días ({SEGURIDAD_MASIVO} en compra masiva); se cambia en la ficha del insumo. Lote: lo que se suele comprar de una vez (compras de los últimos 6 meses) o la presentación. Compra masiva: el lote alcanza {MASIVO_DIAS} días o más; se cuenta una vez por semana por cajas cerradas y se sugiere el lote completo. Entrega: días del proveedor en Proveedores.
+          Confiabilidad: Alta si el stock se verificó hace poco y no está en negativo, el insumo tiene proveedor (lead time real), hay 14 días o más de ventas y no tiene un conteo esperando revisión. Si falla una cosa es Media; si fallan dos o más, Baja. Consumo: ventas y mermas de los últimos 28 días, por día con ventas. Seguridad: {SEGURIDAD_NORMAL} días ({SEGURIDAD_MASIVO} en compra masiva); se cambia en la ficha del insumo. Lote: lo que se suele comprar de una vez (compras de los últimos 6 meses) o la presentación. Compra masiva: el lote alcanza {MASIVO_DIAS} días o más; se cuenta una vez por semana por cajas cerradas y se sugiere el lote completo. Entrega: días del proveedor en Proveedores. Entre pedidos: el mayor intervalo entre los días de pedido del proveedor (7 si no tiene días fijos). Sugerido: lo que falta para llegar al PAR, en paquetes completos (compra masiva: el lote completo).
           {actualizado ? ` Calculado ${actualizado.slice(0, 10)}.` : ""}
         </p>
       </div>
@@ -167,10 +168,15 @@ function Fila({ f }: { f: ParPanelFila }) {
       <td className="cmd-num" style={{ ...td, textAlign: "right" }}>{sinConsumo ? "—" : q(f.consumoDiario)}</td>
       <td className="cmd-num" style={{ ...td, textAlign: "right", color: f.sinProveedor ? "var(--muted)" : undefined }}>{dias(f.entregaDias)}</td>
       <td className="cmd-num" style={{ ...td, textAlign: "right" }}>
-        {dias(f.seguridadDias)}
-        {f.seguridadManual ? <div style={{ fontSize: 11, color: "var(--muted)" }}>fijado</div> : null}
+        {sinConsumo ? "—" : q(f.stockSeguridad)}
+        <div style={{ fontSize: 11, color: "var(--muted)" }}>
+          {dias(f.seguridadDias)}
+          {f.seguridadManual ? " · fijado" : ""}
+        </div>
       </td>
+      <td className="cmd-num" style={{ ...td, textAlign: "right", color: f.sinProveedor ? "var(--muted)" : undefined }}>{f.masivo ? "lote" : dias(f.cicloDias)}</td>
       <td className="cmd-num" style={{ ...td, textAlign: "right", fontWeight: 700 }}>{sinConsumo ? "—" : q(f.puntoReorden)}</td>
+      <td className="cmd-num" style={{ ...td, textAlign: "right", fontWeight: 700 }}>{sinConsumo ? "—" : q(f.parNivel)}</td>
       <td className="cmd-num" style={{ ...td, textAlign: "right", color: f.stock < 0 ? "var(--red)" : undefined }}>{q(f.stock)}</td>
       <td className="cmd-num" style={{ ...td, textAlign: "right" }}>{dias(f.coberturaDias)}</td>
       <td className="cmd-num" style={{ ...td, textAlign: "right" }}>
