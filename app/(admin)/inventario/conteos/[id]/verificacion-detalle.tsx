@@ -8,7 +8,7 @@ const card: React.CSSProperties = { border: "1px solid var(--line)", borderRadiu
 const pill = (t: Tono): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", background: TONO[t].bg, color: TONO[t].fg });
 const th: React.CSSProperties = { textAlign: "left", padding: "8px 12px", fontSize: 10.5, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "10px 12px", borderBottom: "1px solid var(--line)", fontSize: 14, verticalAlign: "top" };
-const SPARKLE = "M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z";
+const SPARKLE = "M9 4h6v2H9zM7 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1M9 13l2 2 4-4";
 
 const lista = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
 

@@ -109,7 +109,7 @@ export function VerificarScreen({ tareas: inicial }: { tareas: TareaVerificar[] 
           </Link>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 className="verif-h1">Verificar inventario</h1>
-            <p className="verif-sub">Insumo {idx + 1} de {tareas.length} · lo pidió el asistente</p>
+            <p className="verif-sub">Insumo {idx + 1} de {tareas.length} · control de inventario</p>
           </div>
         </div>
         <div className="verif-bar" role="img" aria-label={`Insumo ${idx + 1} de ${tareas.length}`}>

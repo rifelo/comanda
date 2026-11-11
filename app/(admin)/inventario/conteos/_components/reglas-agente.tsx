@@ -4,9 +4,9 @@ import * as React from "react";
 import { MOTIVOS, REGLAS, type Regla } from "@/lib/inventario/agente/planificador";
 import { guardarReglaAgente } from "../actions";
 
-const SPARKLE = "M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z";
+const SPARKLE = "M9 4h6v2H9zM7 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1M9 13l2 2 4-4";
 
-/** «Cómo elige el asistente»: the four reasons as switches (optimistic) plus how the team keeps up. */
+/** «Cómo decide el control de inventario»: the four reasons as switches (optimistic) plus how the team keeps up. */
 export function ReglasAgente({
   max,
   diasSinContar,
@@ -45,7 +45,7 @@ export function ReglasAgente({
             <path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" />
           </svg>
         </span>
-        <h2 id="as-t" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Cómo elige el asistente</h2>
+        <h2 id="as-t" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Cómo decide el control de inventario</h2>
       </div>
       <p style={{ margin: 0, fontSize: 13, lineHeight: "19px", color: "var(--muted)" }}>
         {max == null ? "Pide todos los insumos que lo necesiten, en las horas de menos movimiento." : `Pide máximo ${max} insumos por día.`} Cuenta cuando pasa algo de esto:

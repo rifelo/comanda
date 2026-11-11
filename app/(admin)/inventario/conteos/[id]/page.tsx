@@ -28,7 +28,7 @@ export default async function ConteoDetailPage({ params }: { params: Promise<{ i
           back="/inventario/conteos"
           title={
             <span className="inline-flex flex-wrap items-center" style={{ gap: 10 }}>
-              Verificación del asistente
+              Verificación de inventario
               <span style={{ display: "inline-flex", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600, letterSpacing: 0, background: TONO[est.tono].bg, color: TONO[est.tono].fg }}>{est.label}</span>
             </span>
           }

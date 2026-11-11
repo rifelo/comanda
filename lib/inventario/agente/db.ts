@@ -616,7 +616,7 @@ export async function responderTarea(
       type: "ajuste",
       delta: diff,
       unit_cost_cop: costo,
-      note: `Verificación del asistente ${t.fecha}`,
+      note: `Verificación de inventario ${t.fecha}`,
       created_by: input.actorId,
     });
     if (mErr) {
@@ -746,7 +746,7 @@ export async function revisarLinea(
         type: "ajuste",
         delta: diff,
         unit_cost_cop: Number(l.unit_cost_cop ?? 0),
-        note: `Verificación del asistente ${diaLocal(c.submitted_at)} · aprobada${input.nota ? ` · ${input.nota}` : ""}`,
+        note: `Verificación de inventario ${diaLocal(c.submitted_at)} · aprobada${input.nota ? ` · ${input.nota}` : ""}`,
         created_by: input.reviewerId,
       });
       if (error) {

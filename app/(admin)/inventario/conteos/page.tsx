@@ -180,7 +180,7 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
       <PageHeader
         back="/inventario"
         title="Conteos"
-        sub="El asistente decide qué insumos contar y cuándo. El equipo cuenta en la tablet y aquí queda el historial."
+        sub="El control de inventario decide qué insumos contar y cuándo. El equipo cuenta en la tablet y aquí queda el historial."
         actions={<PedirConteo ingredientes={view.ingredientes.filter((i) => !i.archived).map((i) => ({ id: i.id, name: i.name, ubicacion: i.ubicacion ?? null }))} />}
       />
       <div className="px-4 sm:px-7 pb-10 grid gap-6 min-[900px]:grid-cols-[minmax(0,1fr)_340px]">
@@ -211,7 +211,7 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
           <div className="flex flex-col gap-2">
             {dias.length === 0 && (
               <div style={{ ...card, padding: "14px 16px", color: "var(--muted)", fontSize: 14 }}>
-                {estado === "todos" ? "Todavía no hay conteos. El asistente programa los primeros esta noche y el equipo los hace en la tablet." : "Nada en este estado."}
+                {estado === "todos" ? "Todavía no hay conteos. El control de inventario programa los primeros esta noche y el equipo los hace en la tablet." : "Nada en este estado."}
               </div>
             )}
             {dias.map((d) => (
@@ -264,7 +264,7 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
             <h2 id="px-t" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Próximos conteos</h2>
             {proximos.size === 0 && (
               <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", borderTop: "1px solid var(--line)", paddingTop: 8 }}>
-                Nada programado. Esta noche el asistente elige los insumos que hay que verificar con las ventas del día.
+                Nada programado. Esta noche el control de inventario elige los insumos que hay que verificar con las ventas del día.
               </p>
             )}
             {[...proximos.entries()].map(([dia, ts]) => (
@@ -293,7 +293,7 @@ function Kpi({ titulo, valor, sub, color }: { titulo: string; valor: string; sub
   );
 }
 
-const SPARKLE = "M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z";
+const SPARKLE = "M9 4h6v2H9zM7 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1M9 13l2 2 4-4";
 const LIST = "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01";
 
 function FilaConteo({ f }: { f: Fila }) {

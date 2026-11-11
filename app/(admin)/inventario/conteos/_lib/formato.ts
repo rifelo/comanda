@@ -101,7 +101,7 @@ export function tipoConteo(c: ConteoPanel): { label: string; asistente: boolean 
   if (c.kind === "diario") return { label: "Conteo de cierre", asistente: false };
   if (c.kind === "completo") return { label: "Conteo completo", asistente: false };
   const m = motivosDe(c)[0];
-  return { label: m ? MOTIVOS[m].label : "Asistente", asistente: true };
+  return { label: m ? MOTIVOS[m].label : "Verificación", asistente: true };
 }
 
 export const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;

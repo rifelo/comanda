@@ -183,7 +183,7 @@ export function InsumoSheet({ editing, categorias, onClose }: { editing: Ingredi
               {editing?.rotacion_ventana
                 ? `Se vendió ${editing.rotacion_dias ?? 0} de los últimos ${editing.rotacion_ventana} días con ventas. `
                 : "Se calcula cada noche con las ventas de las últimas 2 semanas. "}
-              Alta: el asistente la verifica cada día que se vendió. Baja: máximo una vez por semana.
+              Alta: se verifica cada día que se vendió. Baja: máximo una vez por semana.
             </p>
             <Field
               id="ins-seg"

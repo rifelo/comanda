@@ -57,7 +57,7 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
       <PageHeader
         back="/inventario"
         title="Punto de reorden"
-        sub="Cuándo pedir cada insumo: consumo diario × (días de entrega + días de seguridad). El asistente lo recalcula cada noche; por ahora solo avisa."
+        sub="Cuándo pedir cada insumo: consumo diario × (días de entrega + días de seguridad). El control de inventario lo recalcula cada noche; por ahora solo avisa."
         actions={<Recalcular />}
       />
       <div className="px-4 sm:px-7 pb-10 flex flex-col gap-5" style={{ maxWidth: 1200 }}>

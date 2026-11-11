@@ -84,7 +84,7 @@ export function PedirConteo({ ingredientes }: { ingredientes: Ing[] }) {
           </>
         }
       >
-        <p className="ui-sub m-0">El equipo lo verá hoy en la tablet, antes que lo que eligió el asistente.</p>
+        <p className="ui-sub m-0">El equipo lo verá hoy en la tablet, antes que lo que pidió el control de inventario.</p>
         <SearchField value={q} onChange={setQ} placeholder="Buscar insumo o zona" label="Buscar insumo" autoFocus />
         <div role="listbox" aria-label="Insumos" className="flex flex-col" style={{ border: "1px solid var(--line)", borderRadius: 12, maxHeight: 300, overflowY: "auto" }}>
           {lista.length === 0 && <div style={{ padding: "12px 14px", fontSize: 14, color: "var(--muted)" }}>No hay insumos con ese nombre.</div>}
