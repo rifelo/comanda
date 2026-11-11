@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breakDrinkName, capitalizeWords, drinkKicker, instagramLink, orderNumber, rosterLine } from "./label";
+import { breakDrinkName, capitalizeWords, drinkKicker, instagramLink, layoutName, navidad, orderNumber, rosterLine } from "./label";
 
 describe("drinkKicker", () => {
   it("names the person, uppercased, with the brand's Pa'", () => {
@@ -77,5 +77,34 @@ describe("capitalizeWords", () => {
     expect(capitalizeWords("maría  alejandra ")).toBe("María Alejandra");
     expect(capitalizeWords("latte de avena")).toBe("Latte De Avena");
     expect(capitalizeWords("")).toBe("");
+  });
+});
+
+describe("layoutName", () => {
+  // every character is 0.6 em wide
+  const measure = (t: string, px: number) => t.length * px * 0.6;
+  it("keeps a short name on one line at full size", () => {
+    expect(layoutName("Ana", measure, 560)).toEqual({ size: 110, lines: ["Ana"] });
+  });
+  it("breaks «Doc. Bibiana» in two when that prints bigger", () => {
+    expect(layoutName("Doc. Bibiana", measure, 560)).toEqual({ size: 92, lines: ["Doc.", "Bibiana"] });
+  });
+  it("picks the most balanced break", () => {
+    expect(layoutName("Ana María López", measure, 560).lines).toEqual(["Ana María", "López"]);
+  });
+  it("keeps one word on one line, shrinking it", () => {
+    const r = layoutName("Maximiliano", measure, 560);
+    expect(r.lines).toEqual(["Maximiliano"]);
+    expect(r.size).toBeLessThan(110);
+  });
+});
+
+describe("navidad", () => {
+  it("runs from 1 November to 6 January", () => {
+    expect(navidad(new Date(2026, 9, 31))).toBe(false);
+    expect(navidad(new Date(2026, 10, 1))).toBe(true);
+    expect(navidad(new Date(2026, 11, 24))).toBe(true);
+    expect(navidad(new Date(2027, 0, 6))).toBe(true);
+    expect(navidad(new Date(2027, 0, 7))).toBe(false);
   });
 });
