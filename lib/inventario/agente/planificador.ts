@@ -1,0 +1,175 @@
+/**
+ * Inventory assistant — which items to verify, pure (no I/O; tested in
+ * planificador.test.ts). Numbers come from here, never from a language model.
+ *
+ * The team counts only what the assistant asks for, so every count has a
+ * reason (`Motivo`):
+ *   aviso        someone marked the item «poco» / «se acabó» on the tablet
+ *   antes_pedir  it is at or under its reorder point: confirm before buying
+ *   mas_vendido  it is among what cost the most in yesterday's sales
+ *   sin_contar   nobody has counted it in `diasSinContar` days
+ * The owner turns each reason on or off; a turno gets at most `max` items.
+ * Open tasks from earlier days come back first and use up the budget.
+ */
+
+export type Motivo = "mas_vendido" | "aviso" | "antes_pedir" | "sin_contar" | "manual" | "segunda";
+
+export const MOTIVOS: Record<Motivo, { label: string; desc: string }> = {
+  mas_vendido: { label: "Más vendido", desc: "Lo que más costo salió ayer" },
+  aviso: { label: "Aviso del equipo", desc: "Alguien marcó «poco» o «se acabó»" },
+  antes_pedir: { label: "Antes de pedir", desc: "Confirma antes de proponer una compra" },
+  sin_contar: { label: "Sin contar hace días", desc: "Lo que lleva días sin contarse" },
+  manual: { label: "Pedido por el dueño", desc: "El dueño pidió contarlo" },
+  segunda: { label: "Segunda verificación", desc: "El conteo anterior no cuadró" },
+};
+
+/** Reasons the owner can switch off (manual and segunda always run). */
+export const REGLAS = ["mas_vendido", "aviso", "antes_pedir", "sin_contar"] as const;
+export type Regla = (typeof REGLAS)[number];
+
+export interface AgenteConfig {
+  reglas: Record<Regla, boolean>;
+  max: number;
+  diasSinContar: number;
+}
+
+export const CONFIG_DEFAULT: AgenteConfig = {
+  reglas: { mas_vendido: true, aviso: true, antes_pedir: true, sin_contar: true },
+  max: 5,
+  diasSinContar: 14,
+};
+
+export interface Candidato {
+  ingredienteId: string;
+  name: string;
+  ubicacion: string | null;
+  stock: number;
+  stockMin: number;
+  costo: number;
+  /** Consumed by sales on the day looked at, in stock units (positive). */
+  vendido: number;
+  /** Orders that consumed it that day. */
+  pedidos: number;
+  /** Days since it was last counted; null = never. */
+  diasSinContar: number | null;
+  /** Open «poco» / «se acabó» mark, with who reported it and how many days ago. */
+  aviso: { estado: "bajo" | "agotado"; por: string | null; dias: number } | null;
+  /** Has a supplier (only then «antes de pedir» makes sense). */
+  conProveedor: boolean;
+  /** Already has an open task. */
+  abierta: boolean;
+}
+
+export interface TareaPlan {
+  ingredienteId: string;
+  motivo: Motivo;
+  detalle: string;
+  prioridad: number;
+}
+
+/** A reason fills at most this many of a turno's slots, so the list stays mixed. */
+export const POR_MOTIVO = 2;
+/** A «poco» / «se acabó» mark older than this no longer asks for a count. */
+export const AVISO_DIAS = 3;
+
+const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString("es-CO", { maximumFractionDigits: 1 });
+
+/**
+ * How much the stock number can be trusted, as a multiplier ≥ 1 on the value
+ * of checking it: a negative stock or a long time without a count makes the
+ * check worth more.
+ */
+export function desconfianza(c: Pick<Candidato, "stock" | "diasSinContar">): number {
+  let f = 1;
+  if (c.stock < 0) f += 1;
+  if (c.diasSinContar === null) f += 1;
+  else f += Math.min(c.diasSinContar, 28) / 14;
+  return f;
+}
+
+/**
+ * The tasks for one day. `abiertas` is how many open tasks already exist
+ * (they come back before anything new). Ordered by priority, at most
+ * `config.max - abiertas`, never two for the same item.
+ */
+export function planificar(candidatos: ReadonlyArray<Candidato>, config: AgenteConfig, abiertas: number, opts: { cantidad?: (c: Candidato, qty: number) => string } = {}): TareaPlan[] {
+  const cupo = Math.max(0, config.max - abiertas);
+  if (cupo === 0) return [];
+  const q = opts.cantidad ?? ((_c: Candidato, n: number) => fmt(n));
+  const elegidos = new Map<string, TareaPlan>();
+  const add = (t: TareaPlan) => {
+    const prev = elegidos.get(t.ingredienteId);
+    if (!prev || prev.prioridad < t.prioridad) elegidos.set(t.ingredienteId, t);
+  };
+  const libres = candidatos.filter((c) => !c.abierta);
+
+  // 1. What the team flagged while the system still thinks there is enough:
+  //    one of the two is wrong. A recent mark only (a mark stays open until
+  //    the item is restocked), and at most `POR_MOTIVO` of them.
+  if (config.reglas.aviso) {
+    const avisos = libres.filter((c) => {
+      if (!c.aviso || c.aviso.dias > AVISO_DIAS) return false;
+      return c.aviso.estado === "agotado" ? c.stock > 0 : c.stock > c.stockMin;
+    });
+    for (const c of avisos.slice(0, POR_MOTIVO)) {
+      if (!c.aviso) continue;
+      const que = c.aviso.estado === "agotado" ? "«se acabó»" : "«poco»";
+      add({ ingredienteId: c.ingredienteId, motivo: "aviso", detalle: `${c.aviso.por ?? "El equipo"} marcó ${que}`, prioridad: 400 + (c.aviso.estado === "agotado" ? 50 : 0) });
+    }
+  }
+  // 2. About to be ordered: a wrong number here is a wrong purchase.
+  if (config.reglas.antes_pedir) {
+    const porPedir = libres
+      .filter((c) => c.conProveedor && c.stockMin > 0 && c.stock <= c.stockMin)
+      .sort((a, b) => b.costo * b.stockMin - a.costo * a.stockMin);
+    for (const c of porPedir.slice(0, POR_MOTIVO)) {
+      add({ ingredienteId: c.ingredienteId, motivo: "antes_pedir", detalle: c.stock < 0 ? `Para pedir y el sistema marca negativo` : `Para pedir: quedan ${q(c, c.stock)} (pedir con ${q(c, c.stockMin)})`, prioridad: 300 });
+    }
+  }
+  // 3. What moved the most money yesterday, weighted by how little we trust its number.
+  if (config.reglas.mas_vendido) {
+    const vendidos = libres
+      .filter((c) => c.vendido > 0)
+      .map((c) => ({ c, score: c.vendido * Math.max(c.costo, 0) * desconfianza(c) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score);
+    const top = vendidos[0]?.score ?? 1;
+    for (const { c, score } of vendidos.slice(0, cupo)) {
+      const neg = c.stock < 0 ? " · el sistema marca negativo" : "";
+      add({ ingredienteId: c.ingredienteId, motivo: "mas_vendido", detalle: `${q(c, c.vendido)} ayer · ${c.pedidos} ${c.pedidos === 1 ? "pedido" : "pedidos"}${neg}`, prioridad: 100 + Math.round((score / top) * 100) });
+    }
+  }
+  // 4. Fill what is left with what nobody has looked at in a long time.
+  if (config.reglas.sin_contar) {
+    for (const c of libres) {
+      const d = c.diasSinContar;
+      if (d !== null && d < config.diasSinContar) continue;
+      add({ ingredienteId: c.ingredienteId, motivo: "sin_contar", detalle: d === null ? "Nunca se ha contado" : `${d} días sin contarse`, prioridad: 10 + Math.min(d ?? 60, 60) });
+    }
+  }
+  const zona = (id: string) => (candidatos.find((c) => c.ingredienteId === id)?.ubicacion ?? "").toLowerCase();
+  return [...elegidos.values()]
+    .sort((a, b) => b.prioridad - a.prioridad || zona(a.ingredienteId).localeCompare(zona(b.ingredienteId)))
+    .slice(0, cupo);
+}
+
+/** Share of the expected stock a verified line may differ by and still apply by itself. */
+export const TOLERANCIA_LINEA = 0.25;
+
+/**
+ * Whether one verified line can correct the stock by itself. When the system
+ * was at zero or below, its number was already wrong: what the barista sees is
+ * the truth. Otherwise a difference within one piece (or one unit) or 25 % of
+ * what was expected is a counting slip; anything bigger needs a second look.
+ */
+export function lineaAplicaSola(l: { expected: number; counted: number; pieza: number | null }): boolean {
+  if (l.expected <= 0) return true;
+  const diff = Math.abs(l.counted - l.expected);
+  const margen = Math.max(l.pieza && l.pieza > 0 ? l.pieza : 1, l.expected * TOLERANCIA_LINEA);
+  return diff <= margen + 1e-9;
+}
+
+/** Days between two ISO dates (YYYY-MM-DD), b − a. */
+export function diasEntre(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}

@@ -339,7 +339,7 @@ export interface Proveedor {
 }
 
 // ── stock counts (end-of-shift, approved by the owner) ──────────
-export type ConteoKind = "diario" | "completo";
+export type ConteoKind = "diario" | "completo" | "agente";
 export type ConteoStatus = "pendiente" | "aprobado" | "rechazado";
 export interface InventarioConteoItem {
   id: string;

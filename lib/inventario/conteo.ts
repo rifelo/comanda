@@ -4,7 +4,7 @@
  * with what the system expected, and the totals the owner reviews.
  */
 
-export type ConteoKind = "diario" | "completo";
+export type ConteoKind = "diario" | "completo" | "agente";
 
 export interface CountableIngrediente {
   id: string;
