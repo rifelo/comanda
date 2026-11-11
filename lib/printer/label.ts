@@ -77,15 +77,13 @@ const fraseFont = () => cssFamily("--font-frase", FALLBACK_SANS);
 
 /**
  * The cup labels (2026-11, «Etiquetas Café Pa' Yo · 50 × 30 mm» canvas) also
- * use the menu's faces: Nority slanted for the «PA'» kicker and Delight Light
- * for the phrase and the call to scan. They are not loaded on /pos, so they
- * are registered here from /labels/fonts and cached by the POS worker.
+ * use the menu's Delight Light for the phrase and the call to scan. It is not
+ * loaded on /pos, so it is registered here from /labels/fonts and cached by
+ * the POS worker.
  */
-const NORITY_FAMILY = "PayoLabelNority";
 const DELIGHT_LIGHT_FAMILY = "PayoLabelDelightLight";
-const noritySlanted = () => `"${NORITY_FAMILY}", ${displayFont()}`;
 const delightLight = () => `"${DELIGHT_LIGHT_FAMILY}", ${FALLBACK_SANS}`;
-export const CUP_LABEL_FONTS = ["/labels/fonts/nority-slanted.woff2", "/labels/fonts/delight-light.woff2"] as const;
+export const CUP_LABEL_FONTS = ["/labels/fonts/delight-light.woff2"] as const;
 /** The three hands of the brand drawn on the name label, one per cup at random. */
 export const CUP_HANDS = ["/labels/mano-taza-asa.svg", "/labels/mano-taza.svg", "/labels/mano-platillo.svg"] as const;
 /** The PA'YO mark on the drink label. */
@@ -101,10 +99,7 @@ function loadCupFaces(): Promise<void> {
       await f.load();
       document.fonts.add(f);
     };
-    cupFacesLoading = Promise.all([
-      face(NORITY_FAMILY, CUP_LABEL_FONTS[0], "400"),
-      face(DELIGHT_LIGHT_FAMILY, CUP_LABEL_FONTS[1], "300"),
-    ]).then(
+    cupFacesLoading = face(DELIGHT_LIGHT_FAMILY, CUP_LABEL_FONTS[0], "300").then(
       () => undefined,
       (err) => {
         cupFacesLoading = null; // try again on the next label
@@ -725,12 +720,16 @@ export interface CupNameLabelInput {
   frase: string;
   /** One of the brand hands (CUP_HANDS), drawn bottom-right. */
   hand?: Img | null;
+  /** The print date (decides the season's decoration); defaults to now. */
+  now?: Date;
 }
 
 /**
- * Label 1 of a cup: «PA'» in Nority slanted, the name as big as fits on one
- * line in the display face, the phrase at the foot in Delight Light and a
- * hand of the brand in the bottom-right corner.
+ * Label 1 of a cup: «PA'» and the name in the display face (the name on one
+ * line or two, whichever prints bigger), the phrase at the foot in Delight
+ * Light and a hand of the brand in the bottom-right corner. In the Christmas
+ * season a holly sprig sits next to «PA'» and snowflakes fall in the empty
+ * top-right corner.
  */
 export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   const { ctx, W, H, toDevice } = cupCanvas();
@@ -749,35 +748,32 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
     ctx.restore();
   }
 
-  // «PA'»
-  ctx.font = `40px ${noritySlanted()}`;
+  // «PA'» in the name's own face, so the two read as one line of type
+  ctx.font = `40px ${displayFont()}`;
   setTracking(ctx, "2px");
   ctx.fillText("PA'", L, T);
+  const paW = ctx.measureText("PA'").width;
   setTracking(ctx, "0px");
 
-  // the name: one line, 110 px down to 40, no wider than 560 px (the canvas's
-  // rule, so a long name shrinks before it reaches the hand); a name too long
-  // even then keeps its first word
+  if (navidad(input.now ?? new Date())) drawChristmas(ctx, L + paW + 14, T);
+
+  // the name: one line, or two at the word break (Doc. / Bibiana), whichever
+  // prints bigger, no wider than 560 px so it stays clear of the hand
   const NAME_W = 560;
-  let name = capitalizeWords(input.name) || "Ti";
-  let size = 110;
-  const fits = (t: string, px: number) => {
+  const name = capitalizeWords(input.name) || "Ti";
+  const nombre = layoutName(name, (t, px) => {
     ctx.font = `${px}px ${displayFont()}`;
-    return ctx.measureText(t).width <= NAME_W;
-  };
-  while (size > 40 && !fits(name, size)) size -= 2;
-  if (!fits(name, size) && name.includes(" ")) {
-    name = name.split(" ")[0];
-    size = 110;
-    while (size > 40 && !fits(name, size)) size -= 2;
-  }
+    return ctx.measureText(t).width;
+  }, NAME_W);
+  const size = nombre.size;
+  const nameLh = Math.round(size * NAME_LINE_H);
   ctx.font = `${size}px ${displayFont()}`;
-  ctx.fillText(fitOneLine(ctx, name, NAME_W), L, T + 40 + 8);
+  nombre.lines.forEach((l, i) => ctx.fillText(fitOneLine(ctx, l, NAME_W), L, T + 48 + i * nameLh));
 
   // phrase: bottom-anchored, 520 px wide (clear of the hand), up to 3 lines
   const frase = input.frase.replace(/\s+/g, " ").trim();
   if (frase) {
-    const nameBottom = T + 48 + Math.round(size * 1.05);
+    const nameBottom = T + 48 + (nombre.lines.length - 1) * nameLh + Math.round(size * 1.05);
     let fs = 34;
     let lines: string[] = [];
     for (; fs >= 22; fs -= 2) {
@@ -797,6 +793,125 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return rasterize(ctx, W, H, TOP_OFFSET_MM * PX_PER_MM, CUP_THRESHOLD);
+}
+
+const NAME_MAX = 110;
+const NAME_MAX_2 = 92; // two lines must leave room for the phrase
+const NAME_MIN = 40;
+const NAME_LINE_H = 1.02;
+
+/**
+ * How the name sits on the cup: one line as big as it fits (110 → 40 px), or
+ * two lines broken between words when that prints bigger — «Doc. Bibiana»
+ * becomes «Doc.» over «Bibiana». The break chosen is the one whose longer
+ * line is shortest. `measure(text, px)` is the text's width at that size.
+ */
+export function layoutName(
+  name: string,
+  measure: (text: string, px: number) => number,
+  maxW: number,
+): { size: number; lines: string[] } {
+  const largest = (lines: string[], start: number) => {
+    for (let px = start; px >= NAME_MIN; px -= 2) if (lines.every((l) => measure(l, px) <= maxW)) return px;
+    return 0;
+  };
+  const one = largest([name], NAME_MAX);
+  const words = name.split(" ").filter(Boolean);
+  let two: string[] | null = null;
+  let twoSize = 0;
+  if (words.length > 1) {
+    const splits = words.slice(1).map((_, i) => [words.slice(0, i + 1).join(" "), words.slice(i + 1).join(" ")]);
+    two = splits.reduce((a, b) =>
+      Math.max(...b.map((l) => measure(l, NAME_MAX_2))) < Math.max(...a.map((l) => measure(l, NAME_MAX_2))) ? b : a,
+    );
+    twoSize = largest(two, NAME_MAX_2);
+  }
+  if (one && one >= twoSize) return { size: one, lines: [name] };
+  if (two && twoSize) return { size: twoSize, lines: two };
+  // too long even on two lines: two lines at the floor, the rest cut with «…»
+  return { size: NAME_MIN, lines: two ?? [name] };
+}
+
+/** The Christmas season on the cups: 1 November to 6 January (Reyes). */
+export function navidad(d: Date): boolean {
+  const m = d.getMonth();
+  return m === 10 || m === 11 || (m === 0 && d.getDate() <= 6);
+}
+
+/**
+ * Christmas trim in design units: a holly sprig (two leaves, three berries)
+ * right of «PA'» at (x, y), and two snowflakes in the top-right corner, above
+ * the hand.
+ */
+function drawChristmas(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.save();
+  ctx.fillStyle = "#000";
+  ctx.strokeStyle = "#000";
+  ctx.lineCap = "round";
+  // holly: two pointed leaves fanned from the berries, a white vein each
+  const cx = x + 44;
+  const cy = y + 30;
+  const leaf = (angle: number) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.scale(0.9, 1.15);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    // scalloped edges: three points per side
+    ctx.quadraticCurveTo(6, -12, 12, -9);
+    ctx.quadraticCurveTo(15, -16, 22, -12);
+    ctx.quadraticCurveTo(27, -18, 34, -10);
+    ctx.quadraticCurveTo(40, -6, 46, 0);
+    ctx.quadraticCurveTo(40, 6, 34, 10);
+    ctx.quadraticCurveTo(27, 18, 22, 12);
+    ctx.quadraticCurveTo(15, 16, 12, 9);
+    ctx.quadraticCurveTo(6, 12, 0, 0);
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(4, 0);
+    ctx.lineTo(40, 0);
+    ctx.stroke();
+    ctx.restore();
+  };
+  leaf(-Math.PI * 0.8);
+  leaf(-Math.PI * 0.2);
+  // berries: black with a white glint so they read as round
+  for (const [bx, by] of [[-8, 6], [8, 6], [0, -4]] as const) {
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(cx + bx, cy + by, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(cx + bx - 3, cy + by - 3, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // snowflakes: six arms with a pair of barbs each
+  const flake = (fx: number, fy: number, r: number) => {
+    ctx.lineWidth = Math.max(3, r / 7);
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      const dx = Math.cos(a);
+      const dy = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(fx + dx * r, fy + dy * r);
+      const bx = fx + dx * r * 0.55;
+      const by = fy + dy * r * 0.55;
+      for (const s of [1, -1]) {
+        const b = a + (s * Math.PI) / 4;
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(b) * r * 0.35, by + Math.sin(b) * r * 0.35);
+      }
+      ctx.stroke();
+    }
+  };
+  flake(684, 64, 26);
+  flake(630, 130, 16);
+  ctx.restore();
 }
 
 export interface CupDrinkLabelInput {
