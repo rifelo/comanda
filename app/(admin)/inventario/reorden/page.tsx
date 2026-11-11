@@ -13,7 +13,20 @@ export const metadata = { title: "Punto de reorden · Comanda" };
 
 const card: React.CSSProperties = { border: "1px solid var(--line)", borderRadius: 16, background: "var(--surface)", padding: "14px 16px" };
 const kicker: React.CSSProperties = { fontSize: 10.5, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" };
-const th: React.CSSProperties = { ...kicker, textAlign: "left", padding: "0 10px 10px", whiteSpace: "nowrap", fontWeight: 500 };
+// Sticky inside the table's own scroll box (the box scrolls both ways, so the
+// header stays visible while scrolling down and follows horizontal scroll).
+const th: React.CSSProperties = {
+  ...kicker,
+  textAlign: "left",
+  padding: "12px 10px 10px",
+  whiteSpace: "nowrap",
+  fontWeight: 500,
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  background: "var(--surface)",
+  boxShadow: "inset 0 -1px 0 var(--line)",
+};
 const td: React.CSSProperties = { padding: "12px 10px", borderTop: "1px solid var(--line)", fontSize: 14, verticalAlign: "top" };
 const pill = (bg: string, fg: string): React.CSSProperties => ({ display: "inline-block", padding: "3px 9px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, background: bg, color: fg, whiteSpace: "nowrap" });
 
@@ -101,17 +114,17 @@ export default async function ReordenPage({ searchParams }: { searchParams: Prom
           ))}
         </nav>
 
-        <section style={{ ...card, padding: "16px 6px 6px" }}>
+        <section style={{ ...card, padding: "4px 6px 6px" }}>
           {lista.length === 0 ? (
-            <p style={{ margin: "0 10px 12px", color: "var(--muted)", fontSize: 14 }}>
+            <p style={{ margin: "12px 10px 12px", color: "var(--muted)", fontSize: 14 }}>
               {ver === "pedir" ? "Nada está en su punto de reorden. Bien." : ver === "mejorar" ? "Todos los PAR son confiables." : "No hay insumos en esta vista."}
             </p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1280 }}>
+            <div style={{ overflow: "auto", maxHeight: "calc(100dvh - 120px)" }}>
+              <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", minWidth: 1280 }}>
                 <thead>
                   <tr>
-                    <th style={th}>Insumo</th>
+                    <th style={{ ...th, left: 0, zIndex: 2, boxShadow: "inset 0 -1px 0 var(--line), inset -1px 0 0 var(--line)" }}>Insumo</th>
                     <th style={{ ...th, textAlign: "right" }}>Consumo / día</th>
                     <th style={{ ...th, textAlign: "right" }}>Entrega</th>
                     <th style={{ ...th, textAlign: "right" }} title="Stock de seguridad: consumo diario × días de seguridad">Stock de seguridad</th>
@@ -156,7 +169,18 @@ function Fila({ f }: { f: ParPanelFila }) {
   const sinConsumo = f.consumoDiario <= 0;
   return (
     <tr style={{ background: f.pedir ? "var(--late-soft)" : undefined }}>
-      <td style={td}>
+      {/* Pinned while the table scrolls sideways; opaque so the other columns don't show through. */}
+      <td
+        style={{
+          ...td,
+          position: "sticky",
+          left: 0,
+          zIndex: 1,
+          minWidth: 170,
+          background: f.pedir ? "linear-gradient(var(--late-soft), var(--late-soft)), var(--surface)" : "var(--surface)",
+          boxShadow: "inset -1px 0 0 var(--line)",
+        }}
+      >
         <Link href={`/inventario/kardex/${f.ingredienteId}`} style={{ fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
           {f.name}
         </Link>
