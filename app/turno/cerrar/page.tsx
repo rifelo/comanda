@@ -3,9 +3,8 @@ import { ensureTodayInstances, getTurnoBoard } from "@/lib/turno/server";
 import { loadCajaEstado } from "@/lib/caja/estado";
 import { faltaJustificar } from "@/lib/caja/arqueo";
 import { esTurnoCorto } from "@/lib/caja/turno";
-import { loadRutina } from "@/lib/inventario/conteos";
 import { cajaDelTurno } from "@/lib/turno/reads";
-import { NOMBRE_CONTEO, esTurnoDeCierre } from "@/lib/inventario/rutina";
+import { NOMBRE_CONTEO } from "@/lib/inventario/rutina";
 import { bloques, faltanLabel, hhmm, pasosCerrar, siguientePaso, tareasCierre, turnoActual } from "@/lib/turno/hoy";
 import { assignedFor, turnoProgress } from "@/lib/turno/state";
 import { nowInTz, todayInTz } from "@/lib/utils";
@@ -30,11 +29,13 @@ export default async function CerrarPage({ searchParams }: { searchParams: Searc
   const ctx = await requireEquipo(withQuery("/turno/cerrar", sp, ["turno", "paso"]));
   const today = todayInTz(ctx.sede.tz);
   await ensureTodayInstances(ctx, today);
-  const [data, estadoSede, { rutina }] = await Promise.all([
+  const [data, estadoSede] = await Promise.all([
     getTurnoBoard(ctx),
     loadCajaEstado(ctx.admin, { orgId: ctx.organizationId, restaurantId: ctx.restaurantId, tz: ctx.sede.tz, today }),
-    loadRutina(ctx.admin, ctx.organizationId, ctx.sede.tz),
   ]);
+  // Counting moved to the inventory assistant (2026-11-11): it decides what to
+  // count and when, so closing a turno no longer owes a count.
+  const rutina = { hecho: true, toca: "diario" as const };
   const now = nowInTz(ctx.sede.tz);
   const shift = turnoActual(data.turnos, now, {
     preferId: param(sp, "turno"),
@@ -55,7 +56,7 @@ export default async function CerrarPage({ searchParams }: { searchParams: Searc
 
   const cierre = estado.existing[shift.instance.id];
   const vivo = cierre && cierre.status !== "rechazado" ? cierre : null;
-  const debeConteo = esTurnoDeCierre(fin, data.turnos.map((t) => t.template.fin));
+  const debeConteo = false;
   const closed = shift.instance.status === "closed";
   const prog = turnoProgress(shift.tasks, shift.completions);
 

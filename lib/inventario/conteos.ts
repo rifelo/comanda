@@ -248,11 +248,13 @@ export interface ConteosPanel {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function loadConteosPanel(db: SupabaseClient<any>, orgId: string, tz: string): Promise<ConteosPanel> {
+  void tz;
   const [conteos, propuestas] = await Promise.all([listConteos(db, orgId, 12), countPropuestasPendientes(db, orgId)]);
-  const ayer = todayInTz(tz, new Date(Date.now() - 86_400_000));
   return {
     pendientes: conteos.filter((c) => c.status === "pendiente"),
     propuestas,
-    ayerSinConteo: conteos.length > 0 && !conteos.some((c) => c.status !== "rechazado" && todayInTz(tz, new Date(c.submitted_at)) === ayer),
+    // The nightly closing count is gone (the assistant decides what to count), so
+    // «nobody counted yesterday» no longer means anything.
+    ayerSinConteo: false,
   };
 }
