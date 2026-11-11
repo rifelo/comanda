@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularPar, confiabilidadPar, esMasivo, loteHabitual } from "./par";
+import { calcularPar, cicloDias, confiabilidadPar, esMasivo, loteHabitual } from "./par";
 
 describe("calcularPar", () => {
   it("the cups example: 30/day, 15 days delivery, bulk lot of 5.000", () => {
@@ -12,15 +12,25 @@ describe("calcularPar", () => {
     const bajo = calcularPar({ ...base, stock: 740 });
     expect(bajo.pedir).toBe(true);
     expect(bajo.cantidadSugerida).toBe(5000);
+    expect(bajo.parNivel).toBe(5750); // ROP + one lot
   });
 
-  it("a daily item: 3 safety days, suggestion up to a week more, in whole packs", () => {
+  it("a daily item: ROP triggers, the order fills up to the PAR in whole packs", () => {
     const leche = calcularPar({ consumoDiario: 3600, entregaDias: 1, diasSeguridad: null, lote: 5400, pack: 5400, stock: 9000 });
     expect(leche.masivo).toBe(false);
-    expect(leche.puntoReorden).toBe(14400); // 3600 × (1 + 3)
+    expect(leche.puntoReorden).toBe(14400); // 3600 × 1 + 3600 × 3
+    expect(leche.cicloDias).toBe(7); // no order days → weekly
+    expect(leche.parNivel).toBe(39600); // 3600 × (1 + 7) + 3600 × 3
     expect(leche.pedir).toBe(true);
-    expect(leche.cantidadSugerida! % 5400).toBe(0);
-    expect(leche.cantidadSugerida! + 9000).toBeGreaterThanOrEqual(14400 + 3600 * 7);
+    expect(leche.cantidadSugerida).toBe(32400); // 30.600 missing → 6 packs
+  });
+
+  it("supplier order days set the days between orders", () => {
+    const r = calcularPar({ consumoDiario: 10, entregaDias: 1, diasPedido: [0, 3], diasSeguridad: null, lote: null, pack: null, stock: 20 });
+    expect(r.cicloDias).toBe(4); // lun + jue → longest gap jue→lun
+    expect(r.puntoReorden).toBe(40);
+    expect(r.parNivel).toBe(80);
+    expect(r.cantidadSugerida).toBe(60);
   });
 
   it("owner's safety days and no supplier", () => {
@@ -36,6 +46,13 @@ describe("calcularPar", () => {
     expect(r.pedir).toBe(false);
     expect(r.coberturaDias).toBeNull();
   });
+});
+
+it("cicloDias", () => {
+  expect(cicloDias(null)).toBe(7);
+  expect(cicloDias([2])).toBe(7);
+  expect(cicloDias([0, 2, 4])).toBe(3);
+  expect(cicloDias([0, 1, 2, 3, 4, 5, 6])).toBe(1);
 });
 
 it("esMasivo / loteHabitual", () => {
@@ -55,7 +72,7 @@ describe("confiabilidadPar", () => {
     expect(confiabilidadPar({ ...base, sinProveedor: true }).nivel).toBe("media");
     const r = confiabilidadPar({ ...base, diasSinContar: null, sinProveedor: true, revisionPendiente: true });
     expect(r.nivel).toBe("baja");
-    expect(r.faltan).toEqual(["Nunca se ha contado", "Sin proveedor: lead time asumido de 1 día", "Conteo esperando segunda revisión"]);
+    expect(r.faltan).toEqual(["Nunca se ha contado", "Sin proveedor: se asumen 1 día de entrega y pedido semanal", "Conteo esperando segunda revisión"]);
   });
   it("negative stock or an old count; low rotation gets 14 days", () => {
     expect(confiabilidadPar({ ...base, stock: -3 }).faltan).toEqual(["El stock está en negativo"]);

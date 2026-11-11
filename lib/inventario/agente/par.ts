@@ -1,7 +1,13 @@
 /**
- * Reorder point (PAR) of an inventory item, pure (tested in par.test.ts).
+ * Reorder point (ROP) and PAR level of an inventory item, pure (tested in par.test.ts).
  *
- *   PAR = consumo diario × (días de entrega + días de seguridad)
+ *   ROP = consumo diario × días de entrega + stock de seguridad      → WHEN to order (trigger)
+ *   PAR = consumo diario × (días de entrega + días entre pedidos) + stock de seguridad
+ *                                                                    → UP TO how much (target)
+ *   stock de seguridad = consumo diario × días de seguridad
+ *
+ * Days between orders come from the supplier's fixed order days (Mon + Thu →
+ * the longest gap, 4); without them a weekly order is assumed.
  *
  * Items bought in bulk and rarely (a lot that lasts 30+ days, e.g. 5.000
  * cups every six months) are «masivos»: they keep a bigger safety stock (10
@@ -18,8 +24,8 @@ export const LOTE_VENTANA = 180;
 export const MASIVO_DIAS = 30;
 export const SEGURIDAD_NORMAL = 3;
 export const SEGURIDAD_MASIVO = 10;
-/** Normal items: suggest enough for the PAR plus this many days, rounded up to whole packs. */
-export const COBERTURA_PEDIDO = 7;
+/** Days between orders assumed when the supplier has no fixed order days. */
+export const CICLO_DEFAULT = 7;
 /** Bulk items are counted (by closed boxes) every this many days. */
 export const MASIVO_CONTEO_DIAS = 7;
 
@@ -28,6 +34,8 @@ export interface ParInput {
   consumoDiario: number;
   /** Supplier's delivery days; null = no supplier (1 is assumed). */
   entregaDias: number | null;
+  /** Supplier's fixed order weekdays (lun = 0 … dom = 6); null/empty = weekly assumed. */
+  diasPedido?: ReadonlyArray<number> | null;
   /** Owner's override of the safety days; null = automatic. */
   diasSeguridad: number | null;
   /** What is usually bought at once; null = unknown. */
@@ -41,7 +49,12 @@ export interface ParResultado {
   masivo: boolean;
   entregaDias: number;
   seguridadDias: number;
+  /** Days between two orders to the supplier. */
+  cicloDias: number;
+  /** ROP: order when the stock reaches this. */
   puntoReorden: number;
+  /** PAR: the level an order fills up to. */
+  parNivel: number;
   coberturaDias: number | null;
   pedir: boolean;
   cantidadSugerida: number | null;
@@ -53,11 +66,24 @@ export function esMasivo(consumoDiario: number, lote: number | null): boolean {
   return consumoDiario > 0 && lote != null && lote >= MASIVO_DIAS * consumoDiario;
 }
 
+/** Longest gap (days) between the supplier's order weekdays; CICLO_DEFAULT without them. */
+export function cicloDias(diasPedido: ReadonlyArray<number> | null | undefined): number {
+  const d = [...new Set((diasPedido ?? []).filter((x) => x >= 0 && x <= 6))].sort((a, b) => a - b);
+  if (!d.length) return CICLO_DEFAULT;
+  if (d.length === 1) return 7;
+  let max = 0;
+  for (let k = 0; k < d.length; k++) max = Math.max(max, (d[(k + 1) % d.length] - d[k] + 7) % 7 || 7);
+  return max;
+}
+
 export function calcularPar(i: ParInput): ParResultado {
   const masivo = esMasivo(i.consumoDiario, i.lote);
   const entregaDias = i.entregaDias ?? 1;
   const seguridadDias = i.diasSeguridad ?? (masivo ? SEGURIDAD_MASIVO : SEGURIDAD_NORMAL);
+  const ciclo = cicloDias(i.diasPedido);
   const puntoReorden = r3(i.consumoDiario * (entregaDias + seguridadDias));
+  // Bulk items fill up with a whole lot: their target is the ROP plus one lot.
+  const parNivel = masivo && i.lote ? r3(puntoReorden + i.lote) : r3(i.consumoDiario * (entregaDias + ciclo + seguridadDias));
   const coberturaDias = i.consumoDiario > 0 ? Math.round((Math.max(i.stock, 0) / i.consumoDiario) * 10) / 10 : null;
   const pedir = i.consumoDiario > 0 && i.stock <= puntoReorden;
   let cantidadSugerida: number | null = null;
@@ -67,13 +93,12 @@ export function calcularPar(i: ParInput): ParResultado {
       const falta = puntoReorden - i.stock;
       cantidadSugerida = r3(Math.max(1, Math.ceil(falta / i.lote - 1e-9)) * i.lote);
     } else {
-      const objetivo = puntoReorden + i.consumoDiario * COBERTURA_PEDIDO;
-      const falta = objetivo - Math.max(i.stock, 0);
+      const falta = parNivel - Math.max(i.stock, 0);
       const pack = i.pack && i.pack > 1 ? i.pack : null;
       cantidadSugerida = pack ? r3(Math.ceil(falta / pack - 1e-9) * pack) : r3(Math.ceil(falta - 1e-9));
     }
   }
-  return { masivo, entregaDias, seguridadDias, puntoReorden, coberturaDias, pedir, cantidadSugerida };
+  return { masivo, entregaDias, seguridadDias, cicloDias: ciclo, puntoReorden, parNivel, coberturaDias, pedir, cantidadSugerida };
 }
 
 /** The usual purchase: the median of the quantities bought at once. */
@@ -118,7 +143,7 @@ export function confiabilidadPar(i: ConfiabilidadInput): { nivel: Confiabilidad;
   if (i.diasSinContar === null) faltan.push("Nunca se ha contado");
   else if (i.diasSinContar > limite) faltan.push(`Sin contar hace ${i.diasSinContar} días`);
   else if (i.stock < 0) faltan.push("El stock está en negativo");
-  if (i.sinProveedor) faltan.push("Sin proveedor: lead time asumido de 1 día");
+  if (i.sinProveedor) faltan.push("Sin proveedor: se asumen 1 día de entrega y pedido semanal");
   if (i.diasConVenta < MIN_DIAS_VENTA) faltan.push(`Solo ${i.diasConVenta} días de ventas (mínimo ${MIN_DIAS_VENTA})`);
   if (i.revisionPendiente) faltan.push("Conteo esperando segunda revisión");
   const nivel: Confiabilidad = faltan.length === 0 ? "alta" : faltan.length === 1 ? "media" : "baja";

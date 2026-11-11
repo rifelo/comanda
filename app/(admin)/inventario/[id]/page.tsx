@@ -9,6 +9,7 @@ import { parsePeriodo } from "@/lib/kardex-periodo";
 import { bogotaDay } from "@/lib/pos/pending";
 import { cuando, presentacion, zonaDe } from "@/lib/inventario/acabando";
 import { cantidadLegible, nivelDe } from "@/lib/inventario/niveles";
+import { parPanel } from "@/lib/inventario/agente/db";
 import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/top-bar";
 import { cantidad, pesos } from "../../productos/_components/bits";
@@ -26,12 +27,12 @@ const NIVEL = { verde: ["ok", "Hay"], amarillo: ["brand", "Poco"], rojo: ["late"
  * the period in the URL (?dias / ?desde&hasta via a plain GET form).
  */
 export default async function InsumoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ dias?: string; desde?: string; hasta?: string }> }) {
-  const [{ profile }, { id }, sp] = await Promise.all([requireAdmin(), params, searchParams]);
+  const [{ profile, supabase }, { id }, sp] = await Promise.all([requireAdmin(), params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const orgId = profile.organization_id;
   const today = bogotaDay();
   const periodo = parsePeriodo(sp, today);
-  const [ctx, data, view] = await Promise.all([getInsumoContexto(orgId, id), getKardex(orgId, id, periodo.desdeIso, periodo.hastaIso), getIngredientesView(orgId)]);
+  const [ctx, data, view, [par]] = await Promise.all([getInsumoContexto(orgId, id), getKardex(orgId, id, periodo.desdeIso, periodo.hastaIso), getIngredientesView(orgId), parPanel(supabase, orgId, id)]);
   if (!ctx || !data) notFound();
   const it = ctx.item;
   const lineas = kardexLineas(data.movimientos);
@@ -90,6 +91,60 @@ export default async function InsumoPage({ params, searchParams }: { params: Pro
           </Link>
         </div>
       </div>
+
+      {par && par.consumoDiario > 0 ? (
+        <section aria-labelledby="repo-h" className="px-4 sm:px-7 mb-6">
+          <div className="flex items-end gap-3 mb-2">
+            <h2 id="repo-h" className="ui-h2 m-0 flex-1">
+              Reposición
+            </h2>
+            <Link href="/inventario/reorden?ver=todos" className="text-text font-semibold min-h-11 inline-flex items-center">
+              Punto de reorden →
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="bg-surface border border-line rounded-card p-4">
+              <div className="ui-label">Stock de seguridad</div>
+              <div className="ui-h2 ui-num mt-1">{legible(par.stockSeguridad)}</div>
+              <div className="ui-sub ui-num mt-1">
+                {legible(par.consumoDiario)}/día × {par.seguridadDias} d{par.seguridadManual ? " (fijado por ti)" : par.masivo ? " (compra masiva)" : ""}
+              </div>
+            </div>
+            <div className="bg-surface border border-line rounded-card p-4">
+              <div className="ui-label">ROP · cuándo pedir</div>
+              <div className="ui-h2 ui-num mt-1">{legible(par.puntoReorden)}</div>
+              <div className="ui-sub ui-num mt-1">
+                {legible(par.consumoDiario)}/día × {par.entregaDias} d entrega + stock de seguridad
+              </div>
+            </div>
+            <div className="bg-surface border border-line rounded-card p-4">
+              <div className="ui-label">PAR · hasta cuánto llenar</div>
+              <div className="ui-h2 ui-num mt-1">{legible(par.parNivel)}</div>
+              <div className="ui-sub ui-num mt-1">
+                {par.masivo && par.lote ? `ROP + un lote de ${legible(par.lote)} (compra masiva)` : `${legible(par.consumoDiario)}/día × (${par.entregaDias} d entrega + ${par.cicloDias} d entre pedidos) + stock de seguridad`}
+              </div>
+            </div>
+            <div className="bg-surface border border-line rounded-card p-4">
+              <div className="ui-label">Ahora</div>
+              <div className="mt-1">
+                <Pill tone={par.pedir ? "late" : "ok"}>{par.pedir ? "Pedir" : "Bien"}</Pill>
+              </div>
+              <div className="ui-sub ui-num mt-1">
+                {par.pedir && par.cantidadSugerida ? `Pedir ${legible(par.cantidadSugerida)} para llegar al PAR` : par.coberturaDias != null ? `Alcanza para ${String(par.coberturaDias).replace(".", ",")} días` : "—"}
+              </div>
+            </div>
+            <div className="bg-surface border border-line rounded-card p-4">
+              <div className="ui-label">Confiabilidad</div>
+              <div className="mt-1">
+                <Pill tone={par.confiabilidad === "alta" ? "ok" : par.confiabilidad === "media" ? "brand" : "late"}>
+                  {{ alta: "Alta", media: "Media", baja: "Baja", sin_datos: "Sin datos" }[par.confiabilidad]}
+                </Pill>
+              </div>
+              <div className="ui-sub mt-1 leading-relaxed">{par.faltan.length && par.confiabilidad !== "alta" ? par.faltan.join(" · ") : "Datos completos"}</div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section aria-labelledby="usos-h" className="px-4 sm:px-7 mb-6">
         <h2 id="usos-h" className="ui-h2 m-0 mb-2">
