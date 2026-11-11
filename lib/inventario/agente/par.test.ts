@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularPar, esMasivo, loteHabitual } from "./par";
+import { calcularPar, confiabilidadPar, esMasivo, loteHabitual } from "./par";
 
 describe("calcularPar", () => {
   it("the cups example: 30/day, 15 days delivery, bulk lot of 5.000", () => {
@@ -44,4 +44,26 @@ it("esMasivo / loteHabitual", () => {
   expect(loteHabitual([500, 5000, 5000])).toBe(5000);
   expect(loteHabitual([2, 4])).toBe(3);
   expect(loteHabitual([])).toBeNull();
+});
+
+describe("confiabilidadPar", () => {
+  const base = { consumoDiario: 10, diasConVenta: 26, diasSinContar: 2, stock: 40, sinProveedor: false, bajaRotacion: false, revisionPendiente: false };
+  it("alta when every check passes", () => {
+    expect(confiabilidadPar(base)).toEqual({ nivel: "alta", faltan: [] });
+  });
+  it("one missing piece → media, two or more → baja, with the reasons", () => {
+    expect(confiabilidadPar({ ...base, sinProveedor: true }).nivel).toBe("media");
+    const r = confiabilidadPar({ ...base, diasSinContar: null, sinProveedor: true, revisionPendiente: true });
+    expect(r.nivel).toBe("baja");
+    expect(r.faltan).toEqual(["Nunca se ha contado", "Sin proveedor: lead time asumido de 1 día", "Conteo esperando segunda revisión"]);
+  });
+  it("negative stock or an old count; low rotation gets 14 days", () => {
+    expect(confiabilidadPar({ ...base, stock: -3 }).faltan).toEqual(["El stock está en negativo"]);
+    expect(confiabilidadPar({ ...base, diasSinContar: 10 }).nivel).toBe("media");
+    expect(confiabilidadPar({ ...base, diasSinContar: 10, bajaRotacion: true }).nivel).toBe("alta");
+  });
+  it("short history and no consumption", () => {
+    expect(confiabilidadPar({ ...base, diasConVenta: 9 }).faltan[0]).toContain("9 días de ventas");
+    expect(confiabilidadPar({ ...base, consumoDiario: 0 }).nivel).toBe("sin_datos");
+  });
 });

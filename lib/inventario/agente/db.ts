@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listFaltantesAbiertos } from "../faltantes-db";
-import { CONSUMO_VENTANA, LOTE_VENTANA, calcularPar, loteHabitual, type ParResultado } from "./par";
+import { CONSUMO_VENTANA, LOTE_VENTANA, calcularPar, confiabilidadPar, loteHabitual, type Confiabilidad, type ParResultado } from "./par";
 import { cantidadLegible, piezaDe } from "../niveles";
 import {
   CONFIG_DEFAULT,
@@ -131,6 +131,9 @@ export interface ParFila extends ParResultado {
   loteOrigen: "compras" | "presentacion" | null;
   sinProveedor: boolean;
   stock: number;
+  confiabilidad: Confiabilidad;
+  faltan: string[];
+  diasSinContar: number | null;
 }
 
 /**
@@ -141,8 +144,8 @@ export interface ParFila extends ParResultado {
  */
 export async function calcularParOrg(db: Db, orgId: string, hasta: string): Promise<Map<string, ParFila>> {
   const desde = sumarDias(hasta, -(CONSUMO_VENTANA - 1));
-  const [{ data: ings }, { data: provs }, { data: movs }, { data: compras }] = await Promise.all([
-    db.from("ingredientes").select("id, stock_current, pack_qty, proveedor_id, dias_seguridad").eq("organization_id", orgId).eq("archived", false),
+  const [{ data: ings }, { data: provs }, { data: movs }, { data: compras }, ultimo, { data: revisar }] = await Promise.all([
+    db.from("ingredientes").select("id, stock_current, pack_qty, proveedor_id, dias_seguridad, rotacion, rotacion_auto").eq("organization_id", orgId).eq("archived", false),
     db.from("proveedores").select("id, entrega_dias").eq("organization_id", orgId),
     db
       .from("ingrediente_movements")
@@ -160,7 +163,14 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
       .gt("delta", 0)
       .gte("created_at", inicioLocal(sumarDias(hasta, -LOTE_VENTANA)))
       .limit(20000),
+    ultimoConteo(db, orgId),
+    db
+      .from("inventario_conteo_items")
+      .select("ingrediente_id, conteo:inventario_conteos!inner(organization_id)")
+      .eq("revision", "revisar")
+      .eq("conteo.organization_id", orgId),
   ]);
+  const enRevision = new Set((revisar ?? []).map((r) => r.ingrediente_id as string));
   const entrega = new Map((provs ?? []).map((p) => [p.id as string, Number(p.entrega_dias ?? 1)]));
   const dias = new Set<string>();
   const usado = new Map<string, number>();
@@ -195,7 +205,18 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
       pack,
       stock,
     });
-    out.set(id, { ...r, consumoDiario, lote, loteOrigen, sinProveedor, stock });
+    const contado = ultimo.get(id);
+    const diasSinContar = contado ? diasEntre(contado, hasta) : null;
+    const conf = confiabilidadPar({
+      consumoDiario,
+      diasConVenta: dias.size,
+      diasSinContar,
+      stock,
+      sinProveedor,
+      bajaRotacion: (i.rotacion ?? i.rotacion_auto ?? "baja") === "baja",
+      revisionPendiente: enRevision.has(id),
+    });
+    out.set(id, { ...r, consumoDiario, lote, loteOrigen, sinProveedor, stock, confiabilidad: conf.nivel, faltan: conf.faltan, diasSinContar });
     rows.push({
       ingrediente_id: id,
       organization_id: orgId,
@@ -212,6 +233,9 @@ export async function calcularParOrg(db: Db, orgId: string, hasta: string): Prom
       cobertura_dias: r.coberturaDias,
       pedir: r.pedir,
       cantidad_sugerida: r.cantidadSugerida,
+      confiabilidad: conf.nivel,
+      confiabilidad_faltan: conf.faltan,
+      dias_sin_contar: diasSinContar,
       updated_at: now,
     });
   }
@@ -243,6 +267,9 @@ export interface ParPanelFila {
   coberturaDias: number | null;
   pedir: boolean;
   cantidadSugerida: number | null;
+  confiabilidad: Confiabilidad;
+  faltan: string[];
+  diasSinContar: number | null;
   updatedAt: string;
 }
 
@@ -281,6 +308,9 @@ export async function parPanel(db: Db, orgId: string): Promise<ParPanelFila[]> {
         coberturaDias: r.cobertura_dias != null ? Number(r.cobertura_dias) : null,
         pedir: r.pedir === true,
         cantidadSugerida: r.cantidad_sugerida != null ? Number(r.cantidad_sugerida) : null,
+        confiabilidad: ((r.confiabilidad as Confiabilidad | null) ?? (Number(r.consumo_diario) > 0 ? "baja" : "sin_datos")) as Confiabilidad,
+        faltan: (r.confiabilidad_faltan as string[] | null) ?? [],
+        diasSinContar: r.dias_sin_contar != null ? Number(r.dias_sin_contar) : null,
         updatedAt: r.updated_at as string,
       };
     })

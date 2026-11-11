@@ -83,3 +83,44 @@ export function loteHabitual(compras: ReadonlyArray<number>): number | null {
   const m = Math.floor(xs.length / 2);
   return xs.length % 2 ? xs[m] : r3((xs[m - 1] + xs[m]) / 2);
 }
+
+/** History needed before the consumption number means something. */
+export const MIN_DIAS_VENTA = 14;
+/** A count older than this no longer vouches for the stock (low rotation gets twice as long). */
+export const VERIFICADO_DIAS = 7;
+
+export type Confiabilidad = "alta" | "media" | "baja" | "sin_datos";
+
+export interface ConfiabilidadInput {
+  consumoDiario: number;
+  /** Selling days of the café in the consumption window. */
+  diasConVenta: number;
+  /** Days since the item was last counted; null = never. */
+  diasSinContar: number | null;
+  stock: number;
+  sinProveedor: boolean;
+  bajaRotacion: boolean;
+  /** A count line of this item waits for a second review. */
+  revisionPendiente: boolean;
+}
+
+/**
+ * How far an item's PAR can be trusted. Four checks — the stock was verified
+ * recently and isn't negative, the lead time comes from a real supplier,
+ * there is enough sales history, no count waits for review — each one that
+ * fails lowers it a level: none → alta, one → media, two or more → baja.
+ * No consumption → sin_datos (there is no PAR to trust).
+ */
+export function confiabilidadPar(i: ConfiabilidadInput): { nivel: Confiabilidad; faltan: string[] } {
+  if (i.consumoDiario <= 0) return { nivel: "sin_datos", faltan: ["Sin consumo en los últimos 28 días"] };
+  const faltan: string[] = [];
+  const limite = i.bajaRotacion ? VERIFICADO_DIAS * 2 : VERIFICADO_DIAS;
+  if (i.diasSinContar === null) faltan.push("Nunca se ha contado");
+  else if (i.diasSinContar > limite) faltan.push(`Sin contar hace ${i.diasSinContar} días`);
+  else if (i.stock < 0) faltan.push("El stock está en negativo");
+  if (i.sinProveedor) faltan.push("Sin proveedor: lead time asumido de 1 día");
+  if (i.diasConVenta < MIN_DIAS_VENTA) faltan.push(`Solo ${i.diasConVenta} días de ventas (mínimo ${MIN_DIAS_VENTA})`);
+  if (i.revisionPendiente) faltan.push("Conteo esperando segunda revisión");
+  const nivel: Confiabilidad = faltan.length === 0 ? "alta" : faltan.length === 1 ? "media" : "baja";
+  return { nivel, faltan };
+}
