@@ -87,6 +87,7 @@ export const DUENO_TABS: NavItem[] = [
       { href: "/inventario", label: "Existencias", match: ["/inventario"] },
       { href: "/inventario/movimientos", label: "Movimientos", match: ["/inventario/movimientos", "/historial", "/inventario/kardex"] },
       { href: "/inventario/pedidos", label: "Pedidos", match: ["/inventario/pedidos", "/compras"] },
+      { href: "/inventario/proveedores", label: "Proveedores", match: ["/inventario/proveedores"] },
       { href: "/inventario?vista=acabando", label: "Faltantes", match: ["/inventario/faltantes"] },
       { href: "/inventario/conteos", label: "Conteos", match: ["/inventario/conteos"] },
       { href: "/inventario/mermas", label: "Mermas", match: ["/inventario/mermas"] },
