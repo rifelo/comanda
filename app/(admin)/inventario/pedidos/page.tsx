@@ -134,7 +134,7 @@ export default async function ComprasPage() {
         actions={
           <>
             <Link href="/importar-factura" className={buttonClass({ variant: "ghost", size: "sm" })}>Desde una foto</Link>
-            <Link href="/inventario/niveles" className={buttonClass({ variant: "ghost", size: "sm" })}>Niveles y proveedores</Link>
+            <Link href="/inventario/proveedores" className={buttonClass({ variant: "ghost", size: "sm" })}>Proveedores</Link>
           </>
         }
       />

@@ -7,7 +7,8 @@ import { NIVELES, ZONAS, aEntrada, deEntrada, nivelDe, nombrePaquete, usaPaquete
 
 /** The item with the piece size as currently typed, so levels follow it live. */
 const conPieza = (i: Ingrediente, pieza: string) => ({ unit: i.unit, pack_qty: i.pack_qty, pieza_qty: num(pieza) > 0 ? num(pieza) : null });
-import { archivarProveedor, guardarNiveles, guardarProveedor } from "./actions";
+import Link from "next/link";
+import { guardarNiveles } from "./actions";
 
 /** One row as it is being edited: levels as typed (packs when the item has one). */
 interface Draft {
@@ -257,7 +258,10 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
         <datalist id="niveles-zonas">{ZONAS.map((z) => <option key={z} value={z} />)}</datalist>
       </div>
 
-      <Proveedores proveedores={proveedores} />
+      <p style={{ marginTop: 20, fontSize: 12.5, color: "var(--muted)" }}>
+        Para crear o editar proveedores (WhatsApp, días de pedido, qué traen) ve a{" "}
+        <Link href="/inventario/proveedores" style={{ color: "var(--ink)", fontWeight: 600 }}>Proveedores →</Link>
+      </p>
 
       {/* Save bar: always in reach, also on a phone. */}
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, borderTop: "1.5px solid var(--ink)", background: "var(--paper-lt)", padding: "10px 16px" }} className="md:!left-[220px]">
@@ -270,57 +274,5 @@ export function NivelesClient({ ingredientes, categorias, proveedores }: {
         </div>
       </div>
     </div>
-  );
-}
-
-/** Suppliers: who to write to and when. Kept short — a name is enough to start. */
-function Proveedores({ proveedores }: { proveedores: Proveedor[] }) {
-  const router = useRouter();
-  const [name, setName] = React.useState("");
-  const [whatsapp, setWhatsapp] = React.useState("");
-  const [dias, setDias] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    const r = await guardarProveedor({ name, whatsapp, dias_pedido: dias });
-    setBusy(false);
-    if (!r.ok) return setError(r.error);
-    setName("");
-    setWhatsapp("");
-    setDias("");
-    router.refresh();
-  }
-  async function quitar(p: Proveedor) {
-    if (!window.confirm(`¿Quitar a ${p.name}? Sus ítems quedan sin proveedor.`)) return;
-    const r = await archivarProveedor(p.id);
-    if (!r.ok) setError(r.error);
-    else router.refresh();
-  }
-
-  return (
-    <section style={{ marginTop: 28, maxWidth: 820 }} aria-label="Proveedores">
-      <div style={label}>Proveedores · {proveedores.length}</div>
-      <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, margin: "6px 0 10px" }}>A quién se le pide cada ítem. Con el WhatsApp, el pedido se arma listo para enviar.</p>
-      {proveedores.map((p) => (
-        <div key={p.id} className="flex items-center" style={{ gap: 10, padding: "8px 0", borderTop: "1px dashed var(--rule)", fontSize: 12.5 }}>
-          <span style={{ fontWeight: 600, flex: "0 1 220px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-          <span className="cmd-num text-muted" style={{ flex: "0 0 130px" }}>{p.whatsapp ? `+${p.whatsapp}` : "sin WhatsApp"}</span>
-          <span className="text-muted" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.dias_pedido ?? ""}</span>
-          <button type="button" className="cmd-btn ghost sm" onClick={() => void quitar(p)} aria-label={`Quitar a ${p.name}`}>Quitar</button>
-        </div>
-      ))}
-      <form onSubmit={add} className="flex items-center" style={{ gap: 8, flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--rule)" }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre del proveedor" aria-label="Nombre del proveedor" maxLength={80} style={{ ...input, flex: "1 1 200px", width: "auto" }} />
-        <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="WhatsApp (300 123 4567)" aria-label="WhatsApp del proveedor" inputMode="tel" maxLength={24} style={{ ...input, flex: "1 1 170px", width: "auto" }} />
-        <input value={dias} onChange={(e) => setDias(e.target.value)} placeholder="Días de pedido (lun y jue)" aria-label="Días de pedido" maxLength={80} style={{ ...input, flex: "1 1 170px", width: "auto" }} />
-        <button type="submit" className="cmd-btn sm" disabled={busy || name.trim().length < 2}>{busy ? "…" : "Agregar"}</button>
-      </form>
-      {error && <div role="alert" style={{ fontSize: 12, color: "var(--red)", marginTop: 8 }}>{error}</div>}
-    </section>
   );
 }

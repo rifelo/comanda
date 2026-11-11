@@ -196,10 +196,11 @@ function mapCompra(r: Record<string, unknown>): Compra {
   };
 }
 
-/** Orders newest first, optionally only some statuses. */
-export async function listCompras(db: Db, orgId: string, statuses?: Compra["status"][], limit = 40): Promise<Compra[]> {
+/** Orders newest first, optionally only some statuses and/or one supplier. */
+export async function listCompras(db: Db, orgId: string, statuses?: Compra["status"][], limit = 40, proveedorId?: string): Promise<Compra[]> {
   let q = db.from("compras").select(COMPRA_SELECT).eq("organization_id", orgId).order("pedido_at", { ascending: false }).limit(limit);
   if (statuses?.length) q = q.in("status", statuses);
+  if (proveedorId) q = q.eq("proveedor_id", proveedorId);
   const { data, error } = await q;
   if (error) {
     console.error("[listCompras]", error);
