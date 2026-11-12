@@ -119,6 +119,8 @@ export interface TemplateTask {
   puesto_id: string | null;
   /** Weekdays it applies (lun=0…dom=6); null = every day the turno runs (mig 0059). */
   dias?: boolean[] | null;
+  /** Reference pictures shown when the task is opened on the tablet (mig 0080). */
+  referencias?: { url: string; titulo: string }[] | null;
 }
 
 export interface ShiftInstance {
