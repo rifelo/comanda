@@ -22,6 +22,7 @@ export const VERIF_CSS = `
 .verif-chip { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text); white-space: nowrap; }
 .verif-name { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; overflow-wrap: anywhere; }
 .verif-help { margin: 0; font-size: 15px; line-height: 22px; color: var(--muted); }
+.verif-nota { margin: 4px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--brand-soft); color: var(--text); font-size: 15px; line-height: 22px; font-weight: 600; }
 .verif-fields { display: flex; gap: 12px; }
 .verif-fld { flex: 1 1 0; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); cursor: pointer; }
 .verif-fld[aria-pressed="true"] { border: 2px solid var(--text); padding: 13px 17px; background: var(--brand-soft); }

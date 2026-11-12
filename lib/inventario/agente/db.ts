@@ -575,6 +575,8 @@ export interface TareaTablet {
   /** Stock units in one countable piece; null = counted in the unit. */
   pieza: number | null;
   packLabel: string | null;
+  /** Counting rule typed by the owner (ingredientes.conteo_nota, mig 0081). */
+  nota: string | null;
   motivo: Motivo;
   fecha: string;
 }
@@ -583,7 +585,7 @@ export interface TareaTablet {
 export async function tareasPendientes(db: Db, orgId: string, hoy: string): Promise<TareaTablet[]> {
   const { data, error } = await db
     .from("agente_tareas")
-    .select("id, ingrediente_id, motivo, fecha, prioridad, ing:ingredientes!inner(name, unit, ubicacion, pieza_qty, pack_qty, pack_label, archived)")
+    .select("id, ingrediente_id, motivo, fecha, prioridad, ing:ingredientes!inner(name, unit, ubicacion, pieza_qty, pack_qty, pack_label, conteo_nota, archived)")
     .eq("organization_id", orgId)
     .eq("estado", "pendiente")
     .lte("fecha", hoy)
@@ -594,7 +596,7 @@ export async function tareasPendientes(db: Db, orgId: string, hoy: string): Prom
   }
   return (data ?? [])
     .map((r) => {
-      const i = r.ing as unknown as { name: string; unit: string; ubicacion: string | null; pieza_qty: number | null; pack_qty: number | null; pack_label: string | null; archived: boolean };
+      const i = r.ing as unknown as { name: string; unit: string; ubicacion: string | null; pieza_qty: number | null; pack_qty: number | null; pack_label: string | null; conteo_nota: string | null; archived: boolean };
       return {
         id: r.id as string,
         ingredienteId: r.ingrediente_id as string,
@@ -603,6 +605,7 @@ export async function tareasPendientes(db: Db, orgId: string, hoy: string): Prom
         ubicacion: i.ubicacion,
         pieza: piezaDe({ unit: i.unit, pack_qty: i.pack_qty, pieza_qty: i.pieza_qty }),
         packLabel: i.pack_label,
+        nota: i.conteo_nota?.trim() || null,
         motivo: r.motivo as Motivo,
         fecha: r.fecha as string,
         archived: i.archived,

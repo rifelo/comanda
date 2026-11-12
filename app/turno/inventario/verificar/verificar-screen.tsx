@@ -17,6 +17,8 @@ export type TareaVerificar = {
   /** Stock units per countable piece; null = counted in the unit. */
   pieza: number | null;
   packLabel: string | null;
+  /** The owner's rule for counting this item, if any. */
+  nota?: string | null;
 };
 
 type Campo = "paq" | "sue";
@@ -129,6 +131,7 @@ export function VerificarScreen({ tareas: inicial }: { tareas: TareaVerificar[] 
             )}
             <h2 id="verif-nombre" className="verif-name">{t.name}</h2>
             <p className="verif-help">{ayuda}</p>
+            {t.nota ? <p className="verif-nota">{t.nota}</p> : null}
           </div>
 
           <div className="verif-fields">
