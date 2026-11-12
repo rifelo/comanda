@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { asApplied, consumptionDeltas, explodeConsumption, modPairsOf, type ComboMap, type OptionRecipeMap, type RecipeMap } from "./consumo";
+import { asApplied, consumptionDeltas, explodeConsumption, modPairsOf, round3, type ComboMap, type OptionRecipeMap, type RecipeMap } from "./consumo";
+import { empaqueDePedido } from "./empaque";
 
 /**
  * Keep inventory in step with an order. Idempotent: it reads what the
@@ -22,7 +23,7 @@ export async function syncOrderConsumption(
   try {
     const { data: orden } = await supabase
       .from("ordenes")
-      .select("id, folio, status, orden_items(kind, producto_id, combo_id, qty, mods)")
+      .select("id, folio, status, order_type, orden_items(kind, producto_id, combo_id, qty, mods)")
       .eq("id", ordenId)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -96,6 +97,36 @@ export async function syncOrderConsumption(
     }
 
     const desired = live ? asApplied(explodeConsumption(lines, recipes, combos, options)) : new Map<string, number>();
+
+    // Take-away / delivery packaging (0083): holders + kraft bags by drinks,
+    // a greaseproof bag per food item, on top of the recipes.
+    const orderType = (orden.order_type as string | null) ?? "aqui";
+    if (live && (orderType === "llevar" || orderType === "domicilio") && productIds.size) {
+      const [{ data: prods }, { data: roles }] = await Promise.all([
+        supabase.from("productos").select("id, cat:producto_categorias(empaque)").eq("organization_id", orgId).in("id", [...productIds]),
+        supabase.from("ingredientes").select("id, empaque_rol").eq("organization_id", orgId).eq("archived", false).not("empaque_rol", "is", null),
+      ]);
+      const tipo = new Map<string, string | null>();
+      for (const p of (prods ?? []) as Array<{ id: string; cat: { empaque: string | null } | { empaque: string | null }[] | null }>) {
+        const cat = Array.isArray(p.cat) ? p.cat[0] : p.cat;
+        tipo.set(p.id, cat?.empaque ?? null);
+      }
+      const cuenta = { bebida: 0, comida: 0 };
+      const sumar = (productoId: string, units: number) => {
+        const t = tipo.get(productoId);
+        if (t === "bebida" || t === "comida") cuenta[t] += units;
+      };
+      for (const l of lines) {
+        if (l.qty <= 0) continue;
+        if (l.kind === "item" && l.productoId) sumar(l.productoId, l.qty);
+        else if (l.kind === "combo" && l.comboId) for (const c of combos.get(l.comboId) ?? []) sumar(c.productoId, c.qty * l.qty);
+      }
+      const porRol = new Map(((roles ?? []) as Array<{ id: string; empaque_rol: string }>).map((r) => [r.empaque_rol, r.id]));
+      for (const [rol, n] of empaqueDePedido({ orderType, bebidas: cuenta.bebida, comidas: cuenta.comida })) {
+        const id = porRol.get(rol);
+        if (id) desired.set(id, round3((desired.get(id) ?? 0) - n));
+      }
+    }
 
     // What this order already took (or gave back).
     const { data: prev } = await supabase
