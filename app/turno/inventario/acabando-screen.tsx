@@ -420,6 +420,9 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, verificar, por
       <Link href="/turno/inventario/merma" className="acab-tool">
         <span style={{ flex: 1 }}>Registrar merma<br /><small>se cayó, se dañó, se venció</small></span>
       </Link>
+      <Link href="/turno/inventario/preparar" className="acab-tool">
+        <span style={{ flex: 1 }}>Preparaciones<br /><small>registrar una tanda de chantilly…</small></span>
+      </Link>
       {isAdmin && <Link href="/inventario/pedidos" className="acab-tool">Por pedir · panel →</Link>}
     </>
   );

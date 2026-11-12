@@ -27,6 +27,7 @@ const TIPO_META: Record<MovTipo, { label: string; bd: string }> = {
   ajuste: { label: "Ajuste", bd: "var(--red)" },
   import: { label: "Importación", bd: "var(--green)" },
   merma: { label: "Merma", bd: "var(--red)" },
+  preparacion: { label: "Preparación", bd: "var(--blue, var(--ink))" },
 };
 
 const MESES_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];

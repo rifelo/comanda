@@ -324,6 +324,8 @@ export interface Ingrediente {
   /** Stock units in one countable piece (bolsa = 900 ml); null = counted in the unit (0044). */
   pieza_qty: number | null;
   proveedor_id: string | null;
+  /** House preparación: yield of one batch in its unit; null = bought (0082). */
+  rinde?: number | null;
   /** Its expiry date is written down when it is received. */
   controla_vencimiento: boolean;
   /** Rotation pinned by the owner; null = automatic (0075). */
@@ -433,7 +435,7 @@ export interface CajaCierre {
   shift_name: string | null;
 }
 
-export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import" | "merma";
+export type IngredienteMovementType = "venta" | "gasto" | "ajuste" | "import" | "merma" | "preparacion";
 
 export interface IngredienteMovement {
   id: string;
