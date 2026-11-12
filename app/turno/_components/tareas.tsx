@@ -157,7 +157,31 @@ export function TareaRow({
       ? `${(comp.completed_by_name ?? "—").split(" ")[0]} · ${horaDe(comp.completed_at, tz)}`
       : null;
   const due = hhmm(item.task.due_time);
-  const desc = done ? (quien ?? undefined) : instr ? <Instrucciones text={instr} full={full} /> : (quien ?? undefined);
+  const refs = !isInm ? (item.task.referencias ?? []).filter((r) => r && r.url) : [];
+  const desc = done ? (
+    (quien ?? undefined)
+  ) : instr || refs.length ? (
+    <>
+      {instr ? <Instrucciones text={instr} full={full} /> : null}
+      {refs.length ? (
+        full ? (
+          <span className="mt-2 flex flex-wrap gap-3">
+            {refs.map((r) => (
+              <span key={r.url} className="flex flex-col gap-1 w-[44%] max-w-[220px]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt={r.titulo} className="w-full rounded-lg border border-line" loading="lazy" />
+                <span className="text-[13px] font-semibold">{r.titulo}</span>
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="block text-[13px] text-muted">{refs.length === 1 ? "1 foto de referencia" : `${refs.length} fotos de referencia`} · toca para ver</span>
+        )
+      ) : null}
+    </>
+  ) : (
+    (quien ?? undefined)
+  );
   return (
     <Row
       muted={done}
@@ -171,7 +195,7 @@ export function TareaRow({
       }
       desc={desc}
       full={full}
-      onClick={instr && !done ? () => setFull((f) => !f) : undefined}
+      onClick={(instr || refs.length) && !done ? () => setFull((f) => !f) : undefined}
       trailing={
         <>
           {extra}
