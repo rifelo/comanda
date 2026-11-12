@@ -27,7 +27,7 @@ export default async function VerificarPage() {
   }
   return (
     <VerificarScreen
-      tareas={tareas.map((t) => ({ id: t.id, name: t.name, unit: t.unit, ubicacion: t.ubicacion, pieza: t.pieza, packLabel: t.packLabel }))}
+      tareas={tareas.map((t) => ({ id: t.id, name: t.name, unit: t.unit, ubicacion: t.ubicacion, pieza: t.pieza, packLabel: t.packLabel, nota: t.nota }))}
     />
   );
 }
