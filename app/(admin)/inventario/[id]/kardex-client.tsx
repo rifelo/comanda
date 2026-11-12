@@ -24,6 +24,7 @@ const TIPO_COLOR: Record<MovTipo, string> = {
   ajuste: "var(--red)",
   import: "var(--green)",
   merma: "var(--red)",
+  preparacion: "var(--blue, var(--ink))",
 };
 
 const GRID = "110px 80px minmax(160px, 1.4fr) 100px 100px 110px 80px 100px minmax(90px, 0.6fr)";
@@ -124,9 +125,9 @@ export function KardexClient({ item, periodo, lineas, totales, truncado }: { ite
       <VentasChart dias={ventasDia} unidad={item.unit} piezaQty={item.pieza_qty} piezaLabel={item.pack_label} />
 
       <div className="flex items-center flex-wrap" style={{ gap: 8 }}>
-        {(["todos", "venta", "import", "ajuste", "merma", "gasto"] as const).map((t) => (
+        {(["todos", "venta", "import", "preparacion", "ajuste", "merma", "gasto"] as const).map((t) => (
           <button key={t} type="button" onClick={() => setTipo(t)} className={`cmd-btn sm${tipo === t ? "" : " ghost"}`}>
-            {t === "todos" ? "Todos" : TIPO_LABEL[t] + "s"}
+            {t === "todos" ? "Todos" : (t === "preparacion" ? "Preparaciones" : TIPO_LABEL[t] + "s")}
           </button>
         ))}
         {pruebas > 0 ? (

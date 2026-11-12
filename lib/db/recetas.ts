@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { lineTotal, recipeCost, margenOf } from "@/lib/cost";
+import { preparacionesQueUsan, recostearPreparacion } from "@/lib/inventario/preparaciones-db";
 
 /**
  * Recetas (module 03) — a recipe is the bill of materials for a producto.
@@ -364,6 +365,7 @@ export async function recomputeProductosForIngrediente(
   supabase: SupabaseClient<any>,
   organizationId: string,
   ingredienteId: string,
+  depth = 0,
 ): Promise<void> {
   const { data: rows } = await supabase
     .from("receta_items")
@@ -374,5 +376,14 @@ export async function recomputeProductosForIngrediente(
   const productoIds = [...new Set((rows ?? []).map((r) => r.producto_id as string))];
   for (const productoId of productoIds) {
     await recomputeProductoCost(supabase, organizationId, productoId);
+  }
+  // A house preparación that takes this ingredient (crema chantilly…) changes
+  // cost too, and so do the products that use it. Preparaciones don't nest
+  // (mig 0082), so one level is enough.
+  if (depth > 0) return;
+  for (const prepId of await preparacionesQueUsan(supabase, organizationId, ingredienteId)) {
+    if ((await recostearPreparacion(supabase, organizationId, prepId)) != null) {
+      await recomputeProductosForIngrediente(supabase, organizationId, prepId, depth + 1);
+    }
   }
 }

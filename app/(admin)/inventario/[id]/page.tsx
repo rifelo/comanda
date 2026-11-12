@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/ui/top-bar";
 import { cantidad, pesos } from "../../productos/_components/bits";
 import { InsumoAcciones } from "./insumo-acciones";
 import { KardexClient } from "./kardex-client";
+import { PreparacionEditor } from "./preparacion-editor";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Insumo · Comanda" };
@@ -32,7 +33,19 @@ export default async function InsumoPage({ params, searchParams }: { params: Pro
   const orgId = profile.organization_id;
   const today = bogotaDay();
   const periodo = parsePeriodo(sp, today);
-  const [ctx, data, view, [par]] = await Promise.all([getInsumoContexto(orgId, id), getKardex(orgId, id, periodo.desdeIso, periodo.hastaIso), getIngredientesView(orgId), parPanel(supabase, orgId, id)]);
+  const [ctx, data, view, [par], { data: prepRows }, { data: opcionesRows }] = await Promise.all([
+    getInsumoContexto(orgId, id),
+    getKardex(orgId, id, periodo.desdeIso, periodo.hastaIso),
+    getIngredientesView(orgId),
+    parPanel(supabase, orgId, id),
+    supabase
+      .from("preparacion_items")
+      .select("ingrediente_id, qty, position, ing:ingredientes!preparacion_items_ingrediente_id_fkey(name, unit, cost_cop)")
+      .eq("organization_id", orgId)
+      .eq("preparacion_id", id)
+      .order("position"),
+    supabase.from("ingredientes").select("id, name, unit, cost_cop").eq("organization_id", orgId).eq("archived", false).is("rinde", null).neq("id", id).order("name"),
+  ]);
   if (!ctx || !data) notFound();
   const it = ctx.item;
   const lineas = kardexLineas(data.movimientos);
@@ -166,6 +179,22 @@ export default async function InsumoPage({ params, searchParams }: { params: Pro
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-labelledby="prep-h" className="px-4 sm:px-7 mb-6">
+        <h2 id="prep-h" className="ui-h2 m-0 mb-2">
+          Preparación de la casa
+        </h2>
+        <PreparacionEditor
+          id={it.id}
+          unit={it.unit}
+          rinde={it.rinde != null ? Number(it.rinde) : null}
+          lineas={(prepRows ?? []).map((r) => {
+            const ing = (Array.isArray(r.ing) ? r.ing[0] : r.ing) as { name: string; unit: string; cost_cop: number } | null;
+            return { ingredienteId: r.ingrediente_id as string, name: ing?.name ?? "—", unit: ing?.unit ?? "", qty: Number(r.qty), costo: Number(ing?.cost_cop ?? 0) };
+          })}
+          opciones={(opcionesRows ?? []).map((o) => ({ id: o.id as string, name: o.name as string, unit: o.unit as string, costo: Number(o.cost_cop) }))}
+        />
       </section>
 
       <div className="px-4 sm:px-7 flex items-end gap-3 mb-2">

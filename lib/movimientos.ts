@@ -4,7 +4,7 @@
  * lives in lib/db/movements.ts.
  */
 
-export type MovTipo = "venta" | "gasto" | "ajuste" | "import" | "merma";
+export type MovTipo = "venta" | "gasto" | "ajuste" | "import" | "merma" | "preparacion";
 
 export interface MovimientoRow {
   id: string;
@@ -31,6 +31,7 @@ export const TIPO_LABEL: Record<MovTipo, string> = {
   ajuste: "Ajuste",
   import: "Compra",
   merma: "Merma",
+  preparacion: "Preparación",
 };
 
 /** Filter movements by type and a free-text query over name + note. */

@@ -45,7 +45,7 @@ export async function listProveedores(organizationId: string): Promise<Proveedor
 }
 
 const ING_COLS =
-  "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, pack_cost_cop, pack_qty, archived, conteo_diario, prioridad, stock_critico, stock_objetivo, ubicacion, pack_label, pieza_qty, proveedor_id, controla_vencimiento, rotacion, rotacion_auto, rotacion_dias, rotacion_ventana, dias_seguridad";
+  "id, organization_id, category_id, name, unit, unit2, conversion_factor, stock_current, stock_min, merma_pct, cost_cop, pack_cost_cop, pack_qty, archived, conteo_diario, prioridad, stock_critico, stock_objetivo, ubicacion, pack_label, pieza_qty, proveedor_id, controla_vencimiento, rotacion, rotacion_auto, rotacion_dias, rotacion_ventana, dias_seguridad, rinde";
 
 /** What /inventario/[id] shows around the kardex: the item, where it's used, its supplier and sales since it was last counted. */
 export interface InsumoContexto {
