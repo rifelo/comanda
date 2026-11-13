@@ -29,6 +29,8 @@ const TaskSchema = z.object({
   puesto_id: z.string().uuid().nullable().optional(),
   /** Weekdays (lun=0…dom=6); null/omitted = every day the turno runs. */
   dias: z.array(z.boolean()).length(7).nullable().optional(),
+  /** Completes itself with that work (mig 0084); null/omitted = ticked by hand. */
+  vinculo: z.enum(["verificar_insumos"]).nullable().optional(),
 });
 
 const TemplatePuestoSchema = z.object({
@@ -173,6 +175,7 @@ export async function createShift(input: z.infer<typeof CreateSchema>) {
         requires_photo: t.requires_photo,
         puesto_id: t.puesto_id ?? null,
         dias: normDias(t.dias),
+        vinculo: t.vinculo ?? null,
       })
       .select("id")
       .single();
@@ -252,6 +255,7 @@ export async function updateShift(input: z.infer<typeof UpdateSchema>) {
       requires_photo: t.requires_photo,
       puesto_id: t.puesto_id ?? null,
       dias: normDias(t.dias),
+      vinculo: t.vinculo ?? null,
     };
     if (t.id) {
       const { error } = await supabase

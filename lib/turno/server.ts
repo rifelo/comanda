@@ -9,6 +9,7 @@ import { listRosterForSede, resolvePersonInOrg, type TurnoPerson } from "@/lib/a
 import { isoMonday } from "@/lib/db/assignments";
 import { todayInTz } from "@/lib/utils";
 import { todayIdxOf } from "./state";
+import { sincronizarVinculadas } from "./vinculos";
 import type {
   AdHocTask,
   ChecklistTemplate,
@@ -247,6 +248,8 @@ export async function getTurnoBoard(ctx: TurnoContext): Promise<TurnoBoardData> 
   const date = todayInTz(ctx.sede.tz);
   const todayIdx = todayIdxOf(date);
   const weekStart = isoMonday(date);
+  // Tasks tied to other work (verificación de insumos) tick themselves.
+  await sincronizarVinculadas({ ...ctx, actorId: ctx.actor.profileId }, date);
 
   const [{ data: instances }, roster, { data: asg }] = await Promise.all([
     ctx.admin

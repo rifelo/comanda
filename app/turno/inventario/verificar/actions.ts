@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireTurnoContext } from "@/lib/turno/server";
 import { responderTarea } from "@/lib/inventario/agente/db";
+import { sincronizarVinculadas } from "@/lib/turno/vinculos";
+import { todayInTz } from "@/lib/utils";
 
 const Schema = z.object({
   tareaId: z.string().uuid(),
@@ -38,7 +40,10 @@ export async function responder(input: unknown): Promise<ResponderResult> {
       restaurantId: ctx.restaurantId,
     });
     if (!res.ok) return { ok: false, error: res.error, yaHecha: res.yaHecha === true };
+    await sincronizarVinculadas({ ...ctx, actorId: ctx.actor.profileId }, todayInTz(ctx.sede.tz));
     revalidatePath("/turno/inventario");
+    revalidatePath("/turno");
+    revalidatePath("/hoy");
     return { ok: true, estado: res.estado };
   } catch (e) {
     console.error("[agente] responder", e);

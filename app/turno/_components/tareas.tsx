@@ -11,6 +11,7 @@ import type { TurnoShift } from "@/lib/turno/server";
 import type { TemplateTask } from "@/lib/types";
 import { completeTaskAs, setAdHocDoneAs, uncompleteTaskAs, uploadTurnoPhoto } from "../actions";
 import { horaDe } from "./time";
+import { VINCULOS, esVinculo } from "@/lib/turno/vinculo-info";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -45,6 +46,13 @@ export function useTareas(shift: TurnoShift | null, restaurantId: string) {
         return;
       }
       const done = item.estado === "hecha";
+      const vinculo = esVinculo(item.task.vinculo) ? VINCULOS[item.task.vinculo] : null;
+      if (vinculo) {
+        // Never ticked by hand: it opens the work that completes it.
+        if (done) toast(vinculo.ayuda.split(".")[0] + ".", "neutral", 3500);
+        else router.push(vinculo.href);
+        return;
+      }
       if (!done && item.task.requires_photo) {
         setPhotoFor(item.task);
         return;
@@ -53,7 +61,7 @@ export function useTareas(shift: TurnoShift | null, restaurantId: string) {
         done ? uncompleteTaskAs({ shift_instance_id: sid, template_task_id: item.id }) : completeTaskAs({ shift_instance_id: sid, template_task_id: item.id }),
       );
     },
-    [shift, run],
+    [shift, run, router],
   );
 
   const camera =
@@ -144,7 +152,8 @@ export function TareaRow({
   const done = item.estado === "hecha";
   const isInm = item.kind === "inmediata";
   const title = item.task.title;
-  const instr = item.task.instructions ?? "";
+  const vinculo = !isInm && esVinculo(item.task.vinculo) ? VINCULOS[item.task.vinculo] : null;
+  const instr = item.task.instructions || vinculo?.ayuda || "";
   const photo = !isInm && item.task.requires_photo;
   const comp = !isInm ? shift.completions[item.id] : null;
   const quien = isInm
@@ -191,6 +200,7 @@ export function TareaRow({
           <span>{title}</span>
           {item.estado === "atrasada" ? <Pill tone="late">Atrasada {formatDuration(item.tarde)}</Pill> : null}
           {isInm && !done ? <Pill tone="brand">Inmediata</Pill> : null}
+          {vinculo && !done ? <Pill tone="brand">Inventario</Pill> : null}
         </span>
       }
       desc={desc}
@@ -205,7 +215,7 @@ export function TareaRow({
                 done={done}
                 kind={photo ? "photo" : "check"}
                 disabled={busy || shift.instance.status === "closed"}
-                label={done ? `Desmarcar: ${title}` : photo ? `Tomar foto: ${title}` : `Marcar hecha: ${title}`}
+                label={vinculo ? (done ? `Hecha: ${title}` : `Ir a verificar: ${title}`) : done ? `Desmarcar: ${title}` : photo ? `Tomar foto: ${title}` : `Marcar hecha: ${title}`}
                 onToggle={() => onToggle(item)}
               />
             </span>

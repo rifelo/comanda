@@ -38,6 +38,8 @@ type ShiftTaskDraft = {
   puesto_id: string | null;
   /** Weekdays the task applies (lun=0…dom=6); null = every day the turno runs. */
   dias: boolean[] | null;
+  /** Completes itself with the verificación de insumos (mig 0084). */
+  vinculo: "verificar_insumos" | null;
 };
 
 /** A puesto enabled on this turno, in order, with its soft handoff gate. */
@@ -61,6 +63,7 @@ export type ShiftFormInitial = {
     requires_photo: boolean;
     puesto_id: string | null;
     dias?: boolean[] | null;
+    vinculo?: "verificar_insumos" | null;
   }[];
   puestos: { puesto_id: string; position: number; waits_for_task_id: string | null }[];
 };
@@ -78,6 +81,7 @@ function newDraft(puesto_id: string | null = null): ShiftTaskDraft {
     requires_photo: false,
     puesto_id,
     dias: null,
+    vinculo: null,
   };
 }
 
@@ -244,6 +248,7 @@ export function ShiftForm({
       requires_photo: t.requires_photo,
       puesto_id: t.puesto_id ?? null,
       dias: normDias(t.dias),
+      vinculo: t.vinculo ?? null,
     })),
   );
   const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
@@ -306,6 +311,7 @@ export function ShiftForm({
         requires_photo: t.requires_photo,
         puesto_id: t.puesto_id,
         dias: normDias(t.dias),
+        vinculo: t.vinculo,
       }));
     const payloadPuestos = tplPuestos.map((tp, i) => ({
       puesto_id: tp.puesto_id,
@@ -459,6 +465,21 @@ export function ShiftForm({
                     style={{ accentColor: "var(--red)", width: 16, height: 16 }}
                   />
                   REQUIERE FOTO DE EVIDENCIA
+                </label>
+
+                {/* row 4b — tied to the verificación de insumos: completes itself */}
+                <label
+                  className="flex items-center"
+                  style={{ marginTop: 8, gap: 8, fontSize: 14, letterSpacing: "0.1em", color: "var(--muted)", cursor: "pointer" }}
+                  title="No se marca a mano: queda hecha cuando no queda ningún insumo por verificar hoy."
+                >
+                  <input
+                    type="checkbox"
+                    checked={t.vinculo === "verificar_insumos"}
+                    onChange={(e) => setTask(i, { vinculo: e.target.checked ? "verificar_insumos" : null })}
+                    style={{ accentColor: "var(--red)", width: 16, height: 16 }}
+                  />
+                  SE COMPLETA CON LA VERIFICACIÓN DE INSUMOS
                 </label>
 
                 {/* row 5 — weekdays: every day the turno runs, or only some (e.g. once a week) */}
