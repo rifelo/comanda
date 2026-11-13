@@ -42,7 +42,7 @@ import { defaultMergeTarget } from "@/lib/pos/combinar";
 import { bogotaDay, defaultMods, linesPayload, normalizePerson, rebuildLines, rebuildPeople } from "@/lib/pos/pending";
 import { findMergeIndex } from "@/lib/pos/cart";
 import type { VentaOrden } from "@/lib/pos/ventas";
-import { planSaleLabels, type SaleLabelJob } from "@/lib/pos/drink-label";
+import { lineLabelJobs, planSaleLabels, type SaleLabelJob } from "@/lib/pos/drink-label";
 import { fraseRespaldo } from "@/lib/pos/frase";
 import {
   cancelarPendiente,
@@ -1781,6 +1781,15 @@ export function printLabelFor(o: PosOrder) {
   const { lines } = rebuildLines(o, s.catalog);
   reprintSaleLabels({ order: lines, people: rebuildPeople(o), customerName: o.customerName, catalog: s.catalog }, o.folio, o.local ? null : o.id, o.local ? o.id.slice(LOCAL_ORDER.length) : null);
 }
+/** Reprint the labels of one drink of a stored order (one cup of that line): its name label and its drink label with a new QR. */
+export function printLineLabelFor(o: PosOrder, itemId: string) {
+  const s = posStore.get();
+  // rebuildLines sorts by position: the label plan's line index is the item's index in that order.
+  const line = [...o.items].sort((a, b) => a.position - b.position).findIndex((it) => it.id === itemId);
+  if (line < 0) return;
+  const { lines } = rebuildLines(o, s.catalog);
+  reprintSaleLabels({ order: lines, people: rebuildPeople(o), customerName: o.customerName, catalog: s.catalog }, o.folio, o.local ? null : o.id, o.local ? o.id.slice(LOCAL_ORDER.length) : null, line);
+}
 
 function loadPending(o: PendingOrder, mode: "edit" | "charge") {
   const s = posStore.get();
@@ -1918,9 +1927,12 @@ function printSaleLabels(
   s: { order: OrderLine[]; people: string[]; customerName: string; catalog: PosCatalog },
   folio: string,
   ordenId: string | null,
+  /** Only this ticket line's labels (one cup), e.g. «Imprimir etiquetas» on a drink in Pedidos. */
+  onlyLine?: number,
 ): EnlaceVenta[] {
   void folio; // the cup labels carry no folio since 2026-11 (the canvas has none)
-  const jobs = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim() });
+  const all = planSaleLabels({ order: s.order, people: s.people, byId: s.catalog.byId, tableName: s.customerName.trim() });
+  const jobs = onlyLine === undefined ? all : lineLabelJobs(all, onlyLine);
   const enlaces: EnlaceVenta[] = [];
   const codes = new Map<SaleLabelJob, string>();
   for (const j of jobs) {
@@ -2184,8 +2196,8 @@ export function reprintLabel() {
  * order stored they are registered on it, and an order still queued offline
  * takes them along so they are registered when it lands.
  */
-function reprintSaleLabels(sale: Parameters<typeof printSaleLabels>[0], folio: string, ordenId: string | null, jobId: string | null) {
-  const enlaces = printSaleLabels(sale, folio, ordenId);
+function reprintSaleLabels(sale: Parameters<typeof printSaleLabels>[0], folio: string, ordenId: string | null, jobId: string | null, onlyLine?: number) {
+  const enlaces = printSaleLabels(sale, folio, ordenId, onlyLine);
   if (ordenId || !jobId || !enlaces.length) return;
   posStore.set((st) => ({
     ...st,
@@ -2420,9 +2432,9 @@ export async function toggleSeLoLlevamos(id: string, value: boolean) {
 }
 
 /** «Completados · N» while the queue is showing: how many orders of that day are paid and delivered. */
-export async function countCompletados(day: string): Promise<number | null> {
+export async function countCompletados(day: string, estado: "completada" | "cancelada" = "completada"): Promise<number | null> {
   try {
-    const res = await contarCompletados({ day });
+    const res = await contarCompletados({ day, estado });
     return res.ok ? res.count : null;
   } catch {
     return null;

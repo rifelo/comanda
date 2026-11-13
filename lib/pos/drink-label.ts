@@ -80,6 +80,25 @@ export function planSaleLabels(input: {
   return jobs;
 }
 
+/**
+ * The labels of one ticket line out of a sale's run: the pair (name label +
+ * drink label) of its first `cups` cups, as they would print with the whole
+ * sale — same «Pa' …» name, same QR line and `resto`. The Pedidos detail
+ * reprints one drink with it instead of the whole order.
+ */
+export function lineLabelJobs(jobs: ReadonlyArray<SaleLabelJob>, line: number, cups = 1): SaleLabelJob[] {
+  const out: SaleLabelJob[] = [];
+  for (let i = 0; i < jobs.length && out.length < cups * 2; i++) {
+    const a = jobs[i];
+    const b = jobs[i + 1];
+    if (a.kind === "cliente" && a.cup && b?.kind === "vaso" && b.line === line) {
+      out.push(a, b);
+      i += 1;
+    }
+  }
+  return out;
+}
+
 export interface DrinkLabelPlanItem {
   productId: string;
   /** Index of the ticket line the cup comes from (= orden_items.position). */

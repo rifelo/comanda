@@ -464,6 +464,27 @@
 .app .order .oh { flex-wrap: wrap; row-gap: 6px; }
 .app .ped-more { width: 44px; height: 44px; margin: -8px -8px -8px 0; flex-shrink: 0; border-radius: 12px; border: none; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .app .ped-more:hover, .app .ped-more[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+/* «Ver detalle»: the open card takes the whole row so the drinks and the order data sit side by side. */
+.app .order.open { grid-column: 1 / -1; }
+.app .order.canc { opacity: 0.9; }
+.app .ped-det-tg { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: -8px 0 -8px -10px; padding: 0 10px; border: none; border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.app .ped-det-tg:hover, .app .ped-det-tg[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.app .ped-det { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+.app .order .ped-det-lines > li { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.app .order .ped-det-lines > li.ped-det-total { flex-direction: row; justify-content: space-between; border-bottom: none; padding-bottom: 0; }
+.app .ped-det-row { display: flex; justify-content: space-between; gap: 10px; }
+.app .ped-det-sub { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 14px; }
+.app .ped-det-mods { display: flex; flex-wrap: wrap; gap: 6px; }
+.app .ped-det-mods .pill { height: auto; min-height: 26px; white-space: normal; padding: 3px 10px; }
+.app .order .ped-det-print { align-self: flex-start; height: 44px; padding: 0 14px; }
+.app .ped-det-info { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; font-size: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); }
+.app .ped-det-info dt { color: var(--muted); font-weight: 600; }
+.app .ped-det-info dd { margin: 0; overflow-wrap: anywhere; }
+.app .order .ped-det-pagos { gap: 8px; font-size: 14px; }
+.app .order .ped-det-pagos > li { flex-direction: column; gap: 2px; }
+@media (max-width: 899px) {
+  .app .ped-det { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
 .app .personas-split .ticket-b > .card { flex-shrink: 0; }
 @media (max-width: 1023px) {
   .app .topbar.ped-top { height: auto; min-height: 64px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; row-gap: 8px; }
