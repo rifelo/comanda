@@ -121,6 +121,8 @@ export interface TemplateTask {
   dias?: boolean[] | null;
   /** Reference pictures shown when the task is opened on the tablet (mig 0080). */
   referencias?: { url: string; titulo: string }[] | null;
+  /** Tied to other work; completes itself, never by hand (mig 0084). */
+  vinculo?: "verificar_insumos" | null;
 }
 
 export interface ShiftInstance {

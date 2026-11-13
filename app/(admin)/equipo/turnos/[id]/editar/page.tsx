@@ -34,6 +34,7 @@ export default async function EditarTurnoPage({
           requires_photo: t.requires_photo,
           puesto_id: t.puesto_id,
           dias: t.dias ?? null,
+          vinculo: t.vinculo ?? null,
         })),
         puestos: shift.puestos.map((p) => ({
           puesto_id: p.puesto_id,

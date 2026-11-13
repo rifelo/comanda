@@ -1,5 +1,6 @@
 "use client";
 
+import { VINCULOS, esVinculo } from "@/lib/turno/vinculo-info";
 import * as React from "react";
 import Link from "next/link";
 import { Button, Card, EmptyState, LinkCard, Money, Pill, ProgressBar, buttonClass } from "@/components/ui";
@@ -219,7 +220,7 @@ function TareaActions({ item, shift, onToggle, busy }: { item: ItemTarea; shift:
       disabled={shift.instance.status === "closed"}
       onClick={() => onToggle(item)}
     >
-      {photo ? "Tomar foto" : "Hecha"}
+      {item.kind === "tarea" && esVinculo(item.task.vinculo) ? VINCULOS[item.task.vinculo].boton : photo ? "Tomar foto" : "Hecha"}
     </Button>
   );
 }

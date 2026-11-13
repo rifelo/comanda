@@ -42,6 +42,12 @@ function fail(err: unknown, fallback: string): Simple {
   return { ok: false, error: err instanceof Error ? err.message : fallback };
 }
 
+/** Linked tasks (template_tasks.vinculo) complete themselves; nobody ticks them by hand. */
+async function esVinculada(ctx: TurnoContext, taskId: string): Promise<boolean> {
+  const { data } = await ctx.admin.from("template_tasks").select("vinculo").eq("id", taskId).maybeSingle();
+  return !!data?.vinculo;
+}
+
 function revalidate(date?: string) {
   revalidatePath("/turno");
   revalidatePath("/hoy");
@@ -57,6 +63,7 @@ export async function completeTaskAs(input: unknown): Promise<Simple> {
     const inst = await ownInstance(ctx, parsed.data.shift_instance_id);
     if (!inst) return { ok: false, error: "Turno no encontrado." };
     if (inst.status === "closed") return { ok: false, error: "El turno ya está cerrado." };
+    if (await esVinculada(ctx, parsed.data.template_task_id)) return { ok: false, error: "Esta tarea se marca sola al terminar la verificación de insumos." };
     const { error } = await ctx.admin.from("task_completions").upsert(
       {
         shift_instance_id: parsed.data.shift_instance_id,
@@ -90,6 +97,7 @@ export async function uncompleteTaskAs(input: unknown): Promise<Simple> {
     const inst = await ownInstance(ctx, parsed.data.shift_instance_id);
     if (!inst) return { ok: false, error: "Turno no encontrado." };
     if (inst.status === "closed") return { ok: false, error: "El turno ya está cerrado." };
+    if (await esVinculada(ctx, parsed.data.template_task_id)) return { ok: false, error: "Esta tarea se marca sola con la verificación de insumos." };
     const { error } = await ctx.admin
       .from("task_completions")
       .delete()
