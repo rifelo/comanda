@@ -761,19 +761,23 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   return { ok: true };
 }
 
-const ContarCompletadosSchema = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
-/** How many orders of a Bogotá day are complete (paid and delivered) — the «Completados · N» count. */
+const ContarCompletadosSchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** «completada» = paid and delivered (default); «cancelada» = voided or folded into another order. */
+  estado: z.enum(["completada", "cancelada"]).default("completada"),
+});
+/** How many orders of a Bogotá day are complete (paid and delivered) — the «Completados · N» count — or cancelled. */
 export async function contarCompletados(input: unknown = {}): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
   const parsed = ContarCompletadosSchema.safeParse(input ?? {});
   if (!parsed.success) return { ok: false, error: "Filtro inválido." };
   const d = parsed.data.day ?? bogotaDay();
   const { supabase, organizationId: orgId } = await requirePosAuth();
-  const { count, error } = await supabase
+  let q = supabase
     .from("ordenes")
     .select("id", { count: "exact", head: true })
-    .eq("organization_id", orgId)
-    .eq("status", "pagada")
-    .not("entregada_at", "is", null)
+    .eq("organization_id", orgId);
+  q = parsed.data.estado === "cancelada" ? q.eq("status", "cancelada") : q.eq("status", "pagada").not("entregada_at", "is", null);
+  const { count, error } = await q
     .gte("created_at", `${d}T05:00:00Z`)
     .lt("created_at", `${shiftDay(d, 1)}T05:00:00Z`);
   if (error) return { ok: false, error: "No se pudo contar." };
