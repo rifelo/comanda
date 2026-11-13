@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coffeeGramsOf, drinkSpec, energiaLine, LABELS_PER_DRINK, planDrinkLabels, planSaleLabels } from "./drink-label";
+import { coffeeGramsOf, drinkSpec, energiaLine, LABELS_PER_DRINK, lineLabelJobs, planDrinkLabels, planSaleLabels } from "./drink-label";
 import type { OrderLine } from "./types";
 
 const latte = [
@@ -73,6 +73,13 @@ describe("planSaleLabels", () => {
     const jobs = planSaleLabels({ order: [line("latte", 2), line("torta", 1), line("tinto", 1)], people: [], byId, tableName: "Juan" });
     expect(kinds(jobs)).toEqual([...pair("Juan", "Latte", "-@0+"), ...pair("Juan", "Latte", "-@0"), ...pair("Juan", "Tinto", "-@2")]);
     expect(jobs.length).toBe(3 * LABELS_PER_DRINK);
+  });
+  it("lineLabelJobs keeps only the pair(s) of one line", () => {
+    const jobs = planSaleLabels({ order: [line("latte", 2), line("torta", 1), line("tinto", 1, "Ana")], people: ["Ana"], byId, tableName: "Juan" });
+    expect(kinds(lineLabelJobs(jobs, 2))).toEqual(pair("Ana", "Tinto", "Ana@2+"));
+    expect(kinds(lineLabelJobs(jobs, 0))).toEqual(pair("Juan", "Latte", "-@0+"));
+    expect(kinds(lineLabelJobs(jobs, 0, 2))).toEqual([...pair("Juan", "Latte", "-@0+"), ...pair("Juan", "Latte", "-@0")]);
+    expect(lineLabelJobs(jobs, 1)).toEqual([]);
   });
   it("a blank name counts as no name", () => {
     expect(kinds(planSaleLabels({ order: [line("latte", 1)], people: [], byId, tableName: "   " })))

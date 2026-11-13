@@ -72,6 +72,8 @@ export interface PorAtenderInput {
   conteosPorAprobar: number;
   costosPorRevisar: number;
   sugerencias: number;
+  /** Discount requests from the POS waiting for the owner (mig 0085). */
+  descuentosPorAprobar?: number;
   pedidosAbiertos: number;
   pedidosViejos: number;
   porCobrar: number;
@@ -94,6 +96,9 @@ const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many
 export function porAtender(c: PorAtenderInput, fmt: (cop: number) => string): PorAtenderItem[] {
   const late: PorAtenderItem[] = [];
   const rest: PorAtenderItem[] = [];
+  if ((c.descuentosPorAprobar ?? 0) > 0) {
+    late.push({ id: "descuentos", title: n(c.descuentosPorAprobar ?? 0, "descuento por aprobar", "descuentos por aprobar"), sub: "La caja está esperando tu respuesta", href: "/descuentos", tone: "late" });
+  }
   if (c.base.estado === "no_cuadro") {
     late.push({ id: "base", title: "La base no cuadró", sub: `${c.base.turno ? `Base de ${c.base.turno}` : "Último cierre"}: revisa la caja`, href: "/caja", tone: "late" });
   }

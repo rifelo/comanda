@@ -1,3 +1,4 @@
+import type { OrderDescuento } from "./descuentos";
 // Shared POS types. These mirror the shapes the terminal UI consumes, but with
 // ids generalized to strings (real Supabase UUIDs) instead of the old demo
 // enum ids. The server adapter (lib/pos/catalog.ts) produces a PosCatalog; the
@@ -337,6 +338,8 @@ export interface PosOrder {
   mergedIntoFolio: string | null;
   /** Only on orders still in this register's queue (not on the server yet). */
   local?: "sending" | "offline" | "failed";
+  /** Discount requests of a pending order (mig 0085): waiting, approved or rejected. */
+  descuentos?: OrderDescuento[];
 }
 /** An unpaid order the register can reopen, charge or cancel. */
 export type PendingOrder = PosOrder;

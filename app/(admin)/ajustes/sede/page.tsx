@@ -11,7 +11,7 @@ export default async function ConfigSedePage() {
   const [{ supabase, profile }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const { data: org } = await supabase
     .from("organizations")
-    .select("recibo_nombre, recibo_encabezado, recibo_pie, transferencia_llave, transferencia_titular, datafono_liquidacion, meta_diaria_cop")
+    .select("recibo_nombre, recibo_encabezado, recibo_pie, transferencia_llave, transferencia_titular, datafono_liquidacion, meta_diaria_cop, aprobaciones_whatsapp")
     .eq("id", profile.organization_id)
     .maybeSingle();
   const o = (org ?? {}) as Record<string, string | number | null | undefined>;
@@ -39,6 +39,7 @@ export default async function ConfigSedePage() {
             transferencia_titular: String(o.transferencia_titular ?? ""),
             datafono_liquidacion: String(o.datafono_liquidacion ?? ""),
             meta_diaria: o.meta_diaria_cop ? String(o.meta_diaria_cop) : "",
+            aprobaciones_whatsapp: (o.aprobaciones_whatsapp as string | null) ?? "",
           }}
         />
       </Card>

@@ -21,7 +21,7 @@ export const LineSchema = z.object({
 export type OrderLineInput = z.infer<typeof LineSchema>;
 export type PricedItem = { line: OrderLineInput; name: string; unit: number; position: number };
 
-function lineUnitPrice(
+export function lineUnitPrice(
   catalog: PosCatalog,
   line: OrderLineInput,
 ): { name: string; unit: number } | null {
