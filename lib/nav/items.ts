@@ -23,6 +23,7 @@ export type IconName =
   | "equipo"
   | "mas"
   | "gastos"
+  | "descuentos"
   | "clientes"
   | "ajustes"
   | "turno"
@@ -128,6 +129,7 @@ export const DUENO_TABS: NavItem[] = [
 /** «Más» — link-cards on /mas and the expanded group in the desktop rail. */
 export const MAS_ITEMS: NavItem[] = [
   { id: "caja", href: "/caja", label: "Caja", icon: "caja", sub: "Arqueos, bases y movimientos", match: ["/caja"] },
+  { id: "descuentos", href: "/descuentos", label: "Descuentos", icon: "descuentos", sub: "Precios especiales que pide la caja", match: ["/descuentos"] },
   { id: "gastos", href: "/gastos", label: "Gastos", icon: "gastos", sub: "Costos fijos y del día", match: ["/gastos"] },
   { id: "whatsapp", href: "/whatsapp", label: "WhatsApp", icon: "whatsapp", sub: "Conversaciones del agente y entregas", match: ["/whatsapp"] },
   {

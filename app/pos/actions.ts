@@ -29,6 +29,8 @@ import { bogotaDay, shiftDay } from "@/lib/pos/pending";
 import { cancelNotes, summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
 import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lineas";
+import { aplicarDescuentos, etiquetaDescuento, type DescuentoRegla } from "@/lib/pos/descuentos";
+import { calcularOrden, descuentosDeOrdenes, reglasAprobadas, repricearOrden } from "@/lib/pos/descuentos-db";
 import { resumirVentas, ventanaVentas, type ResumenVentas, type VentaOrden } from "@/lib/pos/ventas";
 
 // ── payloads (lines are re-priced in lib/pos/lineas.ts, never trusted) ──────
@@ -337,6 +339,25 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
     .maybeSingle();
   if (!existing) return { ok: false, error: YA_NO_PENDIENTE };
 
+  // Approved discounts of this order follow it through the edit (from list prices).
+  const reglas = await reglasAprobadas(supabase, orgId, ordenId);
+  let descuento = 0;
+  if (reglas.length) {
+    const d = aplicarDescuentos(
+      priced.items.map((it) => ({
+        kind: it.line.kind,
+        productoId: it.line.kind === "item" ? it.line.id : null,
+        qty: it.line.qty,
+        unit: it.unit,
+        base: it.line.kind === "item" ? ctx.catalog.byId[it.line.id]?.price ?? null : null,
+      })),
+      reglas,
+    );
+    priced.items.forEach((it, i) => { it.unit = d.units[i]; });
+    descuento = d.descuento;
+  }
+  const total = priced.subtotal - descuento;
+
   const { data: old } = await supabase
     .from("orden_items")
     .select("id, position, kind, producto_id, combo_id, name, mods, customer_name")
@@ -371,7 +392,8 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
     .update({
       order_type: base.orderType,
       subtotal_cop: priced.subtotal,
-      total_cop: priced.subtotal,
+      total_cop: total,
+      descuento_cop: descuento,
       sin_gluten: base.sinGluten,
       notes: base.note || null,
       customer_name: base.customerName || null,
@@ -386,7 +408,7 @@ export async function guardarPendiente(input: unknown): Promise<GuardarPendiente
   }
   // Lines changed → take or give back only the difference.
   await syncOrderConsumption(supabase, orgId, ordenId, actorId(ctx));
-  return { ok: true, folio: existing.folio as string, ordenId, total: priced.subtotal };
+  return { ok: true, folio: existing.folio as string, ordenId, total };
 }
 
 const ListarOrdenesSchema = z.object({
@@ -478,6 +500,11 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
         .sort((a, b) => a.position - b.position),
     };
   });
+  const descs = await descuentosDeOrdenes(supabase, orgId, orders.filter((o) => o.status === "pendiente").map((o) => o.id));
+  for (const o of orders) {
+    const d = descs.get(o.id);
+    if (d?.length) o.descuentos = d;
+  }
   return { ok: true, orders };
 }
 
@@ -717,6 +744,20 @@ export async function combinarPendientes(input: unknown): Promise<CombinarResult
     return { ok: false, error: error.message || "No se pudieron combinar los pedidos." };
   }
   for (const id of [targetId, ...sourceIds]) await syncOrderConsumption(supabase, orgId, id, actorId(ctx));
+  // Discounts travel with their lines: the RPC summed the (discounted) lines;
+  // re-price so the target's subtotal/descuento and later edits stay right.
+  const { data: moved } = await supabase
+    .from("orden_descuentos")
+    .update({ orden_id: targetId })
+    .eq("organization_id", orgId)
+    .in("orden_id", sourceIds)
+    .select("id");
+  const { count } = await supabase.from("orden_descuentos").select("id", { count: "exact", head: true }).eq("orden_id", targetId).eq("estado", "aprobado");
+  if (moved?.length || count) {
+    const pctx = await requirePosContext();
+    const r = await repricearOrden(supabase, orgId, targetId, pctx.catalog);
+    if (!r.ok) console.error("[combinarPendientes] repricear:", r.error);
+  }
   return { ok: true, targetId };
 }
 
@@ -1415,4 +1456,89 @@ export async function listarResenas(): Promise<{ ok: true; resenas: ResenaClient
       };
     }),
   };
+}
+
+// ── Descuentos (mig 0085): the cashier asks, the owner approves ─────────────
+
+const PedirDescuentoSchema = z.discriminatedUnion("tipo", [
+  z.object({ tipo: z.literal("precio"), ordenId: z.string().uuid(), productoId: z.string().uuid(), precio: z.coerce.number().int().min(0).max(10_000_000), motivo: z.string().trim().min(3).max(200) }),
+  z.object({ tipo: z.literal("porcentaje"), ordenId: z.string().uuid(), porcentaje: z.coerce.number().gt(0).max(100), motivo: z.string().trim().min(3).max(200) }),
+]);
+export type PedirDescuentoResult =
+  | { ok: true; id: string; folio: string; etiqueta: string; antes: number; despues: number; pide: string | null; whatsapp: string | null }
+  | { ok: false; error: string };
+
+/**
+ * Ask the owner for a discount on a saved, unpaid order. Nothing changes on
+ * the order until it is approved; a newer request replaces an older pending one.
+ */
+export async function pedirDescuento(input: unknown): Promise<PedirDescuentoResult> {
+  const parsed = PedirDescuentoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Revisa el descuento: falta el motivo o el valor no es válido." };
+  const ctx = await requirePosContext();
+  const { supabase, organizationId: orgId } = ctx;
+  const d = parsed.data;
+  const regla: DescuentoRegla = d.tipo === "precio" ? { tipo: "precio", productoId: d.productoId, precio: d.precio } : { tipo: "porcentaje", porcentaje: d.porcentaje };
+  const producto = d.tipo === "precio" ? ctx.catalog.byId[d.productoId] : null;
+  if (d.tipo === "precio" && !producto) return { ok: false, error: "Ese producto ya no está en el catálogo." };
+
+  const reglas = await reglasAprobadas(supabase, orgId, d.ordenId);
+  const calc = await calcularOrden(supabase, orgId, d.ordenId, ctx.catalog, [...reglas, regla]);
+  if (!calc || calc.orden.status !== "pendiente") return { ok: false, error: YA_NO_PENDIENTE };
+  if (d.tipo === "precio" && !calc.rows.some((r) => r.producto_id === d.productoId)) return { ok: false, error: "Ese producto no está en el pedido." };
+  const antes = Number(calc.orden.total_cop);
+  if (calc.total >= antes) return { ok: false, error: "Con ese valor el pedido no baja de precio." };
+  if (Number(calc.orden.paid_cop ?? 0) > calc.total) return { ok: false, error: "Ya se cobró más de lo que quedaría con el descuento." };
+
+  await supabase.from("orden_descuentos").update({ estado: "anulado", resuelto_at: new Date().toISOString(), respuesta: "Reemplazado por otra solicitud" })
+    .eq("organization_id", orgId).eq("orden_id", d.ordenId).eq("estado", "pendiente");
+  const pide = ctx.person?.fullName ?? null;
+  const row = {
+    organization_id: orgId,
+    orden_id: d.ordenId,
+    tipo: d.tipo,
+    producto_id: d.tipo === "precio" ? d.productoId : null,
+    producto_nombre: producto?.name ?? null,
+    precio_cop: d.tipo === "precio" ? d.precio : null,
+    porcentaje: d.tipo === "porcentaje" ? d.porcentaje : null,
+    motivo: d.motivo,
+    total_antes_cop: antes,
+    total_despues_cop: calc.total,
+    pedido_por: actorId(ctx),
+    pedido_por_nombre: pide,
+  };
+  const { data: ins, error } = await supabase.from("orden_descuentos").insert(row).select("id").single();
+  if (error || !ins) {
+    console.error("[pedirDescuento] insert", error);
+    return { ok: false, error: "No se pudo guardar la solicitud." };
+  }
+  const { data: org } = await supabase.from("organizations").select("aprobaciones_whatsapp").eq("id", orgId).maybeSingle();
+  const wa = ((org?.aprobaciones_whatsapp as string | null) ?? "").replace(/\D/g, "");
+  return {
+    ok: true,
+    id: ins.id as string,
+    folio: calc.orden.folio as string,
+    etiqueta: etiquetaDescuento(row),
+    antes,
+    despues: calc.total,
+    pide,
+    whatsapp: wa ? (wa.length === 10 ? `57${wa}` : wa) : null,
+  };
+}
+
+/** Withdraw a request that is still waiting. */
+export async function anularDescuento(input: unknown): Promise<SimpleResult> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Solicitud inválida." };
+  const ctx = await requirePosAuth();
+  const { data, error } = await ctx.supabase
+    .from("orden_descuentos")
+    .update({ estado: "anulado", resuelto_at: new Date().toISOString(), respuesta: "Retirada desde la caja" })
+    .eq("id", parsed.data.id)
+    .eq("organization_id", ctx.organizationId)
+    .eq("estado", "pendiente")
+    .select("id");
+  if (error) return { ok: false, error: "No se pudo retirar la solicitud." };
+  if (!data?.length) return { ok: false, error: "La solicitud ya fue respondida." };
+  return { ok: true };
 }

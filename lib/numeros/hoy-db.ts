@@ -99,7 +99,7 @@ export async function loadPorAtender(
       return fallback;
     }
   };
-  const [faltantes, conteos, costos, cierres, arqueos, sugerencias] = await Promise.all([
+  const [faltantes, conteos, costos, cierres, arqueos, sugerencias, descuentos] = await Promise.all([
     safe(countFaltantesAbiertos(db, scope.orgId), { agotado: 0, bajo: 0 }),
     safe(loadConteosPanel(db, scope.orgId, scope.tz), null),
     safe(getCostosPendientes(db, scope.orgId), null),
@@ -116,6 +116,12 @@ export async function loadPorAtender(
       ).then((r) => r.count ?? 0),
       0,
     ),
+    safe(
+      Promise.resolve(
+        db.from("orden_descuentos").select("id", { count: "exact", head: true }).eq("organization_id", scope.orgId).eq("estado", "pendiente"),
+      ).then((r) => r.count ?? 0),
+      0,
+    ),
   ]);
   const last = cierres[0] ?? null;
   return {
@@ -126,5 +132,6 @@ export async function loadPorAtender(
     conteosPorAprobar: conteos?.pendientes.length ?? 0,
     costosPorRevisar: costos ? totalPendientes(costos) : 0,
     sugerencias,
+    descuentosPorAprobar: descuentos,
   };
 }

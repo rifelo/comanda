@@ -35,6 +35,8 @@ import {
 import { useTicketPrinter } from "@/lib/printer/tickets";
 import { CancelarOverlay } from "./cancelar";
 import { CombinarOverlay } from "./combinar";
+import { DescuentoOverlay } from "./descuento";
+import { anularDescuento } from "../actions";
 
 /** Human label for a payment method, including the "mixto" summary. */
 export const methodLabel = (m: string | null | undefined): string =>
@@ -113,6 +115,7 @@ export function PedidosPage() {
   const today = bogotaDay();
   const isPend = s.ordenesTab === "pendiente";
   const [cancelId, setCancelId] = React.useState<string | null>(null);
+  const [descId, setDescId] = React.useState<string | null>(null);
   const [lastAt, setLastAt] = React.useState<number | null>(null);
   const [doneCount, setDoneCount] = React.useState<number | null>(null);
   const [, tick] = React.useReducer((n: number) => n + 1, 0);
@@ -152,6 +155,7 @@ export function PedidosPage() {
   const pendCount = isPend ? list.length : s.pendientes.length + s.outbox.length;
   const compCount = !isPend ? list.length : doneCount;
   const combinables = s.pendientes.filter((o) => o.status === "pendiente").length;
+  const descOrder = descId ? s.ordenes.find((o) => o.id === descId) ?? null : null;
   const cancelOrder = cancelId ? [...s.ordenes, ...s.pendientes].find((o) => o.id === cancelId) ?? null : null;
   const error = s.ordenesError ?? s.pendientesError;
 
@@ -211,18 +215,19 @@ export function PedidosPage() {
       ) : (
         <div className="orders scroll" aria-label={isPend ? "Pedidos pendientes" : "Pedidos completados"}>
           {list.map((o) => (
-            <OrderCard key={o.id} o={o} onCancel={() => setCancelId(o.id)} />
+            <OrderCard key={o.id} o={o} onCancel={() => setCancelId(o.id)} onDescuento={() => setDescId(o.id)} />
           ))}
         </div>
       )}
 
       {cancelOrder && <CancelarOverlay o={cancelOrder} onClose={() => setCancelId(null)} />}
+      {descOrder && <DescuentoOverlay o={descOrder} onClose={() => setDescId(null)} />}
       {s.merge.on && <CombinarOverlay />}
     </div>
   );
 }
 
-function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
+function OrderCard({ o, onCancel, onDescuento }: { o: PosOrder; onCancel: () => void; onDescuento: () => void }) {
   const s = usePos();
   const name = orderName(o);
   const people = rebuildPeople(o);
@@ -247,6 +252,13 @@ function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
     return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("keydown", onKey, true); };
   }, [menu]);
   const id = `o-${o.id.replace(/[^a-z0-9]/gi, "")}`;
+  // Only the latest rejection is worth showing; approved and waiting ones always.
+  const descs = (o.descuentos ?? []).filter((d, i, all) => d.estado !== "rechazado" || i === all.length - 1);
+  const esperando = descs.some((d) => d.estado === "pendiente");
+  const charge = (fn: () => void) => {
+    if (esperando && !window.confirm("Hay un descuento esperando la aprobación del dueño. ¿Cobrar con el precio normal?")) return;
+    if (guard()) fn();
+  };
 
   // Who already paid (partial): «Juan pagó» / «Juan, Laura pagaron».
   const payers = [...new Set(o.pagos.map((p) => p.customer).filter((c): c is string => !!c))];
@@ -280,6 +292,9 @@ function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
                     <span className="grow">Se lo llevamos</span>
                     {o.seLoLlevamos && <IconCheck size={18} />}
                   </button>
+                )}
+                {pendiente && !local && due > 0 && (
+                  <button type="button" role="menuitem" onClick={() => { setMenu(false); onDescuento(); }}>Pedir descuento</button>
                 )}
                 <button type="button" role="menuitem" onClick={() => { setMenu(false); printLabelFor(o); }}>Reimprimir etiquetas</button>
                 {tickets && (
@@ -318,13 +333,29 @@ function OrderCard({ o, onCancel }: { o: PosOrder; onCancel: () => void }) {
         {partial && <span className="muted" style={{ fontSize: 13 }}>{payers.length ? `${payers.join(", ")} ${payers.length > 1 ? "pagaron" : "pagó"}` : `Pagado ${money(o.paid)}`}</span>}
         {barista && <span className="muted" style={{ fontSize: 13 }}>Prepara {barista}</span>}
       </div>
+      {pendiente && descs.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {descs.map((d) =>
+            d.estado === "pendiente" ? (
+              <React.Fragment key={d.id}>
+                <span className="pill late">Descuento por aprobar · {d.label}</span>
+                <button type="button" className="btn ghost sm" onClick={() => { if (window.confirm("¿Retirar la solicitud de descuento?")) void anularDescuento({ id: d.id }).then(() => refreshOrdenes()); }}>Retirar</button>
+              </React.Fragment>
+            ) : d.estado === "aprobado" ? (
+              <span key={d.id} className="pill ok">Descuento aprobado · {d.label}</span>
+            ) : (
+              <span key={d.id} className="pill">Descuento rechazado · {d.label}</span>
+            ),
+          )}
+        </div>
+      )}
       <div className="acts">
         {pendiente && (local !== "sending") && (
           partial
-            ? <button type="button" className="btn sm" onClick={() => { if (guard()) chargePendingSplit(o); }}>Cobrar el resto</button>
+            ? <button type="button" className="btn sm" onClick={() => charge(() => chargePendingSplit(o))}>Cobrar el resto</button>
             : o.porVerificar === "transferencia" && !local
-              ? <button type="button" className="btn sm" onClick={() => { if (guard()) chargePending(o, "transferencia"); }}>Verificar</button>
-              : <button type="button" className="btn sm" onClick={() => { if (guard()) chargePending(o); }}>Cobrar</button>
+              ? <button type="button" className="btn sm" onClick={() => charge(() => chargePending(o, "transferencia"))}>Verificar</button>
+              : <button type="button" className="btn sm" onClick={() => charge(() => chargePending(o))}>Cobrar</button>
         )}
         {pendiente && !local && <button type="button" className="btn ghost sm" onClick={() => { if (guard()) editPending(o); }}>Editar</button>}
         {cancelInRow && <button type="button" className="btn ghost sm" onClick={onCancel}>Cancelar</button>}
