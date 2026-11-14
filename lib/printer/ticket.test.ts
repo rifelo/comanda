@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cantidad, conOpciones, fechaBogota, pesos, recetaDe, recetasDelMenu, renderTicketHtml, tieneBebidas, TicketDocSchema, type RecetaLookup, type TicketDoc } from "./ticket";
+import { armarFicha } from "@/lib/recetas/capas";
 
 const base: TicketDoc = {
   kind: "recibo",
@@ -167,5 +168,51 @@ describe("renderTicketHtml → tirillas del canvas", () => {
   it("relayed payloads are validated", () => {
     expect(TicketDocSchema.safeParse(conSku).success).toBe(true);
     expect(TicketDocSchema.safeParse({ ...base, lines: [] }).success).toBe(false);
+  });
+});
+
+describe("comanda con ficha por capas", () => {
+  const capas = armarFicha(
+    {
+      capas: [
+        { capa: "vaso", ops: ["pegar"], items: [{ ing: "v12", qty: 1 }] },
+        { capa: "hielo", ops: ["verter"], items: [{ ing: "hielo", qty: 110 }] },
+        { capa: "cuerpo", ops: ["verter"], nota: "Revolver con la condensada", items: [{ ing: "leche", qty: 150 }] },
+        { capa: "protagonista", ops: ["extraer"], items: [{ texto: "Espresso doble 18 g" }] },
+      ],
+      grupos: [],
+    },
+    new Map([
+      ["v12", { name: "vaso darnel pet x 12Oz", unit: "und" }],
+      ["hielo", { name: "Hielo", unit: "g" }],
+      ["leche", { name: "Leche entera Gran Vía (bolsa 900 ml)", unit: "ml" }],
+    ]),
+    { factor: { hielo: 1.33, leche: 1.33 }, swap: { v12: "Vaso PET 16 oz" } },
+    new Set(["leche"]),
+  );
+  const p = { printsLabel: true, prep: [], recipe: [], capas };
+
+  it("prints the 12 oz amounts by default", () => {
+    const r = recetaDe(p);
+    expect(r.capas?.map((c) => c.n)).toEqual([1, 3, 4, 5]);
+    expect(r.capas?.[2]).toEqual({ n: 4, capa: "Cuerpo", ops: "Verter", lineas: [{ cantidad: "150 ml", texto: "Leche entera Gran Vía" }], nota: "Revolver con la condensada" });
+  });
+
+  it("prints the 16 oz amounts, the swapped milk and the extras of the options", () => {
+    const r = recetaDe(p, [
+      { opcion: "16 oz", recipe: [] },
+      { opcion: "Deslactosada", recipe: [{ name: "Leche deslactosada Gran Vía (bolsa 900 ml)", qty: 1, unit: "ml", reemplaza: "Leche entera Gran Vía (bolsa 900 ml)" }] },
+      { opcion: "Vainilla", recipe: [{ name: "Syrup de vainilla Monin (botella 750 ml)", qty: 20, unit: "ml" }] },
+    ]);
+    expect(r.capas?.[0].lineas).toEqual([{ texto: "Vaso PET 16 oz" }]);
+    expect(r.capas?.[1].lineas).toEqual([{ cantidad: "146 g", texto: "Hielo" }]);
+    expect(r.capas?.[2].lineas).toEqual([{ cantidad: "200 ml", texto: "Leche deslactosada Gran Vía · Deslactosada" }]);
+    expect(r.extras).toEqual([{ cantidad: "20 ml", nombre: "Syrup de vainilla Monin", nota: "Vainilla" }]);
+    const html = renderTicketHtml(
+      { kind: "comanda", folio: "A-1", at: "2026-11-14T15:00:00Z", orgName: "PA'YO", lines: [{ name: "Latte frío", qty: 1, mods: ["16 oz"], sku: "BF-005" }] } as unknown as TicketDoc,
+      { recetas: () => r },
+    );
+    expect(html).toContain("Leche deslactosada Gran Vía · Deslactosada");
+    expect(html).toContain("+ <span class=\"b\">20 ml</span> Syrup de vainilla Monin");
   });
 });

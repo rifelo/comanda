@@ -82,6 +82,20 @@ export interface ComandaProporcion {
   nota?: string;
 }
 
+/** One layer of the ficha técnica on the comanda, already for the size ordered. */
+export interface ComandaCapa {
+  /** Fixed number of the layer (1 Vaso … 8 Cierre). */
+  n: number;
+  /** «Hielo». */
+  capa: string;
+  /** «Verter + Revolver». */
+  ops?: string;
+  lineas: { cantidad?: string; texto: string }[];
+  nota?: string;
+  /** Group operation the layer sits in («Licuar · 40 s»); consecutive layers share it. */
+  grupo?: string;
+}
+
 export interface ComandaBebida {
   nombre: string;
   cantidad: number;
@@ -94,6 +108,10 @@ export interface ComandaBebida {
   envase?: string;
   /** Only when the recipe has no ingredient lines: the written steps. */
   pasos: ComandaPaso[];
+  /** Ficha técnica por capas (0087): replaces the ingredient table when the drink has it. */
+  capas?: ComandaCapa[];
+  /** What the options add that the layers don't show («+20 ml Syrup de vainilla»). */
+  extras?: ComandaProporcion[];
 }
 
 export interface ComandaOtro {
@@ -314,7 +332,30 @@ export function renderComandaBarraHtml(d: ComandaData, papel: Papel = "80"): str
     o.push(`<span class="dela" style="font-size:18px;line-height:21px">${esc(b.nombre)}</span></div>`);
     if (b.cliente) o.push(`<div style="font-size:13px;line-height:16px;margin-top:2px">Pa' <span class="b">${esc(b.cliente)}</span></div>`);
     if (b.modificadores.length) o.push(`<div style="margin-top:4px">${b.modificadores.map((x) => `<span class="chip inv big">${esc(x)}</span>`).join("")}</div>`);
-    if (b.proporciones?.length) {
+    if (b.capas?.length) {
+      let grupo: string | undefined;
+      o.push(`<div style="margin-top:4px;display:flex;flex-direction:column;gap:3px">`);
+      for (const c of b.capas) {
+        if (c.grupo !== grupo) {
+          if (grupo) o.push(`</div>`);
+          grupo = c.grupo;
+          if (grupo) o.push(`<div style="border:2px solid ${INK};padding:2px 5px;display:flex;flex-direction:column;gap:3px"><div class="nority" style="font-size:12px;line-height:14px">${esc(grupo)}</div>`);
+        }
+        o.push(`<div style="display:flex;gap:6px;align-items:baseline">`);
+        o.push(`<span class="dela" style="font-size:14px;line-height:16px;width:12px;flex-shrink:0;text-align:right">${c.n}</span><div style="flex:1;min-width:0">`);
+        o.push(`<div style="font-size:14px;line-height:17px"><span class="b">${esc(c.capa)}</span>${c.ops ? `<span style="font-size:11px"> · ${esc(c.ops)}</span>` : ""}</div>`);
+        for (const l of c.lineas) {
+          o.push(`<div style="font-size:14px;line-height:17px;font-weight:400">${l.cantidad ? `<span class="b">${esc(l.cantidad)}</span> ` : ""}${esc(l.texto)}</div>`);
+        }
+        if (c.nota) o.push(`<div style="font-size:11px;line-height:13px">${esc(c.nota)}</div>`);
+        o.push(`</div></div>`);
+      }
+      if (grupo) o.push(`</div>`);
+      o.push(`</div>`);
+      if (b.extras?.length) {
+        o.push(`<div style="margin-top:3px;font-size:13px;line-height:16px">${b.extras.map((x) => `+ <span class="b">${esc(x.cantidad)}</span> ${esc(x.nombre)}${x.nota ? ` · ${esc(x.nota)}` : ""}`).join("<br>")}</div>`);
+      }
+    } else if (b.proporciones?.length) {
       o.push(`<table style="margin-top:4px;border-collapse:collapse;width:100%">`);
       for (const p of b.proporciones) {
         o.push(`<tr><td class="b" style="font-size:18px;line-height:22px;white-space:nowrap;text-align:right;padding:1px 8px 1px 0;width:1%;vertical-align:baseline">${esc(p.cantidad)}</td>`);

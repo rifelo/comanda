@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { recomputeProductoCost } from "@/lib/db/recetas";
 import { lineasParaDuplicar } from "@/lib/inventario/existencias";
 import { contextoCapas } from "@/lib/db/capas";
+import { nuevaVersion, usarVersion } from "@/lib/db/receta-versiones";
 import { armarFicha, cuadreReceta, fichaATexto, parseFichaCapas, validarFichaCapas } from "@/lib/recetas/capas";
 
 const DuplicarSchema = z.object({
@@ -266,4 +267,50 @@ export async function guardarCapas(input: unknown): Promise<{ ok: true; descuadr
   revalidatePath("/productos", "layout");
   revalidatePath("/pos");
   return { ok: true, descuadres };
+}
+
+const VersionSchema = z.object({ producto_id: z.string().uuid(), version_id: z.string().uuid() });
+const NuevaVersionSchema = z.object({ producto_id: z.string().uuid(), nombre: z.string().trim().min(1).max(40) });
+
+/** «Usar esta receta»: the chosen version goes live (recipe, ficha, price); the one in use is saved first. */
+export async function usarVersionReceta(input: unknown): Promise<{ ok: true } | { error: string }> {
+  const parsed = VersionSchema.safeParse(input);
+  if (!parsed.success) return { error: "Datos inválidos." };
+  const { profile, supabase } = await requireAdmin();
+  try {
+    await usarVersion(supabase, profile.organization_id, parsed.data.producto_id, parsed.data.version_id);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo cambiar la receta." };
+  }
+  revalidatePath("/productos", "layout");
+  revalidatePath("/pos");
+  return { ok: true };
+}
+
+/** «Nueva versión»: a copy of the recipe in use, to edit after putting it in use. */
+export async function crearVersionReceta(input: unknown): Promise<{ ok: true; id: string } | { error: string }> {
+  const parsed = NuevaVersionSchema.safeParse(input);
+  if (!parsed.success) return { error: "Ponle un nombre (máximo 40 caracteres)." };
+  const { profile, supabase } = await requireAdmin();
+  try {
+    const id = await nuevaVersion(supabase, profile.organization_id, parsed.data.producto_id, parsed.data.nombre);
+    revalidatePath("/productos", "layout");
+    return { ok: true, id };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo crear la versión." };
+  }
+}
+
+/** Deletes a version that is not in use. */
+export async function borrarVersionReceta(input: unknown): Promise<{ ok: true } | { error: string }> {
+  const parsed = VersionSchema.safeParse(input);
+  if (!parsed.success) return { error: "Datos inválidos." };
+  const { profile, supabase } = await requireAdmin();
+  const orgId = profile.organization_id;
+  const { data: p } = await supabase.from("productos").select("receta_version_id").eq("organization_id", orgId).eq("id", parsed.data.producto_id).maybeSingle();
+  if (p?.receta_version_id === parsed.data.version_id) return { error: "Esa es la receta en uso: primero usa otra." };
+  const { error } = await supabase.from("receta_versiones").delete().eq("organization_id", orgId).eq("producto_id", parsed.data.producto_id).eq("id", parsed.data.version_id);
+  if (error) return { error: error.message };
+  revalidatePath("/productos", "layout");
+  return { ok: true };
 }

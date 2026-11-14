@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { contextoCapas, type ContextoCapas } from "./capas";
+import { listVersiones, type RecetaVersion } from "./receta-versiones";
 import { lineTotal, recipeCost, margenOf } from "@/lib/cost";
 import { preparacionesQueUsan, recostearPreparacion } from "@/lib/inventario/preparaciones-db";
 
@@ -193,6 +194,9 @@ export interface ProductoFicha {
   };
   /** Ingredients, recipe and 16 oz / sustituible data for the layer editor. */
   ctxCapas: ContextoCapas;
+  /** Saved recipe versions (0088) and the one in use. */
+  versiones: RecetaVersion[];
+  versionEnUso: string | null;
   lineas: FichaLinea[];
   ingredientes: FichaIngrediente[];
   /** Ingredient ids most recently added to any recipe (newest first). */
@@ -216,7 +220,7 @@ export async function getProductoFicha(organizationId: string, userId: string, p
   const [{ data: p }, { data: items }, { data: ings }, { data: cats }, { data: fav }, { data: groups }, { data: opts }, { data: applied }, { data: prods }, { data: vendidas }] = await Promise.all([
     supabase
       .from("productos")
-      .select("id, name, sku, description, category_id, price_cop, cost_cop, margin_pct, stock_status, image_url, preparacion, capas, referencia_visual")
+      .select("id, name, sku, description, category_id, price_cop, cost_cop, margin_pct, stock_status, image_url, preparacion, capas, referencia_visual, receta_version_id")
       .eq("organization_id", organizationId)
       .eq("id", productoId)
       .maybeSingle(),
@@ -241,7 +245,7 @@ export async function getProductoFicha(organizationId: string, userId: string, p
       .gte("ordenes.created_at", desde),
   ]);
   if (!p) return null;
-  const ctxCapas = await contextoCapas(supabase, organizationId, productoId);
+  const [ctxCapas, versiones] = await Promise.all([contextoCapas(supabase, organizationId, productoId), listVersiones(supabase, organizationId, productoId)]);
 
   const catById = new Map((cats ?? []).map((c) => [c.id as string, c as { id: string; parent_id: string | null; label: string }]));
   const labelFor = (id: string | null) => {
@@ -315,6 +319,8 @@ export async function getProductoFicha(organizationId: string, userId: string, p
       referencia_visual: (p.referencia_visual as string | null) ?? "",
     },
     ctxCapas,
+    versiones,
+    versionEnUso: (p.receta_version_id as string | null) ?? null,
     lineas,
     ingredientes: (ings ?? []).map((i) => ({ id: i.id as string, name: i.name as string, unit: i.unit as string, cost_cop: Number(i.cost_cop ?? 0), stock: Number(i.stock_current ?? 0) })),
     recientes,

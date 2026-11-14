@@ -8,6 +8,7 @@ import {
   type ComandaBebida,
   type ComandaData,
   type ComandaOtro,
+  type ComandaCapa,
   type ComandaPaso,
   type ComandaProporcion,
   type Papel,
@@ -103,6 +104,9 @@ export interface RecetaInfo {
   envase?: string;
   /** Written steps, used only when the recipe has no ingredient lines. */
   pasos: ComandaPaso[];
+  /** Ficha técnica por capas for the size and options of the line. */
+  capas?: ComandaCapa[];
+  extras?: ComandaProporcion[];
 }
 /** SKU (+ the options chosen on that line) → what the comanda prints for it. */
 export type RecetaLookup = (sku: string, mods?: readonly string[]) => RecetaInfo | null;
@@ -166,8 +170,60 @@ export function conOpciones(
   return out.filter((r) => r.qty > 0.0005);
 }
 
-export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe">, opciones: readonly OpcionReceta[] = []): RecetaInfo {
+/** «16 oz», «16oz»: the size option of a line. */
+const ES_16 = /^16\s*oz$/i;
+
+/**
+ * The ficha técnica por capas for one line: the 16 oz amounts when the line
+ * has the 16 oz option, a swapped ingredient (Deslactosada) under its new
+ * name, and what other options add listed apart («+20 ml Syrup de vainilla»).
+ */
+export function capasDe(bloques: NonNullable<PosMenuItem["capas"]>, opciones: readonly OpcionReceta[]): { capas: ComandaCapa[]; extras: ComandaProporcion[] } {
+  const es16 = opciones.some((o) => ES_16.test(o.opcion.trim()));
+  const swaps = new Map<string, { name: string; opcion: string }>();
+  const extras: ComandaProporcion[] = [];
+  for (const o of opciones) {
+    if (ES_16.test(o.opcion.trim())) continue;
+    for (const x of o.recipe) {
+      if (x.reemplaza && x.reemplaza !== x.name) swaps.set(x.reemplaza, { name: x.name, opcion: o.opcion });
+      else if (!x.reemplaza && x.qty > 0 && !/etiqueta/i.test(x.name)) {
+        const unit = /^(und|unidad|unidades)$/i.test(x.unit) ? "" : x.unit;
+        extras.push({ cantidad: `${cantidad(x.qty)}${unit ? ` ${unit}` : ""}`, nombre: limpio(x.name), nota: o.opcion });
+      }
+    }
+  }
+  const capas: ComandaCapa[] = [];
+  for (const b of bloques) {
+    const grupo = b.tipo === "grupo" ? [b.op, b.nota].filter(Boolean).join(" · ") : undefined;
+    for (const c of b.tipo === "capa" ? [b.capa] : b.capas) {
+      capas.push({
+        n: c.n,
+        capa: c.label,
+        ...(c.ops.length ? { ops: c.ops.join(" + ") } : {}),
+        lineas: c.lineas.map((l) => {
+          const sw = l.ingName ? swaps.get(l.ingName) : undefined;
+          const texto = sw ? `${limpio(sw.name)} · ${sw.opcion}` : l.texto;
+          const t16 = l.t16.replace(/\s*\(× [\d,]+\)$/, "");
+          // A swapped container (vaso 12 → 16) shows its new name as the text.
+          if (es16 && t16 && !l.t12) return { texto: t16 };
+          if (es16 && t16 && /^[\d,]+\s/.test(t16)) return { cantidad: t16, texto };
+          if (es16 && t16) return { texto: t16 };
+          return l.t12 ? { cantidad: l.t12, texto } : { texto };
+        }),
+        ...(c.nota ? { nota: c.nota } : {}),
+        ...(grupo ? { grupo } : {}),
+      });
+    }
+  }
+  return { capas, extras };
+}
+
+export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe" | "capas">, opciones: readonly OpcionReceta[] = []): RecetaInfo {
   if (!p.printsLabel) return { bebida: false, pasos: [] };
+  if (p.capas?.length) {
+    const { capas, extras } = capasDe(p.capas, opciones);
+    return { bebida: true, pasos: [], capas, ...(extras.length ? { extras } : {}) };
+  }
   const proporciones: ComandaProporcion[] = [];
   const envase: string[] = [];
   for (const r of opciones.length ? conOpciones(p.recipe, opciones) : p.recipe) {
@@ -198,7 +254,7 @@ export function recetasDelMenu(menu: readonly PosMenuItem[], modGroups: Readonly
     for (const name of mods) {
       for (const gid of p.mods) {
         const o = modGroups[gid]?.options.find((x) => x.name === name);
-        if (o?.recipe?.length) { opciones.push({ opcion: o.name, recipe: o.recipe }); break; }
+        if (o?.recipe?.length || (o && ES_16.test(o.name.trim()))) { opciones.push({ opcion: o.name, recipe: o.recipe ?? [] }); break; }
       }
     }
     return recetaDe(p, opciones);
@@ -270,7 +326,7 @@ export function toComandaBarra(d: TicketDoc, opts: { logo?: string | null; recet
   for (const l of d.lines) {
     const r = l.sku ? opts.recetas?.(l.sku, l.mods) ?? null : null;
     const cliente = several && l.customer?.trim() ? l.customer.trim() : undefined;
-    if (r?.bebida) bebidas.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente, proporciones: r.proporciones, envase: r.envase, pasos: r.pasos });
+    if (r?.bebida) bebidas.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente, proporciones: r.proporciones, envase: r.envase, pasos: r.pasos, ...(r.capas ? { capas: r.capas } : {}), ...(r.extras ? { extras: r.extras } : {}) });
     else otros.push({ nombre: l.name, cantidad: l.qty, modificadores: l.mods, cliente });
   }
   const avisos: string[] = [];

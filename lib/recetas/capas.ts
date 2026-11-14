@@ -162,6 +162,8 @@ export interface Tam16 {
 }
 export interface LineaVista {
   texto: string;
+  /** Full ingredient name (inventory lines only), to match an option that swaps it. */
+  ingName?: string;
   t12: string;
   /** 16 oz amount, "" when it's the same / there's no 16 oz. */
   t16: string;
@@ -206,7 +208,7 @@ export function armarFicha(f: FichaCapas, ings: ReadonlyMap<string, IngInfo>, ta
           if (swap) t16 = `${nombreCorto(swap)}${qty !== 1 ? ` · ${fmtCant(qty, unit)}` : ""}`;
           else if (factor && factor !== 1) t16 = `${fmtCant(qty * factor, unit)} (× ${fmtNum(factor)})`;
         }
-        return { texto: it.texto ?? nombreCorto(info?.name ?? "Insumo"), t12: fmtCant(qty, unit), t16, sustituible: sustituibles.has(it.ing) };
+        return { texto: it.texto ?? nombreCorto(info?.name ?? "Insumo"), ...(info ? { ingName: info.name } : {}), t12: fmtCant(qty, unit), t16, sustituible: sustituibles.has(it.ing) };
       }
       return { texto: it.texto ?? "", t12: "", t16: it.texto16 ?? "", sustituible: false };
     }),

@@ -12,6 +12,7 @@ import { MargenPill, pesos, Thumb } from "./bits";
 import { ModificadoresTab } from "./modificadores-tab";
 import { CapasEditor } from "./capas-editor";
 import { RecetaEditor } from "./receta-editor";
+import { VersionesReceta } from "./versiones-receta";
 
 export type Tab = "datos" | "receta" | "preparacion" | "modificadores";
 
@@ -62,6 +63,8 @@ export function Ficha({ ficha, tabInicial }: { ficha: ProductoFicha; tabInicial:
             </div>
           </dl>
         </div>
+
+        <VersionesReceta ficha={ficha} />
 
         <Segmented<Tab>
           block
