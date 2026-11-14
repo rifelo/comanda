@@ -391,3 +391,30 @@ body:has(.pyy) { background: #ffffff; }
   .pyy-semana li > span:first-child { width: 28px; height: 28px; }
   .pyy-lado .pyy-card { padding: 28px 24px; }
 }
+
+/* the path to the rewards (2026-11-14, second pass): rail, stops, a knob with my points */
+.pyy-camino2 { position: relative; padding: 34px 16px 0; }
+.pyy-camino2__pista { position: relative; height: 10px; border-radius: 999px; background: var(--riel, #ece6d3); }
+.pyy-camino2__hecho { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--amarillo); }
+.pyy-camino2__parada { position: absolute; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; box-sizing: border-box; border-radius: 999px; border: 2px solid var(--riel, #ece6d3); background: var(--blanco); color: #9a8b80; display: flex; align-items: center; justify-content: center; }
+.pyy-camino2__parada--lista { border-color: var(--cafe); background: var(--cafe); color: var(--crema); }
+.pyy-camino2__yo { position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border-radius: 999px; border: 4px solid var(--cafe); background: var(--blanco); }
+.pyy-camino2__yo b { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 3px 9px; border-radius: 999px; background: var(--cafe); color: var(--crema); font-family: var(--f-name); font-weight: 400; font-size: 13px; line-height: 18px; white-space: nowrap; }
+.pyy-camino2__yo b::after { content: ""; position: absolute; left: 50%; top: 100%; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--cafe); border-bottom: 0; }
+.pyy-camino2__nombres { position: relative; height: 40px; margin-top: 14px; }
+.pyy-camino2__nombres span { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; font-size: 12px; line-height: 16px; color: var(--tenue); white-space: nowrap; }
+.pyy-camino2__nombres span:last-child { transform: translateX(-100%); margin-left: 16px; align-items: flex-end; }
+.pyy-camino2__nombres b { font-family: var(--f-name); font-weight: 400; font-size: 13px; line-height: 18px; color: var(--cafe); }
+.pyy-camino2__nombre--listo { color: var(--cafe) !important; }
+.pyy-hero__camino { gap: 0; }
+/* from the owner's edits on the canvas (2026-11-14): no hand on «Mis puntos»; stickers float with a soft shadow, no tile behind */
+.pyy-hero__mano { display: none; }
+.pyy-hero__txt { max-width: none; min-height: 0; }
+.pyy-stickers li { background: transparent; }
+.pyy-stickers img { filter: drop-shadow(0 6px 8px rgba(80, 43, 28, 0.25)); }
+@media (min-width: 960px) {
+  .pyy-hero { min-height: 0; }
+  .pyy-hero__txt { max-width: none; }
+  .pyy-hero__camino { max-width: 560px; }
+  .pyy-hero__regla { max-width: 560px; }
+}

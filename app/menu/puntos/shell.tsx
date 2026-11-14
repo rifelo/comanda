@@ -88,19 +88,29 @@ function Fuego({ racha }: { racha: number }) {
  * sidebar and the content takes the rest. `ancho` lets the content use the
  * full width (Inicio, Colección); other screens stay a readable column.
  */
-export async function Pantalla({ instagram, tab, ancho = false, children }: { instagram: string; tab: Tab; ancho?: boolean; children: React.ReactNode }) {
-  const racha = await rachaDe(instagram);
+export async function Pantalla({ instagram, tab, ancho = false, children }: { instagram: string | null; tab: Tab; ancho?: boolean; children: React.ReactNode }) {
+  const racha = instagram ? await rachaDe(instagram) : 0;
   return (
     <div className="pyy pyy--app">
       <div className="pyy-cuerpo">
         <header className="pyy-top">
-          <div className="pyy-top__yo">
-            <span className="pyy-ava" aria-hidden="true">
-              {instagram.replace(/[^a-z0-9]/g, "").charAt(0) || "@"}
-            </span>
-            <span>@{instagram}</span>
-          </div>
-          <Fuego racha={racha} />
+          {instagram ? (
+            <>
+              <div className="pyy-top__yo">
+                <span className="pyy-ava" aria-hidden="true">
+                  {instagram.replace(/[^a-z0-9]/g, "").charAt(0) || "@"}
+                </span>
+                <span>@{instagram}</span>
+              </div>
+              <Fuego racha={racha} />
+            </>
+          ) : (
+            <div className="pyy-top__yo">
+              <a href={`${BASE}?ir=${tab}`} className="pyy-pill" style={{ minHeight: 44, padding: "0 16px" }}>
+                Ver mis puntos
+              </a>
+            </div>
+          )}
           <a href={HOME} aria-label="Café Pa' Yo, ir al inicio" className="pyy-top__marca">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={LOGO} alt="" className="pyy-top__logo" />

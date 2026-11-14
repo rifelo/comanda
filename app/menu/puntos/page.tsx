@@ -3,12 +3,13 @@ import { PESOS_POR_PUNTO } from "@/lib/calificaciones/calificaciones";
 import { artDeInsignia, coleccion, insignias, proximaInsignia, rachaDiasActual, rachaDiasMasLarga, semanaDeCafe } from "@/lib/clientes/coleccion";
 import { inicio, miles, puestoDe } from "@/lib/clientes/mi-payo";
 import { cargarCarta, cargarCliente, cargarEscaneos, cargarPodios, cargarRanking } from "@/lib/clientes/mi-payo-db";
-import { HORA_FIN_MANANA, PREMIOS, esMananaDoble, progreso } from "@/lib/clientes/premios";
+import { HORA_FIN_MANANA, esMananaDoble, progreso } from "@/lib/clientes/premios";
 import { instagramDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
 import { salir } from "./actions";
 import { Entrar } from "./puntos-client";
-import { BASE, MANO, Pantalla } from "./shell";
+import { Camino } from "./progreso";
+import { BASE, Pantalla } from "./shell";
 import "./mi-payo.css";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,6 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
   const r = inicio(escaneos, ahora);
   const puntos = cliente?.puntos ?? 0;
   const p = progreso(puntos);
-  const tope = PREMIOS[PREMIOS.length - 1].puntos;
   const listo = p.disponibles[p.disponibles.length - 1];
   const col = coleccion(escaneos, carta, fuera);
   const badges = insignias(escaneos, carta, podios, fuera);
@@ -63,23 +63,13 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
         </div>
 
         <section aria-label="Mis puntos" className="pyy-hero">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MANO} alt="" className="pyy-hero__mano" />
           <div className="pyy-hero__txt">
             <span className="pyy-hero__label">Mis puntos</span>
             <span className="pyy-hero__n">{miles(puntos)}</span>
             <span className="pyy-hero__meta">{p.siguiente ? `Te faltan ${p.faltan} para «${p.siguiente.titulo}»` : `¡Ya puedes canjear «${listo?.titulo}»!`}</span>
           </div>
           <div className="pyy-hero__camino">
-            <div className="pyy-hero__barra" role="progressbar" aria-valuemin={0} aria-valuemax={tope} aria-valuenow={Math.min(puntos, tope)} aria-label={`${puntos} de ${tope} puntos`}>
-              <span style={{ width: `${Math.min(100, Math.round((puntos / tope) * 100))}%` }} />
-            </div>
-            <div className="pyy-hero__hitos">
-              <span>0</span>
-              {PREMIOS.map((x) => (
-                <span key={x.id}>{x.puntos}</span>
-              ))}
-            </div>
+            <Camino puntos={puntos} />
           </div>
           <a href={`${BASE}/premios`} className="pyy-hero__btn">
             {listo ? "Canjear un premio" : "Ver los premios"}

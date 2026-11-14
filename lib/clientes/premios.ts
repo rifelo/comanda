@@ -9,6 +9,8 @@ export interface Premio {
   id: "clasico" | "la-que-quieras";
   puntos: number;
   titulo: string;
+  /** One or two words, under its stop on the path. */
+  corto: string;
   detalle: string;
   /** Highest list price of the drink it pays for (null = any drink). */
   maxPrecio: number | null;
@@ -16,8 +18,8 @@ export interface Premio {
 
 /** The rewards, cheapest first. Spending one subtracts its points. */
 export const PREMIOS: readonly Premio[] = [
-  { id: "clasico", puntos: 50, titulo: "Un clásico por nosotros", detalle: "Tinto, café con leche, espresso o aromática", maxPrecio: 4000 },
-  { id: "la-que-quieras", puntos: 100, titulo: "La que quieras va por nosotros", detalle: "Cualquier bebida de la carta", maxPrecio: null },
+  { id: "clasico", puntos: 50, titulo: "Un clásico por nosotros", corto: "Un clásico", detalle: "Tinto, café con leche, espresso o aromática", maxPrecio: 4000 },
+  { id: "la-que-quieras", puntos: 100, titulo: "La que quieras va por nosotros", corto: "La que quieras", detalle: "Cualquier bebida de la carta", maxPrecio: null },
 ];
 
 export const premioPorId = (id: string): Premio | null => PREMIOS.find((p) => p.id === id) ?? null;

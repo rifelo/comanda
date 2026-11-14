@@ -6,6 +6,7 @@ import { BONO_BIENVENIDA, HORA_FIN_MANANA, PREMIOS, progreso } from "@/lib/clien
 import { codigoCanje } from "@/lib/clientes/premios-codigo";
 import { instagramDeSesion, verificadoDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
+import { Camino } from "../progreso";
 import { BASE, Pantalla } from "../shell";
 import "../mi-payo.css";
 
@@ -23,7 +24,6 @@ export default async function PremiosPage({ searchParams }: { searchParams: Prom
   const cliente = await cargarCliente(org, instagram);
   const puntos = cliente?.puntos ?? 0;
   const p = progreso(puntos);
-  const tope = PREMIOS[PREMIOS.length - 1].puntos;
   const verificado = cliente ? await verificadoDeSesion(instagram) : false;
   const quiere = (await searchParams).canjear;
   const elegido = PREMIOS.find((x) => x.id === quiere && puntos >= x.puntos) ?? null;
@@ -61,25 +61,7 @@ export default async function PremiosPage({ searchParams }: { searchParams: Prom
       )}
 
       <section aria-label="Tu camino" className="pyy-col" style={{ gap: 10 }}>
-        <div className="pyy-camino" role="progressbar" aria-valuemin={0} aria-valuemax={tope} aria-valuenow={Math.min(puntos, tope)} aria-label={`${puntos} de ${tope} puntos`}>
-          <div className="pyy-camino__riel" />
-          <div className="pyy-camino__hecho" style={{ width: `${Math.min(100, Math.round((puntos / tope) * 100))}%` }} />
-          {PREMIOS.map((x) => (
-            <span key={x.id} className={`pyy-camino__hito${puntos >= x.puntos ? " pyy-camino__hito--listo" : ""}`} style={{ left: `${(x.puntos / tope) * 100}%` }} aria-hidden="true">
-              {puntos >= x.puntos && (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12l5 5 9-10" />
-                </svg>
-              )}
-            </span>
-          ))}
-        </div>
-        <div className="pyy-camino__labels">
-          <span className="pyy-meta">0</span>
-          {PREMIOS.map((x) => (
-            <span key={x.id}>{x.puntos}</span>
-          ))}
-        </div>
+        <Camino puntos={puntos} />
         <span className="pyy-meta" style={{ fontSize: 14, lineHeight: "19px" }}>
           {p.siguiente ? `Te faltan ${p.faltan} para «${p.siguiente.titulo}».` : "Ya alcanzas todos los premios."}
         </span>

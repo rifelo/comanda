@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { miles, ranking, type PeriodoRanking } from "@/lib/clientes/mi-payo";
 import { cargarCliente, cargarRanking } from "@/lib/clientes/mi-payo-db";
 import { instagramDeSesion } from "@/lib/clientes/sesion";
@@ -42,19 +41,19 @@ function nota(periodo: PeriodoRanking): string {
 }
 const inicial = (h: string) => h.replace(/^@/, "").charAt(0) || "@";
 
-/** «Ranking Pa'Yo»: points per customer by week, month or all time; other people's @ are masked. */
+/** «Ranking Pa'Yo»: points per customer by week, month or all time; every @ in full, open to anyone. */
 export default async function RankingPage({
   searchParams,
 }: {
   searchParams: Promise<{ p?: string }>;
 }) {
+  // Public since 2026-11-14 (owner): anyone can see the ranking, with or without an @ on this phone.
   const instagram = await instagramDeSesion();
-  if (!instagram) redirect(`${BASE}?ir=ranking`);
   const p = (await searchParams).p;
   const periodo: PeriodoRanking = p === "semana" || p === "todo" ? p : "mes";
   const org = menuContent.organizationId;
   const [cliente, filas] = await Promise.all([
-    cargarCliente(org, instagram),
+    instagram ? cargarCliente(org, instagram) : Promise.resolve(null),
     cargarRanking(org, periodo),
   ]);
   const r = ranking(filas, cliente?.id ?? null);
@@ -154,7 +153,7 @@ export default async function RankingPage({
           </>
         ) : (
           <div>
-            <b>Aún no estás en este ranking</b>
+            <b>{instagram ? "Aún no estás en este ranking" : "¿Quieres aparecer aquí?"}</b>
             <span>
               Escanea el QR de tu vaso con tu usuario y empieza a subir.
             </span>
