@@ -792,38 +792,21 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   // phrase: bottom-anchored, 520 px wide (clear of the hand), up to 3 lines
   const frase = arte ? "" : input.frase.replace(/\s+/g, " ").trim();
   if (frase) {
-    // Delight Bold, not Light: the light strokes came out ~1 dot wide and faded on
-    // thermal paper. Starts bigger and shrinks only as far as the space needs.
-    const fraseFace = (px: number) => `bold ${px}px ${fraseFont()}`;
-    // a touch of air: at 1 bit the bold letters and words run together
-    setTracking(ctx, "0.8px");
-    (ctx as CanvasRenderingContext2D & { wordSpacing?: string }).wordSpacing = "5px";
-    let fs = 38;
+    let fs = 34;
     let lines: string[] = [];
-    for (; fs >= 24; fs -= 2) {
-      ctx.font = fraseFace(fs);
+    for (; fs >= 22; fs -= 2) {
+      ctx.font = `300 ${fs}px ${delightLight()}`;
       lines = wrap(ctx, frase, 520);
       if (lines.length <= 3 && B - lines.length * Math.round(fs * 1.12) >= nameBottom + 8) break;
     }
-    ctx.font = fraseFace(fs);
+    ctx.font = `300 ${fs}px ${delightLight()}`;
     lines = lines.slice(0, 3);
-    // balance the lines: the narrowest width that keeps the same line count,
-    // so no word is left alone on the last line («Hoy te toca un ratico pa' / ti.»)
-    if (lines.length > 1 && lines.length <= 3) {
-      for (let w = 510; w >= 260; w -= 10) {
-        const t = wrap(ctx, frase, w);
-        if (t.length !== lines.length) break;
-        lines = t;
-      }
-    }
     const lh = Math.round(fs * 1.12);
     let y = B - lines.length * lh;
     for (const l of lines) {
       ctx.fillText(l, L, y);
       y += lh;
     }
-    setTracking(ctx, "0px");
-    (ctx as CanvasRenderingContext2D & { wordSpacing?: string }).wordSpacing = "0px";
   }
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
