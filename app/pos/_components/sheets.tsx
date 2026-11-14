@@ -9,6 +9,7 @@ import * as React from "react";
 import { useCatalog, posStore, tapItem } from "../pos-store";
 import { money, Overlay } from "./ticket";
 import { CloseX } from "./top-bar";
+import { FichaCapasPos } from "./ficha-capas";
 
 const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000).replace(".", ","));
 
@@ -58,6 +59,9 @@ export function RecetaSheet({ productId, onClose, onAdd }: {
           {p.spec.length > 0 && <span className="spec">{p.spec.join(" · ").toUpperCase()}</span>}
           {p.desc && <p style={{ fontSize: 16, lineHeight: 1.45 }}>{p.desc}</p>}
 
+          {p.capas && p.capas.length > 0 ? (
+            <FichaCapasPos bloques={p.capas} visual={p.visual ?? null} price={p.price} price16={p.price16 ?? null} />
+          ) : (
           <div className="rc-cols">
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <span className="label">Ingredientes</span>
@@ -85,6 +89,7 @@ export function RecetaSheet({ productId, onClose, onAdd }: {
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
 

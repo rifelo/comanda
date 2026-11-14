@@ -10,8 +10,9 @@ import { DatosForm } from "./datos-form";
 import { FavoriteToggle } from "./favorite-toggle";
 import { MargenPill, pesos, Thumb } from "./bits";
 import { ModificadoresTab } from "./modificadores-tab";
-import { PreparacionEditor } from "./preparacion-editor";
+import { CapasEditor } from "./capas-editor";
 import { RecetaEditor } from "./receta-editor";
+import { VersionesReceta } from "./versiones-receta";
 
 export type Tab = "datos" | "receta" | "preparacion" | "modificadores";
 
@@ -63,6 +64,8 @@ export function Ficha({ ficha, tabInicial }: { ficha: ProductoFicha; tabInicial:
           </dl>
         </div>
 
+        <VersionesReceta ficha={ficha} />
+
         <Segmented<Tab>
           block
           size="sm"
@@ -72,14 +75,14 @@ export function Ficha({ ficha, tabInicial }: { ficha: ProductoFicha; tabInicial:
           options={[
             { value: "datos", label: "Datos" },
             { value: "receta", label: "Receta", count: ficha.lineas.length },
-            { value: "preparacion", label: "Preparación" },
+            { value: "preparacion", label: "Ficha técnica" },
             { value: "modificadores", label: aplicados ? `Modif. · ${aplicados}` : "Modif." },
           ]}
         />
 
         {tab === "datos" ? <DatosForm ficha={ficha} tieneReceta={ficha.lineas.length > 0} /> : null}
         {tab === "receta" ? <RecetaEditor ficha={ficha} /> : null}
-        {tab === "preparacion" ? <PreparacionEditor productoId={p.id} initial={p.preparacion} /> : null}
+        {tab === "preparacion" ? <CapasEditor ficha={ficha} /> : null}
         {tab === "modificadores" ? <ModificadoresTab ficha={ficha} /> : null}
       </div>
     </div>

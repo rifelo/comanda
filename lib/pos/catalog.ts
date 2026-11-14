@@ -19,6 +19,7 @@ import {
 import { coffeeGramsOf, drinkSpec, type RecipeLine } from "./drink-label";
 import { rankPairs, rankTopSellers, TOP_SELLERS_DAYS, type SoldLine } from "./top-sellers";
 import { rankNombres, type NombreFrecuente } from "./nombres";
+import { armarFicha, esOpcion16, fichaATexto, parseFichaCapas, sustituiblesDe, tam16DeOpciones, type BloqueVista, type IngInfo, type OpcionRecetaRow } from "@/lib/recetas/capas";
 
 /**
  * Build the live POS catalog for an org from the catálogo/combos/modificadores
@@ -61,14 +62,14 @@ export async function getPosCatalog({
     supabase
       .from("productos")
       .select(
-        "id, category_id, name, description, sku, price_cop, stock_status, image_url, preparacion, recomendacion",
+        "id, category_id, name, description, sku, price_cop, stock_status, image_url, preparacion, recomendacion, capas, referencia_visual",
       )
       .eq("organization_id", organizationId)
       .order("name"),
     // Recipes drive the cup label's spec box ("2 SHOTS · 18 G").
     supabase
       .from("receta_items")
-      .select("producto_id, qty, unit, note, position, ingredientes(name, unit)")
+      .select("producto_id, ingrediente_id, qty, unit, note, position, ingredientes(name, unit)")
       .eq("organization_id", organizationId),
     supabase
       .from("producto_categorias")
@@ -97,7 +98,7 @@ export async function getPosCatalog({
     // What an option adds/takes out of the drink: the comanda shows the amounts with it.
     supabase
       .from("modifier_option_receta")
-      .select("option_id, qty, ingredientes!modifier_option_receta_ingrediente_id_fkey(name, unit), reemplaza:ingredientes!modifier_option_receta_reemplaza_id_fkey(name)")
+      .select("option_id, ingrediente_id, reemplaza_id, qty, ingredientes!modifier_option_receta_ingrediente_id_fkey(name, unit), reemplaza:ingredientes!modifier_option_receta_reemplaza_id_fkey(name)")
       .eq("organization_id", organizationId),
     getNombres(supabase, organizationId),
   ]);
@@ -108,9 +109,12 @@ export async function getPosCatalog({
   const recipeByProduct = new Map<string, RecipeLine[]>();
   // producto_id → the recipe as displayed (long-press on a tile), in line order.
   const shownByProduct = new Map<string, Array<PosRecipeLine & { position: number }>>();
+  // ingrediente_id → name/unit, for the layers of the ficha técnica.
+  const ingInfo = new Map<string, IngInfo>();
   for (const r of (recetaRows ?? []) as Array<Record<string, unknown>>) {
     const ing = r.ingredientes as { name: string; unit: string } | null;
     if (!ing) continue;
+    ingInfo.set(r.ingrediente_id as string, { name: ing.name, unit: ing.unit });
     const pid = r.producto_id as string;
     const arr = recipeByProduct.get(pid) ?? [];
     arr.push({ name: ing.name, unit: ing.unit, qty: Number(r.qty) });
@@ -131,9 +135,15 @@ export async function getPosCatalog({
 
   // ── modifier groups: map to UI shape, keyed by id ─────────────────────────
   const optRecipe = new Map<string, Array<{ name: string; qty: number; unit: string; reemplaza?: string }>>();
+  // option_id → raw rows (ids), for the 16 oz column and «sustituible» of the ficha.
+  const optRows = new Map<string, Array<Omit<OpcionRecetaRow, "optionName">>>();
   for (const r of (optRecetaRows ?? []) as Array<Record<string, unknown>>) {
     const ing = r.ingredientes as { name: string; unit: string } | null;
     if (!ing) continue;
+    if (!ingInfo.has(r.ingrediente_id as string)) ingInfo.set(r.ingrediente_id as string, { name: ing.name, unit: ing.unit });
+    const raw = optRows.get(r.option_id as string) ?? [];
+    raw.push({ ingredienteId: r.ingrediente_id as string, ingredienteName: ing.name, reemplazaId: (r.reemplaza_id as string | null) ?? null, qty: Number(r.qty) });
+    optRows.set(r.option_id as string, raw);
     const arr = optRecipe.get(r.option_id as string) ?? [];
     const reemplaza = (r.reemplaza as { name: string } | null)?.name;
     arr.push({ name: ing.name, qty: Number(r.qty), unit: ing.unit, ...(reemplaza ? { reemplaza } : {}) });
@@ -184,6 +194,8 @@ export async function getPosCatalog({
     image_url: string | null;
     preparacion: string | null;
     recomendacion: string | null;
+    capas: unknown;
+    referencia_visual: string | null;
   }>).map((p) => {
     const own = p.category_id ? catById.get(p.category_id) ?? null : null;
     const top = topLevelOf(p.category_id);
@@ -208,6 +220,21 @@ export async function getPosCatalog({
     const printsLabel = p.category_id
       ? (own?.imprime_etiqueta ?? false) || (top?.imprime_etiqueta ?? false)
       : coffeeG > 0;
+    // Ficha técnica por capas (0087): the 16 oz column and «sustituible»
+    // come from the options this product takes.
+    const fichaCapas = parseFichaCapas(p.capas);
+    let capas: BloqueVista[] | null = null;
+    let price16: number | null = null;
+    if (fichaCapas) {
+      const rows: OpcionRecetaRow[] = [];
+      for (const gid of mods) {
+        for (const o of modGroupsList.find((g) => g.id === gid)?.options ?? []) {
+          if (esOpcion16(o.name)) price16 = p.price_cop + o.price_delta_cop;
+          for (const r of optRows.get(o.id) ?? []) rows.push({ ...r, optionName: o.name });
+        }
+      }
+      capas = armarFicha(fichaCapas, ingInfo, tam16DeOpciones(rows), sustituiblesDe(rows));
+    }
     return {
       id: p.id,
       name: p.name,
@@ -223,7 +250,10 @@ export async function getPosCatalog({
       printsLabel,
       spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
       image: (p.image_url ?? "").trim() || null,
-      prep: prepSteps(p.preparacion),
+      prep: capas ? fichaATexto(capas).split("\n") : prepSteps(p.preparacion),
+      capas,
+      visual: (p.referencia_visual ?? "").trim() || null,
+      price16,
       script: (p.recomendacion ?? "").trim() || null,
       recipe: (shownByProduct.get(p.id) ?? [])
         .sort((a, b) => a.position - b.position)

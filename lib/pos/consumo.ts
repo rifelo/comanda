@@ -22,7 +22,9 @@ export type ComboMap = ReadonlyMap<string, ReadonlyArray<{ productoId: string; q
 /**
  * option_id → what the option takes per unit sold (modifier_option_receta, 0048).
  * With `reemplazaId`, `qty` is a factor: the recipe's amount of `reemplazaId`
- * (× qty) is taken from `ingredienteId` instead.
+ * (× qty) is taken from `ingredienteId` instead. When `reemplazaId` equals
+ * `ingredienteId` the row is a scale factor (size «16 oz»: milk × 1,33),
+ * applied after every swap of the line.
  */
 export type OptionRecipeMap = ReadonlyMap<string, ReadonlyArray<{ ingredienteId: string; qty: number; reemplazaId?: string | null }>>;
 
@@ -57,9 +59,14 @@ export function explodeConsumption(
     else if (l.kind === "combo" && l.comboId) {
       for (const c of combos.get(l.comboId) ?? []) addProduct(c.productoId, c.qty * l.qty);
     }
+    // Scale rows (ingrediente = reemplaza, e.g. «16 oz» × 1,33 on the milk)
+    // wait until every swap is done, so they also scale the swapped-in milk.
+    const scales: { id: string; factor: number }[] = [];
     for (const oid of l.optionIds ?? []) {
       for (const r of options.get(oid) ?? []) {
-        if (r.reemplazaId) {
+        if (r.reemplazaId && r.reemplazaId === r.ingredienteId) {
+          scales.push({ id: r.ingredienteId, factor: r.qty });
+        } else if (r.reemplazaId) {
           const moved = round3((line.get(r.reemplazaId) ?? 0) * r.qty);
           if (moved <= 0) continue;
           add(line, r.reemplazaId, -moved);
@@ -67,6 +74,10 @@ export function explodeConsumption(
           add(line, r.ingredienteId, moved);
         } else add(line, r.ingredienteId, r.qty * l.qty);
       }
+    }
+    for (const { id, factor } of scales) {
+      const cur = line.get(id);
+      if (cur && factor > 0) line.set(id, round3(cur * factor));
     }
     for (const [id, qty] of line) add(out, id, qty);
   }
