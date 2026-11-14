@@ -725,10 +725,10 @@ export interface CupNameLabelInput {
 }
 
 /**
- * Label 1 of a cup: «Pa'» and the name in the display face (the name on one
+ * Label 1 of a cup: «PA'» and the name in the display face (the name on one
  * line or two, whichever prints bigger), the phrase at the foot in Delight
  * Light and a hand of the brand in the bottom-right corner. In the Christmas
- * season a small Christmas tree sits next to «Pa'» and snowflakes fall in the empty
+ * season a holly sprig sits next to «PA'» and snowflakes fall in the empty
  * top-right corner.
  */
 export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
@@ -748,10 +748,12 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
     ctx.restore();
   }
 
-  // «Pa'» (capitalized like the name) in the name's own face, so the two read as one line of type
+  // «PA'» in the name's own face, so the two read as one line of type
   ctx.font = `40px ${displayFont()}`;
-  ctx.fillText("Pa'", L, T);
-  const paW = ctx.measureText("Pa'").width;
+  setTracking(ctx, "2px");
+  ctx.fillText("PA'", L, T);
+  const paW = ctx.measureText("PA'").width;
+  setTracking(ctx, "0px");
 
   if (navidad(input.now ?? new Date())) drawChristmas(ctx, L + paW + 14, T);
 
@@ -837,9 +839,8 @@ export function navidad(d: Date): boolean {
 }
 
 /**
- * Christmas trim in design units: a small tree (star, three tiers, trunk,
- * white baubles) right of «Pa'» at (x, y) — the earlier holly sprig printed
- * like a heart in black and white — and two snowflakes in the top-right corner, above
+ * Christmas trim in design units: a holly sprig (two leaves, three berries)
+ * right of «PA'» at (x, y), and two snowflakes in the top-right corner, above
  * the hand.
  */
 function drawChristmas(ctx: CanvasRenderingContext2D, x: number, y: number): void {
@@ -847,36 +848,46 @@ function drawChristmas(ctx: CanvasRenderingContext2D, x: number, y: number): voi
   ctx.fillStyle = "#000";
   ctx.strokeStyle = "#000";
   ctx.lineCap = "round";
-  // tree: a star on top, three tiers, a trunk, white baubles cut out
-  {
-    const cx = x + 22;
-    const top = y - 6;
+  // holly: two pointed leaves fanned from the berries, a white vein each
+  const cx = x + 44;
+  const cy = y + 30;
+  const leaf = (angle: number) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.scale(0.9, 1.15);
     ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      const r = i % 2 ? 4 : 9;
-      ctx.lineTo(cx + Math.cos(a) * r, top + 8 + Math.sin(a) * r);
-    }
+    ctx.moveTo(0, 0);
+    // scalloped edges: three points per side
+    ctx.quadraticCurveTo(6, -12, 12, -9);
+    ctx.quadraticCurveTo(15, -16, 22, -12);
+    ctx.quadraticCurveTo(27, -18, 34, -10);
+    ctx.quadraticCurveTo(40, -6, 46, 0);
+    ctx.quadraticCurveTo(40, 6, 34, 10);
+    ctx.quadraticCurveTo(27, 18, 22, 12);
+    ctx.quadraticCurveTo(15, 16, 12, 9);
+    ctx.quadraticCurveTo(6, 12, 0, 0);
     ctx.fill();
-    const tier = (t: number, b: number, w: number) => {
-      ctx.beginPath();
-      ctx.moveTo(cx, t);
-      ctx.lineTo(cx + w / 2, b);
-      ctx.lineTo(cx - w / 2, b);
-      ctx.closePath();
-      ctx.fill();
-    };
-    tier(top + 14, top + 28, 26);
-    tier(top + 20, top + 38, 36);
-    tier(top + 27, top + 48, 46);
-    ctx.fillRect(cx - 4, top + 48, 8, 7);
-    ctx.fillStyle = "#fff";
-    for (const [bx, by] of [[-6, 33], [7, 42], [-10, 44], [3, 25]] as const) {
-      ctx.beginPath();
-      ctx.arc(cx + bx, top + by, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(4, 0);
+    ctx.lineTo(40, 0);
+    ctx.stroke();
+    ctx.restore();
+  };
+  leaf(-Math.PI * 0.8);
+  leaf(-Math.PI * 0.2);
+  // berries: black with a white glint so they read as round
+  for (const [bx, by] of [[-8, 6], [8, 6], [0, -4]] as const) {
     ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(cx + bx, cy + by, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(cx + bx - 3, cy + by - 3, 2.2, 0, Math.PI * 2);
+    ctx.fill();
   }
   // snowflakes: six arms with a pair of barbs each
   const flake = (fx: number, fy: number, r: number) => {

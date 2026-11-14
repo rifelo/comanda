@@ -41,7 +41,6 @@ import { useTicketPrinter } from "@/lib/printer/tickets";
 import { CancelarOverlay } from "./cancelar";
 import { CombinarOverlay } from "./combinar";
 import { DescuentoOverlay } from "./descuento";
-import { PremioOverlay } from "./premio";
 import { anularDescuento } from "../actions";
 
 /** Human label for a payment method, including the "mixto" summary. */
@@ -123,7 +122,6 @@ export function PedidosPage() {
   const isCanc = s.ordenesTab === "cancelada";
   const [cancelId, setCancelId] = React.useState<string | null>(null);
   const [descId, setDescId] = React.useState<string | null>(null);
-  const [premioId, setPremioId] = React.useState<string | null>(null);
   const [lastAt, setLastAt] = React.useState<number | null>(null);
   const [doneCount, setDoneCount] = React.useState<number | null>(null);
   const [cancCount, setCancCount] = React.useState<number | null>(null);
@@ -168,7 +166,6 @@ export function PedidosPage() {
   const canCount = isCanc ? list.length : cancCount;
   const combinables = s.pendientes.filter((o) => o.status === "pendiente").length;
   const descOrder = descId ? s.ordenes.find((o) => o.id === descId) ?? null : null;
-  const premioOrder = premioId ? s.ordenes.find((o) => o.id === premioId) ?? null : null;
   const cancelOrder = cancelId ? [...s.ordenes, ...s.pendientes].find((o) => o.id === cancelId) ?? null : null;
   const error = s.ordenesError ?? s.pendientesError;
 
@@ -230,20 +227,19 @@ export function PedidosPage() {
       ) : (
         <div className="orders scroll" aria-label={isPend ? "Pedidos pendientes" : isCanc ? "Pedidos cancelados" : "Pedidos completados"}>
           {list.map((o) => (
-            <OrderCard key={o.id} o={o} onCancel={() => setCancelId(o.id)} onDescuento={() => setDescId(o.id)} onPremio={() => setPremioId(o.id)} />
+            <OrderCard key={o.id} o={o} onCancel={() => setCancelId(o.id)} onDescuento={() => setDescId(o.id)} />
           ))}
         </div>
       )}
 
       {cancelOrder && <CancelarOverlay o={cancelOrder} onClose={() => setCancelId(null)} />}
       {descOrder && <DescuentoOverlay o={descOrder} onClose={() => setDescId(null)} />}
-      {premioOrder && <PremioOverlay o={premioOrder} onClose={() => setPremioId(null)} />}
       {s.merge.on && <CombinarOverlay />}
     </div>
   );
 }
 
-function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCancel: () => void; onDescuento: () => void; onPremio: () => void }) {
+function OrderCard({ o, onCancel, onDescuento }: { o: PosOrder; onCancel: () => void; onDescuento: () => void }) {
   const s = usePos();
   const name = orderName(o);
   const people = rebuildPeople(o);
@@ -317,9 +313,6 @@ function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCanc
                 )}
                 {pendiente && !local && due > 0 && (
                   <button type="button" role="menuitem" onClick={() => { setMenu(false); onDescuento(); }}>Pedir descuento</button>
-                )}
-                {pendiente && !local && due > 0 && (
-                  <button type="button" role="menuitem" onClick={() => { setMenu(false); onPremio(); }}>Premio Mi Pa&apos;Yo</button>
                 )}
                 <button type="button" role="menuitem" onClick={() => { setMenu(false); printLabelFor(o); }}>Reimprimir etiquetas</button>
                 {tickets && (
