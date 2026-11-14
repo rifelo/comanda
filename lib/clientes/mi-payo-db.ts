@@ -3,7 +3,7 @@ import { cache } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { lineasDeQr, type ItemCalificado } from "@/lib/calificaciones/calificaciones";
 import { esMananaDoble } from "./premios";
-import { GRUPO_DE, insignias, nuevasInsignias, podiosDe, type BebidaCarta, type PodioMes } from "./coleccion";
+import { GRUPO_DE, insignias, nuevasInsignias, podiosDe, rachaDiasActual, type BebidaCarta, type PodioMes } from "./coleccion";
 import { desdeDe, hora, pesos, porBebida, puestoDe, type Escaneo, type FilaRanking, type Registro, type PeriodoRanking, type Tipo } from "./mi-payo";
 
 // Loaders for «Mi Pa'Yo» (cafepayo.com/puntos). Service role: the page has no
@@ -162,6 +162,7 @@ export async function registroDeEscaneo(codigo: string, instagram: string, total
       bienvenida,
       mananaDoble: esMananaDoble(mio.at),
       insignias: ganadas,
+      racha: rachaDiasActual(escaneos),
     };
   } catch (e) {
     console.error("[registroDeEscaneo]", e);

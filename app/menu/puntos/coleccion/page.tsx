@@ -31,19 +31,25 @@ export default async function ColeccionPage() {
   const racha = rachaDiasActual(escaneos);
 
   return (
-    <Pantalla instagram={instagram} tab="coleccion">
+    <Pantalla instagram={instagram} tab="coleccion" ancho>
       <section aria-labelledby="pyy-col" className="pyy-puntos">
         <h1 id="pyy-col" className="pyy-h1">Mi colección</h1>
-        <div className="pyy-dos">
+        <div className="pyy-tres pyy-tres--resumen">
           <div className="pyy-tile pyy-tile--crema">
             <span className="pyy-n">{col.bebidas}</span>
-            <span className="pyy-meta--s">{col.bebidas === 1 ? "bebida tomada" : "bebidas tomadas"}</span>
+            <span className="pyy-meta--s">{col.bebidas === 1 ? "café tomado" : "cafés tomados"}</span>
           </div>
           <div className="pyy-tile pyy-tile--crema">
             <span className="pyy-n">
               {col.descubiertas}/{col.carta}
             </span>
-            <span className="pyy-meta--s">de la carta descubiertas</span>
+            <span className="pyy-meta--s">de la carta</span>
+          </div>
+          <div className="pyy-tile pyy-tile--crema">
+            <span className="pyy-n">
+              {ganadas}/{badges.length}
+            </span>
+            <span className="pyy-meta--s">insignias</span>
           </div>
         </div>
         <div className="pyy-racha" aria-label={`Racha actual: ${racha} ${racha === 1 ? "día" : "días"} seguidos con café`}>

@@ -6,7 +6,6 @@ import { BONO_BIENVENIDA, HORA_FIN_MANANA, PREMIOS, progreso } from "@/lib/clien
 import { codigoCanje } from "@/lib/clientes/premios-codigo";
 import { instagramDeSesion, verificadoDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
-import { Progreso } from "../progreso";
 import { BASE, Pantalla } from "../shell";
 import "../mi-payo.css";
 
@@ -24,13 +23,14 @@ export default async function PremiosPage({ searchParams }: { searchParams: Prom
   const cliente = await cargarCliente(org, instagram);
   const puntos = cliente?.puntos ?? 0;
   const p = progreso(puntos);
+  const tope = PREMIOS[PREMIOS.length - 1].puntos;
   const verificado = cliente ? await verificadoDeSesion(instagram) : false;
   const quiere = (await searchParams).canjear;
   const elegido = PREMIOS.find((x) => x.id === quiere && puntos >= x.puntos) ?? null;
   const codigo = elegido && cliente && verificado ? codigoCanje(cliente.id) : null;
 
   return (
-    <Pantalla instagram={instagram} tab="inicio">
+    <Pantalla instagram={instagram} tab="premios">
       <div className="pyy-col" style={{ gap: 4 }}>
         <h1 className="pyy-h1">Premios</h1>
         <span className="pyy-meta">
@@ -44,7 +44,11 @@ export default async function PremiosPage({ searchParams }: { searchParams: Prom
           {codigo ? (
             <>
               <span className="pyy-meta">Muéstrale este código a la persona en caja:</span>
-              <span className="pyy-codigo__n" aria-label={`Código ${codigo.codigo.split("").join(" ")}`}>{codigo.codigo}</span>
+              <div className="pyy-casillas pyy-codigo__n" aria-label={`Código ${codigo.codigo.split("").join(" ")}`}>
+                {codigo.codigo.split("").map((d, i) => (
+                  <span key={i} aria-hidden="true">{d}</span>
+                ))}
+              </div>
               <span className="pyy-meta">Sirve hasta las {hora(codigo.hasta)}. Al canjear se descuentan {elegido.puntos} puntos.</span>
             </>
           ) : (
@@ -56,7 +60,30 @@ export default async function PremiosPage({ searchParams }: { searchParams: Prom
         </section>
       )}
 
-      <Progreso p={p} puntos={puntos} enlace={false} />
+      <section aria-label="Tu camino" className="pyy-col" style={{ gap: 10 }}>
+        <div className="pyy-camino" role="progressbar" aria-valuemin={0} aria-valuemax={tope} aria-valuenow={Math.min(puntos, tope)} aria-label={`${puntos} de ${tope} puntos`}>
+          <div className="pyy-camino__riel" />
+          <div className="pyy-camino__hecho" style={{ width: `${Math.min(100, Math.round((puntos / tope) * 100))}%` }} />
+          {PREMIOS.map((x) => (
+            <span key={x.id} className={`pyy-camino__hito${puntos >= x.puntos ? " pyy-camino__hito--listo" : ""}`} style={{ left: `${(x.puntos / tope) * 100}%` }} aria-hidden="true">
+              {puntos >= x.puntos && (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12l5 5 9-10" />
+                </svg>
+              )}
+            </span>
+          ))}
+        </div>
+        <div className="pyy-camino__labels">
+          <span className="pyy-meta">0</span>
+          {PREMIOS.map((x) => (
+            <span key={x.id}>{x.puntos}</span>
+          ))}
+        </div>
+        <span className="pyy-meta" style={{ fontSize: 14, lineHeight: "19px" }}>
+          {p.siguiente ? `Te faltan ${p.faltan} para «${p.siguiente.titulo}».` : "Ya alcanzas todos los premios."}
+        </span>
+      </section>
 
       <section aria-labelledby="pyy-esc" className="pyy-col" style={{ gap: 10 }}>
         <h2 id="pyy-esc" className="pyy-h2">La escalera</h2>
@@ -84,13 +111,21 @@ export default async function PremiosPage({ searchParams }: { searchParams: Prom
 
       <section aria-labelledby="pyy-como" className="pyy-card">
         <h2 id="pyy-como" className="pyy-h2">Cómo sumas</h2>
-        <ul className="pyy-reglas">
-          <li>1 punto por cada $1.000 que compras: escanea el QR de tu vaso y escribe tu @.</li>
-          <li><strong>Mañana doble:</strong> lo que pides antes de las {HORA_FIN_MANANA}:00 a. m. suma el doble.</li>
-          <li>+{BONO_BIENVENIDA} puntos de bienvenida con tu primer escaneo.</li>
-          <li>Al canjear se descuentan los puntos del premio; los adicionales (leche, shot extra) se pagan aparte.</li>
-          <li>Un premio por visita. Los puntos no se cambian por dinero.</li>
-        </ul>
+        <div className="pyy-como">
+          <div>
+            <span className="pyy-n">1</span>punto por cada $1.000
+          </div>
+          <div>
+            <span className="pyy-n">×2</span>antes de las {HORA_FIN_MANANA}:00 a. m.
+          </div>
+          <div>
+            <span className="pyy-n">+{BONO_BIENVENIDA}</span>en tu primer escaneo
+          </div>
+        </div>
+        <p className="pyy-meta" style={{ margin: 0 }}>
+          Escanea el QR de tu vaso y escribe tu @. Al canjear se descuentan los puntos del premio; los adicionales (leche, shot extra) se pagan aparte. Un premio
+          por visita. El código solo aparece en el celular con el que escaneaste tu vaso.
+        </p>
       </section>
     </Pantalla>
   );

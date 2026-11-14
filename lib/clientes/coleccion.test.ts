@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coleccion, insignias, nuevasInsignias, podiosDe, rachaDiasActual, rachaDiasMasLarga, type BebidaCarta } from "./coleccion";
+import { coleccion, insignias, nuevasInsignias, podiosDe, proximaInsignia, rachaDiasActual, rachaDiasMasLarga, semanaDeCafe, type BebidaCarta } from "./coleccion";
 import type { Escaneo } from "./mi-payo";
 
 const CARTA: BebidaCarta[] = [
@@ -85,6 +85,20 @@ describe("racha diaria", () => {
   });
   it("una compra a las 11 p. m. y otra a la 1 a. m. son días distintos", () => {
     expect(rachaDiasMasLarga([e("Tinto", 1, 10, 23), e("Tinto", 1, 11, 1)])).toBe(2);
+  });
+});
+
+describe("inicio: semana y próxima insignia", () => {
+  it("marca los días con café de esta semana y cuál es hoy", () => {
+    // 10–12 nov 2026 = martes a jueves; hoy = jueves 12.
+    const w = semanaDeCafe([e("Tinto", 1, 10), e("Tinto", 1, 11), e("Tinto", 1, 12)], new Date(Date.UTC(2026, 10, 12, 20)));
+    expect(w.map((d) => d.hecho)).toEqual([false, true, true, true, false, false, false]);
+    expect(w.findIndex((d) => d.hoy)).toBe(3);
+    expect(w[4].futuro).toBe(true);
+  });
+  it("la próxima insignia es la más cercana a su meta", () => {
+    const p = proximaInsignia(insignias(EJEMPLO, CARTA));
+    expect(p?.id).toBe("cliente"); // 7 de 10
   });
 });
 

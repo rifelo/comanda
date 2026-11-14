@@ -96,6 +96,23 @@ export function rachaDiasActual(es: ReadonlyArray<Escaneo>, ahora: Date = new Da
   return n;
 }
 
+/** This Bogotá week, Monday first: which days had a drink, and which one is today. */
+export function semanaDeCafe(es: ReadonlyArray<Escaneo>, ahora: Date = new Date()): { label: string; hecho: boolean; hoy: boolean; futuro: boolean }[] {
+  const dias = new Set(es.filter((e) => e.items.some((i) => i.tipo !== "comida")).map((e) => bogota(e.at).dia));
+  const b = bogota(ahora);
+  const lunes = b.dia - b.dow;
+  return ["L", "M", "X", "J", "V", "S", "D"].map((label, i) => ({ label, hecho: dias.has(lunes + i), hoy: i === b.dow, futuro: i > b.dow }));
+}
+
+/** The badge closest to being earned (or to its next level), for «Tu próxima insignia». */
+export function proximaInsignia(lista: ReadonlyArray<Insignia>): Insignia | null {
+  const conMeta = lista.filter((i) => i.progreso && i.progreso.meta > 0 && i.progreso.actual < i.progreso.meta);
+  if (!conMeta.length) return null;
+  const pct = (i: Insignia) => i.progreso!.actual / i.progreso!.meta;
+  // An unearned badge first when it is as close as a next level.
+  return [...conMeta].sort((a, b) => pct(b) - pct(a) || Number(a.ganada) - Number(b.ganada))[0];
+}
+
 /** A finished month's place in the ranking, for «Top del mes». */
 export interface PodioMes { mes: string; puesto: number }
 

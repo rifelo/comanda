@@ -56,7 +56,8 @@ export function Registrado({ r }: { r: Registro }) {
               ))}
             </span>
             <span>
-              {(r.insignias ?? []).length === 1 ? "¡Nueva insignia!" : "¡Nuevas insignias!"} <strong>{(r.insignias ?? []).map((i) => i.nombre).join(" · ")}</strong>
+              <span className="pyy-nueva-insignia__kicker">{(r.insignias ?? []).length === 1 ? "¡Nueva insignia!" : "¡Nuevas insignias!"}</span>{" "}
+              <strong>{(r.insignias ?? []).map((i) => i.nombre).join(" · ")}</strong>
             </span>
           </a>
         )}
@@ -68,19 +69,23 @@ export function Registrado({ r }: { r: Registro }) {
           </div>
         )}
 
-        <div className="pyy-dos">
+        <div className={(r.racha ?? 0) > 0 && ranking ? "pyy-tres" : "pyy-dos"}>
           <div className="pyy-tile pyy-tile--crema">
             <span className="pyy-meta--s">Puntos ahora</span>
-            <span className="pyy-n" style={{ fontSize: 26, lineHeight: "32px" }}>
-              {r.total.toLocaleString("es-CO")}
-            </span>
+            <span className="pyy-n">{r.total.toLocaleString("es-CO")}</span>
           </div>
+          {(r.racha ?? 0) > 0 && (
+            <div className="pyy-tile pyy-tile--crema">
+              <span className="pyy-meta--s">Racha</span>
+              <span className="pyy-n">
+                {r.racha} {r.racha === 1 ? "día" : "días"}
+              </span>
+            </div>
+          )}
           {ranking && (
             <div className="pyy-tile pyy-tile--crema">
               <span className="pyy-meta--s">Ranking del mes</span>
-              <span className="pyy-n" style={{ fontSize: 26, lineHeight: "32px" }}>
-                {ranking}
-              </span>
+              <span className="pyy-n">{ranking}</span>
             </div>
           )}
         </div>

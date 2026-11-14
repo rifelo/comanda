@@ -336,22 +336,18 @@ export interface Ranking {
 }
 
 /**
- * The ranking screen: podium (top 3), the next rows (4–7, or 4–6 plus me when
- * I'm further down), and my own place. Others' handles are masked.
+ * The ranking screen: podium (top 3), every other place below it, and my own
+ * place. Since 2026-11-14 the owner wants the ranking fully visible: the
+ * whole list, with everyone's handle in full (`enmascarar` is no longer used
+ * here; it stays for anywhere a handle must be hidden).
  */
 export function ranking(filas: ReadonlyArray<FilaRanking>, yoId: string | null): Ranking {
   const orden = ordenarRanking(filas);
-  const puesto = (f: FilaRanking, i: number): PuestoRanking => {
-    const yo = f.clienteId === yoId;
-    return { pos: i + 1, handle: yo ? `@${f.instagram}` : enmascarar(f.instagram), puntos: f.puntos, bebidas: f.bebidas, yo };
-  };
-  const todos = orden.map(puesto);
+  const todos = orden.map((f, i): PuestoRanking => ({ pos: i + 1, handle: `@${f.instagram}`, puntos: f.puntos, bebidas: f.bebidas, yo: f.clienteId === yoId }));
   const mio = todos.findIndex((p) => p.yo);
-  let filasVista = todos.slice(3, 7);
-  if (mio >= 7) filasVista = [...todos.slice(3, 6), todos[mio]];
   return {
     podio: todos.slice(0, 3),
-    filas: filasVista,
+    filas: todos.slice(3),
     yo: mio < 0 ? null : { pos: mio + 1, puntos: todos[mio].puntos, faltan: mio > 0 ? todos[mio - 1].puntos - todos[mio].puntos + 1 : null },
   };
 }
@@ -380,6 +376,8 @@ export interface Registro {
   bienvenida?: number;
   /** The order was placed before 9 a. m.: its points counted double. */
   mananaDoble?: boolean;
+  /** Days in a row with a drink, this one included. */
+  racha?: number;
   /** Badges this scan earned («Del madrugón», «Explorador»…). */
   insignias?: { id: string; nombre: string }[];
 }
