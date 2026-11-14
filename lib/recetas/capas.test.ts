@@ -63,7 +63,7 @@ describe("armarFicha", () => {
     const b = armarFicha(parseFichaCapas(milo)!, ings, tam16, new Set(["leche"]));
     expect(b.map((x) => (x.tipo === "capa" ? x.capa.n : 0))).toEqual([1, 3, 4, 5, 6, 8]);
     const cuerpo = b[2].tipo === "capa" ? b[2].capa : null;
-    expect(cuerpo?.lineas[0]).toEqual({ texto: "Leche entera Gran Vía", t12: "150 ml", t16: "200 ml (× 1,33)", sustituible: true });
+    expect(cuerpo?.lineas[0]).toEqual({ texto: "Leche entera Gran Vía", ingName: "Leche entera Gran Vía (bolsa 900 ml)", t12: "150 ml", t16: "200 ml (× 1,33)", sustituible: true });
     const vaso = b[0].tipo === "capa" ? b[0].capa : null;
     expect(vaso?.lineas[0].t16).toBe("Vaso PET 16 oz");
     const cierre = b[5].tipo === "capa" ? b[5].capa : null;
