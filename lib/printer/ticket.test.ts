@@ -79,7 +79,7 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     expect(tieneBebidas({ lines: [conSku.lines[1]] }, undefined)).toBe(true);
   });
 
-  it("the catalog recipe: amounts in order, container apart, label stickers out; food has none", () => {
+  it("a drink without a ficha prints its recipe lines numbered by layer (Licuar box when blended); food has none", () => {
     const drink = {
       printsLabel: true,
       prep: ["Pon 100 g de hielo"],
@@ -96,15 +96,15 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     };
     expect(recetaDe(drink)).toEqual({
       bebida: true,
-      proporciones: [
-        { cantidad: "100 g", nombre: "Hielo", nota: "Primero, en el vaso" },
-        { cantidad: "18 g", nombre: "Café Okana", nota: "Espresso doble" },
-        { cantidad: "150 ml", nombre: "Leche entera Gran Vía" },
-        { cantidad: "1", nombre: "Pulpa de mora" },
-        { cantidad: "12,5 ml", nombre: "Jarabe" },
-      ],
-      envase: "vaso darnel pet x 12Oz · Tapa domo Darnel 12 oz",
       pasos: [],
+      capas: [
+        { n: 1, capa: "Vaso", ops: "Pegar", lineas: [{ cantidad: "1", texto: "vaso darnel pet x 12Oz" }, { cantidad: "4", texto: "Etiqueta térmica Niimbot 30×50" }] },
+        { n: 2, capa: "Fondo", lineas: [{ cantidad: "12,5 ml", texto: "Jarabe" }], grupo: "Licuar · hasta que no queden trozos" },
+        { n: 3, capa: "Hielo", lineas: [{ cantidad: "100 g", texto: "Hielo · Primero, en el vaso" }], grupo: "Licuar · hasta que no queden trozos" },
+        { n: 4, capa: "Cuerpo", lineas: [{ cantidad: "150 ml", texto: "Leche entera Gran Vía" }], grupo: "Licuar · hasta que no queden trozos" },
+        { n: 5, capa: "Protagonista", lineas: [{ cantidad: "18 g", texto: "Café Okana · Espresso doble" }, { cantidad: "1", texto: "Pulpa de mora" }], grupo: "Licuar · hasta que no queden trozos" },
+        { n: 8, capa: "Cierre", ops: "Tapar + Servir", lineas: [{ cantidad: "1", texto: "Tapa domo Darnel 12 oz" }] },
+      ],
     });
     expect(recetaDe({ ...drink, recipe: [] })).toEqual({ bebida: true, pasos: [{ titulo: "Pon 100 g de hielo" }] });
     expect(recetaDe({ ...drink, printsLabel: false })).toEqual({ bebida: false, pasos: [] });
@@ -142,11 +142,9 @@ describe("renderTicketHtml → tirillas del canvas", () => {
     const groups = { g1: { id: "g1", name: "Base", type: "single" as const, required: true, options: [
       { name: "En agua", delta: 0 }, { name: "En leche", delta: 1000, recipe: [{ name: "Leche entera", qty: 200, unit: "ml" }] }] } };
     const look = recetasDelMenu(menu, groups);
-    expect(look("JU-001", ["En leche"])?.proporciones).toEqual([
-      { cantidad: "1", nombre: "Pulpa de mora" },
-      { cantidad: "200 ml", nombre: "Leche entera", nota: "En leche" },
-    ]);
-    expect(look("JU-001", ["En agua"])?.proporciones).toEqual([{ cantidad: "1", nombre: "Pulpa de mora" }]);
+    const capas = (mods: string[]) => look("JU-001", mods)?.capas?.map((c) => `${c.n} ${c.capa}: ${c.lineas.map((l) => `${l.cantidad} ${l.texto}`).join(" + ")}`);
+    expect(capas(["En leche"])).toEqual(["1 Vaso: 1 vaso darnel pet x 12Oz", "4 Cuerpo: 200 ml Leche entera · En leche", "5 Protagonista: 1 Pulpa de mora"]);
+    expect(capas(["En agua"])).toEqual(["1 Vaso: 1 vaso darnel pet x 12Oz", "5 Protagonista: 1 Pulpa de mora"]);
     expect(look("XX", [])).toBeNull();
   });
 
