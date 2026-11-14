@@ -105,18 +105,19 @@ describe("ranking", () => {
     { clienteId: "h", instagram: "zai", puntos: 17, bebidas: 2 },
     { clienteId: "i", instagram: "nadie", puntos: 0, bebidas: 0 },
   ];
-  it("masks everyone but me", () => {
+  it("shows every handle in full (the mask helper still works)", () => {
     expect(enmascarar("liseeeeeeeth")).toBe("@lis•••th");
     expect(enmascarar("zai")).toBe("@z•••");
     expect(enmascarar("srta.j")).toBe("@sr•••j");
     const r = ranking(filas, "b");
-    expect(r.podio.map((p) => p.handle)).toEqual(["@lis•••th", "@karen_diazt", "@soy•••de"]);
+    expect(r.podio.map((p) => p.handle)).toEqual(["@liseeeeeeeth", "@karen_diazt", "@soyesgode"]);
     expect(r.yo).toEqual({ pos: 2, puntos: 33, faltan: 5 });
   });
-  it("shows me after rows 4–6 when I'm further down; zero points don't rank", () => {
+  it("lists every place after the podium; zero points don't rank", () => {
     const r = ranking(filas, "h");
-    expect(r.filas.map((p) => p.pos)).toEqual([4, 5, 6, 8]);
-    expect(r.filas[3]).toMatchObject({ handle: "@zai", yo: true });
+    expect(r.filas.map((p) => p.pos)).toEqual([4, 5, 6, 7, 8]);
+    expect(r.filas[4]).toMatchObject({ handle: "@zai", yo: true });
+    expect(r.filas[0].handle).toBe("@srta.jamie");
     expect(r.yo).toEqual({ pos: 8, puntos: 17, faltan: 2 });
     expect(ranking(filas, "i").yo).toBeNull();
     expect(puestoDe(filas, "e")).toBe(5);

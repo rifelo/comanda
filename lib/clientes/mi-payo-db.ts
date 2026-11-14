@@ -1,6 +1,9 @@
 import "server-only";
+import { cache } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { lineasDeQr, type ItemCalificado } from "@/lib/calificaciones/calificaciones";
+import { esMananaDoble } from "./premios";
+import { GRUPO_DE, insignias, nuevasInsignias, podiosDe, rachaDiasActual, type BebidaCarta, type PodioMes } from "./coleccion";
 import { desdeDe, hora, pesos, porBebida, puestoDe, type Escaneo, type FilaRanking, type Registro, type PeriodoRanking, type Tipo } from "./mi-payo";
 
 // Loaders for «Mi Pa'Yo» (cafepayo.com/puntos). Service role: the page has no
@@ -9,7 +12,8 @@ import { desdeDe, hora, pesos, porBebida, puestoDe, type Escaneo, type FilaRanki
 
 export interface Cliente { id: string; instagram: string; puntos: number; desde: string }
 
-export async function cargarCliente(orgId: string, instagram: string): Promise<Cliente | null> {
+/** Cached per request: the header (streak) and the page ask for the same customer. */
+export const cargarCliente = cache(async function cargarCliente(orgId: string, instagram: string): Promise<Cliente | null> {
   const { data, error } = await createSupabaseAdminClient()
     .from("clientes")
     .select("id, instagram, puntos, created_at")
@@ -18,7 +22,7 @@ export async function cargarCliente(orgId: string, instagram: string): Promise<C
     .maybeSingle();
   if (error) throw error;
   return data ? { id: data.id as string, instagram: data.instagram as string, puntos: Number(data.puntos), desde: data.created_at as string } : null;
-}
+});
 
 const FRIAS = new Set(["Frío", "Jugos", "Kombucha", "Envasadas"]);
 const tipoDe = (categoria: string | null | undefined): Tipo => (categoria === "Caliente" ? "caliente" : categoria && FRIAS.has(categoria) ? "frio" : "comida");
@@ -26,7 +30,7 @@ const tipoDe = (categoria: string | null | undefined): Tipo => (categoria === "C
 type Linea = { position: number; name: string; qty: number; unit_price_cop: number; customer_name: string | null; producto_id: string | null };
 
 /** Every paid QR of a customer, with what it paid for (as the order stands now). */
-export async function cargarEscaneos(orgId: string, clienteId: string): Promise<Escaneo[]> {
+export const cargarEscaneos = cache(async function cargarEscaneos(orgId: string, clienteId: string): Promise<Escaneo[]> {
   const db = createSupabaseAdminClient();
   const { data: qrs, error } = await db
     .from("calificaciones")
@@ -84,7 +88,7 @@ export async function cargarEscaneos(orgId: string, clienteId: string): Promise<
       items: snap.map((i, k) => ({ nombre: i.name, qty: Number(i.qty) || 1, valor: k === 0 ? puntos * 1000 : 0, tipo: tipoPorNombre.get(i.name) ?? "comida" })),
     };
   });
-}
+});
 
 /** Points and paid QRs per customer in a period (by order time). */
 export async function cargarRanking(orgId: string, periodo: PeriodoRanking, ahora: Date = new Date()): Promise<FilaRanking[]> {
@@ -118,16 +122,20 @@ export async function cargarRanking(orgId: string, periodo: PeriodoRanking, ahor
  * total and the move in this month's ranking. Null when anything is missing
  * (the page then falls back to the plain thank-you).
  */
-export async function registroDeEscaneo(codigo: string, instagram: string, total: number): Promise<Registro | null> {
+export async function registroDeEscaneo(codigo: string, instagram: string, total: number, bienvenida = 0): Promise<Registro | null> {
   try {
     const db = createSupabaseAdminClient();
     const { data: row } = await db.from("calificaciones").select("id, organization_id, customer_name, cliente_id, puntos").eq("codigo", codigo).maybeSingle();
     if (!row?.cliente_id || !(Number(row.puntos) > 0)) return null;
     const org = row.organization_id as string;
     const clienteId = row.cliente_id as string;
-    const [escaneos, filas] = await Promise.all([cargarEscaneos(org, clienteId), cargarRanking(org, "mes")]);
+    const [escaneos, filas, { carta, fuera }, podios] = await Promise.all([cargarEscaneos(org, clienteId), cargarRanking(org, "mes"), cargarCarta(org), cargarPodios(org, clienteId)]);
     const mio = escaneos.find((e) => e.id === row.id);
     if (!mio) return null;
+    const ganadas = nuevasInsignias(
+      insignias(escaneos.filter((e) => e.id !== row.id), carta, podios, fuera),
+      insignias(escaneos, carta, podios, fuera),
+    );
     const bebidas = mio.items.filter((i) => i.tipo !== "comida");
     const linea = bebidas[0] ?? mio.items[0];
     const bebida = linea?.nombre;
@@ -151,9 +159,52 @@ export async function registroDeEscaneo(codigo: string, instagram: string, total
       veces: lista.find((d) => d.nombre === bebida)?.veces ?? 1,
       esFavorito: lista[0]?.nombre === bebida,
       hora: hora(new Date().toISOString()),
+      bienvenida,
+      mananaDoble: esMananaDoble(mio.at),
+      insignias: ganadas,
+      racha: rachaDiasActual(escaneos),
     };
   } catch (e) {
     console.error("[registroDeEscaneo]", e);
     return null;
   }
+}
+
+
+/** The menu drinks the album collects, and the names of the other products (bottles, food). */
+export async function cargarCarta(orgId: string): Promise<{ carta: BebidaCarta[]; fuera: string[] }> {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("productos")
+    .select("name, price_cop, categoria:producto_categorias(label)")
+    .eq("organization_id", orgId);
+  if (error) throw error;
+  const carta: BebidaCarta[] = [];
+  const fuera: string[] = [];
+  for (const p of data ?? []) {
+    const c = p.categoria as { label: string } | { label: string }[] | null;
+    const label = (Array.isArray(c) ? c[0]?.label : c?.label) ?? "";
+    const grupo = GRUPO_DE[label];
+    if (grupo && Number(p.price_cop) > 0) carta.push({ nombre: p.name as string, grupo });
+    else fuera.push(p.name as string);
+  }
+  return { carta, fuera };
+}
+
+/** The customer's place in each finished month (for «Top del mes»). */
+export async function cargarPodios(orgId: string, clienteId: string, ahora: Date = new Date()): Promise<PodioMes[]> {
+  const db = createSupabaseAdminClient();
+  const [{ data: qrs, error }, { data: clientes, error: e2 }] = await Promise.all([
+    db.from("calificaciones").select("cliente_id, puntos, created_at, orden:ordenes(created_at)").eq("organization_id", orgId).gt("puntos", 0).not("cliente_id", "is", null),
+    db.from("clientes").select("id, instagram").eq("organization_id", orgId),
+  ]);
+  if (error) throw error;
+  if (e2) throw e2;
+  const handle = new Map((clientes ?? []).map((c) => [c.id as string, c.instagram as string]));
+  const filas = (qrs ?? []).flatMap((q) => {
+    const o = q.orden as { created_at: string } | { created_at: string }[] | null;
+    const at = (Array.isArray(o) ? o[0]?.created_at : o?.created_at) ?? (q.created_at as string);
+    const ig = handle.get(q.cliente_id as string);
+    return ig ? [{ clienteId: q.cliente_id as string, instagram: ig, puntos: Number(q.puntos), at }] : [];
+  });
+  return podiosDe(filas, clienteId, ahora);
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { modPairsOf } from "@/lib/pos/consumo";
 import { estadoDe, lineasDeQr, puntosDe, reubicarCopas, type EstadoEnlace, type ItemCalificado, type LineaCopa } from "./calificaciones";
+import { BONO_BIENVENIDA, conMananaDoble } from "@/lib/clientes/premios";
 
 // Ratings behind the cup's QR (0049). Everything here runs with the service
 // role: the customer's page has no session, and the POS registers links for
@@ -9,11 +10,11 @@ import { estadoDe, lineasDeQr, puntosDe, reubicarCopas, type EstadoEnlace, type 
 
 interface Linea { name: string; qty: number; unit_price_cop: number; mods: unknown; customer_name: string | null; position: number }
 
-async function lineasDeOrden(ordenId: string): Promise<{ orgId: string; viva: boolean; people: string[]; lineas: Linea[] } | null> {
+async function lineasDeOrden(ordenId: string): Promise<{ orgId: string; viva: boolean; at: string; people: string[]; lineas: Linea[] } | null> {
   const db = createSupabaseAdminClient();
   const { data } = await db
     .from("ordenes")
-    .select("organization_id, status, customer_names, orden_items(name, qty, unit_price_cop, mods, customer_name, position)")
+    .select("organization_id, status, created_at, customer_names, orden_items(name, qty, unit_price_cop, mods, customer_name, position)")
     .eq("id", ordenId)
     .maybeSingle();
   if (!data) return null;
@@ -21,6 +22,7 @@ async function lineasDeOrden(ordenId: string): Promise<{ orgId: string; viva: bo
   return {
     orgId: data.organization_id as string,
     viva: data.status !== "cancelada",
+    at: data.created_at as string,
     people: ((data.customer_names as string[] | null) ?? []).map((p) => p.trim()).filter(Boolean),
     lineas: lineas.map((l) => ({ name: l.name, qty: Number(l.qty), unit_price_cop: Number(l.unit_price_cop), mods: l.mods, customer_name: l.customer_name ?? null, position: Number(l.position) })),
   };
@@ -126,7 +128,8 @@ async function puntosDeEnlace(row: QrRow): Promise<number> {
       .not("linea_position", "is", null);
     copas = new Set((data ?? []).filter((r) => mismoCliente(r.customer_name as string | null, row.customer_name)).map((r) => Number(r.linea_position)));
   }
-  return puntosDe(lineasDeQr(orden.lineas, row.customer_name, orden.people, { linea: row.linea_position, resto: row.con_resto }, copas));
+  // Premios Mi Pa'Yo: an order placed before 9 a. m. earns double.
+  return conMananaDoble(puntosDe(lineasDeQr(orden.lineas, row.customer_name, orden.people, { linea: row.linea_position, resto: row.con_resto }, copas)), orden.at);
 }
 const qrRow = (r: Record<string, unknown>): QrRow => ({
   id: (r.id as string | undefined) ?? undefined,
@@ -154,7 +157,7 @@ export async function cargarEnlace(codigo: string): Promise<EnlaceCalificacion> 
 }
 
 export type EnvioResult =
-  | { ok: true; puntos: number; total: number | null }
+  | { ok: true; puntos: number; total: number | null; bienvenida: number }
   | { ok: false; estado: EstadoEnlace };
 
 /**
@@ -179,7 +182,7 @@ export async function enviarCalificacion(codigo: string, input: { estrellas: num
     const { data: actual } = await db.from("calificaciones").select("usada_at, expira_at").eq("codigo", codigo).maybeSingle();
     return { ok: false, estado: estadoDe(actual ? { usada_at: actual.usada_at as string | null, expira_at: actual.expira_at as string } : null) };
   }
-  if (!input.instagram) return { ok: true, puntos: 0, total: null };
+  if (!input.instagram) return { ok: true, puntos: 0, total: null, bienvenida: 0 };
   let puntos = await puntosDeEnlace(qrRow(row));
   if (puntos > 0) {
     // Claim this drink's points on the row first: the 0058 unique indexes let
@@ -197,8 +200,17 @@ export async function enviarCalificacion(codigo: string, input: { estrellas: num
     console.error("[enviarCalificacion] puntos:", error);
     // Nothing was added to the customer: give the claim back.
     if (puntos > 0) await db.from("calificaciones").update({ puntos: 0 }).eq("id", row.id);
-    return { ok: true, puntos: 0, total: null };
+    return { ok: true, puntos: 0, total: null, bienvenida: 0 };
   }
   await db.from("calificaciones").update({ cliente_id: c.id }).eq("id", row.id);
-  return { ok: true, puntos, total: Number(c.puntos) };
+  // The first scan with an @ adds the welcome bonus (once per customer: 0086).
+  let total = Number(c.puntos);
+  let bienvenida = 0;
+  const { data: conBono, error: bonoErr } = await db.rpc("mover_puntos", { p_org: row.organization_id, p_cliente: c.id, p_puntos: BONO_BIENVENIDA, p_tipo: "bienvenida" });
+  if (bonoErr) console.error("[enviarCalificacion] bienvenida:", bonoErr);
+  else if (conBono !== null && conBono !== undefined) {
+    total = Number(conBono);
+    bienvenida = BONO_BIENVENIDA;
+  }
+  return { ok: true, puntos, total, bienvenida };
 }
