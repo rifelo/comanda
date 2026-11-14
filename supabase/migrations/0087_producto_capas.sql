@@ -2,7 +2,7 @@
 -- 0087 · Ficha técnica por capas
 -- =============================================================================
 -- Todas las bebidas se preparan con el mismo patrón de 8 capas, en orden fijo:
--- Vaso · Base dulce · Hielo · Cuerpo · Carga · Espuma · Topping · Cierre.
+-- Vaso · Fondo · Hielo · Cuerpo · Protagonista · Espuma · Decoración · Cierre.
 -- Cada capa tiene sus insumos (con la cantidad de esa capa: la leche se reparte
 -- entre el cuerpo y la espuma), una o varias operaciones («Tapar + Servir») y
 -- una nota verificable; varias capas seguidas pueden ir bajo una sola
@@ -23,7 +23,7 @@ do $$ begin
   alter table productos add constraint productos_capas_obj check (capas is null or jsonb_typeof(capas) = 'object');
 exception when duplicate_object then null; end $$;
 
-comment on column productos.capas is 'Ficha técnica por capas (vaso, base, hielo, cuerpo, carga, espuma, topping, cierre) con operaciones y grupos; ver lib/recetas/capas.ts.';
+comment on column productos.capas is 'Ficha técnica por capas (vaso, fondo, hielo, cuerpo, protagonista, espuma, decoracion, cierre) con operaciones y grupos; ver lib/recetas/capas.ts.';
 comment on column productos.referencia_visual is 'Cómo debe verse la bebida terminada (encabezado de la ficha técnica).';
 
 notify pgrst, 'reload schema';

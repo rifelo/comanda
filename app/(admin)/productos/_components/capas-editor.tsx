@@ -153,7 +153,7 @@ export function CapasEditor({ ficha }: { ficha: ProductoFicha }) {
 
       <section className="rounded-card border border-line p-4 flex flex-col gap-3">
         <span className="ui-title">Operación en conjunto</span>
-        <p className="m-0 ui-sub">Agrupa capas seguidas bajo una sola operación, por ejemplo «Licuar» de Base dulce a Carga.</p>
+        <p className="m-0 ui-sub">Agrupa capas seguidas bajo una sola operación, por ejemplo «Licuar» de Fondo a Protagonista.</p>
         {f.grupos.map((g, i) => (
           <div key={i} className="flex gap-2 items-center flex-wrap">
             <select className={inputCls} value={g.op} aria-label="Operación" onChange={(e) => setGrupo(i, { op: e.target.value as Operacion })}>
@@ -172,7 +172,7 @@ export function CapasEditor({ ficha }: { ficha: ProductoFicha }) {
           </div>
         ))}
         <div>
-          <Button size="sm" variant="ghost" onClick={() => setF((prev) => ({ ...prev, grupos: [...prev.grupos, { desde: "base", hasta: "carga", op: "licuar" }] }))}><Plus size={16} aria-hidden /> Agrupar capas</Button>
+          <Button size="sm" variant="ghost" onClick={() => setF((prev) => ({ ...prev, grupos: [...prev.grupos, { desde: "fondo", hasta: "protagonista", op: "licuar" }] }))}><Plus size={16} aria-hidden /> Agrupar capas</Button>
         </div>
       </section>
 

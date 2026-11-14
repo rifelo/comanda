@@ -1,10 +1,10 @@
 /**
  * Ficha técnica por capas (productos.capas, mig 0087). Every drink is built
- * in the same fixed order — Vaso · Base dulce · Hielo · Cuerpo · Carga ·
- * Espuma · Topping · Cierre — and a layer that does not apply is left out
+ * in the same fixed order — Vaso · Fondo · Hielo · Cuerpo · Protagonista ·
+ * Espuma · Decoración · Cierre — and a layer that does not apply is left out
  * (its number is kept, so the Milo frío goes 1 → 3). A layer may carry one or
  * more operations («Tapar + Servir») and a verifiable note; consecutive
- * layers may be grouped under one operation («Licuar» on Base … Carga).
+ * layers may be grouped under one operation («Licuar» on Fondo … Protagonista).
  *
  * Quantities of inventory items live on the layer line itself (the milk is
  * split 150 ml body + 20 ml foam), and `cuadreReceta` checks they add up to
@@ -17,12 +17,12 @@
 
 export const CAPAS = [
   { key: "vaso", label: "Vaso", n: 1 },
-  { key: "base", label: "Base dulce", n: 2 },
+  { key: "fondo", label: "Fondo", n: 2 },
   { key: "hielo", label: "Hielo", n: 3 },
   { key: "cuerpo", label: "Cuerpo", n: 4 },
-  { key: "carga", label: "Carga", n: 5 },
+  { key: "protagonista", label: "Protagonista", n: 5 },
   { key: "espuma", label: "Espuma", n: 6 },
-  { key: "topping", label: "Topping", n: 7 },
+  { key: "decoracion", label: "Decoración", n: 7 },
   { key: "cierre", label: "Cierre", n: 8 },
 ] as const;
 export type CapaKey = (typeof CAPAS)[number]["key"];
