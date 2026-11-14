@@ -218,15 +218,70 @@ export function capasDe(bloques: NonNullable<PosMenuItem["capas"]>, opciones: re
   return { capas, extras };
 }
 
+/** The 8 layers in order (number, name), for drinks whose recipe has no ficha yet. */
+const CAPAS_COMANDA = [
+  [1, "Vaso"], [2, "Fondo"], [3, "Hielo"], [4, "Cuerpo"], [5, "Protagonista"], [6, "Espuma"], [7, "Decoración"], [8, "Cierre"],
+] as const;
+/**
+ * Which layer a recipe line belongs to, by its name. Checked in this order:
+ * containers and lids first, then the specific ones (condensada before leche).
+ */
+export function capaDeInsumo(name: string): number {
+  const n = name.toLowerCase();
+  if (/\bvaso\b|etiqueta|botella 330/.test(n)) return 1;
+  if (/\btapa\b|pitillo|palito|panela|domo|servilleta|portavaso|aislador|protector de calor/.test(n)) return 8;
+  if (/^hielo/.test(n)) return 3;
+  if (/rich|crema para batir|whip|cápsula|chantilly/.test(n)) return 6;
+  if (/salsa de|canela|cacao|jugo de limón/.test(n)) return 7;
+  if (/condensada|syrup|jarabe|azúcar|esencia|chocolate/.test(n)) return 2;
+  if (/leche|\bagua\b|soda|ginger|tónica|canada dry/.test(n)) return 4;
+  return 5;
+}
+
+/**
+ * A drink without a ficha por capas still prints in the layer pattern: each
+ * recipe line (options applied) goes to its layer, numbered 1–8; blended
+ * drinks (pulpa, base de malteada, leche en polvo) get Fondo…Protagonista in a
+ * «Licuar» box.
+ */
+export function capasDesdeReceta(lineas: PosMenuItem["recipe"]): ComandaCapa[] {
+  const por = new Map<number, { cantidad?: string; texto: string }[]>();
+  const licuada = lineas.some((r) => /pulpa|base malteada|leche en polvo/i.test(r.name));
+  const caliente = !lineas.some((r) => /^hielo/i.test(r.name));
+  for (const r of lineas) {
+    const n = capaDeInsumo(r.name);
+    const unit = /^(und|unidad|unidades|etiqueta|sobre)$/i.test(r.unit) ? "" : r.unit;
+    const nota = n !== 1 && r.note?.trim() && !/^nombre, qr/i.test(r.note.trim()) ? ` · ${r.note.trim()}` : "";
+    const arr = por.get(n) ?? [];
+    arr.push({ cantidad: `${cantidad(r.qty)}${unit ? ` ${unit}` : ""}`, texto: `${limpio(r.name)}${nota}` });
+    por.set(n, arr);
+  }
+  const ops: Record<number, string> = {
+    1: "Pegar", 2: "Verter", 3: "Verter",
+    4: caliente && (por.get(4) ?? []).some((l) => /leche/i.test(l.texto)) ? "Texturizar" : "Verter",
+    5: (por.get(5) ?? []).some((l) => /caf[eé] okana|espresso/i.test(l.texto)) ? "Extraer + Verter" : licuada ? "Agregar" : "Disolver + Verter",
+    6: "Batir", 7: "Decorar", 8: "Tapar + Servir",
+  };
+  const out: ComandaCapa[] = [];
+  for (const [n, capa] of CAPAS_COMANDA) {
+    const lin = por.get(n);
+    if (!lin?.length) continue;
+    out.push({ n, capa, ops: licuada && n >= 2 && n <= 5 ? undefined : ops[n], lineas: lin, ...(licuada && n >= 2 && n <= 5 ? { grupo: "Licuar · hasta que no queden trozos" } : {}) });
+  }
+  return out.map((c) => (c.ops ? c : (({ ops: _o, ...rest }) => rest)(c)));
+}
+
 export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe" | "capas">, opciones: readonly OpcionReceta[] = []): RecetaInfo {
   if (!p.printsLabel) return { bebida: false, pasos: [] };
   if (p.capas?.length) {
     const { capas, extras } = capasDe(p.capas, opciones);
     return { bebida: true, pasos: [], capas, ...(extras.length ? { extras } : {}) };
   }
+  const receta = opciones.length ? conOpciones(p.recipe, opciones) : p.recipe;
+  if (receta.length) return { bebida: true, pasos: [], capas: capasDesdeReceta(receta) };
   const proporciones: ComandaProporcion[] = [];
   const envase: string[] = [];
-  for (const r of opciones.length ? conOpciones(p.recipe, opciones) : p.recipe) {
+  for (const r of receta) {
     if (/^etiqueta/i.test(r.unit) || /etiqueta/i.test(r.name)) continue;
     if (ENVASE.test(r.name)) { envase.push(limpio(r.name)); continue; }
     const unit = /^(und|unidad|unidades)$/i.test(r.unit) ? "" : r.unit;
