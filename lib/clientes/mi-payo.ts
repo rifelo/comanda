@@ -381,6 +381,6 @@ export interface Registro {
   /** The order was placed before 9 a. m.: its points counted double. */
   mananaDoble?: boolean;
   /** Badges this scan earned («Del madrugón», «Explorador»…). */
-  insignias?: string[];
+  insignias?: { id: string; nombre: string }[];
 }
 

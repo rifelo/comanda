@@ -199,12 +199,14 @@ body:has(.pyy) { background: #ffffff; }
 /* colección + insignias (2026-11-14) */
 .pyy-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .pyy-insignias, .pyy-album { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.pyy-insignias { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-.pyy-insignia { position: relative; border: var(--borde); border-radius: 18px; padding: 12px; display: flex; gap: 10px; align-items: flex-start; color: var(--tenue); }
+.pyy-insignias { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.pyy-insignia { position: relative; border: var(--borde); border-radius: 18px; padding: 14px 10px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; color: var(--tenue); }
 .pyy-insignia b { font-size: 14px; line-height: 18px; color: var(--cafe); }
-.pyy-insignia__sello { flex-shrink: 0; width: 38px; height: 38px; border-radius: 999px; border: 1px dashed var(--linea-c); display: flex; align-items: center; justify-content: center; }
+.pyy-insignia__sello { position: relative; flex-shrink: 0; width: 64px; height: 64px; }
+.pyy-insignia__sello img { display: block; width: 64px; height: 64px; filter: grayscale(1); opacity: 0.38; }
+.pyy-insignia__nivel { position: absolute; right: -4px; bottom: -4px; min-width: 24px; height: 24px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--cafe); color: var(--crema); font-family: var(--f-name); font-size: 11px; line-height: 24px; text-align: center; }
 .pyy-insignia--ganada { background: var(--pale); border-color: var(--pale); color: var(--cafe); }
-.pyy-insignia--ganada .pyy-insignia__sello { border: 0; background: var(--amarillo, #f1a900); color: var(--cafe); }
+.pyy-insignia--ganada .pyy-insignia__sello img { filter: drop-shadow(0 2px 3px rgba(80, 43, 28, 0.25)); opacity: 1; }
 .pyy-album { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 .pyy-carta { border: var(--borde); border-radius: 18px; padding: 12px 10px; min-height: 128px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 6px; text-align: center; background: var(--pale); border-color: var(--pale); }
 .pyy-carta__art { color: var(--cafe); }
@@ -212,7 +214,9 @@ body:has(.pyy) { background: #ffffff; }
 .pyy-carta--nueva { background: var(--blanco); border: 1px dashed var(--linea-c); }
 .pyy-carta--nueva .pyy-carta__art, .pyy-carta--nueva .pyy-carta__nombre { color: var(--tenue); opacity: 0.7; }
 .pyy-nueva-insignia { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; border-radius: 16px; background: var(--amarillo, #f1a900); color: var(--cafe); font-size: 14px; line-height: 19px; }
-.pyy-nueva-insignia span[aria-hidden] { font-size: 20px; }
+.pyy-nueva-insignia__arte { display: flex; flex-shrink: 0; }
+.pyy-nueva-insignia__arte img { display: block; width: 56px; height: 56px; }
+.pyy-nueva-insignia__arte img + img { margin-left: -14px; }
 .pyy-racha { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border-radius: 16px; background: var(--blanco); font-size: 14px; line-height: 19px; }
 .pyy-racha .pyy-n { font-size: 17px; }
 /* the streak in the top bar: the number inside a flame (2026-11-14) */

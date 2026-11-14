@@ -67,7 +67,7 @@ describe("insignias", () => {
   it("nuevasInsignias: lo ganado con el último escaneo, incluido un nivel nuevo", () => {
     const antes = insignias([e("Tinto", 9)], CARTA);
     const ahora = insignias([e("Tinto", 9), e("Tinto")], CARTA);
-    expect(nuevasInsignias(antes, ahora)).toContain("Cliente 10");
+    expect(nuevasInsignias(antes, ahora)).toContainEqual({ id: "cliente", nombre: "Cliente 10" });
     expect(nuevasInsignias(ahora, ahora)).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { coleccion, insignias, rachaDiasActual, type Insignia } from "@/lib/clientes/coleccion";
+import { artDeInsignia, coleccion, insignias, rachaDiasActual, type Insignia } from "@/lib/clientes/coleccion";
 import { cargarCarta, cargarCliente, cargarEscaneos, cargarPodios } from "@/lib/clientes/mi-payo-db";
 import { instagramDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
@@ -127,9 +127,9 @@ function BadgeItem({ b }: { b: Insignia }) {
   return (
     <li className={`pyy-insignia${b.ganada ? " pyy-insignia--ganada" : ""}`}>
       <span className="pyy-insignia__sello" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          {b.ganada ? <path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4l-5.2 2.7 1-5.8L3.5 9.2l5.9-.9z" /> : <path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" />}
-        </svg>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={artDeInsignia(b.id)} alt="" width={64} height={64} loading="lazy" />
+        {b.ganada && b.nivel !== undefined && <span className="pyy-insignia__nivel">{b.nivel}</span>}
       </span>
       <span className="pyy-col">
         <b>{b.nombre}</b>

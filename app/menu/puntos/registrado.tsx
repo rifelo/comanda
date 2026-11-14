@@ -49,9 +49,14 @@ export function Registrado({ r }: { r: Registro }) {
 
         {(r.insignias ?? []).length > 0 && (
           <a href={`${BASE}/coleccion`} className="pyy-nueva-insignia">
-            <span aria-hidden="true">★</span>
+            <span className="pyy-nueva-insignia__arte" aria-hidden="true">
+              {(r.insignias ?? []).slice(0, 2).map((i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i.id} src={`/menu/insignias/${i.id}.png`} alt="" width={56} height={56} />
+              ))}
+            </span>
             <span>
-              {(r.insignias ?? []).length === 1 ? "¡Nueva insignia!" : "¡Nuevas insignias!"} <strong>{(r.insignias ?? []).join(" · ")}</strong>
+              {(r.insignias ?? []).length === 1 ? "¡Nueva insignia!" : "¡Nuevas insignias!"} <strong>{(r.insignias ?? []).map((i) => i.nombre).join(" · ")}</strong>
             </span>
           </a>
         )}

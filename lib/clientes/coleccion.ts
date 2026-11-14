@@ -64,7 +64,12 @@ export interface Insignia {
   ganada: boolean;
   /** Toward the next level (or the badge itself when not yet earned). */
   progreso: { actual: number; meta: number } | null;
+  /** Level reached on a laddered badge (10, 25… / 3, 5…), shown on the sticker. */
+  nivel?: number;
 }
+
+/** The sticker of a badge (public/menu/insignias, one per badge id). */
+export const artDeInsignia = (id: string) => `/menu/insignias/${id}.png`;
 
 /** Longest run of consecutive Bogotá days with at least one drink. */
 export function rachaDiasMasLarga(es: ReadonlyArray<Escaneo>): number {
@@ -102,7 +107,7 @@ function escalera(id: string, valor: number, niveles: number[], nombre: (n: numb
   const sig = niveles.find((n) => valor < n) ?? null;
   const nivel = hechos[hechos.length - 1];
   if (nivel === undefined) return { id, nombre: nombre(niveles[0]), detalle: detalle(niveles[0]), ganada: false, progreso: { actual: valor, meta: niveles[0] } };
-  return { id, nombre: nombre(nivel), detalle: detalle(nivel), ganada: true, progreso: sig === null ? null : { actual: valor, meta: sig } };
+  return { id, nombre: nombre(nivel), detalle: detalle(nivel), ganada: true, progreso: sig === null ? null : { actual: valor, meta: sig }, nivel };
 }
 
 /** Every badge, earned ones first. `podios` are finished months only. */
@@ -147,9 +152,9 @@ export function insignias(es: ReadonlyArray<Escaneo>, carta: ReadonlyArray<Bebid
 }
 
 /** Badges earned with the last scan: earned now, not before it. */
-export function nuevasInsignias(antes: ReadonlyArray<Insignia>, ahora: ReadonlyArray<Insignia>): string[] {
+export function nuevasInsignias(antes: ReadonlyArray<Insignia>, ahora: ReadonlyArray<Insignia>): { id: string; nombre: string }[] {
   const ya = new Set(antes.filter((i) => i.ganada).map((i) => `${i.id}:${i.nombre}`));
-  return ahora.filter((i) => i.ganada && !ya.has(`${i.id}:${i.nombre}`)).map((i) => i.nombre);
+  return ahora.filter((i) => i.ganada && !ya.has(`${i.id}:${i.nombre}`)).map((i) => ({ id: i.id, nombre: i.nombre }));
 }
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
