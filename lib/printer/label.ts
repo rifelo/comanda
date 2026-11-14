@@ -88,9 +88,9 @@ export const CUP_LABEL_FONTS = ["/labels/fonts/delight-light.woff2"] as const;
 export const CUP_HANDS = ["/labels/mano-taza-asa.svg", "/labels/mano-taza.svg", "/labels/mano-platillo.svg"] as const;
 /** The PA'YO mark on the drink label. */
 export const CUP_ICON = "/labels/payo-icono.svg";
-/** Christmas line art (ElevenLabs, 2026-11): replaces the phrase on the name label in the season. */
+/** Christmas line art (ElevenLabs, 2026-11) for `arte`. Not printed since the owner kept the phrase (2026-11-14). */
 export const CUP_XMAS_ART = "/labels/navidad-reno.png";
-export const CUP_LABEL_ASSETS: readonly string[] = [...CUP_LABEL_FONTS, ...CUP_HANDS, CUP_ICON, CUP_XMAS_ART];
+export const CUP_LABEL_ASSETS: readonly string[] = [...CUP_LABEL_FONTS, ...CUP_HANDS, CUP_ICON];
 
 let cupFacesLoading: Promise<void> | null = null;
 function loadCupFaces(): Promise<void> {
@@ -733,7 +733,7 @@ export interface CupNameLabelInput {
  * line or two, whichever prints bigger), the phrase at the foot in Delight
  * Light and a hand of the brand in the bottom-right corner. In the Christmas
  * season a small Christmas tree sits next to «Pa'», snowflakes fall in the empty
- * top-right corner and the seasonal art (`arte`) takes the phrase's place.
+ * top-right corner. Seasonal art (`arte`), when passed, takes the phrase's place.
  */
 export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   const { ctx, W, H, toDevice } = cupCanvas();
@@ -792,21 +792,38 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   // phrase: bottom-anchored, 520 px wide (clear of the hand), up to 3 lines
   const frase = arte ? "" : input.frase.replace(/\s+/g, " ").trim();
   if (frase) {
-    let fs = 34;
+    // Delight Bold, not Light: the light strokes came out ~1 dot wide and faded on
+    // thermal paper. Starts bigger and shrinks only as far as the space needs.
+    const fraseFace = (px: number) => `bold ${px}px ${fraseFont()}`;
+    // a touch of air: at 1 bit the bold letters and words run together
+    setTracking(ctx, "0.8px");
+    (ctx as CanvasRenderingContext2D & { wordSpacing?: string }).wordSpacing = "5px";
+    let fs = 38;
     let lines: string[] = [];
-    for (; fs >= 22; fs -= 2) {
-      ctx.font = `300 ${fs}px ${delightLight()}`;
+    for (; fs >= 24; fs -= 2) {
+      ctx.font = fraseFace(fs);
       lines = wrap(ctx, frase, 520);
       if (lines.length <= 3 && B - lines.length * Math.round(fs * 1.12) >= nameBottom + 8) break;
     }
-    ctx.font = `300 ${fs}px ${delightLight()}`;
+    ctx.font = fraseFace(fs);
     lines = lines.slice(0, 3);
+    // balance the lines: the narrowest width that keeps the same line count,
+    // so no word is left alone on the last line («Hoy te toca un ratico pa' / ti.»)
+    if (lines.length > 1 && lines.length <= 3) {
+      for (let w = 510; w >= 260; w -= 10) {
+        const t = wrap(ctx, frase, w);
+        if (t.length !== lines.length) break;
+        lines = t;
+      }
+    }
     const lh = Math.round(fs * 1.12);
     let y = B - lines.length * lh;
     for (const l of lines) {
       ctx.fillText(l, L, y);
       y += lh;
     }
+    setTracking(ctx, "0px");
+    (ctx as CanvasRenderingContext2D & { wordSpacing?: string }).wordSpacing = "0px";
   }
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
