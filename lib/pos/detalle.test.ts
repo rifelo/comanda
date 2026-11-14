@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cancelMotivo, modLabels } from "./detalle";
+import { cancelMotivo, cupOptionsLine, modLabels } from "./detalle";
 import { cancelNotes } from "./pagos";
 
 describe("modLabels", () => {
@@ -23,5 +23,20 @@ describe("cancelMotivo", () => {
     expect(cancelMotivo(cancelNotes("sin azúcar", undefined, 0))).toBe("");
     expect(cancelMotivo("")).toBe("");
     expect(cancelMotivo(null)).toBe("");
+  });
+});
+
+describe("cupOptionsLine", () => {
+  const groups = {
+    leche: { options: [{ name: "Entera", delta: 0 }, { name: "Deslactosada", delta: 0 }] },
+    base: { options: [{ name: "En agua", delta: 0 }, { name: "En leche", delta: 1000 }] },
+    extras: { options: [{ name: "Shot extra", delta: 2000 }, { name: "Crema", delta: 1000 }] },
+  };
+  it("prints only what departs from the default, extras always", () => {
+    expect(cupOptionsLine({ leche: "Deslactosada", base: "En leche" }, groups)).toBe("Deslactosada · En leche");
+    expect(cupOptionsLine({ leche: "Entera", base: "En agua" }, groups)).toBe("");
+    expect(cupOptionsLine({ leche: "Entera", extras: ["Shot extra"] }, groups)).toBe("Shot extra");
+    expect(cupOptionsLine(undefined, groups)).toBe("");
+    expect(cupOptionsLine({ ido: "Algo" }, groups)).toBe("Algo");
   });
 });

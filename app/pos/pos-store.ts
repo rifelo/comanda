@@ -64,6 +64,7 @@ import {
 } from "./actions";
 import { nudge } from "./pos-live";
 import { printMessageLabel, printCupNameLabel, printCupDrinkLabel } from "@/lib/printer/serial";
+import { cupOptionsLine } from "@/lib/pos/detalle";
 import { comandaHace, getTicketState, printTicket, ticketsOn } from "@/lib/printer/tickets";
 import type { TicketDoc, TicketLine } from "@/lib/printer/ticket";
 import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
@@ -1951,7 +1952,7 @@ function printSaleLabels(
       if (j.kind === "cliente") {
         printCupNameLabel(j.name, fraseRespaldo(base + k));
         k += 1;
-      } else printCupDrinkLabel(j.item.name, urlCalificacion(codes.get(j)!));
+      } else printCupDrinkLabel(j.item.name, urlCalificacion(codes.get(j)!), cupOptionsLine(s.order[j.line]?.mods, s.catalog.modGroups));
     }
   }).catch((err) => console.error("[pos] label run failed:", err));
   return enlaces;
