@@ -938,7 +938,7 @@ export interface CupDrinkLabelInput {
 export const CUP_SCAN_HEAD = "Escanéame";
 
 /**
- * Label 2 of a cup: the PA'YO mark, the drink in the display face written
+ * Label 2 of a cup: the PA'YO mark (large), the drink in the display face written
  * as on the menu (as big as it fits, three lines at most), the options
  * chosen on this cup, and at the foot the call to scan — «Escanéame» with a
  * hand-drawn arrow to the QR. On the right, the
@@ -953,10 +953,10 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
   const colW = CUP_INNER_W - 28 - QR; // 318
   const qrLeft = 756 - CUP_PAD_X - QR;
 
-  // mark: 72 px wide
+  // mark: 124 px wide
   let y = T;
   if (input.icon && input.icon.width > 0 && input.icon.height > 0) {
-    const w = 72;
+    const w = 124;
     const h = (w * input.icon.height) / input.icon.width;
     const [dx, dy] = toDevice(L, T);
     ctx.save();
@@ -966,9 +966,9 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
     y = T + h + 10;
   }
 
-  // «Escanéame» at the foot in the display face, with a hand-drawn arrow to the QR
-  const headSize = 36;
-  ctx.font = `${headSize}px ${displayFont()}`;
+  // «Escanéame» at the foot in Delight Light (not the heavy display face), with a hand-drawn arrow to the QR
+  const headSize = 38;
+  ctx.font = `300 ${headSize}px ${delightLight()}`;
   const headTop = B - headSize - 4;
   ctx.fillText(CUP_SCAN_HEAD, L, headTop);
   const headW = ctx.measureText(CUP_SCAN_HEAD).width;
@@ -978,7 +978,7 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
   const y1 = headTop - 6;
   if (x1 - x0 > 40) {
     ctx.save();
-    ctx.lineWidth = 4.5;
+    ctx.lineWidth = 3.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
