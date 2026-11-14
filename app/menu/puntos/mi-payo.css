@@ -331,3 +331,63 @@ body:has(.pyy) { background: #ffffff; }
 .pyy-nueva-insignia__arte img { width: 84px; height: 84px; }
 .pyy-nueva-insignia__kicker { font-weight: 700; font-size: 13px; line-height: 17px; color: var(--amarillo); }
 .pyy-tres .pyy-tile--crema .pyy-n { font-size: clamp(18px, 5.4vw, 24px); line-height: 30px; }
+
+/* 2026-11-14 (owner): less yellow, wider spaces. The soft surface is crema, not
+   pale amarillo; amarillo stays for what must catch the eye (scan button,
+   progress, streak days). More air between and inside blocks. */
+.pyy { --pale: #f9f7e8; --riel: #ece6d3; }
+.pyy-top { padding: 20px 24px 12px; }
+.pyy-main { gap: 32px; padding: 12px 24px 48px; }
+.pyy-h1 { font-size: 28px; line-height: 34px; letter-spacing: -0.3px; }
+.pyy-h2 { font-size: 19px; line-height: 25px; }
+.pyy-card { padding: 24px; gap: 18px; border-radius: 24px; }
+.pyy-inicio { gap: 32px; }
+.pyy-lado, .pyy-bloque { gap: 32px; }
+.pyy-saludo { gap: 6px; }
+.pyy-saludo .pyy-h1 { font-size: 30px; line-height: 36px; }
+.pyy-hero { padding: 28px 24px; gap: 22px; border-radius: 28px; }
+.pyy-hero__txt { min-height: 170px; }
+.pyy-hero__meta { margin-top: 10px; }
+.pyy-hero__btn { min-height: 52px; }
+.pyy-prog__barra { background: var(--riel); }
+.pyy-proxima { padding: 20px; gap: 18px; border-radius: 24px; }
+.pyy-stickers { gap: 12px; }
+.pyy-stickers li { border-radius: 20px; }
+.pyy-ultimos .pyy-item { padding: 16px 0; }
+.pyy-seccion__head { margin-bottom: 4px; }
+.pyy-puntos { padding: 28px 24px; gap: 20px; border-radius: 28px; }
+.pyy-tile--crema { background: var(--blanco); border-color: var(--blanco); }
+.pyy-racha { background: var(--blanco); padding: 14px 16px; }
+.pyy-insignias { gap: 14px; }
+.pyy-insignia { padding: 20px 12px; gap: 10px; border-radius: 20px; }
+.pyy-insignia--ganada { background: var(--pale); border-color: var(--pale); }
+.pyy-album { gap: 14px; }
+.pyy-carta { padding: 16px 10px; min-height: 140px; border-radius: 20px; }
+.pyy-premio { padding: 20px; border-radius: 24px; }
+.pyy-premio__pts { background: var(--blanco); }
+.pyy-codigo { padding: 32px 24px; gap: 14px; border-radius: 28px; }
+.pyy-como { gap: 12px; }
+.pyy-como div { padding: 18px 10px; border-radius: 20px; }
+.pyy-nav__escanear .pyy-nav__ico, .pyy-nav__escanear[aria-current="page"] .pyy-nav__ico { background: var(--amarillo); }
+.pyy-yo { background: var(--cafe) !important; color: var(--crema) !important; }
+.pyy-yo b, .pyy-yo span { color: inherit !important; }
+@media (min-width: 960px) {
+  .pyy--app .pyy-nav { background: var(--blanco); padding: 32px 20px; gap: 8px; }
+  .pyy--app .pyy-top { padding: 32px clamp(32px, 5vw, 72px) 8px; }
+  .pyy--app .pyy-main { padding: 16px clamp(32px, 5vw, 72px) 72px; gap: 48px; }
+  .pyy-inicio { gap: 40px; }
+  .pyy-lado, .pyy-bloque { gap: 40px; }
+  .pyy-saludo .pyy-h1 { font-size: 40px; line-height: 46px; letter-spacing: -0.6px; }
+  .pyy-saludo .pyy-meta { font-size: 17px; line-height: 25px; }
+  .pyy-hero { padding: 48px; min-height: 400px; gap: 26px; border-radius: 32px; }
+  .pyy-hero__mano { right: 48px; top: 40px; height: 420px; }
+  .pyy-card { padding: 32px; border-radius: 28px; }
+  .pyy-proxima { padding: 28px; }
+}
+@media (min-width: 960px) {
+  .pyy-hero__txt { max-width: 50%; }
+  .pyy-hero__camino, .pyy-hero__regla { max-width: 50%; }
+  .pyy-semana { gap: 4px; }
+  .pyy-semana li > span:first-child { width: 28px; height: 28px; }
+  .pyy-lado .pyy-card { padding: 28px 24px; }
+}
