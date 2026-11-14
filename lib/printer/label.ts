@@ -953,10 +953,10 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
   const colW = CUP_INNER_W - 28 - QR; // 318
   const qrLeft = 756 - CUP_PAD_X - QR;
 
-  // mark: 124 px wide
+  // mark: 170 px wide
   let y = T;
   if (input.icon && input.icon.width > 0 && input.icon.height > 0) {
-    const w = 124;
+    const w = 170;
     const h = (w * input.icon.height) / input.icon.width;
     const [dx, dy] = toDevice(L, T);
     ctx.save();
