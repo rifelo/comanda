@@ -934,15 +934,14 @@ export interface CupDrinkLabelInput {
   opciones?: string;
 }
 
-/** The call to scan on the drink label: the cup speaks, then says what scanning does. */
+/** The call to scan on the drink label: the cup speaks, nothing else (owner, 2026-11-14). */
 export const CUP_SCAN_HEAD = "Escanéame";
-export const CUP_SCAN_BODY = "y este café suma en tu Mi Pa'Yo.";
 
 /**
  * Label 2 of a cup: the PA'YO mark, the drink in the display face written
  * as on the menu (as big as it fits, three lines at most), the options
  * chosen on this cup, and at the foot the call to scan — «Escanéame» with a
- * hand-drawn arrow to the QR and the reason under it. On the right, the
+ * hand-drawn arrow to the QR. On the right, the
  * cup's own QR as big as the label allows.
  */
 export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
@@ -967,21 +966,10 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
     y = T + h + 10;
   }
 
-  // the reason, bottom-anchored in Delight Light, lines balanced
-  ctx.font = `300 28px ${delightLight()}`;
-  let body = wrap(ctx, CUP_SCAN_BODY, colW);
-  for (let w = colW - 10; w >= 160 && body.length > 1; w -= 10) {
-    const t = wrap(ctx, CUP_SCAN_BODY, w);
-    if (t.length !== body.length) break;
-    body = t;
-  }
-  const bodyTop = B - body.length * 32;
-  body.forEach((l, i) => ctx.fillText(l, L, bodyTop + i * 32));
-
-  // «Escanéame» in the display face and a hand-drawn arrow to the QR
-  const headSize = 30;
+  // «Escanéame» at the foot in the display face, with a hand-drawn arrow to the QR
+  const headSize = 36;
   ctx.font = `${headSize}px ${displayFont()}`;
-  const headTop = bodyTop - headSize - 8;
+  const headTop = B - headSize - 4;
   ctx.fillText(CUP_SCAN_HEAD, L, headTop);
   const headW = ctx.measureText(CUP_SCAN_HEAD).width;
   const x0 = L + headW + 12;
