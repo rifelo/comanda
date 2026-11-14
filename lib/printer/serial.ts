@@ -504,7 +504,7 @@ function jobFor(spec: LabelSpec): Job {
       };
     case "vaso":
       return {
-        raster: async () => renderCupDrinkLabel({ drink: spec.drink, url: spec.url, icon: spec.iconSrc ? await loadImage(spec.iconSrc).catch(() => null) : null }),
+        raster: async () => renderCupDrinkLabel({ drink: spec.drink, url: spec.url, opciones: spec.opciones, icon: spec.iconSrc ? await loadImage(spec.iconSrc).catch(() => null) : null }),
         folio: VASO_FOLIO,
         name: spec.drink,
       };
@@ -585,8 +585,8 @@ export function printCupNameLabel(name: string, frase: string, rand: number = Ma
 export const CLIENTE_FOLIO = "CLIENTE";
 
 /** Cup label 2: the drink and this cup's one-use rating / points QR. */
-export function printCupDrinkLabel(drink: string, url: string): void {
-  submit({ kind: "vaso", drink, url, iconSrc: CUP_ICON });
+export function printCupDrinkLabel(drink: string, url: string, opciones = ""): void {
+  submit({ kind: "vaso", drink, url, iconSrc: CUP_ICON, ...(opciones ? { opciones } : {}) });
 }
 export const VASO_FOLIO = "VASO";
 

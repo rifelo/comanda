@@ -39,7 +39,7 @@ export const LabelSpecSchema = z.discriminatedUnion("kind", [
   /** Cup label 1 (2026-11): «Pa'» + name, the cup's phrase and a brand hand. */
   z.object({ kind: z.literal("cliente"), name: text(120), frase: text(300), handSrc: text(800).nullable().optional() }),
   /** Cup label 2 (2026-11): the drink and this cup's one-use QR. */
-  z.object({ kind: z.literal("vaso"), drink: text(120), url: text(120), iconSrc: text(800).nullable().optional() }),
+  z.object({ kind: z.literal("vaso"), drink: text(120), url: text(120), iconSrc: text(800).nullable().optional(), opciones: text(120).optional() }),
 ]);
 export type LabelSpec = z.infer<typeof LabelSpecSchema>;
 

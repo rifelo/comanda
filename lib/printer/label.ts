@@ -930,12 +930,20 @@ export interface CupDrinkLabelInput {
   url: string;
   /** The PA'YO mark, top-left. */
   icon?: Img | null;
+  /** What was chosen on this cup beyond the default («Deslactosada · En leche»); "" for none. */
+  opciones?: string;
 }
 
+/** The call to scan on the drink label: the cup speaks, then says what scanning does. */
+export const CUP_SCAN_HEAD = "Escanéame";
+export const CUP_SCAN_BODY = "y este café suma en tu Mi Pa'Yo.";
+
 /**
- * Label 2 of a cup: the PA'YO mark, the drink in the display face (two
- * lines at most), «Escanea y suma tus puntos.» at the foot and, on the
- * right, the cup's own QR as big as the label allows.
+ * Label 2 of a cup: the PA'YO mark, the drink in the display face written
+ * as on the menu (as big as it fits, three lines at most), the options
+ * chosen on this cup, and at the foot the call to scan — «Escanéame» with a
+ * hand-drawn arrow to the QR and the reason under it. On the right, the
+ * cup's own QR as big as the label allows.
  */
 export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
   const { ctx, W, H, toDevice } = cupCanvas();
@@ -944,11 +952,12 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
   const B = T + CUP_INNER_H;
   const QR = 330;
   const colW = CUP_INNER_W - 28 - QR; // 318
+  const qrLeft = 756 - CUP_PAD_X - QR;
 
-  // mark: 96 px wide
+  // mark: 72 px wide
   let y = T;
   if (input.icon && input.icon.width > 0 && input.icon.height > 0) {
-    const w = 96;
+    const w = 72;
     const h = (w * input.icon.height) / input.icon.width;
     const [dx, dy] = toDevice(L, T);
     ctx.save();
@@ -958,31 +967,67 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
     y = T + h + 10;
   }
 
-  // call to scan, bottom-anchored
-  ctx.font = `300 30px ${delightLight()}`;
-  const scan = wrap(ctx, "Escanea y suma tus puntos.", colW);
-  const scanTop = B - scan.length * 34;
-  scan.forEach((l, i) => ctx.fillText(l, L, scanTop + i * 34));
-
-  // drink: 48 px / 54, two lines; smaller (or three lines) only when it must
-  const drink = capitalizeWords(input.drink);
-  const room = scanTop - 12 - y;
-  let size = 48;
-  let lines: string[] = [];
-  for (const maxLines of [2, 3]) {
-    for (size = 48; size >= 26; size -= 2) {
-      ctx.font = `${size}px ${displayFont()}`;
-      lines = wrap(ctx, drink, colW);
-      const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-      if (lines.length <= maxLines && widest <= colW && lines.length * Math.round(size * 1.125) <= room) break;
-    }
-    if (size >= 26) break;
+  // the reason, bottom-anchored in Delight Light, lines balanced
+  ctx.font = `300 28px ${delightLight()}`;
+  let body = wrap(ctx, CUP_SCAN_BODY, colW);
+  for (let w = colW - 10; w >= 160 && body.length > 1; w -= 10) {
+    const t = wrap(ctx, CUP_SCAN_BODY, w);
+    if (t.length !== body.length) break;
+    body = t;
   }
-  if (size < 26) size = 26;
+  const bodyTop = B - body.length * 32;
+  body.forEach((l, i) => ctx.fillText(l, L, bodyTop + i * 32));
+
+  // «Escanéame» in the display face and a hand-drawn arrow to the QR
+  const headSize = 30;
+  ctx.font = `${headSize}px ${displayFont()}`;
+  const headTop = bodyTop - headSize - 8;
+  ctx.fillText(CUP_SCAN_HEAD, L, headTop);
+  const headW = ctx.measureText(CUP_SCAN_HEAD).width;
+  const x0 = L + headW + 12;
+  const y0 = headTop + headSize * 0.6;
+  const x1 = qrLeft - 6;
+  const y1 = headTop - 6;
+  if (x1 - x0 > 40) {
+    ctx.save();
+    ctx.lineWidth = 4.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.bezierCurveTo(x0 + 26, y0 + 10, x1 - 20, y1 + 26, x1, y1);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1 - 18, y1 - 2);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x1 - 6, y1 + 18);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // drink: as written on the menu, 64 px down to 28, three lines at most
+  const drink = input.drink.replace(/\s+/g, " ").trim();
+  const opciones = (input.opciones ?? "").replace(/\s+/g, " ").trim();
+  const room = headTop - 14 - y - (opciones ? 36 : 0);
+  let size = 64;
+  let lines: string[] = [];
+  for (; size >= 28; size -= 2) {
+    ctx.font = `${size}px ${displayFont()}`;
+    lines = wrap(ctx, drink, colW);
+    const widest = Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
+    if (lines.length <= 3 && widest <= colW && lines.length * Math.round(size * 1.08) <= room) break;
+  }
+  if (size < 28) size = 28;
   ctx.font = `${size}px ${displayFont()}`;
   lines = wrap(ctx, drink, colW).slice(0, 3).map((l) => fitOneLine(ctx, l, colW));
-  const lh = Math.round(size * 1.125);
+  const lh = Math.round(size * 1.08);
   lines.forEach((l, i) => ctx.fillText(l, L, y + i * lh));
+
+  // what was chosen on this cup, right under the drink
+  if (opciones) {
+    ctx.font = `300 28px ${delightLight()}`;
+    ctx.fillText(fitOneLine(ctx, opciones, colW), L, y + lines.length * lh + 6);
+  }
 
   // QR: whole dots per module, centred in the 330 × 386 box on the right
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -991,7 +1036,7 @@ export function renderCupDrinkLabel(input: CupDrinkLabelInput): LabelRaster {
   const box = Math.floor(QR * CUP_S);
   const mod = Math.max(2, Math.floor(box / n));
   const qrPx = n * mod;
-  const [bx, by] = toDevice(756 - CUP_PAD_X - QR, T);
+  const [bx, by] = toDevice(qrLeft, T);
   const qx = Math.round(bx + (box - qrPx) / 2);
   const qy = Math.round(by + (CUP_INNER_H * CUP_S - qrPx) / 2);
   ctx.fillStyle = "#000";
