@@ -31,6 +31,10 @@ import { syncOrderConsumption } from "@/lib/pos/stock";
 import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lineas";
 import { aplicarDescuentos, etiquetaDescuento, type DescuentoRegla } from "@/lib/pos/descuentos";
 import { calcularOrden, descuentosDeOrdenes, reglasAprobadas, repricearOrden } from "@/lib/pos/descuentos-db";
+import { normalizarInstagram } from "@/lib/calificaciones/calificaciones";
+import { motivoNoAplica, premioPorId } from "@/lib/clientes/premios";
+import { codigoValido } from "@/lib/clientes/premios-codigo";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resumirVentas, ventanaVentas, type ResumenVentas, type VentaOrden } from "@/lib/pos/ventas";
 
 // ── payloads (lines are re-priced in lib/pos/lineas.ts, never trusted) ──────
@@ -1545,4 +1549,100 @@ export async function anularDescuento(input: unknown): Promise<SimpleResult> {
   if (error) return { ok: false, error: "No se pudo retirar la solicitud." };
   if (!data?.length) return { ok: false, error: "La solicitud ya fue respondida." };
   return { ok: true };
+}
+
+
+// ─── Premios Mi Pa'Yo (mig 0086) ────────────────────────────────────────────
+
+const CanjearPremioSchema = z.object({
+  ordenId: z.string().uuid(),
+  productoId: z.string().uuid(),
+  premioId: z.enum(["clasico", "la-que-quieras"]),
+  instagram: z.string().trim().min(1).max(80),
+  codigo: z.string().trim().min(4).max(8),
+});
+export type CanjearPremioResult = { ok: true; quedan: number; etiqueta: string; total: number } | { ok: false; error: string };
+
+/**
+ * Redeem a Mi Pa'Yo reward on a saved, unpaid order: checks the 4-digit code
+ * the customer's phone shows, takes the points, and prices that drink at $0
+ * with an approved discount (no owner approval: the points pay for it). Any
+ * failure after the points were taken gives them back.
+ */
+export async function canjearPremio(input: unknown): Promise<CanjearPremioResult> {
+  const parsed = CanjearPremioSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Falta el @, el código o la bebida." };
+  const d = parsed.data;
+  const premio = premioPorId(d.premioId);
+  const instagram = normalizarInstagram(d.instagram);
+  if (!premio || !instagram) return { ok: false, error: "Ese usuario de Instagram no parece válido." };
+  const ctx = await requirePosContext();
+  const { supabase, organizationId: orgId } = ctx;
+  const producto = ctx.catalog.byId[d.productoId];
+  if (!producto) return { ok: false, error: "Esa bebida ya no está en el catálogo." };
+
+  const reglas = await reglasAprobadas(supabase, orgId, d.ordenId);
+  const calc = await calcularOrden(supabase, orgId, d.ordenId, ctx.catalog, reglas);
+  if (!calc || calc.orden.status !== "pendiente") return { ok: false, error: YA_NO_PENDIENTE };
+  const qty = calc.rows.filter((r) => r.kind === "item" && r.producto_id === d.productoId).reduce((n, r) => n + Number(r.qty), 0);
+  const noAplica = motivoNoAplica(premio, producto, qty);
+  if (noAplica) return { ok: false, error: noAplica };
+
+  const admin = createSupabaseAdminClient();
+  const { data: cliente } = await admin.from("clientes").select("id, puntos").eq("organization_id", orgId).eq("instagram", instagram).maybeSingle();
+  if (!cliente) return { ok: false, error: `No encontramos a @${instagram} en Mi Pa'Yo.` };
+  if (Number(cliente.puntos) < premio.puntos) return { ok: false, error: `@${instagram} tiene ${cliente.puntos} puntos; «${premio.titulo}» pide ${premio.puntos}.` };
+  if (!codigoValido(cliente.id as string, d.codigo)) return { ok: false, error: "El código no coincide o ya venció. Pídele que lo abra otra vez en Mi Pa'Yo › Premios." };
+  const { count } = await admin.from("puntos_movimientos").select("id", { count: "exact", head: true }).eq("orden_id", d.ordenId).eq("tipo", "canje");
+  if ((count ?? 0) > 0) return { ok: false, error: "Este pedido ya tiene un premio: uno por visita." };
+
+  const por = actorId(ctx);
+  const { data: quedan, error: moverErr } = await admin.rpc("mover_puntos", {
+    p_org: orgId, p_cliente: cliente.id, p_puntos: -premio.puntos, p_tipo: "canje",
+    p_premio: premio.titulo, p_orden: d.ordenId, p_producto: producto.name, p_por: por,
+  });
+  if (moverErr || quedan === null || quedan === undefined) {
+    if (moverErr?.code !== "P0001") console.error("[canjearPremio] puntos", moverErr);
+    return { ok: false, error: moverErr?.code === "P0001" ? "No le alcanzan los puntos." : "No se pudieron descontar los puntos. Intenta otra vez." };
+  }
+  const devolver = async () => {
+    const { error } = await admin.rpc("mover_puntos", { p_org: orgId, p_cliente: cliente.id, p_puntos: premio.puntos, p_tipo: "ajuste", p_premio: `Devolución: ${premio.titulo}`, p_orden: d.ordenId, p_por: por });
+    if (error) console.error("[canjearPremio] devolver", error);
+  };
+
+  const regla: DescuentoRegla = { tipo: "precio", productoId: d.productoId, precio: 0 };
+  const despues = await calcularOrden(supabase, orgId, d.ordenId, ctx.catalog, [...reglas, regla]);
+  const ahora = new Date().toISOString();
+  const row = {
+    organization_id: orgId,
+    orden_id: d.ordenId,
+    tipo: "precio" as const,
+    producto_id: d.productoId,
+    producto_nombre: producto.name,
+    precio_cop: 0,
+    porcentaje: null,
+    motivo: `Premio Mi Pa'Yo · ${premio.titulo} · @${instagram}`,
+    estado: "aprobado",
+    total_antes_cop: Number(calc.orden.total_cop),
+    total_despues_cop: despues?.total ?? null,
+    pedido_por: por,
+    pedido_por_nombre: ctx.person?.fullName ?? null,
+    resuelto_por: por,
+    resuelto_at: ahora,
+    respuesta: `Canje de ${premio.puntos} puntos`,
+  };
+  const { data: ins, error: insErr } = await supabase.from("orden_descuentos").insert(row).select("id").single();
+  if (insErr || !ins) {
+    console.error("[canjearPremio] descuento", insErr);
+    await devolver();
+    return { ok: false, error: "No se pudo aplicar el premio al pedido. Los puntos no se descontaron." };
+  }
+  const r = await repricearOrden(supabase, orgId, d.ordenId, ctx.catalog);
+  if (!r.ok) {
+    await supabase.from("orden_descuentos").update({ estado: "anulado", respuesta: "Canje fallido" }).eq("id", ins.id);
+    await devolver();
+    return { ok: false, error: `${r.error} Los puntos no se descontaron.` };
+  }
+  revalidatePath("/pos");
+  return { ok: true, quedan: Number(quedan), etiqueta: `${producto.name} · ${premio.titulo}`, total: r.total };
 }

@@ -1,4 +1,6 @@
 import type { Registro } from "@/lib/clientes/mi-payo";
+import { progreso } from "@/lib/clientes/premios";
+import { Progreso } from "./progreso";
 
 const BASE = "/menu/puntos";
 const MANO = "/menu/art/mano-taza.svg";
@@ -45,22 +47,50 @@ export function Registrado({ r }: { r: Registro }) {
           <span className="pyy-chip">+{r.puntos}</span>
         </div>
 
-        <div className="pyy-dos">
+        {(r.insignias ?? []).length > 0 && (
+          <a href={`${BASE}/coleccion`} className="pyy-nueva-insignia">
+            <span className="pyy-nueva-insignia__arte" aria-hidden="true">
+              {(r.insignias ?? []).slice(0, 2).map((i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i.id} src={`/menu/insignias/${i.id}.png`} alt="" width={56} height={56} />
+              ))}
+            </span>
+            <span>
+              <span className="pyy-nueva-insignia__kicker">{(r.insignias ?? []).length === 1 ? "¡Nueva insignia!" : "¡Nuevas insignias!"}</span>{" "}
+              <strong>{(r.insignias ?? []).map((i) => i.nombre).join(" · ")}</strong>
+            </span>
+          </a>
+        )}
+
+        {(r.mananaDoble || (r.bienvenida ?? 0) > 0) && (
+          <div className="pyy-bonos">
+            {r.mananaDoble && <span className="pyy-pill">Mañana doble · tus puntos van ×2</span>}
+            {(r.bienvenida ?? 0) > 0 && <span className="pyy-pill">+{r.bienvenida} de bienvenida</span>}
+          </div>
+        )}
+
+        <div className={(r.racha ?? 0) > 0 && ranking ? "pyy-tres" : "pyy-dos"}>
           <div className="pyy-tile pyy-tile--crema">
             <span className="pyy-meta--s">Puntos ahora</span>
-            <span className="pyy-n" style={{ fontSize: 26, lineHeight: "32px" }}>
-              {r.total.toLocaleString("es-CO")}
-            </span>
+            <span className="pyy-n">{r.total.toLocaleString("es-CO")}</span>
           </div>
-          {ranking && (
+          {(r.racha ?? 0) > 0 && (
             <div className="pyy-tile pyy-tile--crema">
-              <span className="pyy-meta--s">Ranking del mes</span>
-              <span className="pyy-n" style={{ fontSize: 26, lineHeight: "32px" }}>
-                {ranking}
+              <span className="pyy-meta--s">Racha</span>
+              <span className="pyy-n">
+                {r.racha} {r.racha === 1 ? "día" : "días"}
               </span>
             </div>
           )}
+          {ranking && (
+            <div className="pyy-tile pyy-tile--crema">
+              <span className="pyy-meta--s">Ranking del mes</span>
+              <span className="pyy-n">{ranking}</span>
+            </div>
+          )}
         </div>
+
+        <Progreso p={progreso(r.total)} puntos={r.total} />
 
         {r.veces > 1 && (
           <span style={{ fontSize: 14, lineHeight: "20px" }}>
@@ -72,8 +102,8 @@ export function Registrado({ r }: { r: Registro }) {
           <a href={`${BASE}/ranking`} className="pyy-btn pyy-btn--amarillo">
             Ver el ranking
           </a>
-          <a href={`${BASE}/insights`} className="pyy-btn">
-            Mis estadísticas
+          <a href={`${BASE}/coleccion`} className="pyy-btn">
+            Mi colección
           </a>
         </div>
       </div>
