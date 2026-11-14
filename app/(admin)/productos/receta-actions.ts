@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { recomputeProductoCost } from "@/lib/db/recetas";
 import { lineasParaDuplicar } from "@/lib/inventario/existencias";
+import { contextoCapas } from "@/lib/db/capas";
+import { armarFicha, cuadreReceta, fichaATexto, parseFichaCapas, validarFichaCapas } from "@/lib/recetas/capas";
 
 const DuplicarSchema = z.object({
   producto_id: z.string().uuid(),
@@ -220,4 +222,48 @@ export async function createReceta(input: unknown) {
   await recomputeProductoCost(supabase, orgId, producto_id);
   revalidate();
   return { ok: true };
+}
+
+const CapasSchema = z.object({
+  producto_id: z.string().uuid(),
+  /** Null clears the ficha (back to the text steps). */
+  capas: z.unknown().nullable(),
+  referencia_visual: z.string().max(300),
+});
+
+/**
+ * Save the ficha técnica por capas (0087). The text steps (preparacion) are
+ * regenerated from it, so the printed comanda reads the same layers.
+ */
+export async function guardarCapas(input: unknown): Promise<{ ok: true; descuadres: number } | { error: string }> {
+  const parsed = CapasSchema.safeParse(input);
+  if (!parsed.success) return { error: "Datos inválidos." };
+  const { profile, supabase } = await requireAdmin();
+  const orgId = profile.organization_id;
+  const { producto_id } = parsed.data;
+  const visual = parsed.data.referencia_visual.trim() || null;
+
+  const ficha = parsed.data.capas == null ? null : parseFichaCapas(parsed.data.capas);
+  let preparacion: string | null | undefined;
+  let descuadres = 0;
+  if (ficha) {
+    const err = validarFichaCapas(ficha);
+    if (err) return { error: err };
+    const ctx = await contextoCapas(supabase, orgId, producto_id);
+    for (const c of ficha.capas) for (const it of c.items) if (it.ing && !ctx.ings[it.ing]) return { error: "Un insumo de la ficha ya no existe. Quítalo y vuelve a guardar." };
+    descuadres = cuadreReceta(ficha, new Map(Object.entries(ctx.receta))).length;
+    preparacion = fichaATexto(armarFicha(ficha, new Map(Object.entries(ctx.ings)), ctx.tam16, new Set(ctx.sustituibles))).slice(0, 2000);
+  }
+
+  const { data, error } = await supabase
+    .from("productos")
+    .update({ capas: ficha, referencia_visual: visual, ...(preparacion !== undefined ? { preparacion } : {}) })
+    .eq("id", producto_id)
+    .eq("organization_id", orgId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Producto no encontrado." };
+  revalidatePath("/productos", "layout");
+  revalidatePath("/pos");
+  return { ok: true, descuadres };
 }

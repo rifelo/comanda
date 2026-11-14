@@ -1,4 +1,5 @@
 import type { OrderDescuento } from "./descuentos";
+import type { BloqueVista } from "@/lib/recetas/capas";
 // Shared POS types. These mirror the shapes the terminal UI consumes, but with
 // ids generalized to strings (real Supabase UUIDs) instead of the old demo
 // enum ids. The server adapter (lib/pos/catalog.ts) produces a PosCatalog; the
@@ -40,6 +41,12 @@ export interface PosMenuItem {
   prep: string[];
   /** Upsell line the barista says for this product (productos.recomendacion), null = none. */
   script: string | null;
+  /** Ficha técnica por capas (productos.capas, 0087), null = only the text steps. */
+  capas?: BloqueVista[] | null;
+  /** How the finished drink looks (productos.referencia_visual). */
+  visual?: string | null;
+  /** Price with the «16 oz» option, null when the product has no 16 oz. */
+  price16?: number | null;
 }
 
 /** "1. Muele…\n2. Extrae…" or plain lines → trimmed steps, numbering stripped. */

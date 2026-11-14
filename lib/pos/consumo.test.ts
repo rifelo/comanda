@@ -87,6 +87,26 @@ describe("modifier options with ingredients", () => {
     const out = explodeConsumption([{ kind: "item", productoId: "tinto", comboId: null, qty: 1, optionIds: ["deslac"] }], recipes, new Map(), options);
     expect(Object.fromEntries(out)).toEqual({ cafe: 8 });
   });
+  it("scales an ingredient when the row replaces it with itself (16 oz), after the swaps", () => {
+    const recipes = new Map([["latte", [
+      { ingredienteId: "entera", qty: 150 },
+      { ingredienteId: "cafe", qty: 18 },
+      { ingredienteId: "vaso12", qty: 1 },
+    ]]]);
+    const options = new Map([
+      ["deslac", [{ ingredienteId: "deslactosada", qty: 1, reemplazaId: "entera" }]],
+      ["16oz", [
+        { ingredienteId: "vaso16", qty: 1, reemplazaId: "vaso12" },
+        { ingredienteId: "entera", qty: 1.33, reemplazaId: "entera" },
+        { ingredienteId: "deslactosada", qty: 1.33, reemplazaId: "deslactosada" },
+      ]],
+    ]);
+    // The size picked first, the milk second: the order of the options does not matter.
+    const out = explodeConsumption([{ kind: "item", productoId: "latte", comboId: null, qty: 2, optionIds: ["16oz", "deslac"] }], recipes, new Map(), options);
+    expect(Object.fromEntries(out)).toEqual({ deslactosada: 399, cafe: 36, vaso16: 2 });
+    const solo16 = explodeConsumption([{ kind: "item", productoId: "latte", comboId: null, qty: 1, optionIds: ["16oz"] }], recipes, new Map(), options);
+    expect(Object.fromEntries(solo16)).toEqual({ entera: 199.5, cafe: 18, vaso16: 1 });
+  });
   it("reads the chosen options out of the mods json", () => {
     expect(modPairsOf({ g1: "a", g2: ["b", "c"], g3: "", g4: null })).toEqual([{ groupId: "g1", name: "a" }, { groupId: "g2", name: "b" }, { groupId: "g2", name: "c" }]);
     expect(modPairsOf(null)).toEqual([]);

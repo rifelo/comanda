@@ -858,3 +858,37 @@
   .app .pay-mixto .key { height: 72px; font-size: 26px; }
   .app .pay-mixto .bill { height: 56px; }
 }
+
+/* Ficha técnica por capas (ficha-capas.tsx, mig 0087) */
+.app .fc { display: flex; flex-direction: column; gap: 6px; }
+.app .fc-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 6px; }
+.app .fc-visual { flex: 1 1 320px; margin: 0; font-size: 15px; line-height: 1.4; }
+.app .fc-precios { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.app .fc-row { display: grid; grid-template-columns: 28px minmax(110px, 0.9fr) minmax(0, 1.5fr) minmax(0, 1.3fr); gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.35; }
+.app .fc-row.con16 { grid-template-columns: 28px minmax(110px, 0.9fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.3fr); }
+.app .fc-head { border-top: none; padding: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.app .fc-n { width: 26px; height: 26px; border-radius: 50%; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.app .fc-capa { display: flex; flex-direction: column; gap: 2px; }
+.app .fc-ops { font-size: 13px; font-weight: 600; color: var(--muted); }
+.app .fc-lin { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.app .fc-lin b { white-space: nowrap; }
+.app .fc-lin li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 12px; }
+.app .fc-lin.con16 { grid-column: 3 / 5; }
+.app .fc-lin.con16 li { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.app .fc-t { display: flex; justify-content: space-between; gap: 8px; }
+.app .fc-16 { color: var(--muted); }
+.app .fc-nota { font-size: 14px; color: var(--muted); }
+.app .fc-grupo { border: 2px solid var(--line); border-radius: 12px; padding: 0 10px; margin: 4px 0; }
+.app .fc-grupo-h { padding: 8px 0 6px; font-size: 14px; }
+.app .fc-grupo .fc-row:first-of-type { border-top: none; }
+@media (max-width: 1023px) {
+  .app .rc-body { align-items: stretch; }
+  .app .fc-head { display: none; }
+  .app .fc-row, .app .fc-row.con16 { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr); }
+  .app .fc-row .fc-lin { grid-column: 2 / -1; }
+  .app .fc-lin.con16 li { grid-template-columns: minmax(0, 1fr); }
+  .app .fc-16 { font-size: 14px; }
+  .app .fc-16::before { content: "16 oz: "; }
+  .app .fc-16.igual { display: none; }
+  .app .fc-row .fc-nota { grid-column: 2 / -1; }
+}
