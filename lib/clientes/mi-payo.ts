@@ -380,5 +380,7 @@ export interface Registro {
   bienvenida?: number;
   /** The order was placed before 9 a. m.: its points counted double. */
   mananaDoble?: boolean;
+  /** Badges this scan earned («Del madrugón», «Explorador»…). */
+  insignias?: string[];
 }
 

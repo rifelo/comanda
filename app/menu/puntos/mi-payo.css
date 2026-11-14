@@ -26,7 +26,7 @@ body:has(.pyy) { background: #ffffff; }
 .pyy-main { flex-grow: 1; display: flex; flex-direction: column; gap: 16px; padding: 10px 22px 24px; }
 
 /* bottom tabs: icons, the current one on a pale circle */
-.pyy-nav { position: sticky; bottom: 0; z-index: 5; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 10px 24px calc(14px + env(safe-area-inset-bottom)); border-top: var(--borde); background: var(--blanco); }
+.pyy-nav { position: sticky; bottom: 0; z-index: 5; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); border-top: var(--borde); background: var(--blanco); }
 .pyy-nav a { display: flex; align-items: center; justify-content: center; min-height: 44px; }
 .pyy-nav a span { width: 40px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
 .pyy-nav a[aria-current="page"] span { background: var(--pale); }
@@ -195,3 +195,23 @@ body:has(.pyy) { background: #ffffff; }
 .pyy-codigo { background: var(--pale); border-radius: 24px; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .pyy-codigo__n { font-family: var(--f-name); font-size: 56px; line-height: 60px; letter-spacing: 0.12em; }
 .pyy-reglas { margin: 0; padding-left: 18px; font-size: 13px; line-height: 19px; color: var(--tenue); display: flex; flex-direction: column; gap: 4px; }
+
+/* colección + insignias (2026-11-14) */
+.pyy-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pyy-insignias, .pyy-album { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pyy-insignias { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pyy-insignia { position: relative; border: var(--borde); border-radius: 18px; padding: 12px; display: flex; gap: 10px; align-items: flex-start; color: var(--tenue); }
+.pyy-insignia b { font-size: 14px; line-height: 18px; color: var(--cafe); }
+.pyy-insignia__sello { flex-shrink: 0; width: 38px; height: 38px; border-radius: 999px; border: 1px dashed var(--linea-c); display: flex; align-items: center; justify-content: center; }
+.pyy-insignia--ganada { background: var(--pale); border-color: var(--pale); color: var(--cafe); }
+.pyy-insignia--ganada .pyy-insignia__sello { border: 0; background: var(--amarillo, #f1a900); color: var(--cafe); }
+.pyy-album { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+.pyy-carta { border: var(--borde); border-radius: 18px; padding: 12px 10px; min-height: 128px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 6px; text-align: center; background: var(--pale); border-color: var(--pale); }
+.pyy-carta__art { color: var(--cafe); }
+.pyy-carta__nombre { font-weight: 700; font-size: 13px; line-height: 16px; overflow-wrap: anywhere; }
+.pyy-carta--nueva { background: var(--blanco); border: 1px dashed var(--linea-c); }
+.pyy-carta--nueva .pyy-carta__art, .pyy-carta--nueva .pyy-carta__nombre { color: var(--tenue); opacity: 0.7; }
+.pyy-nueva-insignia { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; border-radius: 16px; background: var(--amarillo, #f1a900); color: var(--cafe); font-size: 14px; line-height: 19px; }
+.pyy-nueva-insignia span[aria-hidden] { font-size: 20px; }
+.pyy-racha { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border-radius: 16px; background: var(--blanco); font-size: 14px; line-height: 19px; }
+.pyy-racha .pyy-n { font-size: 17px; }

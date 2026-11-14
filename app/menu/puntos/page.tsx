@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { PESOS_POR_PUNTO } from "@/lib/calificaciones/calificaciones";
 import { inicio, miles, puestoDe } from "@/lib/clientes/mi-payo";
-import { cargarCliente, cargarEscaneos, cargarRanking } from "@/lib/clientes/mi-payo-db";
+import { cargarCarta, cargarCliente, cargarEscaneos, cargarRanking } from "@/lib/clientes/mi-payo-db";
+import { coleccion } from "@/lib/clientes/coleccion";
 import { instagramDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
 import { HORA_FIN_MANANA, progreso } from "@/lib/clientes/premios";
@@ -25,7 +26,12 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
 
   const org = menuContent.organizationId;
   const cliente = await cargarCliente(org, instagram);
-  const [escaneos, filasMes] = cliente ? await Promise.all([cargarEscaneos(org, cliente.id), cargarRanking(org, "mes")]) : [[], []];
+  const [escaneos, filasMes, carta] = await Promise.all([
+    cliente ? cargarEscaneos(org, cliente.id) : Promise.resolve([]),
+    cliente ? cargarRanking(org, "mes") : Promise.resolve([]),
+    cargarCarta(org),
+  ]);
+  const col = coleccion(escaneos, carta.carta, carta.fuera);
   const r = inicio(escaneos);
   const puesto = puestoDe(filasMes, cliente?.id ?? null);
 
@@ -52,6 +58,19 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
       </section>
 
       <Progreso p={progreso(cliente?.puntos ?? 0)} puntos={cliente?.puntos ?? 0} />
+
+      <a href={`${BASE}/coleccion`} className="pyy-fav">
+        <div className="pyy-fav__art" aria-hidden="true" style={{ alignItems: "center" }}>
+          <Icono tab="coleccion" size={26} />
+        </div>
+        <div className="pyy-col" style={{ flexGrow: 1 }}>
+          <span className="pyy-fav__nombre">Mi colección</span>
+          <span className="pyy-meta">
+            {col.bebidas} {col.bebidas === 1 ? "bebida" : "bebidas"} · {col.descubiertas} de {col.carta} de la carta descubiertas
+          </span>
+        </div>
+        <Flecha />
+      </a>
 
       {cliente && escaneos.length > 0 ? (
         <>

@@ -47,6 +47,15 @@ export function Registrado({ r }: { r: Registro }) {
           <span className="pyy-chip">+{r.puntos}</span>
         </div>
 
+        {(r.insignias ?? []).length > 0 && (
+          <a href={`${BASE}/coleccion`} className="pyy-nueva-insignia">
+            <span aria-hidden="true">★</span>
+            <span>
+              {(r.insignias ?? []).length === 1 ? "¡Nueva insignia!" : "¡Nuevas insignias!"} <strong>{(r.insignias ?? []).join(" · ")}</strong>
+            </span>
+          </a>
+        )}
+
         {(r.mananaDoble || (r.bienvenida ?? 0) > 0) && (
           <div className="pyy-bonos">
             {r.mananaDoble && <span className="pyy-pill">Mañana doble · tus puntos van ×2</span>}
@@ -83,8 +92,8 @@ export function Registrado({ r }: { r: Registro }) {
           <a href={`${BASE}/ranking`} className="pyy-btn pyy-btn--amarillo">
             Ver el ranking
           </a>
-          <a href={`${BASE}/insights`} className="pyy-btn">
-            Mis estadísticas
+          <a href={`${BASE}/coleccion`} className="pyy-btn">
+            Mi colección
           </a>
         </div>
       </div>

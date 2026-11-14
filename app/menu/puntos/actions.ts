@@ -18,7 +18,7 @@ export async function entrar(_prev: EntrarState, form: FormData): Promise<Entrar
   await recordarInstagram(instagram);
   // Back to the screen that asked for the @ (the landing's Ranking, Insights…).
   const ir = String(form.get("ir") ?? "");
-  redirect(["insights", "ranking", "escanear", "premios"].includes(ir) ? `/menu/puntos/${ir}` : "/menu/puntos");
+  redirect(["insights", "ranking", "escanear", "premios", "coleccion"].includes(ir) ? `/menu/puntos/${ir}` : "/menu/puntos");
 }
 
 export async function salir(): Promise<void> {

@@ -8,10 +8,11 @@ export const LOGO = "/brand/payo-mark.svg";
 /** The hand holding a cup (brand illustration). */
 export const MANO = "/menu/art/mano-taza.svg";
 
-type Tab = "inicio" | "insights" | "ranking" | "escanear";
+type Tab = "inicio" | "coleccion" | "insights" | "ranking" | "escanear";
 
 const ICONOS: Record<Tab, React.ReactNode> = {
   inicio: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />,
+  coleccion: <path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v6H4zM13 14h7v6h-7z" />,
   insights: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
   ranking: <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3" />,
   escanear: <QrPath />,
@@ -38,6 +39,7 @@ export function Icono({ tab, size = 22 }: { tab: Tab; size?: number }) {
 
 const TABS: { tab: Tab; label: string; href: string }[] = [
   { tab: "inicio", label: "Inicio", href: BASE },
+  { tab: "coleccion", label: "Mi colección", href: `${BASE}/coleccion` },
   { tab: "insights", label: "Estadísticas", href: `${BASE}/insights` },
   { tab: "ranking", label: "Ranking", href: `${BASE}/ranking` },
   { tab: "escanear", label: "Escanear", href: `${BASE}/escanear` },
