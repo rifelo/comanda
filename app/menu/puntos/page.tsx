@@ -4,6 +4,8 @@ import { inicio, miles, puestoDe } from "@/lib/clientes/mi-payo";
 import { cargarCliente, cargarEscaneos, cargarRanking } from "@/lib/clientes/mi-payo-db";
 import { instagramDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
+import { HORA_FIN_MANANA, progreso } from "@/lib/clientes/premios";
+import { Progreso } from "./progreso";
 import { salir } from "./actions";
 import { Entrar } from "./puntos-client";
 import { BASE, Icono, MANO, Pantalla } from "./shell";
@@ -39,13 +41,17 @@ export default async function PuntosPage({ searchParams }: { searchParams: Promi
             {puesto ? `#${puesto} del mes` : "Ranking"}
           </a>
         </div>
-        <span className="pyy-puntos__txt">Cada ${PESOS_POR_PUNTO.toLocaleString("es-CO")} que compras es 1 punto.</span>
+        <span className="pyy-puntos__txt">
+          Cada ${PESOS_POR_PUNTO.toLocaleString("es-CO")} que compras es 1 punto. Antes de las {HORA_FIN_MANANA}:00 a. m., el doble.
+        </span>
         <a href={`${BASE}/escanear`} className="pyy-accion">
           <Icono tab="escanear" size={18} />
           <span>Escanear mi vaso</span>
           <Flecha />
         </a>
       </section>
+
+      <Progreso p={progreso(cliente?.puntos ?? 0)} puntos={cliente?.puntos ?? 0} />
 
       {cliente && escaneos.length > 0 ? (
         <>

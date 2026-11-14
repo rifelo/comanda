@@ -5,7 +5,7 @@ import { leerCodigo, normalizarInstagram, type EstadoEnlace } from "@/lib/califi
 import { enviarCalificacion } from "@/lib/calificaciones/calificaciones-db";
 import type { Registro } from "@/lib/clientes/mi-payo";
 import { registroDeEscaneo } from "@/lib/clientes/mi-payo-db";
-import { recordarInstagram } from "@/lib/clientes/sesion";
+import { marcarVerificado, recordarInstagram } from "@/lib/clientes/sesion";
 
 const Schema = z.object({
   codigo: z.string().max(20),
@@ -16,7 +16,7 @@ const Schema = z.object({
 });
 
 export type CalificarResult =
-  | { ok: true; puntos: number; total: number | null; registro: Registro | null }
+  | { ok: true; puntos: number; total: number | null; bienvenida: number; registro: Registro | null }
   | { ok: false; error: string; estado?: EstadoEnlace };
 
 /**
@@ -37,6 +37,8 @@ export async function calificar(input: unknown): Promise<CalificarResult> {
   if (!instagram) return { ...res, registro: null };
   // This phone now opens «Mi Pa'Yo» as this @ (cafepayo.com/puntos).
   await recordarInstagram(instagram);
-  const registro = res.puntos > 0 && res.total !== null ? await registroDeEscaneo(codigo, instagram, res.total) : null;
+  // A real cup QR paid to this @ from this phone: it may redeem rewards (premios).
+  if (res.total !== null) await marcarVerificado(instagram);
+  const registro = res.puntos > 0 && res.total !== null ? await registroDeEscaneo(codigo, instagram, res.total, res.bienvenida) : null;
   return { ...res, registro };
 }

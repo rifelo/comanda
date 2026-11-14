@@ -1,4 +1,6 @@
 import type { Registro } from "@/lib/clientes/mi-payo";
+import { progreso } from "@/lib/clientes/premios";
+import { Progreso } from "./progreso";
 
 const BASE = "/menu/puntos";
 const MANO = "/menu/art/mano-taza.svg";
@@ -45,6 +47,13 @@ export function Registrado({ r }: { r: Registro }) {
           <span className="pyy-chip">+{r.puntos}</span>
         </div>
 
+        {(r.mananaDoble || (r.bienvenida ?? 0) > 0) && (
+          <div className="pyy-bonos">
+            {r.mananaDoble && <span className="pyy-pill">Mañana doble · tus puntos van ×2</span>}
+            {(r.bienvenida ?? 0) > 0 && <span className="pyy-pill">+{r.bienvenida} de bienvenida</span>}
+          </div>
+        )}
+
         <div className="pyy-dos">
           <div className="pyy-tile pyy-tile--crema">
             <span className="pyy-meta--s">Puntos ahora</span>
@@ -61,6 +70,8 @@ export function Registrado({ r }: { r: Registro }) {
             </div>
           )}
         </div>
+
+        <Progreso p={progreso(r.total)} puntos={r.total} />
 
         {r.veces > 1 && (
           <span style={{ fontSize: 14, lineHeight: "20px" }}>

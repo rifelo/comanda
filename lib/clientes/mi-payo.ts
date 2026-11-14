@@ -376,5 +376,9 @@ export interface Registro {
   esFavorito: boolean;
   /** "8:42 a. m." */
   hora: string;
+  /** Welcome bonus added with this scan (0 = none). */
+  bienvenida?: number;
+  /** The order was placed before 9 a. m.: its points counted double. */
+  mananaDoble?: boolean;
 }
 

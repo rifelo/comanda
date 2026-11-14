@@ -180,3 +180,18 @@ body:has(.pyy) { background: #ffffff; }
   .pyy-hoja { animation: pyy-sube .4s ease-out both; }
   @keyframes pyy-sube { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 }
+
+/* premios (2026-11-14): progress toward the next reward, the ladder, the redemption code */
+.pyy-prog { border: var(--borde); border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.pyy-prog__head .pyy-n { font-size: 17px; }
+.pyy-prog__barra { height: 12px; border-radius: 999px; background: var(--pale); overflow: hidden; }
+.pyy-prog__barra span { display: block; height: 100%; min-width: 12px; border-radius: 999px; background: var(--amarillo, #f1a900); }
+.pyy-prog__ir { align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center; font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+.pyy-bonos { display: flex; flex-wrap: wrap; gap: 8px; }
+.pyy-premio { border: var(--borde); border-radius: 20px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; }
+.pyy-premio--listo { background: var(--pale); border-color: var(--pale); }
+.pyy-premio__pts { flex-shrink: 0; width: 60px; height: 60px; border-radius: 16px; background: var(--blanco); border: var(--borde); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pyy-premio__pts .pyy-n { font-size: 20px; line-height: 22px; }
+.pyy-codigo { background: var(--pale); border-radius: 24px; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.pyy-codigo__n { font-family: var(--f-name); font-size: 56px; line-height: 60px; letter-spacing: 0.12em; }
+.pyy-reglas { margin: 0; padding-left: 18px; font-size: 13px; line-height: 19px; color: var(--tenue); display: flex; flex-direction: column; gap: 4px; }

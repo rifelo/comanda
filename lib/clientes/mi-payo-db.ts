@@ -1,6 +1,7 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { lineasDeQr, type ItemCalificado } from "@/lib/calificaciones/calificaciones";
+import { esMananaDoble } from "./premios";
 import { desdeDe, hora, pesos, porBebida, puestoDe, type Escaneo, type FilaRanking, type Registro, type PeriodoRanking, type Tipo } from "./mi-payo";
 
 // Loaders for «Mi Pa'Yo» (cafepayo.com/puntos). Service role: the page has no
@@ -118,7 +119,7 @@ export async function cargarRanking(orgId: string, periodo: PeriodoRanking, ahor
  * total and the move in this month's ranking. Null when anything is missing
  * (the page then falls back to the plain thank-you).
  */
-export async function registroDeEscaneo(codigo: string, instagram: string, total: number): Promise<Registro | null> {
+export async function registroDeEscaneo(codigo: string, instagram: string, total: number, bienvenida = 0): Promise<Registro | null> {
   try {
     const db = createSupabaseAdminClient();
     const { data: row } = await db.from("calificaciones").select("id, organization_id, customer_name, cliente_id, puntos").eq("codigo", codigo).maybeSingle();
@@ -151,6 +152,8 @@ export async function registroDeEscaneo(codigo: string, instagram: string, total
       veces: lista.find((d) => d.nombre === bebida)?.veces ?? 1,
       esFavorito: lista[0]?.nombre === bebida,
       hora: hora(new Date().toISOString()),
+      bienvenida,
+      mananaDoble: esMananaDoble(mio.at),
     };
   } catch (e) {
     console.error("[registroDeEscaneo]", e);
