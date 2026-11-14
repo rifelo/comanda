@@ -215,3 +215,13 @@ body:has(.pyy) { background: #ffffff; }
 .pyy-nueva-insignia span[aria-hidden] { font-size: 20px; }
 .pyy-racha { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border-radius: 16px; background: var(--blanco); font-size: 14px; line-height: 19px; }
 .pyy-racha .pyy-n { font-size: 17px; }
+/* the streak in the top bar: the number inside a flame (2026-11-14) */
+.pyy-top__yo { flex-grow: 1; }
+.pyy-fuego { position: relative; flex-shrink: 0; width: 48px; height: 56px; display: block; }
+.pyy-fuego svg { position: absolute; inset: 0; width: 48px; height: 56px; }
+.pyy-fuego__llama { fill: #f28a1e; }
+.pyy-fuego__brasa { fill: var(--amarillo, #f1a900); }
+.pyy-fuego__n { position: absolute; left: 0; right: 0; top: 30px; text-align: center; font-family: var(--f-name); font-size: 17px; line-height: 18px; color: var(--cafe); }
+.pyy-fuego--apagado .pyy-fuego__llama { fill: none; stroke: var(--linea-c); stroke-width: 1.6; }
+.pyy-fuego--apagado .pyy-fuego__brasa { fill: var(--pale); }
+.pyy-fuego--apagado .pyy-fuego__n { color: var(--tenue); }

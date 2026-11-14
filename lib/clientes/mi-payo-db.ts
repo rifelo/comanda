@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { lineasDeQr, type ItemCalificado } from "@/lib/calificaciones/calificaciones";
 import { esMananaDoble } from "./premios";
@@ -11,7 +12,8 @@ import { desdeDe, hora, pesos, porBebida, puestoDe, type Escaneo, type FilaRanki
 
 export interface Cliente { id: string; instagram: string; puntos: number; desde: string }
 
-export async function cargarCliente(orgId: string, instagram: string): Promise<Cliente | null> {
+/** Cached per request: the header (streak) and the page ask for the same customer. */
+export const cargarCliente = cache(async function cargarCliente(orgId: string, instagram: string): Promise<Cliente | null> {
   const { data, error } = await createSupabaseAdminClient()
     .from("clientes")
     .select("id, instagram, puntos, created_at")
@@ -20,7 +22,7 @@ export async function cargarCliente(orgId: string, instagram: string): Promise<C
     .maybeSingle();
   if (error) throw error;
   return data ? { id: data.id as string, instagram: data.instagram as string, puntos: Number(data.puntos), desde: data.created_at as string } : null;
-}
+});
 
 const FRIAS = new Set(["Frío", "Jugos", "Kombucha", "Envasadas"]);
 const tipoDe = (categoria: string | null | undefined): Tipo => (categoria === "Caliente" ? "caliente" : categoria && FRIAS.has(categoria) ? "frio" : "comida");
@@ -28,7 +30,7 @@ const tipoDe = (categoria: string | null | undefined): Tipo => (categoria === "C
 type Linea = { position: number; name: string; qty: number; unit_price_cop: number; customer_name: string | null; producto_id: string | null };
 
 /** Every paid QR of a customer, with what it paid for (as the order stands now). */
-export async function cargarEscaneos(orgId: string, clienteId: string): Promise<Escaneo[]> {
+export const cargarEscaneos = cache(async function cargarEscaneos(orgId: string, clienteId: string): Promise<Escaneo[]> {
   const db = createSupabaseAdminClient();
   const { data: qrs, error } = await db
     .from("calificaciones")
@@ -86,7 +88,7 @@ export async function cargarEscaneos(orgId: string, clienteId: string): Promise<
       items: snap.map((i, k) => ({ nombre: i.name, qty: Number(i.qty) || 1, valor: k === 0 ? puntos * 1000 : 0, tipo: tipoPorNombre.get(i.name) ?? "comida" })),
     };
   });
-}
+});
 
 /** Points and paid QRs per customer in a period (by order time). */
 export async function cargarRanking(orgId: string, periodo: PeriodoRanking, ahora: Date = new Date()): Promise<FilaRanking[]> {
