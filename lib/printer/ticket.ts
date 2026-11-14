@@ -266,9 +266,10 @@ export function capasDesdeReceta(lineas: PosMenuItem["recipe"]): ComandaCapa[] {
   for (const [n, capa] of CAPAS_COMANDA) {
     const lin = por.get(n);
     if (!lin?.length) continue;
-    out.push({ n, capa, ops: licuada && n >= 2 && n <= 5 ? undefined : ops[n], lineas: lin, ...(licuada && n >= 2 && n <= 5 ? { grupo: "Licuar · hasta que no queden trozos" } : {}) });
+    const enLicuadora = licuada && n >= 2 && n <= 5;
+    out.push(enLicuadora ? { n, capa, lineas: lin, grupo: "Licuar · hasta que no queden trozos" } : { n, capa, ops: ops[n], lineas: lin });
   }
-  return out.map((c) => (c.ops ? c : (({ ops: _o, ...rest }) => rest)(c)));
+  return out;
 }
 
 export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe" | "capas">, opciones: readonly OpcionReceta[] = []): RecetaInfo {
