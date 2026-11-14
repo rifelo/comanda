@@ -35,7 +35,7 @@ import {
 } from "./transport";
 import type { LabelSpec } from "./spec";
 import { energiaLine } from "@/lib/pos/drink-label";
-import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderCalificaLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput, renderCupNameLabel, renderCupDrinkLabel, CUP_HANDS, CUP_ICON } from "./label";
+import { renderOrderLabel, renderTestLabel, type LabelRaster, type OrderLabelInput, renderInstagramLabel, renderCalificaLabel, renderMessageLabel, renderImageLabel, renderDrinkLabel, ensureLabelFonts, type DrinkLabelInput, renderCupNameLabel, renderCupDrinkLabel, CUP_HANDS, CUP_ICON, CUP_XMAS_ART, navidad } from "./label";
 
 // ── store ───────────────────────────────────────────────────────
 export type PrinterStatus =
@@ -498,7 +498,15 @@ function jobFor(spec: LabelSpec): Job {
     case "cliente":
       return {
         // The hand is decoration: without it the label still names the cup.
-        raster: async () => renderCupNameLabel({ name: spec.name, frase: spec.frase, hand: spec.handSrc ? await loadImage(spec.handSrc).catch(() => null) : null }),
+        // In the Christmas season the reindeer takes the phrase's place (decoration too: without it the phrase prints).
+        raster: async () => {
+          const now = new Date();
+          const [hand, arte] = await Promise.all([
+            spec.handSrc ? loadImage(spec.handSrc).catch(() => null) : null,
+            navidad(now) ? loadImage(CUP_XMAS_ART).catch(() => null) : null,
+          ]);
+          return renderCupNameLabel({ name: spec.name, frase: spec.frase, hand, now, arte });
+        },
         folio: CLIENTE_FOLIO,
         name: spec.name.trim() || "Pa' ti",
       };

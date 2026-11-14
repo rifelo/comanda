@@ -88,7 +88,9 @@ export const CUP_LABEL_FONTS = ["/labels/fonts/delight-light.woff2"] as const;
 export const CUP_HANDS = ["/labels/mano-taza-asa.svg", "/labels/mano-taza.svg", "/labels/mano-platillo.svg"] as const;
 /** The PA'YO mark on the drink label. */
 export const CUP_ICON = "/labels/payo-icono.svg";
-export const CUP_LABEL_ASSETS: readonly string[] = [...CUP_LABEL_FONTS, ...CUP_HANDS, CUP_ICON];
+/** Christmas line art (ElevenLabs, 2026-11): replaces the phrase on the name label in the season. */
+export const CUP_XMAS_ART = "/labels/navidad-reno.png";
+export const CUP_LABEL_ASSETS: readonly string[] = [...CUP_LABEL_FONTS, ...CUP_HANDS, CUP_ICON, CUP_XMAS_ART];
 
 let cupFacesLoading: Promise<void> | null = null;
 function loadCupFaces(): Promise<void> {
@@ -722,14 +724,16 @@ export interface CupNameLabelInput {
   hand?: Img | null;
   /** The print date (decides the season's decoration); defaults to now. */
   now?: Date;
+  /** Seasonal line art drawn in the phrase space instead of the phrase. */
+  arte?: Img | null;
 }
 
 /**
  * Label 1 of a cup: «Pa'» and the name in the display face (the name on one
  * line or two, whichever prints bigger), the phrase at the foot in Delight
  * Light and a hand of the brand in the bottom-right corner. In the Christmas
- * season a small Christmas tree sits next to «Pa'» and snowflakes fall in the empty
- * top-right corner.
+ * season a small Christmas tree sits next to «Pa'», snowflakes fall in the empty
+ * top-right corner and the seasonal art (`arte`) takes the phrase's place.
  */
 export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   const { ctx, W, H, toDevice } = cupCanvas();
@@ -768,10 +772,26 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   ctx.font = `${size}px ${displayFont()}`;
   nombre.lines.forEach((l, i) => ctx.fillText(fitOneLine(ctx, l, NAME_W), L, T + 48 + i * nameLh));
 
+  const nameBottom = T + 48 + (nombre.lines.length - 1) * nameLh + Math.round(size * 1.05);
+
+  // seasonal art: in the phrase's place, bottom-left, as big as the space
+  // under the name allows (520 px wide at most, clear of the hand)
+  const arte = input.arte && input.arte.width > 0 && input.arte.height > 0 ? input.arte : null;
+  if (arte) {
+    const maxH = B - (nameBottom + 12);
+    const k = Math.min(520 / arte.width, maxH / arte.height);
+    const w = arte.width * k;
+    const h = arte.height * k;
+    const [dx, dy] = toDevice(L, B - h);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    stampMark(ctx, arte, dx, dy, Math.round(w * CUP_S), Math.round(h * CUP_S), HAND_THRESHOLD);
+    ctx.restore();
+  }
+
   // phrase: bottom-anchored, 520 px wide (clear of the hand), up to 3 lines
-  const frase = input.frase.replace(/\s+/g, " ").trim();
+  const frase = arte ? "" : input.frase.replace(/\s+/g, " ").trim();
   if (frase) {
-    const nameBottom = T + 48 + (nombre.lines.length - 1) * nameLh + Math.round(size * 1.05);
     let fs = 34;
     let lines: string[] = [];
     for (; fs >= 22; fs -= 2) {
