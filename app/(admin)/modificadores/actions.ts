@@ -127,3 +127,24 @@ export async function removeOption(input: unknown) {
   revalidate();
   return { ok: true };
 }
+
+const PreparacionSchema = z.object({
+  option_id: z.string().uuid(),
+  preparacion: z.string().trim().max(600, "Máximo 600 caracteres."),
+});
+
+/** The option's preparation steps (0089), one per line; empty clears them. */
+export async function setOptionPreparacion(input: unknown) {
+  const parsed = PreparacionSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  const { profile, supabase } = await requireAdmin();
+  const { error } = await supabase
+    .from("modifier_options")
+    .update({ preparacion: parsed.data.preparacion || null })
+    .eq("id", parsed.data.option_id)
+    .eq("organization_id", profile.organization_id);
+  if (error) return { error: error.message };
+  revalidate();
+  revalidatePath("/pos");
+  return { ok: true };
+}

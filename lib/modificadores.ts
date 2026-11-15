@@ -11,6 +11,8 @@ export interface ModOption {
   name: string;
   price_delta_cop: number;
   available: boolean;
+  /** Preparation steps, one per line (0089); printed with the option's lines. */
+  preparacion: string | null;
 }
 
 export interface ModGroup {

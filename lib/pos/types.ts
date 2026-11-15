@@ -85,6 +85,8 @@ export interface PosModOption {
    * recipe's amount × qty (Deslactosada: leche deslactosada for the entera).
    */
   recipe?: Array<{ name: string; qty: number; unit: string; reemplaza?: string }>;
+  /** How to prepare it (Cold foam de matcha), one step per line; the comanda prints it. */
+  prep?: string;
 }
 
 export interface PosModGroup {
