@@ -214,3 +214,40 @@ describe("comanda con ficha por capas", () => {
     expect(html).toContain("+ <span class=\"b\">20 ml</span> Syrup de vainilla Monin");
   });
 });
+
+describe("cold foam como opción", () => {
+  const recipe = [
+    { name: "Vaso PET 12 oz", qty: 1, unit: "und", note: null },
+    { name: "Hielo", qty: 110, unit: "g", note: null },
+    { name: "Leche entera Gran Vía (bolsa 900 ml)", qty: 150, unit: "ml", note: null },
+    { name: "Cafe Okana", qty: 18, unit: "g", note: null },
+  ];
+  const foam = {
+    opcion: "Cold foam de matcha",
+    recipe: [
+      { name: "Crema para batir Rich's Whip Topping (litro)", qty: 50, unit: "ml" },
+      { name: "Leche entera Gran Vía (bolsa 900 ml)", qty: 20, unit: "ml" },
+      { name: "Syrup de vainilla Monin (botella 750 ml)", qty: 10, unit: "ml" },
+      { name: "Matcha concentrado en polvo (bolsa 125 g)", qty: 2, unit: "g" },
+    ],
+    prep: "1. Disolver el matcha\n2. Congelador 5 min",
+  };
+
+  it("keeps the foam's own milk apart from the drink's milk", () => {
+    const out = conOpciones(recipe, [foam]);
+    expect(out.filter((r) => /leche entera/i.test(r.name)).map((r) => r.qty)).toEqual([150, 20]);
+  });
+
+  it("prints every foam line in Espuma, with the option's steps as its note", () => {
+    const r = recetaDe({ printsLabel: true, prep: [], recipe, capas: undefined }, [foam]);
+    const espuma = r.capas?.find((c) => c.n === 6);
+    expect(espuma?.lineas.map((l) => l.texto)).toEqual([
+      "Crema para batir Rich's Whip Topping · Cold foam de matcha",
+      "Leche entera Gran Vía · Cold foam de matcha",
+      "Syrup de vainilla Monin · Cold foam de matcha",
+      "Matcha concentrado en polvo · Cold foam de matcha",
+    ]);
+    expect(espuma?.nota).toBe("Cold foam de matcha: Disolver el matcha → Congelador 5 min");
+    expect(r.capas?.find((c) => c.n === 4)?.lineas).toEqual([{ cantidad: "150 ml", texto: "Leche entera Gran Vía" }]);
+  });
+});

@@ -160,7 +160,8 @@ export async function getPosCatalog({
         .filter((o) => o.available)
         .map((o) => {
           const recipe = optRecipe.get(o.id);
-          return { name: o.name, delta: o.price_delta_cop, ...(recipe ? { recipe } : {}) };
+          const prep = o.preparacion?.trim();
+          return { name: o.name, delta: o.price_delta_cop, ...(recipe ? { recipe } : {}), ...(prep ? { prep } : {}) };
         }),
     };
   }

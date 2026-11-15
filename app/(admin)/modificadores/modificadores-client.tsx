@@ -3,7 +3,8 @@
 /**
  * Modificadores — customization groups + options. Real CRUD: create/delete a
  * group, toggle "required", add/remove options, and toggle an option's
- * availability. Each option carries a price delta.
+ * availability. Each option carries a price delta and, optionally, its
+ * preparation steps (Cold foam de matcha), which the comanda prints.
  */
 import { PageHeader } from "@/components/ui/top-bar";
 import * as React from "react";
@@ -17,6 +18,7 @@ import {
   addOption,
   setOptionAvailable,
   removeOption,
+  setOptionPreparacion,
 } from "./actions";
 
 function deltaLabel(delta: number): string {
@@ -27,6 +29,14 @@ function deltaLabel(delta: number): string {
 function OptionRow({ option, onError }: { option: ModGroup["options"][number]; onError: (m: string | null) => void }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
+  const [prepOpen, setPrepOpen] = React.useState(false);
+  const [prep, setPrep] = React.useState(option.preparacion ?? "");
+  const savePrep = () =>
+    start(async () => {
+      const r = await setOptionPreparacion({ option_id: option.id, preparacion: prep });
+      if (r?.error) onError(r.error);
+      else { setPrepOpen(false); router.refresh(); }
+    });
   const toggle = () =>
     start(async () => {
       const r = await setOptionAvailable({ option_id: option.id, available: !option.available });
@@ -40,7 +50,8 @@ function OptionRow({ option, onError }: { option: ModGroup["options"][number]; o
       else router.refresh();
     });
   return (
-    <div className="flex justify-between" style={{ alignItems: "center", padding: "7px 14px", borderBottom: "1px dashed var(--rule-soft)", opacity: pending ? 0.5 : 1 }}>
+    <div style={{ borderBottom: "1px dashed var(--rule-soft)", opacity: pending ? 0.5 : 1 }}>
+    <div className="flex justify-between" style={{ alignItems: "center", padding: "7px 14px" }}>
       <div className="flex" style={{ alignItems: "center", gap: 10 }}>
         <button
           type="button"
@@ -55,9 +66,30 @@ function OptionRow({ option, onError }: { option: ModGroup["options"][number]; o
         <span style={{ fontSize: 13, fontWeight: 500, color: option.available ? "var(--ink)" : "var(--muted)" }}>{option.name}</span>
       </div>
       <div className="flex" style={{ alignItems: "center", gap: 12 }}>
+        <button type="button" onClick={() => setPrepOpen((v) => !v)} aria-expanded={prepOpen} className="text-muted" style={{ background: "none", border: "none", fontSize: 11, cursor: "pointer", padding: 0, minHeight: 0, textDecoration: "underline" }}>
+          {option.preparacion ? "Preparación ✓" : "+ Preparación"}
+        </button>
         <span className="cmd-num" style={{ fontSize: 12, color: option.price_delta_cop > 0 ? "var(--ink)" : "var(--muted)" }}>{deltaLabel(option.price_delta_cop)}</span>
         <button type="button" onClick={remove} disabled={pending} aria-label={`Quitar ${option.name}`} className="text-muted" style={{ background: "none", border: "none", fontSize: 13, cursor: "pointer", padding: 0, minHeight: 0 }}>✕</button>
       </div>
+    </div>
+    {prepOpen ? (
+      <div style={{ padding: "0 14px 10px 58px", display: "grid", gap: 6 }}>
+        <textarea
+          aria-label={`Preparación ${option.name}`}
+          value={prep}
+          onChange={(e) => setPrep(e.target.value)}
+          rows={4}
+          maxLength={600}
+          placeholder={"Un paso por línea. Sale en la comanda junto a sus insumos."}
+          style={{ border: "1px solid var(--rule)", padding: "6px 8px", fontSize: 12, color: "var(--ink)", background: "var(--paper)", fontFamily: "inherit", resize: "vertical" }}
+        />
+        <div className="flex" style={{ gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="cmd-btn ghost sm" disabled={pending} onClick={() => { setPrep(option.preparacion ?? ""); setPrepOpen(false); }}>Cancelar</button>
+          <button type="button" className="cmd-btn sm" disabled={pending} onClick={savePrep}>{pending ? "…" : "Guardar"}</button>
+        </div>
+      </div>
+    ) : null}
     </div>
   );
 }

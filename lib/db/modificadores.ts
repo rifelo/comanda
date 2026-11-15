@@ -18,7 +18,7 @@ export async function getModificadores(
       .order("name"),
     supabase
       .from("modifier_options")
-      .select("id, group_id, name, price_delta_cop, available, position")
+      .select("id, group_id, name, price_delta_cop, available, position, preparacion")
       .eq("organization_id", organizationId)
       .order("position")
       .order("name"),
@@ -31,6 +31,7 @@ export async function getModificadores(
       name: o.name as string,
       price_delta_cop: Number(o.price_delta_cop),
       available: o.available as boolean,
+      preparacion: (o.preparacion as string | null) ?? null,
     };
     const arr = byGroup.get(o.group_id as string) ?? [];
     arr.push(row);

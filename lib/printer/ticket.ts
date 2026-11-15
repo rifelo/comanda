@@ -132,7 +132,12 @@ export interface OpcionReceta {
   /** The option's name («En leche», «16 oz»), noted on the lines it changes. */
   opcion: string;
   recipe: ReadonlyArray<{ name: string; qty: number; unit: string; reemplaza?: string }>;
+  /** Its preparation steps (modifier_options.preparacion), one per line. */
+  prep?: string;
 }
+
+/** An option that is a foam of its own (Cold foam, Cold foam de matcha): its lines stay apart, in Espuma. */
+const ES_FOAM = /foam|espuma/i;
 
 /**
  * The base recipe with the chosen options applied (modifier_option_receta):
@@ -158,7 +163,8 @@ export function conOpciones(
         }
         continue;
       }
-      const hit = out.find((r) => r.name === x.name);
+      // A foam keeps its own lines (its 20 ml of leche is not the drink's leche).
+      const hit = ES_FOAM.test(o.opcion) ? undefined : out.find((r) => r.name === x.name);
       if (hit) {
         hit.qty += x.qty;
         hit.note = [hit.note, o.opcion].filter(Boolean).join(" · ");
@@ -191,6 +197,7 @@ export function capasDe(bloques: NonNullable<PosMenuItem["capas"]>, opciones: re
         extras.push({ cantidad: `${cantidad(x.qty)}${unit ? ` ${unit}` : ""}`, nombre: limpio(x.name), nota: o.opcion });
       }
     }
+    if (o.prep?.trim()) extras.push({ cantidad: "", nombre: pasosEnLinea(o.prep), nota: o.opcion });
   }
   const capas: ComandaCapa[] = [];
   for (const b of bloques) {
@@ -244,12 +251,17 @@ export function capaDeInsumo(name: string): number {
  * drinks (pulpa, base de malteada, leche en polvo) get Fondo…Protagonista in a
  * «Licuar» box.
  */
-export function capasDesdeReceta(lineas: PosMenuItem["recipe"]): ComandaCapa[] {
+/** «a\nb\nc» → «a → b → c», for a one-line nota on the comanda. */
+function pasosEnLinea(prep: string): string {
+  return prep.split(/\n+/).map((s) => s.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean).join(" → ");
+}
+
+export function capasDesdeReceta(lineas: PosMenuItem["recipe"], opciones: readonly OpcionReceta[] = []): ComandaCapa[] {
   const por = new Map<number, { cantidad?: string; texto: string }[]>();
   const licuada = lineas.some((r) => /pulpa|base malteada|leche en polvo/i.test(r.name));
   const caliente = !lineas.some((r) => /^hielo/i.test(r.name));
   for (const r of lineas) {
-    const n = capaDeInsumo(r.name);
+    const n = ES_FOAM.test(r.note ?? "") ? 6 : capaDeInsumo(r.name);
     const unit = /^(und|unidad|unidades|etiqueta|sobre)$/i.test(r.unit) ? "" : r.unit;
     const nota = n !== 1 && r.note?.trim() && !/^nombre, qr/i.test(r.note.trim()) ? ` · ${r.note.trim()}` : "";
     const arr = por.get(n) ?? [];
@@ -269,6 +281,12 @@ export function capasDesdeReceta(lineas: PosMenuItem["recipe"]): ComandaCapa[] {
     const enLicuadora = licuada && n >= 2 && n <= 5;
     out.push(enLicuadora ? { n, capa, lineas: lin, grupo: "Licuar · hasta que no queden trozos" } : { n, capa, ops: ops[n], lineas: lin });
   }
+  // An option's preparation goes on the layer where its lines landed.
+  for (const o of opciones) {
+    if (!o.prep?.trim()) continue;
+    const c = out.find((x) => x.lineas.some((l) => l.texto.includes(`· ${o.opcion}`)));
+    if (c) c.nota = [c.nota, `${o.opcion}: ${pasosEnLinea(o.prep)}`].filter(Boolean).join(" · ");
+  }
   return out;
 }
 
@@ -279,7 +297,7 @@ export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe" 
     return { bebida: true, pasos: [], capas, ...(extras.length ? { extras } : {}) };
   }
   const receta = opciones.length ? conOpciones(p.recipe, opciones) : p.recipe;
-  if (receta.length) return { bebida: true, pasos: [], capas: capasDesdeReceta(receta) };
+  if (receta.length) return { bebida: true, pasos: [], capas: capasDesdeReceta(receta, opciones) };
   const proporciones: ComandaProporcion[] = [];
   const envase: string[] = [];
   for (const r of receta) {
@@ -310,7 +328,7 @@ export function recetasDelMenu(menu: readonly PosMenuItem[], modGroups: Readonly
     for (const name of mods) {
       for (const gid of p.mods) {
         const o = modGroups[gid]?.options.find((x) => x.name === name);
-        if (o?.recipe?.length || (o && ES_16.test(o.name.trim()))) { opciones.push({ opcion: o.name, recipe: o.recipe ?? [] }); break; }
+        if (o?.recipe?.length || o?.prep || (o && ES_16.test(o.name.trim()))) { opciones.push({ opcion: o.name, recipe: o.recipe ?? [], ...(o.prep ? { prep: o.prep } : {}) }); break; }
       }
     }
     return recetaDe(p, opciones);
