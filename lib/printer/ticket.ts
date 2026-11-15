@@ -119,7 +119,7 @@ export function cantidad(n: number): string {
 /** What goes around the drink, not in it: its own short line on the comanda. */
 const ENVASE = /\b(vaso|tapa|domo|pitillo|aislador|sleeve|servilleta|mezclador|cuchar|bolsa para|portavaso)/i;
 /** «Leche entera Gran Vía (bolsa 900 ml)» → «Leche entera Gran Vía»; «Cafe Okana» → «Café Okana». */
-const limpio = (name: string) => name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\bcafe\b/i, "Café").replace(/\s+/g, " ").trim();
+export const limpio = (name: string) => name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\bcafe\b/i, "Café").replace(/\s+/g, " ").trim();
 
 /**
  * The comanda's view of a catalog product: for a drink (the ones that get
