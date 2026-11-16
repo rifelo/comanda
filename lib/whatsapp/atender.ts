@@ -6,6 +6,7 @@ import { enBurbujas, responderWhatsapp, type CambiosFicha, type FichaCliente, ty
 import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA } from "./probadores";
+import { ESPERA_LIMITE_MS, esLimitePorNumero, ultimaSesion } from "./sesion";
 import { enlazarClaves, esTelefono, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
 /**
@@ -149,7 +150,7 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
 }
 
 /** Pause between bubbles, like someone typing: longer for longer messages. */
-const pausaEscribiendo = (texto: string) => Math.min(4_000, 700 + texto.length * 30);
+const pausaEscribiendo = (texto: string) => Math.min(5_000, 1_500 + texto.length * 30);
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const CAMPOS_FICHA = "id, wa_id, user_id, username, trato, habitual, entrega, pago, notas";
@@ -231,12 +232,16 @@ export async function responder(p: Pendiente): Promise<void> {
   const desde = new Date(Date.now() - HISTORIAL_HORAS * 60 * 60 * 1000).toISOString();
   const { data: filas } = await db()
     .from("whatsapp_mensajes")
-    .select("autor, texto, wa_message_id")
+    .select("autor, texto, wa_message_id, created_at")
     .eq("conversacion_id", p.conversacionId)
     .gte("created_at", desde)
     .order("created_at", { ascending: false })
     .limit(HISTORIAL_MAX);
-  const turnos = ((filas ?? []) as { autor: Turno["autor"]; texto: string; wa_message_id: string | null }[]).reverse();
+  const turnos = ultimaSesion(
+    ((filas ?? []) as { autor: Turno["autor"]; texto: string; wa_message_id: string | null; created_at: string }[])
+      .reverse()
+      .map((f) => ({ ...f, at: new Date(f.created_at) })),
+  );
   // A later message of the burst arrived: its own run answers all of them.
   const ultimoCliente = [...turnos].reverse().find((t) => t.autor === "cliente");
   if (ultimoCliente?.wa_message_id !== p.messageId) return;
@@ -311,27 +316,39 @@ export async function responder(p: Pendiente): Promise<void> {
     },
   });
   if (res.reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, res.reaccion);
-  const burbujas = enBurbujas(res.texto);
-  for (const [i, burbuja] of burbujas.entries()) {
-    if (i > 0) {
-      // «escribiendo…» again, then a pause the size of the message.
-      await marcarLeidoEscribiendo(p.phoneNumberId, p.messageId);
-      await dormir(pausaEscribiendo(burbuja));
-    }
+  // WhatsApp lets a business send ~1 message every 6 s to the same person:
+  // bubbles go out with a typing-sized pause, and on a 429 we wait and retry
+  // once with whatever is left merged into one message, so nothing is lost.
+  const cola = enBurbujas(res.texto);
+  if (res.reaccion && cola.length) await dormir(1_500);
+  for (let i = 0; cola.length; i++) {
+    const burbuja = cola.shift()!;
+    if (i > 0) await dormir(pausaEscribiendo(burbuja));
     let waId: string | null = null;
     let fallo: string | null = null;
+    let texto = burbuja;
     try {
-      waId = await enviarTexto(p.phoneNumberId, p.waId, burbuja);
+      waId = await enviarTexto(p.phoneNumberId, p.waId, texto);
     } catch (e) {
       fallo = (e instanceof Error ? e.message : String(e)).slice(0, 500);
-      console.error("[whatsapp] envío:", fallo);
+      if (esLimitePorNumero(fallo)) {
+        await dormir(ESPERA_LIMITE_MS);
+        texto = [burbuja, ...cola.splice(0)].join("\n\n");
+        try {
+          waId = await enviarTexto(p.phoneNumberId, p.waId, texto);
+          fallo = null;
+        } catch (e2) {
+          fallo = (e2 instanceof Error ? e2.message : String(e2)).slice(0, 500);
+        }
+      }
+      if (fallo) console.error("[whatsapp] envío:", fallo);
     }
     await guardarMensaje({
       organization_id: n.organization_id,
       conversacion_id: p.conversacionId,
       wa_message_id: waId,
       autor: "agente",
-      texto: burbuja,
+      texto,
       orden_id: i === 0 ? ordenId : null,
       ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
     });
