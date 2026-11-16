@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { modPairsOf } from "@/lib/pos/consumo";
 import { estadoDe, lineasDeQr, puntosDe, reubicarCopas, type EstadoEnlace, type ItemCalificado, type LineaCopa } from "./calificaciones";
 import { BONO_BIENVENIDA, conMananaDoble } from "@/lib/clientes/premios";
+import { vincularTelefonoDeOrden } from "@/lib/clientes/mi-payo-whatsapp";
 
 // Ratings behind the cup's QR (0049). Everything here runs with the service
 // role: the customer's page has no session, and the POS registers links for
@@ -203,6 +204,8 @@ export async function enviarCalificacion(codigo: string, input: { estrellas: num
     return { ok: true, puntos: 0, total: null, bienvenida: 0 };
   }
   await db.from("calificaciones").update({ cliente_id: c.id }).eq("id", row.id);
+  // A cup from a WhatsApp order: that number is this @'s (0095). Best-effort, never throws.
+  await vincularTelefonoDeOrden(db, { orgId: row.organization_id as string, ordenId: (row.orden_id as string | null) ?? null, clienteId: c.id });
   // The first scan with an @ adds the welcome bonus (once per customer: 0086).
   let total = Number(c.puntos);
   let bienvenida = 0;

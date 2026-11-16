@@ -158,8 +158,8 @@ export interface Inicio {
   ultimos: { nombre: string; cuando: string; valor: string; puntos: number }[];
 }
 
-/** The home screen: totals, the favourite and the last three scans. */
-export function inicio(es: ReadonlyArray<Escaneo>, ahora: Date = new Date()): Inicio {
+/** The home screen: totals, the favourite and the last scans (three; the WhatsApp agent asks for more). */
+export function inicio(es: ReadonlyArray<Escaneo>, ahora: Date = new Date(), cuantos = 3): Inicio {
   const orden = [...es].sort((a, b) => b.at.localeCompare(a.at));
   const total = nBebidas(es);
   const fav = porBebida(es)[0];
@@ -168,7 +168,7 @@ export function inicio(es: ReadonlyArray<Escaneo>, ahora: Date = new Date()): In
     esteMes: nBebidas(enPeriodo(es, desdeDe("mes", ahora))),
     racha: rachaActual(es, ahora),
     favorito: fav && total ? { nombre: fav.nombre, veces: fav.veces, pct: Math.round((fav.veces / total) * 100) } : null,
-    ultimos: orden.slice(0, 3).map((e) => {
+    ultimos: orden.slice(0, cuantos).map((e) => {
       const b = bebidas(e);
       const nombre = (b.length ? b : e.items).map((i) => (i.qty > 1 ? `${i.qty} × ${i.nombre}` : i.nombre)).join(" + ") || "Tu compra";
       return { nombre, cuando: `${diaCorto(e.at, ahora)} · ${hora(e.at)}`, valor: pesos(valorDe(e)), puntos: e.puntos };
