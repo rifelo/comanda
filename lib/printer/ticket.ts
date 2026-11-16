@@ -222,7 +222,26 @@ export function capasDe(bloques: NonNullable<PosMenuItem["capas"]>, opciones: re
       });
     }
   }
-  return { capas, extras };
+  return { capas: espressoAntesDeLaLeche(capas), extras };
+}
+
+/**
+ * Hot drinks with milk are the one exception to bottom-up (owner, 2026-11-16):
+ * the milk is texturized first, but in the cup the espresso (5) goes before
+ * the texturized milk (4, which brings the foam with it). A layer list with no
+ * Hielo (and no blender box) whose Cuerpo is leche prints 5 before 4.
+ */
+export function espressoAntesDeLaLeche<T extends { n: number; lineas: ReadonlyArray<{ texto: string }>; grupo?: string }>(capas: T[]): T[] {
+  // Cold (Hielo) or blended (a Licuar box) drinks keep bottom-up.
+  if (capas.some((c) => c.n === 3 || c.grupo)) return capas;
+  const i4 = capas.findIndex((c) => c.n === 4);
+  const i5 = capas.findIndex((c) => c.n === 5);
+  if (i4 < 0 || i5 < 0 || i5 < i4) return capas;
+  if (!capas[i4].lineas.some((l) => /leche/i.test(l.texto))) return capas;
+  const out = capas.slice();
+  const [cinco] = out.splice(i5, 1);
+  out.splice(i4, 0, cinco);
+  return out;
 }
 
 /** The 8 layers in order (number, name), for drinks whose recipe has no ficha yet. */
@@ -287,7 +306,7 @@ export function capasDesdeReceta(lineas: PosMenuItem["recipe"], opciones: readon
     const c = out.find((x) => x.lineas.some((l) => l.texto.includes(`· ${o.opcion}`)));
     if (c) c.nota = [c.nota, `${o.opcion}: ${pasosEnLinea(o.prep)}`].filter(Boolean).join(" · ");
   }
-  return out;
+  return espressoAntesDeLaLeche(out);
 }
 
 export function recetaDe(p: Pick<PosMenuItem, "printsLabel" | "prep" | "recipe" | "capas">, opciones: readonly OpcionReceta[] = []): RecetaInfo {

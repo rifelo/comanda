@@ -251,3 +251,29 @@ describe("cold foam como opción", () => {
     expect(r.capas?.find((c) => c.n === 4)?.lineas).toEqual([{ cantidad: "150 ml", texto: "Leche entera Gran Vía" }]);
   });
 });
+
+describe("calientes con leche: espresso antes que la leche", () => {
+  const latte = [
+    { name: "Vaso 12 oz doble pared", qty: 1, unit: "und", note: null },
+    { name: "Leche entera Gran Vía (bolsa 900 ml)", qty: 250, unit: "ml", note: null },
+    { name: "Cafe Okana", qty: 18, unit: "g", note: null },
+    { name: "Tapa viajera", qty: 1, unit: "und", note: null },
+  ];
+
+  it("prints the espresso (5) before the texturized milk (4)", () => {
+    const r = recetaDe({ printsLabel: true, prep: [], recipe: latte, capas: undefined });
+    expect(r.capas?.map((c) => c.n)).toEqual([1, 5, 4, 8]);
+    expect(r.capas?.find((c) => c.n === 4)?.ops).toBe("Texturizar");
+  });
+
+  it("keeps bottom-up for a hot drink without milk and for cold drinks", () => {
+    const americano = [
+      { name: "Vaso 12 oz doble pared", qty: 1, unit: "und", note: null },
+      { name: "Agua", qty: 200, unit: "ml", note: null },
+      { name: "Cafe Okana", qty: 18, unit: "g", note: null },
+    ];
+    expect(recetaDe({ printsLabel: true, prep: [], recipe: americano, capas: undefined }).capas?.map((c) => c.n)).toEqual([1, 4, 5]);
+    const frio = [...latte.slice(0, 1), { name: "Hielo", qty: 110, unit: "g", note: null }, ...latte.slice(1)];
+    expect(recetaDe({ printsLabel: true, prep: [], recipe: frio, capas: undefined }).capas?.map((c) => c.n)).toEqual([1, 3, 4, 5, 8]);
+  });
+});
