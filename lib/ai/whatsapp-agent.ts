@@ -47,6 +47,8 @@ export interface FichaCliente {
   habitos: string[];
   /** Their latest orders through WhatsApp, newest first, in words. */
   pedidos: string[];
+  /** Mi Pa'Yo (points, prizes, last drinks) for this phone, or how to link it. */
+  mipayo?: string | null;
 }
 
 export type CambiosFicha = Partial<Record<"trato" | "habitual" | "entrega" | "pago" | "preferencias" | "notas", string>>;
@@ -116,7 +118,7 @@ const FichaInput = z.object({
 const ReaccionInput = z.object({ emoji: z.enum(REACCIONES) });
 const campoFicha = (description: string) => ({ type: ["string", "null"], description: `${description} null si no cambia.` });
 
-const TOOLS: Anthropic.Beta.BetaTool[] = [
+export const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "crear_pedido",
     description:
@@ -227,11 +229,13 @@ export function menuParaAgente(catalog: PosCatalog): string {
   return out.join("\n");
 }
 
-/** The agent's instructions; the nightly review reads them too (with the menu left out). */
-export function instrucciones(local: LocalInfo, menu: string, lecciones: Leccion[] = []): string {
-  const pago = local.pagos
-    ? `Se paga al recoger o al recibir (efectivo o tarjeta), o por transferencia. Si el cliente va a transferir, después de crear el pedido le compartes los datos tal cual:\n${local.pagos}`
-    : "Se paga al recoger o al recibir (efectivo, tarjeta o transferencia). No tienes datos de transferencia: si los piden, pasa a humano.";
+/**
+ * How the agent behaves: who it is, how it writes, the examples, how it uses
+ * the client file and how it takes an order. Fixed for a café; it is the
+ * system prompt of the Claude Console agent as well.
+ */
+export function reglasAgente(nombre: string): string {
+  const local = { nombre };
   return `Atiendes el WhatsApp de ${local.nombre}, un café de barrio en Yopal (Casanare, Colombia). Eres parte del equipo: respondes dudas, recomiendas y tomas pedidos para llevar o a domicilio, con el cariño de quien conoce a sus clientes.
 
 # Cómo escribes
@@ -275,17 +279,10 @@ Tú: Con mucho gusto! 1 jugo de guanábana en leche con poca azúcar, a la drogu
 
 Pagas en efectivo al recibir como siempre?
 
-# Lo que sabes del local
-- Dirección: ${local.direccion ?? "no la tienes; si la piden, pasa a humano"}
-- Horario: ${local.horario ?? "no lo tienes; si lo piden, pasa a humano"}
-- Domicilios: ${local.domicilios ?? "se hacen en Yopal; si hay costo de domicilio lo confirma el equipo. No lo menciones salvo que pregunten"}
-- Menú con fotos: cafepayo.com${local.instagram ? `\n- Instagram: @${local.instagram}` : ""}
-- Pago: ${pago}
-- Puntos Mi Pa'Yo: cada bebida trae en el vaso un código QR; al escanearlo el cliente califica y suma puntos que cambia por premios en cafepayo.com/puntos. Si preguntan por descuentos o promociones, cuéntales de los puntos; no inventes otros descuentos.
-
 # El cliente
-Arriba de la conversación va su ficha (cómo saludarlo, su pedido de siempre, dónde lo recibe, cómo paga, notas) y sus últimos pedidos. Úsala como lo haría alguien que lo conoce: «Tu americano de siempre?», «A portería como siempre?».
+Con la conversación te llega su ficha (cómo saludarlo, su pedido de siempre, dónde lo recibe, cómo paga, notas) y sus últimos pedidos. Úsala como lo haría alguien que lo conoce: «Tu americano de siempre?», «A portería como siempre?».
 Sus preferencias y elecciones habituales (leche, tamaño, azúcar…) son la opción por defecto: aplícalas al armar el pedido sin preguntarlas y nómbralas en el resumen («americano 16 oz con deslactosada»). Si pide algo distinto, hazle caso.
+Si pregunta por sus puntos, premios o lo que ha tomado, responde con lo de Mi Pa'Yo de su ficha, corto. Si su WhatsApp no está vinculado, mándale el enlace para vincular su @ (una sola vez en la conversación) diciéndole que así puede ver sus puntos por aquí.
 Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, cómo le gusta que le digan…), guárdalo con recordar_cliente (no se lo cuentes).
 
 # Para tomar un pedido
@@ -295,9 +292,29 @@ Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, 
 4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, confirma con calidez y el número de pedido (para llevar: unos 10 minutos; domicilio: que ya se lo llevamos). Si devuelve un problema, resuélvelo con el cliente.
 
 No inventes productos, precios, promociones ni tiempos distintos a estos. Quejas, problemas con un pedido o pago, o algo que no puedes resolver: pasar_a_humano.
+`;
+}
+
+/** What changes by the day: the café's data, approved lessons and the menu. */
+export function datosDelDia(local: LocalInfo, menu: string, lecciones: Leccion[] = []): string {
+  const pago = local.pagos
+    ? `Se paga al recoger o al recibir (efectivo o tarjeta), o por transferencia. Si el cliente va a transferir, después de crear el pedido le compartes los datos tal cual:\n${local.pagos}`
+    : "Se paga al recoger o al recibir (efectivo, tarjeta o transferencia). No tienes datos de transferencia: si los piden, pasa a humano.";
+  return `# Lo que sabes del local
+- Dirección: ${local.direccion ?? "no la tienes; si la piden, pasa a humano"}
+- Horario: ${local.horario ?? "no lo tienes; si lo piden, pasa a humano"}
+- Domicilios: ${local.domicilios ?? "se hacen en Yopal; si hay costo de domicilio lo confirma el equipo. No lo menciones salvo que pregunten"}
+- Menú con fotos: cafepayo.com${local.instagram ? `\n- Instagram: @${local.instagram}` : ""}
+- Pago: ${pago}
+- Puntos Mi Pa'Yo: cada bebida trae en el vaso un código QR; al escanearlo el cliente califica y suma puntos que cambia por premios en cafepayo.com/puntos. Si preguntan por descuentos o promociones, cuéntales de los puntos; no inventes otros descuentos.
 
 ${seccionLecciones(lecciones)}# Menú (precios en pesos colombianos)
 ${menu}`;
+}
+
+/** The agent's instructions; the nightly review reads them too (with the menu left out). */
+export function instrucciones(local: LocalInfo, menu: string, lecciones: Leccion[] = []): string {
+  return `${reglasAgente(local.nombre)}\n\n${datosDelDia(local, menu, lecciones)}`;
 }
 
 /** The customer's file as the model reads it (not cached: it changes per customer). */
@@ -314,7 +331,7 @@ export function fichaParaAgente(f: FichaCliente | null): string {
     `- Notas: ${f.notas ?? "—"}`,
     `- Últimos pedidos por WhatsApp (número · fecha · estado): ${f.pedidos.length ? f.pedidos.join(" | ") : "ninguno"}`,
   ];
-  return `Ficha del cliente:\n${l.join("\n")}`;
+  return `Ficha del cliente:\n${l.join("\n")}${f.mipayo ? `\n\n${f.mipayo}` : ""}`;
 }
 
 const client = () => new Anthropic();
@@ -483,7 +500,7 @@ async function responderConGroq(input: Entrada): Promise<Respuesta> {
   return { texto: RENDIDO, humano: true, reaccion: null };
 }
 
-async function ejecutar(
+export async function ejecutar(
   uso: Anthropic.Beta.BetaToolUseBlock,
   h: Herramientas,
   marcas: { humano: () => void; reaccion: (emoji: string) => void },

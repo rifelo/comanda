@@ -2,11 +2,13 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosCatalog } from "@/lib/pos/catalog";
 import { syncOrderConsumption } from "@/lib/pos/stock";
-import { enBurbujas, responderWhatsapp, type CambiosFicha, type FichaCliente, type Turno } from "@/lib/ai/whatsapp-agent";
+import { datosDelDia, enBurbujas, fichaParaAgente, menuParaAgente, responderWhatsapp, type CambiosFicha, type FichaCliente, type Respuesta, type Turno } from "@/lib/ai/whatsapp-agent";
+import { responderConConsola } from "@/lib/ai/whatsapp-consola";
+import { enlaceVincular, resumenMiPayoPorTelefono, textoMiPayoParaAgente } from "@/lib/clientes/mi-payo-whatsapp";
 import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
-import { atiendeA } from "./probadores";
-import { ESPERA_LIMITE_MS, esLimitePorNumero, ultimaSesion } from "./sesion";
+import { atiendeA, usaConsola } from "./probadores";
+import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
@@ -247,7 +249,7 @@ export async function responder(p: Pendiente): Promise<void> {
   if (!n || !atiendeA(n.agente_activo, p.waId)) return;
   const { data: conv } = await db()
     .from("whatsapp_conversaciones")
-    .select("agente_pausado_hasta, nombre, username, user_id")
+    .select("agente_pausado_hasta, nombre, username, user_id, agente_sesion_id, agente_sesion_at")
     .eq("id", p.conversacionId)
     .single();
   if (conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date()) return;
@@ -288,9 +290,20 @@ export async function responder(p: Pendiente): Promise<void> {
   const version = versionPrompt(lecciones);
   const cargada = await cargarFicha(n.organization_id, claves, (conv?.nombre as string | null) ?? null, catalog.modGroups);
   const ficha = cargada.ficha;
+  // Mi Pa'Yo by phone: points and prizes, or the link to tie this WhatsApp to their @.
+  if (esTelefono(p.waId)) {
+    try {
+      const resumen = await resumenMiPayoPorTelefono(db(), n.organization_id, p.waId);
+      ficha.mipayo = resumen
+        ? textoMiPayoParaAgente(resumen)
+        : `${textoMiPayoParaAgente(null)}\nEnlace: ${enlaceVincular(n.organization_id, p.waId)}`;
+    } catch (e) {
+      console.warn("[whatsapp] mi pa'yo:", e);
+    }
+  }
   let filaId = cargada.filaId;
   let ordenId: string | null = null;
-  const res = await responderWhatsapp({
+  const entrada: Parameters<typeof responderWhatsapp>[0] = {
     catalog,
     local: {
       nombre: orgName,
@@ -350,7 +363,8 @@ export async function responder(p: Pendiente): Promise<void> {
           .eq("id", p.conversacionId);
       },
     },
-  });
+  };
+  const res = usaConsola(p.waId) ? await responderPorConsola(entrada, conv, p, version) : await responderWhatsapp(entrada);
   if (res.reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, res.reaccion);
   // WhatsApp lets a business send ~1 message every 6 s to the same person:
   // bubbles go out with a typing-sized pause, and on a 429 we wait and retry
@@ -390,6 +404,46 @@ export async function responder(p: Pendiente): Promise<void> {
       ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
     });
     if (fallo) break;
+  }
+}
+
+/**
+ * The Claude Console agent: one session per conversation, reused while the
+ * chat is active. It keeps its own history, so it gets only what is new; the
+ * day's data and the client file go in when a session starts. If the Console
+ * fails, the in-app agent answers instead so the customer is never left hanging.
+ */
+async function responderPorConsola(
+  entrada: Parameters<typeof responderWhatsapp>[0],
+  conv: { agente_sesion_id?: unknown; agente_sesion_at?: unknown } | null,
+  p: Pendiente,
+  version: string,
+): Promise<Respuesta> {
+  const previa = conv?.agente_sesion_at ? new Date(conv.agente_sesion_at as string) : null;
+  const sesionId = sesionVigente(previa) ? ((conv?.agente_sesion_id as string | null) ?? null) : null;
+  const nuevo = nuevoDesdeRespuesta(entrada.turnos);
+  const contextoTurno = [
+    `Hora en Yopal: ${entrada.ahora}.`,
+    ...(nuevo.equipo.length ? [`Una persona del equipo le escribió al cliente: ${nuevo.equipo.map((t) => `«${t}»`).join(" ")}`] : []),
+  ].join("\n");
+  try {
+    const r = await responderConConsola({
+      sesionId,
+      contextoInicial: `${datosDelDia(entrada.local, menuParaAgente(entrada.catalog), entrada.lecciones)}\n\n${fichaParaAgente(entrada.ficha)}`,
+      contextoTurno,
+      textoCliente: nuevo.cliente || entrada.turnos.at(-1)?.texto || "",
+      titulo: `WhatsApp · ${entrada.ficha?.trato ?? entrada.ficha?.perfil ?? p.waId} · ${version}`,
+      herramientas: entrada.herramientas,
+    });
+    await db()
+      .from("whatsapp_conversaciones")
+      .update({ agente_sesion_id: r.sesionId, agente_sesion_at: new Date().toISOString() })
+      .eq("id", p.conversacionId);
+    return r;
+  } catch (e) {
+    console.error("[whatsapp consola] falló, responde el agente de la app:", e);
+    await db().from("whatsapp_conversaciones").update({ agente_sesion_id: null }).eq("id", p.conversacionId);
+    return responderWhatsapp(entrada);
   }
 }
 

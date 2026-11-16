@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { atiendeA } from "./probadores";
+import { atiendeA, usaConsola } from "./probadores";
 
 describe("atiendeA", () => {
   it("answers everyone when the agent is on", () => {
@@ -14,5 +14,14 @@ describe("atiendeA", () => {
   it("answers nobody when off with no list", () => {
     expect(atiendeA(false, "573001112233", "")).toBe(false);
     expect(atiendeA(false, "", " , ")).toBe(false);
+  });
+});
+
+describe("usaConsola", () => {
+  it("is off by default, on for listed numbers or everyone", () => {
+    expect(usaConsola("573106059758", "")).toBe(false);
+    expect(usaConsola("573106059758", "573106059758, 573223055222")).toBe(true);
+    expect(usaConsola("573001112233", "573106059758")).toBe(false);
+    expect(usaConsola("RS.123", "todos")).toBe(true);
   });
 });

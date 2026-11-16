@@ -8,3 +8,15 @@ export function atiendeA(agenteActivo: boolean, waId: string, probadores = proce
   const digitos = (s: string) => s.replace(/\D/g, "");
   return probadores.split(",").map(digitos).filter(Boolean).includes(digitos(waId));
 }
+
+/**
+ * Who is answered by the Claude Console agent instead of the in-app one:
+ * WHATSAPP_AGENTE_CONSOLA = "todos", or a comma-separated list of numbers.
+ */
+export function usaConsola(waId: string, valor = process.env.WHATSAPP_AGENTE_CONSOLA ?? ""): boolean {
+  const v = valor.trim().toLowerCase();
+  if (!v) return false;
+  if (v === "todos") return true;
+  const digitos = (s: string) => s.replace(/\D/g, "");
+  return v.split(",").map(digitos).filter(Boolean).includes(digitos(waId));
+}

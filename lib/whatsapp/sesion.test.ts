@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { esLimitePorNumero, ultimaSesion } from "./sesion";
+import { esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 
 const t = (hhmm: string, texto: string) => ({ at: new Date(`2026-11-15T${hhmm}:00-05:00`), texto });
 
@@ -22,5 +22,25 @@ describe("esLimitePorNumero", () => {
     expect(esLimitePorNumero('WhatsApp 429: "Too many requests for one number"')).toBe(true);
     expect(esLimitePorNumero("WhatsApp 400: (#131056) Pair rate limit")).toBe(true);
     expect(esLimitePorNumero('WhatsApp 401: "Invalid api token."')).toBe(false);
+  });
+});
+
+describe("nuevoDesdeRespuesta / sesionVigente", () => {
+  it("takes what came after the agent's last reply", () => {
+    const turnos = [
+      { autor: "cliente" as const, texto: "Hola" },
+      { autor: "agente" as const, texto: "Buenos días" },
+      { autor: "equipo" as const, texto: "Ya va saliendo" },
+      { autor: "cliente" as const, texto: "Un café" },
+      { autor: "cliente" as const, texto: "porfa" },
+    ];
+    expect(nuevoDesdeRespuesta(turnos)).toEqual({ cliente: "Un café\nporfa", equipo: ["Ya va saliendo"] });
+    expect(nuevoDesdeRespuesta([{ autor: "cliente" as const, texto: "Hola" }])).toEqual({ cliente: "Hola", equipo: [] });
+  });
+  it("reuses a session only within the hour", () => {
+    const ahora = new Date("2026-11-16T10:00:00-05:00");
+    expect(sesionVigente(new Date("2026-11-16T09:30:00-05:00"), ahora)).toBe(true);
+    expect(sesionVigente(new Date("2026-11-16T08:30:00-05:00"), ahora)).toBe(false);
+    expect(sesionVigente(null, ahora)).toBe(false);
   });
 });
