@@ -266,6 +266,15 @@ export function tomaTickets(): boolean {
   return destinoTicket(s.modo, { deviceId: ticketDeviceId(), silencioso: s.silencioso }, s.impresoras?.estaciones ?? null).donde === "aqui";
 }
 
+/**
+ * Where this device's automatic comanda goes. The bar gets it with every new
+ * order from any device (owner, 2026-11-16): a device set to «No» for receipts
+ * still sends its comandas to the caja's printer.
+ */
+export function modoComanda(s: TicketSettings = getTicketState()): TicketSettings["modo"] {
+  return s.modo === "no" ? "caja" : s.modo;
+}
+
 /** This device prints tickets, here or through the station. */
 export function ticketsOn(s: TicketSettings = getTicketState()): boolean {
   return s.modo !== "no";
@@ -279,10 +288,10 @@ export function ticketsOn(s: TicketSettings = getTicketState()): boolean {
  * relayed ticket nobody takes within a few seconds is reported. Never
  * throws, never blocks the sale.
  */
-export function printTicket(doc: TicketDoc): void {
+export function printTicket(doc: TicketDoc, modo: TicketSettings["modo"] = getTicketState().modo): void {
   const s = getTicketState();
   const que = doc.kind === "recibo" ? "El recibo" : "La comanda";
-  const d = destinoTicket(s.modo, { deviceId: ticketDeviceId(), silencioso: s.silencioso }, s.impresoras?.estaciones ?? null);
+  const d = destinoTicket(modo, { deviceId: ticketDeviceId(), silencioso: s.silencioso }, s.impresoras?.estaciones ?? null);
   if (d.donde === "ninguno") return;
   if (d.donde === "aqui") {
     printTicketHere(doc);
