@@ -315,17 +315,15 @@ function TicketMenuItems({ onTest }: { onTest: () => void }) {
       </div>
       <TicketResumen t={t} />
       {t.modo !== "no" && (
-        <>
-          <button type="button" role="menuitemcheckbox" aria-checked={t.recibo === "auto"} onClick={() => setTicketSettings({ recibo: t.recibo === "auto" ? "pedir" : "auto" })}>
-            <span className="grow">Recibo con cada venta</span>
-            {sw(t.recibo === "auto")}
-          </button>
-          <button type="button" role="menuitemcheckbox" aria-checked={t.comanda} onClick={() => setTicketSettings({ comanda: !t.comanda })}>
-            <span className="grow">Comanda para la barra</span>
-            {sw(t.comanda)}
-          </button>
-        </>
+        <button type="button" role="menuitemcheckbox" aria-checked={t.recibo === "auto"} onClick={() => setTicketSettings({ recibo: t.recibo === "auto" ? "pedir" : "auto" })}>
+          <span className="grow">Recibo con cada venta</span>
+          {sw(t.recibo === "auto")}
+        </button>
       )}
+      <button type="button" role="menuitemcheckbox" aria-checked={t.comanda} onClick={() => setTicketSettings({ comanda: !t.comanda })}>
+        <span className="grow">Comanda automática para la barra</span>
+        {sw(t.comanda)}
+      </button>
       {t.modo === "aqui" && (
         <>
           <div role="radiogroup" aria-label="Papel" style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 8px" }}>

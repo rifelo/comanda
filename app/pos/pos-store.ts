@@ -65,7 +65,7 @@ import {
 import { nudge } from "./pos-live";
 import { printMessageLabel, printCupNameLabel, printCupDrinkLabel } from "@/lib/printer/serial";
 import { cupOptionsLine } from "@/lib/pos/detalle";
-import { comandaHace, getTicketState, printTicket, ticketsOn } from "@/lib/printer/tickets";
+import { comandaHace, getTicketState, modoComanda, printTicket, ticketsOn } from "@/lib/printer/tickets";
 import type { TicketDoc, TicketLine } from "@/lib/printer/ticket";
 import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
 
@@ -1991,7 +1991,7 @@ function ticketLines(order: OrderLine[], catalog: PosCatalog, prices: boolean): 
 
 /** The automatic comanda: only orders with a prepared drink (food and bottles alone don't go to the bar). */
 function printComanda(doc: TicketDoc) {
-  if (comandaHace(doc)) printTicket(doc);
+  if (comandaHace(doc)) printTicket(doc, modoComanda());
 }
 
 interface TicketSale {
@@ -2048,7 +2048,7 @@ function saleTicket(kind: TicketDoc["kind"], t: TicketSale): TicketDoc {
  */
 function printJobTicket(job: OutboxItem, folio: string, what: "comanda" | "recibo-auto"): boolean {
   const t = getTicketState();
-  if (!ticketsOn(t) || (what === "comanda" ? !t.comanda : t.recibo !== "auto")) return false;
+  if (what === "comanda" ? !t.comanda : !ticketsOn(t) || t.recibo !== "auto") return false;
   (what === "comanda" ? printComanda : printTicket)(saleTicket(what === "comanda" ? "comanda" : "recibo", {
     order: job.snapshot.order,
     customerName: job.snapshot.customerName,
