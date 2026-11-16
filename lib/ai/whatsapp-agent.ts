@@ -17,7 +17,8 @@ import { GROQ_TEXT_MODEL } from "@/lib/ai/groq";
  * caller. History is rebuilt from the stored text each turn (no tool or
  * thinking blocks carried across turns), so nothing earlier is ever edited.
  */
-const MODEL = "claude-opus-5-5";
+/** Cheapest current model; the job is short chat + two simple tools. */
+const MODEL = "claude-haiku-5-5";
 const MAX_VUELTAS = 5;
 
 export interface LocalInfo {
@@ -204,8 +205,6 @@ async function responderConClaude(input: Entrada): Promise<Respuesta> {
     const res = await client().beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
-      betas: ["server-side-fallback-2026-06-01"],
-      fallbacks: [{ model: "claude-opus-4-8" }],
       output_config: { effort: "low" },
       system,
       tools: TOOLS,
