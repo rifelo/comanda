@@ -183,6 +183,7 @@ const ES_16 = /^16\s*oz$/i;
  * The ficha técnica por capas for one line: the 16 oz amounts when the line
  * has the 16 oz option, a swapped ingredient (Deslactosada) under its new
  * name, and what other options add listed apart («+20 ml Syrup de vainilla»).
+ * The layer's «nota verificable» stays on the ficha, not on the comanda (owner, 2026-11-16).
  */
 export function capasDe(bloques: NonNullable<PosMenuItem["capas"]>, opciones: readonly OpcionReceta[]): { capas: ComandaCapa[]; extras: ComandaProporcion[] } {
   const es16 = opciones.some((o) => ES_16.test(o.opcion.trim()));
@@ -217,7 +218,6 @@ export function capasDe(bloques: NonNullable<PosMenuItem["capas"]>, opciones: re
           if (es16 && t16) return { texto: t16 };
           return l.t12 ? { cantidad: l.t12, texto } : { texto };
         }),
-        ...(c.nota ? { nota: c.nota } : {}),
         ...(grupo ? { grupo } : {}),
       });
     }

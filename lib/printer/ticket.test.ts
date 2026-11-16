@@ -193,7 +193,7 @@ describe("comanda con ficha por capas", () => {
   it("prints the 12 oz amounts by default", () => {
     const r = recetaDe(p);
     expect(r.capas?.map((c) => c.n)).toEqual([1, 3, 4, 5]);
-    expect(r.capas?.[2]).toEqual({ n: 4, capa: "Cuerpo", ops: "Verter", lineas: [{ cantidad: "150 ml", texto: "Leche entera Gran Vía" }], nota: "Revolver con la condensada" });
+    expect(r.capas?.[2]).toEqual({ n: 4, capa: "Cuerpo", ops: "Verter", lineas: [{ cantidad: "150 ml", texto: "Leche entera Gran Vía" }] });
   });
 
   it("prints the 16 oz amounts, the swapped milk and the extras of the options", () => {
