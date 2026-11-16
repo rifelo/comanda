@@ -314,12 +314,6 @@ function TicketMenuItems({ onTest }: { onTest: () => void }) {
         ))}
       </div>
       <TicketResumen t={t} />
-      {t.modo !== "no" && (
-        <button type="button" role="menuitemcheckbox" aria-checked={t.recibo === "auto"} onClick={() => setTicketSettings({ recibo: t.recibo === "auto" ? "pedir" : "auto" })}>
-          <span className="grow">Recibo con cada venta</span>
-          {sw(t.recibo === "auto")}
-        </button>
-      )}
       <button type="button" role="menuitemcheckbox" aria-checked={t.comanda} onClick={() => setTicketSettings({ comanda: !t.comanda })}>
         <span className="grow">Comanda automática para la barra</span>
         {sw(t.comanda)}

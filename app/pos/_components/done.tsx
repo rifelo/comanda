@@ -187,7 +187,7 @@ function TicketsLine({ waiting }: { waiting: boolean }) {
       {t.note && <span className="muted" style={{ fontSize: 14 }}>{t.note}</span>}
       <div className="done-tools">
         <button type="button" className="btn ghost sm done-tool" onClick={printReceipt} disabled={waiting}>
-          {t.recibo === "auto" ? "Otro recibo" : "Imprimir recibo"}
+          Otro recibo
         </button>
         <button type="button" className="btn ghost sm done-tool" onClick={reprintComanda} disabled={waiting}>
           {t.comanda ? "Reimprimir comanda" : "Imprimir comanda"}
