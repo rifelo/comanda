@@ -22,7 +22,8 @@ const ESPERA_RAFAGA_MS = 4_000;
 const PAUSA_EQUIPO_MS = 2 * 60 * 60 * 1000;
 /** Handed over to a person: the agent stays out until the team is done. */
 const PAUSA_HUMANO_MS = 12 * 60 * 60 * 1000;
-const HISTORIAL_HORAS = 24;
+/** Chat the agent re-reads; older context lives in the client file instead. */
+const HISTORIAL_HORAS = 8;
 const HISTORIAL_MAX = 40;
 
 type Numero = {
