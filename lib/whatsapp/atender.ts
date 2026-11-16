@@ -8,7 +8,7 @@ import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
-import { enlazarClaves, esTelefono, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
+import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
 /**
  * What happens to a webhook once Meta's signature checked out.
@@ -155,7 +155,7 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
 const pausaEscribiendo = (texto: string) => Math.min(5_000, 1_500 + texto.length * 30);
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const CAMPOS_FICHA = "id, wa_id, user_id, username, trato, habitual, entrega, pago, notas";
+const CAMPOS_FICHA = "id, wa_id, user_id, username, trato, habitual, entrega, pago, preferencias, notas";
 type FilaFicha = FilaClaves & { id: string } & Partial<Record<keyof CambiosFicha, string | null>>;
 
 /**
@@ -179,20 +179,39 @@ async function buscarFicha(orgId: string, c: ClavesCliente): Promise<FilaFicha |
 }
 
 /** The customer's file plus their latest WhatsApp orders, in words. */
-async function cargarFicha(orgId: string, c: ClavesCliente, perfil: string | null): Promise<{ ficha: FichaCliente; filaId: string | null }> {
+async function cargarFicha(
+  orgId: string,
+  c: ClavesCliente,
+  perfil: string | null,
+  grupos: Record<string, { name: string }>,
+): Promise<{ ficha: FichaCliente; filaId: string | null }> {
   const f = await buscarFicha(orgId, c);
   const tel = telefonoDe(c, f);
   const { data: ords } = tel
     ? await db()
         .from("ordenes")
-        .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty)")
+        .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty, mods)")
         .eq("organization_id", orgId)
         .eq("customer_phone", tel)
         .neq("status", "cancelada")
         .order("created_at", { ascending: false })
-        .limit(3)
+        .limit(10)
     : { data: [] };
-  const pedidos = ((ords ?? []) as { folio: string; status: string; created_at: string; order_type: string; delivery_address: string | null; orden_items: { name: string; qty: number }[] }[]).map((o) => {
+  type Orden = {
+    folio: string;
+    status: string;
+    created_at: string;
+    order_type: string;
+    delivery_address: string | null;
+    orden_items: { name: string; qty: number; mods: Record<string, string | string[]> | null }[];
+  };
+  const ordenes = (ords ?? []) as Orden[];
+  // Last 10 orders feed the repeated choices; only the last 3 are listed.
+  const habitos = habitosDePedidos(
+    ordenes.flatMap((o) => (o.orden_items ?? []).map((i) => i.mods ?? {})),
+    grupos,
+  );
+  const pedidos = ordenes.slice(0, 3).map((o) => {
     const dia = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(o.created_at));
     const items = (o.orden_items ?? []).map((i) => `${i.qty} ${i.name}`).join(", ");
     return `${o.folio} · ${dia} · ${o.status}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
@@ -205,7 +224,9 @@ async function cargarFicha(orgId: string, c: ClavesCliente, perfil: string | nul
       habitual: f?.habitual ?? null,
       entrega: f?.entrega ?? null,
       pago: f?.pago ?? null,
+      preferencias: f?.preferencias ?? null,
       notas: f?.notas ?? null,
+      habitos,
       pedidos,
     },
   };
@@ -265,7 +286,7 @@ export async function responder(p: Pendiente): Promise<void> {
     .order("created_at", { ascending: true });
   const lecciones = (lecc ?? []) as Leccion[];
   const version = versionPrompt(lecciones);
-  const cargada = await cargarFicha(n.organization_id, claves, (conv?.nombre as string | null) ?? null);
+  const cargada = await cargarFicha(n.organization_id, claves, (conv?.nombre as string | null) ?? null, catalog.modGroups);
   const ficha = cargada.ficha;
   let filaId = cargada.filaId;
   let ordenId: string | null = null;

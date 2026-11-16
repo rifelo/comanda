@@ -32,3 +32,32 @@ export function telefonoDe(c: ClavesCliente, fila: FilaClaves | null): string | 
   if (esTelefono(c.waId)) return c.waId;
   return esTelefono(fila?.wa_id) ? fila!.wa_id : null;
 }
+
+type Mods = Record<string, string | string[]>;
+
+/**
+ * Choices a customer repeats in their orders, e.g. «Leche: Deslactosada (3 de
+ * 4 veces)»: an option picked at least twice and in at least 60 % of the
+ * orders that had that group. `grupos` names the modifier groups by id.
+ */
+export function habitosDePedidos(mods: Mods[], grupos: Record<string, { name: string }>, minVeces = 2, minParte = 0.6): string[] {
+  const porGrupo = new Map<string, Map<string, number>>();
+  const vecesGrupo = new Map<string, number>();
+  for (const m of mods) {
+    for (const [gid, v] of Object.entries(m ?? {})) {
+      const opciones = (Array.isArray(v) ? v : [v]).filter((o): o is string => typeof o === "string" && !!o.trim());
+      if (!opciones.length || !grupos[gid]) continue;
+      vecesGrupo.set(gid, (vecesGrupo.get(gid) ?? 0) + 1);
+      const c = porGrupo.get(gid) ?? new Map<string, number>();
+      for (const o of new Set(opciones)) c.set(o, (c.get(o) ?? 0) + 1);
+      porGrupo.set(gid, c);
+    }
+  }
+  const out: string[] = [];
+  for (const [gid, c] of porGrupo) {
+    const total = vecesGrupo.get(gid) ?? 0;
+    const [opcion, veces] = [...c.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (veces >= minVeces && veces / total >= minParte) out.push(`${grupos[gid].name}: ${opcion} (${veces} de ${total} veces)`);
+  }
+  return out.sort();
+}

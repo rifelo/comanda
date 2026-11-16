@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enlazarClaves, telefonoDe, usuario } from "./ficha";
+import { enlazarClaves, habitosDePedidos, telefonoDe, usuario } from "./ficha";
 
 const vacia = { wa_id: null, user_id: null, username: null };
 
@@ -37,5 +37,21 @@ describe("telefonoDe / usuario", () => {
   it("normalises usernames", () => {
     expect(usuario("@BibizPerez ")).toBe("bibizperez");
     expect(usuario("")).toBeNull();
+  });
+});
+
+describe("habitosDePedidos", () => {
+  const grupos = { leche: { name: "Leche" }, tam: { name: "Tamaño" }, extra: { name: "Extras" } };
+  it("lists options repeated in most orders", () => {
+    const mods: Record<string, string | string[]>[] = [
+      { leche: "Deslactosada", tam: "16 oz" },
+      { leche: "Deslactosada", tam: "12 oz" },
+      { leche: "Deslactosada", tam: "16 oz", extra: ["Vainilla"] },
+      { leche: "Entera" },
+    ];
+    expect(habitosDePedidos(mods, grupos)).toEqual(["Leche: Deslactosada (3 de 4 veces)", "Tamaño: 16 oz (2 de 3 veces)"]);
+  });
+  it("ignores one-offs, unknown groups and empty picks", () => {
+    expect(habitosDePedidos([{ extra: ["Vainilla"] }, { otro: "x" }, { tam: "" }], grupos)).toEqual([]);
   });
 });

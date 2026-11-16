@@ -40,12 +40,16 @@ export interface FichaCliente {
   habitual: string | null;
   entrega: string | null;
   pago: string | null;
+  /** Standing preferences: «leche deslactosada; 16 oz; poca azúcar». */
+  preferencias: string | null;
   notas: string | null;
+  /** Choices repeated in their orders, e.g. «Leche: Deslactosada (3 de 4 veces)». */
+  habitos: string[];
   /** Their latest orders through WhatsApp, newest first, in words. */
   pedidos: string[];
 }
 
-export type CambiosFicha = Partial<Record<"trato" | "habitual" | "entrega" | "pago" | "notas", string>>;
+export type CambiosFicha = Partial<Record<"trato" | "habitual" | "entrega" | "pago" | "preferencias" | "notas", string>>;
 
 /** Reactions the agent may put on the customer's last message. */
 export const REACCIONES = ["👍", "❤️", "🙌", "😂", "🙏", "☕"] as const;
@@ -68,11 +72,23 @@ export interface Respuesta {
 }
 
 /**
+ * The house chat style, enforced after the model: no opening «¡» / «¿» and no
+ * full stop closing a line (an ellipsis stays; «$5.000» is untouched).
+ */
+export function pulirBurbuja(texto: string): string {
+  return texto
+    .split("\n")
+    .map((l) => l.replace(/[¡¿]/g, "").replace(/(?<!\.)\.\s*$/, "").trimEnd())
+    .join("\n")
+    .trim();
+}
+
+/**
  * The reply as WhatsApp bubbles: the model separates messages with a blank
  * line; at most `max`, the rest folds into the last one.
  */
 export function enBurbujas(texto: string, max = 4): string[] {
-  const partes = texto.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+  const partes = texto.split(/\n\s*\n/).map(pulirBurbuja).filter(Boolean);
   if (partes.length <= max) return partes;
   return [...partes.slice(0, max - 1), partes.slice(max - 1).join("\n\n")];
 }
@@ -94,6 +110,7 @@ const FichaInput = z.object({
   habitual: z.string().nullable(),
   entrega: z.string().nullable(),
   pago: z.string().nullable(),
+  preferencias: z.string().nullable(),
   notas: z.string().nullable(),
 });
 const ReaccionInput = z.object({ emoji: z.enum(REACCIONES) });
@@ -156,7 +173,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "recordar_cliente",
     description:
-      "Guarda en la ficha del cliente algo que aprendiste para atenderlo mejor la próxima vez: cómo le gusta que le digan, su pedido de siempre, dónde lo recibe, cómo paga o un gusto. Solo lo que el cliente dijo o confirmó; nunca supongas. Úsala en silencio, sin contárselo.",
+      "Guarda en la ficha del cliente algo que aprendiste para atenderlo mejor la próxima vez: cómo le gusta que le digan, su pedido de siempre, dónde lo recibe, cómo paga o sus preferencias (leche, tamaño, azúcar…). Solo lo que el cliente dijo o confirmó; nunca supongas. Úsala en silencio, sin contárselo.",
     strict: true,
     input_schema: {
       type: "object",
@@ -165,9 +182,12 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
         habitual: campoFicha("Su pedido de siempre en palabras, p. ej. «Americano caliente sin azúcar»."),
         entrega: campoFicha("Dónde lo recibe, p. ej. «portería», «pasa a recoger»."),
         pago: campoFicha("Cómo suele pagar, p. ej. «Nequi», «efectivo»."),
+        preferencias: campoFicha(
+          "Cómo le gusta lo que pide, separado por «; », p. ej. «leche deslactosada; tamaño 16 oz; poca azúcar». Escribe la lista completa (incluye las que ya tenía): reemplaza la anterior.",
+        ),
         notas: campoFicha("Otro dato útil (alergias, deslactosada, hora a la que pide). Escribe la nota completa, reemplaza la anterior."),
       },
-      required: ["trato", "habitual", "entrega", "pago", "notas"],
+      required: ["trato", "habitual", "entrega", "pago", "preferencias", "notas"],
       additionalProperties: false,
     },
   },
@@ -216,12 +236,13 @@ export function instrucciones(local: LocalInfo, menu: string, lecciones: Leccion
 
 # Cómo escribes
 - Como una persona del café escribiendo desde el celular: mensajes cortos, cálidos, en español de Colombia. Tutea (tú, te, tu), salvo que el cliente trate de usted o su ficha diga otra cosa; no mezcles tú y usted en la misma conversación.
-- Divide la respuesta en 1 a 3 mensajes cortos separados por una línea en blanco (cada uno sale como una burbuja de WhatsApp). Una o dos frases por mensaje.
+- Divide la respuesta en 1 a 3 mensajes cortos separados por una línea en blanco (cada uno sale como una burbuja de WhatsApp). Cada mensaje, una frase corta: unas 12 palabras como máximo. Nada de descripciones largas de productos salvo que las pidan.
+- Escribe como se chatea en Colombia: sin «¡» ni «¿» al comienzo (solo el signo de cierre, si acaso) y sin punto final al terminar cada mensaje.
 - Nada de listas con viñetas, títulos ni menús completos. Si preguntan qué hay, recomienda 2 o 3 cosas según lo que buscan y manda el menú con fotos: cafepayo.com
 - Pregunta una sola cosa a la vez, la que más importe; lo demás lo asumes con lo normal (leche entera, sin sabor extra) y lo confirmas en el resumen.
 - Expresiones naturales: «¡Listo!», «¡Claro que sí!», «De una», «Con gusto», «Ya te lo tenemos». Varía; no repitas el mismo saludo ni la misma despedida.
 - Saluda según la hora real en Yopal (abajo): «buenos días» hasta las 12 m., «buenas tardes» hasta las 6 p. m., «buenas noches» después, aunque el cliente salude distinto.
-- Si su ficha tiene «Cómo saludarlo», úsalo en el primer saludo de la conversación (la conversación de abajo es solo la de ahora; si empieza con un saludo, es un saludo nuevo) (p. ej. «¡Buenas noches, Doc. Bibiana!»): manda sobre el nombre de su perfil de WhatsApp. Después úsalo de vez en cuando, no en cada mensaje. Emojis con medida (☕ 🙌 😊).
+- Si su ficha tiene «Cómo saludarlo», úsalo en el primer saludo de la conversación (la conversación de abajo es solo la de ahora; si empieza con un saludo, es un saludo nuevo) (p. ej. «Buenas noches Doc. Bibiana»): manda sobre el nombre de su perfil de WhatsApp. Después úsalo de vez en cuando, no en cada mensaje. Emojis con medida (☕ 🙌 😊).
 - Si escriben «gracias», «ok» o «listo», a veces basta reaccionar (herramienta reaccionar) o una frase corta.
 - Si estamos cerrados, dilo una sola vez en la conversación y ofrece dejar el pedido para cuando abramos.
 - No suenes a sistema: nada de «no tengo información», «como asistente», «no quiero inventarte». Si no sabes algo, dilo como persona («déjame confirmarlo con el equipo») y usa pasar_a_humano.
@@ -229,25 +250,27 @@ export function instrucciones(local: LocalInfo, menu: string, lecciones: Leccion
 
 Así suena una buena conversación (cliente habitual):
 Cliente: Buen día
-Tú: ¡Buen día, Doc. Ana! ☕
+Tú: Buen día Doc. Ana ☕
 
-¿Cómo estás? ¿Te preparamos algo?
+Cómo estás? Te preparamos algo?
 Cliente: Un café porfa
-Tú: ¡Claro que sí! ¿Tu americano de siempre? ¿Te lo llevamos a portería o pasas por él?
-Cliente: En portería gracias
-Tú: Listo 🙌 1 americano, $5.000, a portería.
+Tú: Claro que sí! Tu americano de siempre, con deslactosada?
 
-¿Te lo envío así?
+Te lo llevamos a portería o pasas por él?
+Cliente: En portería gracias
+Tú: Listo 🙌 1 americano 12 oz con deslactosada, $5.000, a portería
+
+Te lo envío así?
 
 Otro cliente habitual (negocio vecino que paga al recibir):
 Cliente: Buenos días
-Tú: ¡Buenos días, Alex!
+Tú: Buenos días Alex
 
-¿Cómo estás? ¿Qué te provoca hoy?
+Cómo estás? Qué te provoca hoy?
 Cliente: Me regalas un jugo de guanábana en leche, aquí a la droguería. Con poca azúcar
-Tú: ¡Con mucho gusto! 1 jugo de guanábana en leche con poca azúcar, a la droguería.
+Tú: Con mucho gusto! 1 jugo de guanábana en leche con poca azúcar, a la droguería
 
-¿Pagas en efectivo al recibir como siempre?
+Pagas en efectivo al recibir como siempre?
 
 # Lo que sabes del local
 - Dirección: ${local.direccion ?? "no la tienes; si la piden, pasa a humano"}
@@ -258,10 +281,12 @@ Tú: ¡Con mucho gusto! 1 jugo de guanábana en leche con poca azúcar, a la dro
 - Puntos Mi Pa'Yo: cada bebida trae en el vaso un código QR; al escanearlo el cliente califica y suma puntos que cambia por premios en cafepayo.com/puntos. Si preguntan por descuentos o promociones, cuéntales de los puntos; no inventes otros descuentos.
 
 # El cliente
-Arriba de la conversación va su ficha (cómo saludarlo, su pedido de siempre, dónde lo recibe, cómo paga, notas) y sus últimos pedidos. Úsala como lo haría alguien que lo conoce: «¿Tu americano de siempre?», «¿A portería como siempre?». Cuando aprendas algo nuevo y útil de él, guárdalo con recordar_cliente (no se lo cuentes).
+Arriba de la conversación va su ficha (cómo saludarlo, su pedido de siempre, dónde lo recibe, cómo paga, notas) y sus últimos pedidos. Úsala como lo haría alguien que lo conoce: «Tu americano de siempre?», «A portería como siempre?».
+Sus preferencias y elecciones habituales (leche, tamaño, azúcar…) son la opción por defecto: aplícalas al armar el pedido sin preguntarlas y nómbralas en el resumen («americano 16 oz con deslactosada»). Si pide algo distinto, hazle caso.
+Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, cómo le gusta que le digan…), guárdalo con recordar_cliente (no se lo cuentes).
 
 # Para tomar un pedido
-1. Arma el pedido usando solo productos y opciones del menú de abajo, con sus precios exactos. Si una opción es obligatoria y no la sabes por su ficha, pregúntala. No ofrezcas lo que está AGOTADO HOY.
+1. Arma el pedido usando solo productos y opciones del menú de abajo, con sus precios exactos. Si una opción es obligatoria y no la sabes por su ficha (preferencias o elecciones habituales), pregúntala. No ofrezcas lo que está AGOTADO HOY.
 2. Necesitas: para llevar o a domicilio, el nombre (si la ficha ya lo tiene, usa ese y no lo preguntes) y, si es domicilio, dónde (dirección, o «portería» si así lo recibe).
 3. Manda un resumen corto con los productos, sus opciones y el total (sin domicilio) y pide confirmación.
 4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, confirma con calidez y el número de pedido (para llevar: unos 10 minutos; domicilio: que ya se lo llevamos). Si devuelve un problema, resuélvelo con el cliente.
@@ -281,6 +306,8 @@ export function fichaParaAgente(f: FichaCliente | null): string {
     `- Pedido de siempre: ${f.habitual ?? "—"}`,
     `- Dónde lo recibe: ${f.entrega ?? "—"}`,
     `- Cómo paga: ${f.pago ?? "—"}`,
+    `- Preferencias: ${f.preferencias ?? "—"}`,
+    `- Elecciones que repite en sus pedidos: ${f.habitos.length ? f.habitos.join("; ") : "—"}`,
     `- Notas: ${f.notas ?? "—"}`,
     `- Últimos pedidos por WhatsApp (número · fecha · estado): ${f.pedidos.length ? f.pedidos.join(" | ") : "ninguno"}`,
   ];
