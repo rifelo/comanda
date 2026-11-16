@@ -6,7 +6,7 @@
  */
 
 /** Bumped by hand when the base instructions in lib/ai/whatsapp-agent.ts change. */
-export const PROMPT_BASE = "2026-11-16b";
+export const PROMPT_BASE = "2026-11-16c";
 
 export type Leccion = { id: string; texto: string };
 
