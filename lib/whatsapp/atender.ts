@@ -2,8 +2,8 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosCatalog } from "@/lib/pos/catalog";
 import { syncOrderConsumption } from "@/lib/pos/stock";
-import { responderWhatsapp, type Turno } from "@/lib/ai/whatsapp-agent";
-import { enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
+import { enBurbujas, responderWhatsapp, type CambiosFicha, type FichaCliente, type Turno } from "@/lib/ai/whatsapp-agent";
+import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA } from "./probadores";
 
@@ -31,6 +31,7 @@ type Numero = {
   direccion: string | null;
   horario: string | null;
   domicilios: string | null;
+  pagos: string | null;
   agente_activo: boolean;
 };
 
@@ -39,7 +40,7 @@ const db = () => createSupabaseAdminClient();
 async function numero(phoneNumberId: string): Promise<Numero | null> {
   const { data, error } = await db()
     .from("whatsapp_numeros")
-    .select("phone_number_id, organization_id, restaurant_id, direccion, horario, domicilios, agente_activo")
+    .select("phone_number_id, organization_id, restaurant_id, direccion, horario, domicilios, pagos, agente_activo")
     .eq("phone_number_id", phoneNumberId)
     .maybeSingle();
   if (error) console.error("[whatsapp] numero:", error);
@@ -137,6 +138,40 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
   return pendientes;
 }
 
+/** Pause between bubbles, like someone typing: longer for longer messages. */
+const pausaEscribiendo = (texto: string) => Math.min(4_000, 700 + texto.length * 30);
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The customer's file plus their latest WhatsApp orders, in words. */
+async function cargarFicha(orgId: string, waId: string, perfil: string | null): Promise<FichaCliente> {
+  const [{ data: f }, { data: ords }] = await Promise.all([
+    db().from("whatsapp_clientes").select("trato, habitual, entrega, pago, notas").eq("organization_id", orgId).eq("wa_id", waId).maybeSingle(),
+    db()
+      .from("ordenes")
+      .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty)")
+      .eq("organization_id", orgId)
+      .eq("customer_phone", waId)
+      .neq("status", "cancelada")
+      .order("created_at", { ascending: false })
+      .limit(3),
+  ]);
+  const pedidos = ((ords ?? []) as { folio: string; status: string; created_at: string; order_type: string; delivery_address: string | null; orden_items: { name: string; qty: number }[] }[]).map((o) => {
+    const dia = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(o.created_at));
+    const items = (o.orden_items ?? []).map((i) => `${i.qty} ${i.name}`).join(", ");
+    return `${o.folio} · ${dia} · ${o.status}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
+  });
+  const ficha = (f ?? {}) as Partial<Record<keyof CambiosFicha, string | null>>;
+  return {
+    perfil,
+    trato: ficha.trato ?? null,
+    habitual: ficha.habitual ?? null,
+    entrega: ficha.entrega ?? null,
+    pago: ficha.pago ?? null,
+    notas: ficha.notas ?? null,
+    pedidos,
+  };
+}
+
 const ahoraYopal = () =>
   new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "full", timeStyle: "short" }).format(new Date());
 
@@ -152,7 +187,7 @@ export async function responder(p: Pendiente): Promise<void> {
   if (!n || !atiendeA(n.agente_activo, p.waId)) return;
   const { data: conv } = await db()
     .from("whatsapp_conversaciones")
-    .select("agente_pausado_hasta")
+    .select("agente_pausado_hasta, nombre")
     .eq("id", p.conversacionId)
     .single();
   if (conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date()) return;
@@ -174,6 +209,7 @@ export async function responder(p: Pendiente): Promise<void> {
   const orgName = ((org?.name as string | undefined) ?? "").replace(/'s org$/, "") || "el café";
   const catalog = await getPosCatalog({ organizationId: n.organization_id, userId: null, orgName, client: db() });
 
+  const ficha = await cargarFicha(n.organization_id, p.waId, (conv?.nombre as string | null) ?? null);
   let ordenId: string | null = null;
   const res = await responderWhatsapp({
     catalog,
@@ -183,7 +219,9 @@ export async function responder(p: Pendiente): Promise<void> {
       horario: n.horario,
       domicilios: n.domicilios,
       instagram: ((org?.instagram as string | null) ?? "").replace(/^@/, "") || null,
+      pagos: n.pagos,
     },
+    ficha,
     turnos,
     ahora: ahoraYopal(),
     herramientas: {
@@ -197,6 +235,15 @@ export async function responder(p: Pendiente): Promise<void> {
         await avisarPos(n.organization_id);
         return { ok: true, folio: r.folio, total: v.subtotal };
       },
+      recordarCliente: async (cambios) => {
+        const { error } = await db()
+          .from("whatsapp_clientes")
+          .upsert(
+            { organization_id: n.organization_id, wa_id: p.waId, ...cambios, updated_at: new Date().toISOString() },
+            { onConflict: "organization_id,wa_id" },
+          );
+        if (error) console.error("[whatsapp] ficha:", error);
+      },
       pasarAHumano: async (motivo) => {
         console.info("[whatsapp] a humano:", p.waId, motivo);
         await db()
@@ -206,24 +253,33 @@ export async function responder(p: Pendiente): Promise<void> {
       },
     },
   });
-  if (!res.texto) return;
-  let waId: string | null = null;
-  let fallo: string | null = null;
-  try {
-    waId = await enviarTexto(p.phoneNumberId, p.waId, res.texto);
-  } catch (e) {
-    fallo = (e instanceof Error ? e.message : String(e)).slice(0, 500);
-    console.error("[whatsapp] envío:", fallo);
+  if (res.reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, res.reaccion);
+  const burbujas = enBurbujas(res.texto);
+  for (const [i, burbuja] of burbujas.entries()) {
+    if (i > 0) {
+      // «escribiendo…» again, then a pause the size of the message.
+      await marcarLeidoEscribiendo(p.phoneNumberId, p.messageId);
+      await dormir(pausaEscribiendo(burbuja));
+    }
+    let waId: string | null = null;
+    let fallo: string | null = null;
+    try {
+      waId = await enviarTexto(p.phoneNumberId, p.waId, burbuja);
+    } catch (e) {
+      fallo = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+      console.error("[whatsapp] envío:", fallo);
+    }
+    await guardarMensaje({
+      organization_id: n.organization_id,
+      conversacion_id: p.conversacionId,
+      wa_message_id: waId,
+      autor: "agente",
+      texto: burbuja,
+      orden_id: i === 0 ? ordenId : null,
+      ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
+    });
+    if (fallo) break;
   }
-  await guardarMensaje({
-    organization_id: n.organization_id,
-    conversacion_id: p.conversacionId,
-    wa_message_id: waId,
-    autor: "agente",
-    texto: res.texto,
-    orden_id: ordenId,
-    ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
-  });
 }
 
 const RANGO: Record<EstadoEntrega["estado"], number> = { sent: 1, delivered: 2, read: 3, failed: 4 };

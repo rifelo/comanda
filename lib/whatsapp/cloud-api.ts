@@ -183,6 +183,15 @@ export async function enviarTexto(phoneNumberId: string, to: string, body: strin
   return str(obj(arr(json.messages)[0]).id);
 }
 
+/** React with an emoji to a customer's message. Never throws. */
+export async function enviarReaccion(phoneNumberId: string, to: string, messageId: string, emoji: string): Promise<void> {
+  try {
+    await graph(phoneNumberId, { recipient_type: "individual", to, type: "reaction", reaction: { message_id: messageId, emoji } });
+  } catch (e) {
+    console.warn("[whatsapp] reacción:", e);
+  }
+}
+
 /** Blue ticks plus «escribiendo…» while the agent thinks. Never throws. */
 export async function marcarLeidoEscribiendo(phoneNumberId: string, messageId: string): Promise<void> {
   try {
