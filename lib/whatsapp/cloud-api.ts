@@ -51,8 +51,12 @@ export interface EstadoEntrega {
 /** Something a customer wrote to the business. */
 export interface Entrante {
   phoneNumberId: string;
-  /** Customer's number, E.164 without «+». */
+  /** Customer's number, E.164 without «+»; their business-scoped id («RS.…») when they hide it behind a username. */
   waId: string;
+  /** Business-scoped user id (BSUID), when Meta sends it. */
+  userId: string | null;
+  /** WhatsApp @username, without «@», when they have one. */
+  username: string | null;
   nombre: string | null;
   messageId: string;
   /** Text, or null when it was a sticker, audio, location… */
@@ -104,11 +108,17 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
       const phoneNumberId = str(obj(value.metadata).phone_number_id);
       if (!phoneNumberId) continue;
       if (c.field === "messages") {
-        const nombres = new Map<string, string>();
+        // Contacts carry the profile; keyed by phone and by BSUID, since
+        // either one may be the only id a message has.
+        const contactos = new Map<string, { name: string | null; username: string | null; userId: string | null }>();
         for (const ct of arr(value.contacts)) {
-          const waId = str(obj(ct).wa_id);
-          const name = str(obj(obj(ct).profile).name);
-          if (waId && name) nombres.set(waId, name);
+          const o = obj(ct);
+          const info = {
+            name: str(obj(o.profile).name),
+            username: str(obj(o.profile).username)?.replace(/^@/, "") ?? null,
+            userId: str(o.user_id),
+          };
+          for (const k of [str(o.wa_id), info.userId]) if (k) contactos.set(k, info);
         }
         // Delivery receipts: a reply WhatsApp accepted but could not deliver
         // only shows up here, so log the failures with Meta's reason.
@@ -132,13 +142,16 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
         }
         for (const raw of arr(value.messages)) {
           const m = obj(raw);
-          const waId = str(m.from);
+          const waId = str(m.from) ?? str(m.from_user_id);
           const messageId = str(m.id);
           if (!waId || !messageId) continue;
+          const ct = contactos.get(waId) ?? (str(m.from_user_id) ? contactos.get(str(m.from_user_id)!) : undefined);
           entrantes.push({
             phoneNumberId,
             waId,
-            nombre: nombres.get(waId) ?? null,
+            userId: str(m.from_user_id) ?? ct?.userId ?? null,
+            username: ct?.username ?? null,
+            nombre: ct?.name ?? null,
             messageId,
             texto: textoDe(m),
             tipo: str(m.type) ?? "unknown",
@@ -148,7 +161,7 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
       } else if (c.field === "smb_message_echoes") {
         for (const raw of arr(value.message_echoes)) {
           const m = obj(raw);
-          const waId = str(m.to);
+          const waId = str(m.to) ?? str(m.to_user_id);
           const messageId = str(m.id);
           if (!waId || !messageId) continue;
           ecos.push({ phoneNumberId, waId, messageId, texto: textoDe(m), at: when(m.timestamp) });
@@ -177,16 +190,21 @@ async function graph(phoneNumberId: string, payload: object): Promise<Obj> {
   return json;
 }
 
+/** A phone number goes in `to`; a business-scoped id («RS.…») in `recipient`. */
+export function destino(id: string): { to: string } | { recipient: string } {
+  return /^\d+$/.test(id) ? { to: id } : { recipient: id };
+}
+
 /** Send a text reply; returns Meta's message id. */
 export async function enviarTexto(phoneNumberId: string, to: string, body: string): Promise<string | null> {
-  const json = await graph(phoneNumberId, { recipient_type: "individual", to, type: "text", text: { body, preview_url: true } });
+  const json = await graph(phoneNumberId, { recipient_type: "individual", ...destino(to), type: "text", text: { body, preview_url: true } });
   return str(obj(arr(json.messages)[0]).id);
 }
 
 /** React with an emoji to a customer's message. Never throws. */
 export async function enviarReaccion(phoneNumberId: string, to: string, messageId: string, emoji: string): Promise<void> {
   try {
-    await graph(phoneNumberId, { recipient_type: "individual", to, type: "reaction", reaction: { message_id: messageId, emoji } });
+    await graph(phoneNumberId, { recipient_type: "individual", ...destino(to), type: "reaction", reaction: { message_id: messageId, emoji } });
   } catch (e) {
     console.warn("[whatsapp] reacción:", e);
   }

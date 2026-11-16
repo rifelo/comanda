@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { isValidBearer, isValidSignature, leerWebhook } from "./cloud-api";
+import { isValidBearer, isValidSignature, leerWebhook, destino } from "./cloud-api";
 
 const meta = { display_phone_number: "573001112233", phone_number_id: "PNID" };
 
@@ -85,5 +85,33 @@ describe("leerWebhook", () => {
     const vacio = { entrantes: [], ecos: [], estados: [] };
     expect(leerWebhook(null)).toEqual(vacio);
     expect(leerWebhook({ entry: [{ changes: [{ field: "messages", value: {} }] }] })).toEqual(vacio);
+  });
+});
+
+describe("usernames (BSUID)", () => {
+  const webhook = (msg: Record<string, unknown>, contact: Record<string, unknown>) => ({
+    entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PN" }, contacts: [contact], messages: [msg] } }] }],
+  });
+  it("keeps phone, BSUID and @username when all come", () => {
+    const { entrantes } = leerWebhook(
+      webhook(
+        { from: "573001112233", from_user_id: "RS.123", id: "wamid.1", type: "text", text: { body: "Hola" }, timestamp: "1" },
+        { wa_id: "573001112233", user_id: "RS.123", profile: { name: "Bibiana", username: "bibizperez" } },
+      ),
+    );
+    expect(entrantes[0]).toMatchObject({ waId: "573001112233", userId: "RS.123", username: "bibizperez", nombre: "Bibiana" });
+  });
+  it("accepts a customer who hides the phone behind a username", () => {
+    const { entrantes } = leerWebhook(
+      webhook(
+        { from_user_id: "RS.999", id: "wamid.2", type: "text", text: { body: "Hola" }, timestamp: "1" },
+        { user_id: "RS.999", profile: { name: "Ana", username: "@ana.cafe" } },
+      ),
+    );
+    expect(entrantes[0]).toMatchObject({ waId: "RS.999", userId: "RS.999", username: "ana.cafe", nombre: "Ana" });
+  });
+  it("sends to a phone with `to` and to a BSUID with `recipient`", () => {
+    expect(destino("573001112233")).toEqual({ to: "573001112233" });
+    expect(destino("RS.999")).toEqual({ recipient: "RS.999" });
   });
 });

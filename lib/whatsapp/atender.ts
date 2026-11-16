@@ -47,7 +47,13 @@ async function numero(phoneNumberId: string): Promise<Numero | null> {
   return (data as Numero | null) ?? null;
 }
 
-async function conversacion(n: Numero, waId: string, nombre: string | null, entrante: Date | null): Promise<string | null> {
+async function conversacion(
+  n: Numero,
+  waId: string,
+  nombre: string | null,
+  entrante: Date | null,
+  ids: { userId?: string | null; username?: string | null } = {},
+): Promise<string | null> {
   const { data, error } = await db()
     .from("whatsapp_conversaciones")
     .upsert(
@@ -56,6 +62,8 @@ async function conversacion(n: Numero, waId: string, nombre: string | null, entr
         phone_number_id: n.phone_number_id,
         wa_id: waId,
         ...(nombre ? { nombre } : {}),
+        ...(ids.userId ? { user_id: ids.userId } : {}),
+        ...(ids.username ? { username: ids.username } : {}),
         ...(entrante ? { ultimo_entrante_at: entrante.toISOString() } : {}),
       },
       { onConflict: "phone_number_id,wa_id" },
@@ -105,7 +113,7 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
       console.warn("[whatsapp] número sin configurar:", e.phoneNumberId);
       continue;
     }
-    const convId = await conversacion(n, e.waId, e.nombre, e.at);
+    const convId = await conversacion(n, e.waId, e.nombre, e.at, { userId: e.userId, username: e.username });
     if (!convId) continue;
     const nuevo = await guardarMensaje({
       organization_id: n.organization_id,
@@ -142,10 +150,32 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
 const pausaEscribiendo = (texto: string) => Math.min(4_000, 700 + texto.length * 30);
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const CAMPOS_FICHA = "id, trato, habitual, entrega, pago, notas";
+
+/**
+ * Their file by phone (or business-scoped id); failing that, one the owner
+ * pre-loaded by @username, which gets linked to this number from now on.
+ */
+async function buscarFicha(orgId: string, waId: string, username: string | null) {
+  const porNumero = await db().from("whatsapp_clientes").select(CAMPOS_FICHA).eq("organization_id", orgId).eq("wa_id", waId).maybeSingle();
+  if (porNumero.data || !username) return porNumero;
+  const porUsuario = await db()
+    .from("whatsapp_clientes")
+    .select(CAMPOS_FICHA)
+    .eq("organization_id", orgId)
+    .is("wa_id", null)
+    .ilike("username", username.replace(/[\\%_]/g, (c) => `\\${c}`))
+    .maybeSingle();
+  if (porUsuario.data) {
+    await db().from("whatsapp_clientes").update({ wa_id: waId, updated_at: new Date().toISOString() }).eq("id", porUsuario.data.id);
+  }
+  return porUsuario;
+}
+
 /** The customer's file plus their latest WhatsApp orders, in words. */
-async function cargarFicha(orgId: string, waId: string, perfil: string | null): Promise<FichaCliente> {
+async function cargarFicha(orgId: string, waId: string, perfil: string | null, username: string | null): Promise<FichaCliente> {
   const [{ data: f }, { data: ords }] = await Promise.all([
-    db().from("whatsapp_clientes").select("trato, habitual, entrega, pago, notas").eq("organization_id", orgId).eq("wa_id", waId).maybeSingle(),
+    buscarFicha(orgId, waId, username),
     db()
       .from("ordenes")
       .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty)")
@@ -187,7 +217,7 @@ export async function responder(p: Pendiente): Promise<void> {
   if (!n || !atiendeA(n.agente_activo, p.waId)) return;
   const { data: conv } = await db()
     .from("whatsapp_conversaciones")
-    .select("agente_pausado_hasta, nombre")
+    .select("agente_pausado_hasta, nombre, username")
     .eq("id", p.conversacionId)
     .single();
   if (conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date()) return;
@@ -209,7 +239,7 @@ export async function responder(p: Pendiente): Promise<void> {
   const orgName = ((org?.name as string | undefined) ?? "").replace(/'s org$/, "") || "el café";
   const catalog = await getPosCatalog({ organizationId: n.organization_id, userId: null, orgName, client: db() });
 
-  const ficha = await cargarFicha(n.organization_id, p.waId, (conv?.nombre as string | null) ?? null);
+  const ficha = await cargarFicha(n.organization_id, p.waId, (conv?.nombre as string | null) ?? null, (conv?.username as string | null) ?? null);
   let ordenId: string | null = null;
   const res = await responderWhatsapp({
     catalog,
