@@ -6,6 +6,7 @@ import { enBurbujas, responderWhatsapp, type CambiosFicha, type FichaCliente, ty
 import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA } from "./probadores";
+import { enlazarClaves, esTelefono, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
 /**
  * What happens to a webhook once Meta's signature checked out.
@@ -150,55 +151,59 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
 const pausaEscribiendo = (texto: string) => Math.min(4_000, 700 + texto.length * 30);
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const CAMPOS_FICHA = "id, trato, habitual, entrega, pago, notas";
+const CAMPOS_FICHA = "id, wa_id, user_id, username, trato, habitual, entrega, pago, notas";
+type FilaFicha = FilaClaves & { id: string } & Partial<Record<keyof CambiosFicha, string | null>>;
 
 /**
- * Their file by phone (or business-scoped id); failing that, one the owner
- * pre-loaded by @username, which gets linked to this number from now on.
+ * Their file by phone, then by business-scoped id, then by @username (one
+ * the owner may have pre-loaded); the keys it lacks are filled in on the way.
  */
-async function buscarFicha(orgId: string, waId: string, username: string | null) {
-  const porNumero = await db().from("whatsapp_clientes").select(CAMPOS_FICHA).eq("organization_id", orgId).eq("wa_id", waId).maybeSingle();
-  if (porNumero.data || !username) return porNumero;
-  const porUsuario = await db()
-    .from("whatsapp_clientes")
-    .select(CAMPOS_FICHA)
-    .eq("organization_id", orgId)
-    .is("wa_id", null)
-    .ilike("username", username.replace(/[\\%_]/g, (c) => `\\${c}`))
-    .maybeSingle();
-  if (porUsuario.data) {
-    await db().from("whatsapp_clientes").update({ wa_id: waId, updated_at: new Date().toISOString() }).eq("id", porUsuario.data.id);
+async function buscarFicha(orgId: string, c: ClavesCliente): Promise<FilaFicha | null> {
+  const base = () => db().from("whatsapp_clientes").select(CAMPOS_FICHA).eq("organization_id", orgId);
+  let fila = ((await base().eq("wa_id", c.waId).maybeSingle()).data as FilaFicha | null) ?? null;
+  if (!fila && c.userId) fila = ((await base().eq("user_id", c.userId).maybeSingle()).data as FilaFicha | null) ?? null;
+  const u = usuario(c.username);
+  if (!fila && u) fila = ((await base().ilike("username", u.replace(/[\\%_]/g, (x) => `\\${x}`)).maybeSingle()).data as FilaFicha | null) ?? null;
+  if (!fila) return null;
+  const cambios = enlazarClaves(fila, c);
+  if (Object.keys(cambios).length) {
+    const { error } = await db().from("whatsapp_clientes").update({ ...cambios, updated_at: new Date().toISOString() }).eq("id", fila.id);
+    if (error) console.error("[whatsapp] enlazar ficha:", error);
+    else Object.assign(fila, cambios);
   }
-  return porUsuario;
+  return fila;
 }
 
 /** The customer's file plus their latest WhatsApp orders, in words. */
-async function cargarFicha(orgId: string, waId: string, perfil: string | null, username: string | null): Promise<FichaCliente> {
-  const [{ data: f }, { data: ords }] = await Promise.all([
-    buscarFicha(orgId, waId, username),
-    db()
-      .from("ordenes")
-      .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty)")
-      .eq("organization_id", orgId)
-      .eq("customer_phone", waId)
-      .neq("status", "cancelada")
-      .order("created_at", { ascending: false })
-      .limit(3),
-  ]);
+async function cargarFicha(orgId: string, c: ClavesCliente, perfil: string | null): Promise<{ ficha: FichaCliente; filaId: string | null }> {
+  const f = await buscarFicha(orgId, c);
+  const tel = telefonoDe(c, f);
+  const { data: ords } = tel
+    ? await db()
+        .from("ordenes")
+        .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty)")
+        .eq("organization_id", orgId)
+        .eq("customer_phone", tel)
+        .neq("status", "cancelada")
+        .order("created_at", { ascending: false })
+        .limit(3)
+    : { data: [] };
   const pedidos = ((ords ?? []) as { folio: string; status: string; created_at: string; order_type: string; delivery_address: string | null; orden_items: { name: string; qty: number }[] }[]).map((o) => {
     const dia = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(o.created_at));
     const items = (o.orden_items ?? []).map((i) => `${i.qty} ${i.name}`).join(", ");
     return `${o.folio} · ${dia} · ${o.status}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
   });
-  const ficha = (f ?? {}) as Partial<Record<keyof CambiosFicha, string | null>>;
   return {
-    perfil,
-    trato: ficha.trato ?? null,
-    habitual: ficha.habitual ?? null,
-    entrega: ficha.entrega ?? null,
-    pago: ficha.pago ?? null,
-    notas: ficha.notas ?? null,
-    pedidos,
+    filaId: f?.id ?? null,
+    ficha: {
+      perfil,
+      trato: f?.trato ?? null,
+      habitual: f?.habitual ?? null,
+      entrega: f?.entrega ?? null,
+      pago: f?.pago ?? null,
+      notas: f?.notas ?? null,
+      pedidos,
+    },
   };
 }
 
@@ -217,7 +222,7 @@ export async function responder(p: Pendiente): Promise<void> {
   if (!n || !atiendeA(n.agente_activo, p.waId)) return;
   const { data: conv } = await db()
     .from("whatsapp_conversaciones")
-    .select("agente_pausado_hasta, nombre, username")
+    .select("agente_pausado_hasta, nombre, username, user_id")
     .eq("id", p.conversacionId)
     .single();
   if (conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date()) return;
@@ -239,7 +244,14 @@ export async function responder(p: Pendiente): Promise<void> {
   const orgName = ((org?.name as string | undefined) ?? "").replace(/'s org$/, "") || "el café";
   const catalog = await getPosCatalog({ organizationId: n.organization_id, userId: null, orgName, client: db() });
 
-  const ficha = await cargarFicha(n.organization_id, p.waId, (conv?.nombre as string | null) ?? null, (conv?.username as string | null) ?? null);
+  const claves: ClavesCliente = {
+    waId: p.waId,
+    userId: (conv?.user_id as string | null) ?? null,
+    username: (conv?.username as string | null) ?? null,
+  };
+  const cargada = await cargarFicha(n.organization_id, claves, (conv?.nombre as string | null) ?? null);
+  const ficha = cargada.ficha;
+  let filaId = cargada.filaId;
   let ordenId: string | null = null;
   const res = await responderWhatsapp({
     catalog,
@@ -266,13 +278,27 @@ export async function responder(p: Pendiente): Promise<void> {
         return { ok: true, folio: r.folio, total: v.subtotal };
       },
       recordarCliente: async (cambios) => {
-        const { error } = await db()
+        // Update the file we recognised; only a brand-new customer gets a row.
+        const ahora = new Date().toISOString();
+        if (filaId) {
+          const { error } = await db().from("whatsapp_clientes").update({ ...cambios, updated_at: ahora }).eq("id", filaId);
+          if (error) console.error("[whatsapp] ficha:", error);
+          return;
+        }
+        const { data, error } = await db()
           .from("whatsapp_clientes")
-          .upsert(
-            { organization_id: n.organization_id, wa_id: p.waId, ...cambios, updated_at: new Date().toISOString() },
-            { onConflict: "organization_id,wa_id" },
-          );
+          .insert({
+            organization_id: n.organization_id,
+            wa_id: p.waId,
+            user_id: claves.userId ?? (esTelefono(p.waId) ? null : p.waId),
+            username: usuario(claves.username),
+            ...cambios,
+            updated_at: ahora,
+          })
+          .select("id")
+          .single();
         if (error) console.error("[whatsapp] ficha:", error);
+        filaId = (data?.id as string | undefined) ?? null;
       },
       pasarAHumano: async (motivo) => {
         console.info("[whatsapp] a humano:", p.waId, motivo);
