@@ -267,9 +267,10 @@ export function tomaTickets(): boolean {
 }
 
 /**
- * Where this device's automatic comanda goes. The bar gets it with every new
- * order from any device (owner, 2026-11-16): a device set to «No» for receipts
- * still sends its comandas to the caja's printer.
+ * Where this device's automatic comanda and receipt go. The bar gets the
+ * comanda with every new order and the customer gets the receipt with every
+ * confirmed payment, from any device (owner, 2026-11-16): a device set to «No»
+ * still sends them to the caja's printer.
  */
 export function modoComanda(s: TicketSettings = getTicketState()): TicketSettings["modo"] {
   return s.modo === "no" ? "caja" : s.modo;

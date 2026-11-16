@@ -65,7 +65,7 @@ import {
 import { nudge } from "./pos-live";
 import { printMessageLabel, printCupNameLabel, printCupDrinkLabel } from "@/lib/printer/serial";
 import { cupOptionsLine } from "@/lib/pos/detalle";
-import { comandaHace, getTicketState, modoComanda, printTicket, ticketsOn } from "@/lib/printer/tickets";
+import { comandaHace, getTicketState, modoComanda, printTicket } from "@/lib/printer/tickets";
 import type { TicketDoc, TicketLine } from "@/lib/printer/ticket";
 import { nuevoCodigo, urlCalificacion } from "@/lib/calificaciones/calificaciones";
 
@@ -1246,7 +1246,7 @@ function finishMixto(res: { folio: string; ordenId: string; total: number; pagos
     lastMethod: summarizeMethod(res.pagos.map((p) => p.method)) ?? s.payMethod,
     lastPagos: res.pagos.length > 1 ? res.pagos : null,
   });
-  if (ticketsOn() && getTicketState().recibo === "auto") printReceipt();
+  printReceipt();
 }
 /** Take back one part (entered by mistake, transfer that didn't land). */
 export async function quitarPagoMixto(pagoId: string) {
@@ -1315,6 +1315,7 @@ export async function paySplit() {
       split: false,
       splitTarget: null,
     });
+    printReceipt();
   } else {
     // Back to the people: the next one pays (or the rest).
     posStore.set((st) => ({
@@ -1432,7 +1433,7 @@ export async function completeSale() {
       lastMethod: s.payMethod,
       receiptKind: "pagada",
     });
-    if (ticketsOn() && getTicketState().recibo === "auto") printReceipt();
+    printReceipt();
     // A pending order already got its labels when it was sent.
     void refreshPendientes();
     nudge("ordenes");
@@ -2048,8 +2049,8 @@ function saleTicket(kind: TicketDoc["kind"], t: TicketSale): TicketDoc {
  */
 function printJobTicket(job: OutboxItem, folio: string, what: "comanda" | "recibo-auto"): boolean {
   const t = getTicketState();
-  if (what === "comanda" ? !t.comanda : !ticketsOn(t) || t.recibo !== "auto") return false;
-  (what === "comanda" ? printComanda : printTicket)(saleTicket(what === "comanda" ? "comanda" : "recibo", {
+  if (what === "comanda" && !t.comanda) return false;
+  const doc = saleTicket(what === "comanda" ? "comanda" : "recibo", {
     order: job.snapshot.order,
     customerName: job.snapshot.customerName,
     folio,
@@ -2065,7 +2066,9 @@ function printJobTicket(job: OutboxItem, folio: string, what: "comanda" | "recib
     change: job.snapshot.change,
     pendiente: job.kind === "pendiente",
     porVerificar: job.base.porVerificar === "transferencia",
-  }));
+  });
+  if (what === "comanda") printComanda(doc);
+  else printTicket(doc, modoComanda());
   return what === "recibo-auto";
 }
 
@@ -2101,8 +2104,9 @@ function currentSaleTicket(kind: TicketDoc["kind"], copia: boolean): TicketDoc {
     approval: partes.find((p) => p.approvalCode)?.approvalCode ?? null,
   };
 }
+/** The receipt of the sale just paid: always, wherever the caja's printer is. */
 export function printReceipt() {
-  printTicket(currentSaleTicket("recibo", false));
+  printTicket(currentSaleTicket("recibo", false), modoComanda());
 }
 export function reprintComanda() {
   printTicket(currentSaleTicket("comanda", true));
