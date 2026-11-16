@@ -7,6 +7,7 @@ import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Ent
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, ultimaSesion } from "./sesion";
+import { versionPrompt, type Leccion } from "./aprendizajes";
 import { enlazarClaves, esTelefono, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
 /**
@@ -88,6 +89,7 @@ async function guardarMensaje(row: {
   estado?: EstadoEntrega["estado"];
   error?: string;
   estado_at?: string;
+  prompt_version?: string;
 }): Promise<boolean> {
   const { error } = await db().from("whatsapp_mensajes").insert(row);
   if (error?.code === "23505") return false;
@@ -255,6 +257,14 @@ export async function responder(p: Pendiente): Promise<void> {
     userId: (conv?.user_id as string | null) ?? null,
     username: (conv?.username as string | null) ?? null,
   };
+  const { data: lecc } = await db()
+    .from("agente_lecciones")
+    .select("id, texto")
+    .eq("organization_id", n.organization_id)
+    .eq("estado", "aprobada")
+    .order("created_at", { ascending: true });
+  const lecciones = (lecc ?? []) as Leccion[];
+  const version = versionPrompt(lecciones);
   const cargada = await cargarFicha(n.organization_id, claves, (conv?.nombre as string | null) ?? null);
   const ficha = cargada.ficha;
   let filaId = cargada.filaId;
@@ -270,6 +280,7 @@ export async function responder(p: Pendiente): Promise<void> {
       pagos: n.pagos,
     },
     ficha,
+    lecciones,
     turnos,
     ahora: ahoraYopal(),
     herramientas: {
@@ -310,7 +321,11 @@ export async function responder(p: Pendiente): Promise<void> {
         console.info("[whatsapp] a humano:", p.waId, motivo);
         await db()
           .from("whatsapp_conversaciones")
-          .update({ agente_pausado_hasta: new Date(Date.now() + PAUSA_HUMANO_MS).toISOString() })
+          .update({
+            agente_pausado_hasta: new Date(Date.now() + PAUSA_HUMANO_MS).toISOString(),
+            traspaso_at: new Date().toISOString(),
+            traspaso_motivo: motivo.slice(0, 300),
+          })
           .eq("id", p.conversacionId);
       },
     },
@@ -350,6 +365,7 @@ export async function responder(p: Pendiente): Promise<void> {
       autor: "agente",
       texto,
       orden_id: i === 0 ? ordenId : null,
+      prompt_version: version,
       ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
     });
     if (fallo) break;

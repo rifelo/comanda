@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
-import { PageHeader } from "@/components/ui";
+import { Button, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "WhatsApp · Comanda" };
@@ -47,7 +47,7 @@ function ventana() {
 export default async function WhatsappPage() {
   const { profile, supabase } = await requireAdmin();
   const { desde, ahora } = ventana();
-  const [{ data: msgs }, { data: convs }] = await Promise.all([
+  const [{ data: msgs }, { data: convs }, { count: propuestas }] = await Promise.all([
     supabase
       .from("whatsapp_mensajes")
       .select("id, conversacion_id, autor, texto, created_at, estado, error")
@@ -59,6 +59,11 @@ export default async function WhatsappPage() {
       .from("whatsapp_conversaciones")
       .select("id, wa_id, nombre, agente_pausado_hasta")
       .eq("organization_id", profile.organization_id),
+    supabase
+      .from("agente_lecciones")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", profile.organization_id)
+      .eq("estado", "propuesta"),
   ]);
   const mensajes = (msgs ?? []) as Mensaje[];
   const porConv = new Map<string, Mensaje[]>();
@@ -71,7 +76,16 @@ export default async function WhatsappPage() {
 
   return (
     <div className="mx-auto w-full max-w-[900px]">
-      <PageHeader title="WhatsApp" sub={`Conversaciones y entregas de los últimos ${DIAS} días`} back="/mas" />
+      <PageHeader
+        title="WhatsApp"
+        sub={`Conversaciones y entregas de los últimos ${DIAS} días`}
+        back="/mas"
+        actions={
+          <Button href="/whatsapp/aprendizajes" variant="ghost" size="sm">
+            Aprendizajes{propuestas ? ` · ${propuestas} por revisar` : ""}
+          </Button>
+        }
+      />
       <div className="px-4 sm:px-7 pb-12">
         <div className="flex flex-wrap" style={{ gap: 12 }}>
           <Dato label="Conversaciones" valor={conversaciones.length} />

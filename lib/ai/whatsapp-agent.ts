@@ -4,6 +4,7 @@ import { z } from "zod";
 import { posMoney, type PosCatalog } from "@/lib/pos/types";
 import type { PedidoAgente } from "@/lib/whatsapp/pedido";
 import { GROQ_TEXT_MODEL } from "@/lib/ai/groq";
+import { seccionLecciones, type Leccion } from "@/lib/whatsapp/aprendizajes";
 
 /**
  * Sales agent behind the business WhatsApp. It answers about the menu, builds
@@ -206,7 +207,8 @@ export function menuParaAgente(catalog: PosCatalog): string {
   return out.join("\n");
 }
 
-function instrucciones(local: LocalInfo, menu: string): string {
+/** The agent's instructions; the nightly review reads them too (with the menu left out). */
+export function instrucciones(local: LocalInfo, menu: string, lecciones: Leccion[] = []): string {
   const pago = local.pagos
     ? `Se paga al recoger o al recibir (efectivo o tarjeta), o por transferencia. Si el cliente va a transferir, después de crear el pedido le compartes los datos tal cual:\n${local.pagos}`
     : "Se paga al recoger o al recibir (efectivo, tarjeta o transferencia). No tienes datos de transferencia: si los piden, pasa a humano.";
@@ -266,7 +268,7 @@ Arriba de la conversación va su ficha (cómo saludarlo, su pedido de siempre, d
 
 No inventes productos, precios, promociones ni tiempos distintos a estos. Quejas, problemas con un pedido o pago, o algo que no puedes resolver: pasar_a_humano.
 
-# Menú (precios en pesos colombianos)
+${seccionLecciones(lecciones)}# Menú (precios en pesos colombianos)
 ${menu}`;
 }
 
@@ -308,6 +310,8 @@ type Entrada = {
   turnos: Turno[];
   ahora: string;
   ficha: FichaCliente | null;
+  /** Lessons the owner approved from past conversations. */
+  lecciones: Leccion[];
   herramientas: Herramientas;
 };
 
@@ -325,7 +329,7 @@ async function responderConClaude(input: Entrada): Promise<Respuesta> {
   const messages = historialComoMensajes(input.turnos);
   if (!messages.length || messages[messages.length - 1].role !== "user") return { texto: "", humano: false, reaccion: null };
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
-    { type: "text", text: instrucciones(input.local, menuParaAgente(input.catalog)), cache_control: { type: "ephemeral" } },
+    { type: "text", text: instrucciones(input.local, menuParaAgente(input.catalog), input.lecciones), cache_control: { type: "ephemeral" } },
     { type: "text", text: `${fichaParaAgente(input.ficha)}\n\nFecha y hora en Yopal ahora: ${input.ahora}.` },
   ];
   let humano = false;
@@ -409,7 +413,7 @@ async function responderConGroq(input: Entrada): Promise<Respuesta> {
   const messages: GroqMsg[] = [
     {
       role: "system",
-      content: `${instrucciones(input.local, menuParaAgente(input.catalog))}\n\n${fichaParaAgente(input.ficha)}\n\nFecha y hora en Yopal ahora: ${input.ahora}.`,
+      content: `${instrucciones(input.local, menuParaAgente(input.catalog), input.lecciones)}\n\n${fichaParaAgente(input.ficha)}\n\nFecha y hora en Yopal ahora: ${input.ahora}.`,
     },
     ...historial.map((m) => ({ role: m.role, content: m.content as string }) as GroqMsg),
   ];

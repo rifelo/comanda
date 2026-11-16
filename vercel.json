@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/agente-inventario",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-revision",
+      "schedule": "50 4 * * *"
     }
   ]
 }
