@@ -31,6 +31,11 @@ export type ArmarPedidoResult = { ok: true; folio: number; mensaje: string; wa: 
  * lines are looked up again on the server (only their keys and quantities are
  * trusted), the team's requests behind them become "pedida" and the open
  * faltantes point to the order. Returns the WhatsApp message ready to send.
+ *
+ * The order is born «por confirmar» (status borrador): opening the WhatsApp
+ * doesn't mean the supplier took it. The owner confirms it with
+ * `confirmarPedido` (date, total, how it's paid) and only then the tablet
+ * sees it under «Pedidos por llegar».
  */
 export async function armarPedido(input: unknown): Promise<ArmarPedidoResult> {
   const parsed = PedidoSchema.safeParse(input);
@@ -52,6 +57,7 @@ export async function armarPedido(input: unknown): Promise<ArmarPedidoResult> {
     entregaDias: proveedor?.entrega_dias ?? 0,
     today: todayInTz(sede?.tz ?? "America/Bogota"),
     note: parsed.data.note || null,
+    status: "borrador",
     lineas: elegidas.map((e) => ({ ingredienteId: e.linea!.ingredienteId, nombre: e.linea!.nombre, qty: e.qty })),
     solicitudIds: elegidas.flatMap((e) => e.linea!.solicitudIds),
     faltanteIds: elegidas.flatMap((e) => e.linea!.faltanteIds),
@@ -139,6 +145,62 @@ export async function registrarPedidoManual(input: unknown): Promise<{ ok: true;
   }
   revalidate();
   return { ok: true, folio: res.folio };
+}
+
+const ConfirmarSchema = z.object({
+  id: z.string().uuid(),
+  /** YYYY-MM-DD the supplier said it arrives. */
+  llega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  total: z.number().int().positive().max(100_000_000),
+  /** caja = the tablet pays it from the drawer when it arrives; transferencia = the owner already paid it. */
+  pago: z.enum(["caja", "transferencia"]),
+  referencia: z.string().trim().max(80).optional(),
+});
+
+/**
+ * «Marcar como solicitado»: the supplier took the order. It gets its expected
+ * date, its total and how it is paid, and moves to «en camino» (the tablet
+ * can receive it). Paid by transfer → a payment for the whole total is
+ * recorded today, so the tablet sees it as already paid; from the drawer →
+ * the tablet pays it on reception with a cash out.
+ */
+export async function confirmarPedido(input: unknown): Promise<{ ok: true; folio: number } | { ok: false; error: string }> {
+  const parsed = ConfirmarSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Escribe la fecha de entrega, el total y cómo se paga." };
+  const d = parsed.data;
+  const [{ user, profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
+  const orgId = profile.organization_id;
+  const today = todayInTz(sede?.tz ?? "America/Bogota");
+  if (d.llega < today) return { ok: false, error: "La fecha de entrega debe ser hoy o un día próximo." };
+  const { data: flipped } = await supabase
+    .from("compras")
+    .update({ status: "pedido", pedido_at: new Date().toISOString(), pedido_by: user.id, entrega_esperada: d.llega, total_cop: d.total, pago_previsto: d.pago })
+    .eq("organization_id", orgId)
+    .eq("id", d.id)
+    .eq("status", "borrador")
+    .select("id, folio");
+  if (!flipped?.length) return { ok: false, error: "Este pedido ya se confirmó o se canceló." };
+  const folio = Number(flipped[0].folio);
+  if (d.pago === "transferencia") {
+    const { error } = await supabase.from("compra_pagos").insert({
+      organization_id: orgId,
+      compra_id: d.id,
+      fecha: today,
+      monto_cop: d.total,
+      medio: "transferencia",
+      referencia: d.referencia || null,
+      note: "Pagado al confirmar el pedido",
+      registered_by: user.id,
+    });
+    if (error) {
+      console.error("[confirmarPedido] pago:", error);
+      revalidate();
+      return { ok: false, error: `El pedido n.º ${folio} quedó solicitado, pero la transferencia no se guardó: regístrala en el pedido.` };
+    }
+    revalidatePath("/gastos");
+  }
+  revalidate();
+  return { ok: true, folio };
 }
 
 export async function cancelarPedidoAction(id: string): Promise<{ ok: true } | { ok: false; error: string }> {

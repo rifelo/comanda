@@ -34,6 +34,7 @@ export default async function RecibirPage() {
           nota: c.note,
           estimado: c.total_cop,
           yaPagado: c.pagos.reduce((a, pg) => a + pg.monto, 0),
+          pagarDeCaja: c.pago_previsto === "caja",
           pagadoCon: c.pagos.length ? [...new Set(c.pagos.map((pg) => MEDIO_PAGO[pg.medio]))].join(" + ") : null,
           lineas: c.items.map((it) => {
             const pieza = it.unit ? piezaDe({ unit: it.unit, pack_qty: it.pack_qty, pieza_qty: it.pieza_qty }) : null;

@@ -7,6 +7,7 @@ import { ajustar, qtyLegible, vistaMensaje, type PorPedirGrupo } from "@/lib/com
 import type { NivelItem } from "@/lib/inventario/niveles";
 import { descartarSugerencia } from "../sugerencias/actions";
 import { armarPedido, nuevoALista, recibirRapido } from "./actions";
+import { PorConfirmar, type BorradorView } from "./confirmar-pedido";
 
 export interface NuevoView {
   id: string;
@@ -68,7 +69,7 @@ const WhatsApp = () => (
  * and the WhatsApp ready; the orders on their way with «Recibido»; and what
  * the team added that is not on the list yet.
  */
-export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino, recibidosHoy, proveedores, total, agotados }: {
+export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino, porConfirmar, today, recibidosHoy, proveedores, total, agotados }: {
   negocio: string;
   hora: string;
   grupos: PorPedirGrupo[];
@@ -76,6 +77,9 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
   unidades: Record<string, ItemUnidad>;
   nuevos: NuevoView[];
   camino: CaminoView[];
+  /** Sent by WhatsApp, waiting to be marked as solicitado. */
+  porConfirmar: BorradorView[];
+  today: string;
   recibidosHoy: { id: string; nombre: string }[];
   proveedores: { id: string; name: string }[];
   total: number;
@@ -110,7 +114,7 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
         w?.close();
         setCopiar({ proveedor: g.nombre, mensaje: res.mensaje });
       }
-      setFlash(`Pedido n.º ${res.folio} a ${g.nombre}: quedó en camino.`);
+      setFlash(`Pedido n.º ${res.folio} a ${g.nombre}: queda por confirmar. Márcalo como solicitado cuando el proveedor responda.`);
       router.refresh();
     } catch {
       w?.close();
@@ -269,6 +273,13 @@ export function PorPedirMobile({ negocio, hora, grupos, unidades, nuevos, camino
             </section>
           );
         })}
+
+        {porConfirmar.length > 0 && (
+          <section style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }} aria-label="Por confirmar">
+            <h2 className="ui-h2" style={{ margin: 0, display: "flex", alignItems: "baseline", gap: 8 }}>Por confirmar <span style={{ fontSize: 12, color: "var(--muted)" }}>{porConfirmar.length}</span></h2>
+            {porConfirmar.map((p) => <PorConfirmar key={p.id} p={p} today={today} />)}
+          </section>
+        )}
 
         {camino.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }} aria-label="En camino">

@@ -8,6 +8,7 @@ import { NIVELES, type Nivel } from "@/lib/inventario/niveles";
 import { armarPedido, cancelarPedidoAction, descartarSolicitud, guardarDiasProveedor, type ArmarPedidoResult } from "./actions";
 import { NuevoPedido } from "./nuevo-pedido";
 import { PagosCompra } from "./pagos-compra";
+import { PorConfirmar, type BorradorView } from "./confirmar-pedido";
 import type { PagoCompra } from "@/lib/compras/pagos";
 
 export interface LineaView {
@@ -51,9 +52,10 @@ const MOTIVO: Record<Motivo, string> = { nivel: "nivel", faltante: "reportado", 
 const trim = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
 const cuando = (g: GrupoView) => (g.proveedor === null ? "sin proveedor asignado" : g.faltan === null ? "sin días fijos" : g.faltan === 0 ? "hoy toca pedir" : g.faltan === 1 ? "toca mañana" : `toca en ${g.faltan} días`);
 
-export function ComprasClient({ grupos, enCamino, proveedores, items, today, recibidos }: {
+export function ComprasClient({ grupos, enCamino, porConfirmar, proveedores, items, today, recibidos }: {
   grupos: GrupoView[];
   enCamino: PedidoView[];
+  porConfirmar: BorradorView[];
   proveedores: { id: string; name: string; whatsapp: string | null; dias: number[]; entregaDias: number }[];
   items: { id: string; name: string; enQue: string }[];
   today: string;
@@ -63,6 +65,16 @@ export function ComprasClient({ grupos, enCamino, proveedores, items, today, rec
   return (
     <div style={{ padding: "20px 16px 48px", maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 30 }} className="md:px-8">
       <NuevoPedido items={items} proveedores={proveedores} today={today} />
+
+      {porConfirmar.length > 0 && (
+        <section aria-label="Pedidos por confirmar">
+          <div style={label}>Por confirmar · {porConfirmar.length}</div>
+          <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, margin: "6px 0 0" }}>Enviados por WhatsApp. Cuando el proveedor confirme, márcalos como solicitados con la fecha de entrega, el total y cómo se pagan: ahí pasan a «en camino» y el tablet los puede recibir.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+            {porConfirmar.map((p) => <PorConfirmar key={p.id} p={p} today={today} />)}
+          </div>
+        </section>
+      )}
 
       <section aria-label="Por pedir">
         <div style={label}>Por pedir · {total}</div>
@@ -130,6 +142,7 @@ function Grupo({ g }: { g: GrupoView }) {
     return (
       <div role="status" style={{ border: "1.5px solid var(--green)", borderRadius: 8, background: "var(--paper-lt)", padding: "14px 16px" }}>
         <div className="font-slab" style={{ fontSize: 18 }}>Pedido n.º {hecho.folio} · {g.proveedor?.name ?? "sin proveedor"}</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Queda «por confirmar»: cuando el proveedor responda, márcalo como solicitado abajo.</div>
         <pre style={{ margin: "10px 0", padding: "10px 12px", border: "1px dashed var(--rule)", borderRadius: 6, fontFamily: "var(--font-mono)", fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{hecho.mensaje}</pre>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {hecho.wa ? (
