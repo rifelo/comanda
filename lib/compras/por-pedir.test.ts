@@ -111,7 +111,7 @@ describe("quantities", () => {
 describe("message and totals", () => {
   it("previews the WhatsApp without a folio", () => {
     const m = vistaMensaje("PAYO", [{ nombre: "Leche entera", cantidad: "2 bolsas" }]);
-    expect(m.startsWith("Hola, pedido de PAYO:")).toBe(true);
+    expect(m.startsWith("Hola, te escribimos de PAYO para hacer un nuevo pedido:")).toBe(true);
     expect(m).toContain("• 2 bolsas — Leche entera");
     expect(m).not.toContain("n.º");
   });

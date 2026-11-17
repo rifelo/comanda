@@ -69,7 +69,7 @@ describe("order days", () => {
 describe("mensajePedido / waLink / fechaMas", () => {
   it("writes the order and the link", () => {
     const t = mensajePedido({ negocio: "PA'YO", folio: 7, lineas: [{ nombre: "Leche", cantidad: "12 bolsas" }], nota: "para mañana" });
-    expect(t).toContain("pedido de PA'YO (n.º 7)");
+    expect(t.startsWith("Hola, te escribimos de PA'YO para hacer un nuevo pedido (n.º 7):")).toBe(true);
     expect(t).toContain("• 12 bolsas — Leche");
     expect(t).toContain("para mañana");
     expect(waLink("57 300 111 2233", "hola ¿qué?")).toBe("https://wa.me/573001112233?text=hola%20%C2%BFqu%C3%A9%3F");

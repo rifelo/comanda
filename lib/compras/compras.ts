@@ -159,7 +159,7 @@ export function agruparPorProveedor(lineas: ReadonlyArray<LineaPedir>, proveedor
 /** The order as it is sent: short, one line per item, in the supplier's terms. */
 export function mensajePedido(input: { negocio: string; folio: number; lineas: ReadonlyArray<{ nombre: string; cantidad: string }>; nota?: string | null }): string {
   const cuerpo = input.lineas.map((l) => `• ${l.cantidad} — ${l.nombre}`).join("\n");
-  return [`Hola, pedido de ${input.negocio} (n.º ${input.folio}):`, cuerpo, input.nota?.trim() ? input.nota.trim() : null, "¿Me confirmas disponibilidad y valor? Gracias."].filter(Boolean).join("\n\n");
+  return [`Hola, te escribimos de ${input.negocio} para hacer un nuevo pedido (n.º ${input.folio}):`, cuerpo, input.nota?.trim() ? input.nota.trim() : null, "¿Me confirmas disponibilidad y valor? Gracias."].filter(Boolean).join("\n\n");
 }
 
 /** wa.me link with the text ready; null without a number. */
