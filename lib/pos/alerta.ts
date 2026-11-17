@@ -135,3 +135,41 @@ export function recordatoriosVencidos(
   for (const id of avisados.keys()) if (!pedidos.some((p) => p.id === id)) avisados.delete(id);
   return vencidos;
 }
+
+/**
+ * A soft, short «someone is chatting» sound — far quieter than the order
+ * alert, so the team can tell them apart: two low bell notes (A5 → D6).
+ */
+export function sonarConversacion(): void {
+  const ac = audio();
+  if (!ac) return;
+  void ac.resume().catch(() => {});
+  const salida = ac.createGain();
+  salida.gain.value = 0.35;
+  salida.connect(ac.destination);
+  const nota = (freq: number, start: number, dur: number) => {
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(0.7, start + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(g).connect(salida);
+    osc.start(start);
+    osc.stop(start + dur + 0.05);
+  };
+  const t = ac.currentTime + 0.03;
+  nota(880, t, 0.35);
+  nota(1174.7, t + 0.14, 0.5);
+}
+
+/** Conversations whose latest customer message is newer than what this register already chimed for. */
+export function conversacionesNuevas(
+  vistas: Map<string, string>,
+  activas: readonly { id: string; ultimo: string }[],
+): string[] {
+  const nuevas = activas.filter((c) => (vistas.get(c.id) ?? "") < c.ultimo).map((c) => c.id);
+  for (const c of activas) vistas.set(c.id, c.ultimo);
+  return nuevas;
+}

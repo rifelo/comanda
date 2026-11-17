@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { BUCKET_MEDIOS } from "@/lib/whatsapp/atender";
 import { AutoRefresh } from "../../hoy/_components/auto-refresh";
 import { PagosClient, type PagoPorAprobar } from "./pagos-client";
 
@@ -43,9 +44,19 @@ export default async function PagosWhatsappPage() {
   const desde = ordenes.length ? new Date(Date.parse(ordenes[0].created_at as string) - 3 * 3600_000).toISOString() : null;
   const ids = [...convDe.values()].flat();
   const { data: msgs } = ids.length && desde
-    ? await db.from("whatsapp_mensajes").select("conversacion_id, autor, texto, created_at").in("conversacion_id", ids).gte("created_at", desde).order("created_at", { ascending: true }).limit(600)
+    ? await db.from("whatsapp_mensajes").select("conversacion_id, autor, texto, created_at, media_path, media_mime").in("conversacion_id", ids).gte("created_at", desde).order("created_at", { ascending: true }).limit(600)
     : { data: [] };
 
+  // Receipts and photos the customers sent: short-lived signed links.
+  const firmados = new Map<string, string>();
+  await Promise.all(
+    (msgs ?? [])
+      .filter((m) => m.media_path)
+      .map(async (m) => {
+        const { data: f } = await db.storage.from(BUCKET_MEDIOS).createSignedUrl(m.media_path as string, 3600);
+        if (f?.signedUrl) firmados.set(m.media_path as string, f.signedUrl);
+      }),
+  );
   const ahora = reloj();
   const pagos: PagoPorAprobar[] = ordenes.map((o) => {
     const convIds = convDe.get(o.customer_phone as string) ?? [];
@@ -64,7 +75,12 @@ export default async function PagosWhatsappPage() {
       minutos: Math.max(0, Math.floor((ahora - Date.parse((o.wa_decidido_at as string | null) ?? (o.created_at as string))) / 60_000)),
       chat: (msgs ?? [])
         .filter((m) => convIds.includes(m.conversacion_id as string) && Date.parse(m.created_at as string) >= desdeOrden)
-        .map((m) => ({ autor: m.autor as "cliente" | "agente" | "equipo", texto: m.texto as string, hora: hora(m.created_at as string) })),
+        .map((m) => ({
+          autor: m.autor as "cliente" | "agente" | "equipo",
+          texto: m.texto as string,
+          hora: hora(m.created_at as string),
+          media: m.media_path && firmados.has(m.media_path as string) ? { url: firmados.get(m.media_path as string)!, mime: (m.media_mime as string | null) ?? "" } : null,
+        })),
     };
   });
 

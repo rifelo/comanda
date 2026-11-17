@@ -5,7 +5,7 @@ import { syncOrderConsumption } from "@/lib/pos/stock";
 import { datosDelDia, enBurbujas, fichaParaAgente, menuParaAgente, redactarAviso, responderWhatsapp, type CambiosFicha, type FichaCliente, type Respuesta, type Turno } from "@/lib/ai/whatsapp-agent";
 import { responderConConsola } from "@/lib/ai/whatsapp-consola";
 import { enlaceVincular, resumenMiPayoPorTelefono, textoMiPayoParaAgente } from "@/lib/clientes/mi-payo-whatsapp";
-import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
+import { descargarMedia, enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
 import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
@@ -104,8 +104,27 @@ async function guardarMensaje(row: {
   return true;
 }
 
-const textoCliente = (e: Entrante) =>
-  e.texto ?? `[El cliente envió ${e.tipo === "audio" ? "un audio" : e.tipo === "image" ? "una imagen" : e.tipo === "location" ? "una ubicación" : "un mensaje"} que no puedes ver; pídele que lo escriba.]`;
+const textoCliente = (e: Entrante) => {
+  if (e.tipo === "reaction") return `${SENAL_REACCION} ${e.reaccion ?? ""} a nuestro mensaje]`;
+  if (e.tipo === "sticker") return SENAL_STICKER;
+  if (e.tipo === "image" || e.tipo === "document") {
+    const que = e.tipo === "image" ? "una imagen" : "un archivo";
+    return `[El cliente envió ${que}${e.texto ? ` con el texto «${e.texto}»` : ""}. El equipo la ve en el POS; tú no la puedes ver. Si parece un comprobante de pago, dile que ya lo recibimos y que lo estamos verificando; si no, pregúntale con naturalidad qué necesita.]`;
+  }
+  return e.texto ?? `[El cliente envió ${e.tipo === "audio" ? "un audio" : e.tipo === "location" ? "una ubicación" : "un mensaje"} que no puedes ver; pídele que lo escriba.]`;
+};
+
+/**
+ * Reactions and stickers are signals, not messages: they are kept in the
+ * chat for context but never get a reply, and never count as the customer's
+ * «last message» (a ❤️ right after a question must not swallow its answer).
+ */
+const SENAL_REACCION = "[Reaccionó con";
+const SENAL_STICKER = "[Sticker]";
+export const esSoloSenal = (texto: string) => texto.startsWith(SENAL_REACCION) || texto === SENAL_STICKER;
+
+/** Media to download after the webhook answered (the link lasts minutes). */
+export type MedioPendiente = { organizationId: string; messageId: string; media: NonNullable<Entrante["media"]> };
 
 export interface Pendiente {
   phoneNumberId: string;
@@ -114,8 +133,9 @@ export interface Pendiente {
   messageId: string;
 }
 
-export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pendiente[]> {
+export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<{ pendientes: Pendiente[]; medios: MedioPendiente[] }> {
   const pendientes: Pendiente[] = [];
+  const medios: MedioPendiente[] = [];
   for (const e of entrantes) {
     const n = await numero(e.phoneNumberId);
     if (!n) {
@@ -124,14 +144,19 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
     }
     const convId = await conversacion(n, e.waId, e.nombre, e.at, { userId: e.userId, username: e.username });
     if (!convId) continue;
+    // A removed reaction carries no emoji: nothing to keep.
+    if (e.tipo === "reaction" && !e.reaccion) continue;
+    const texto = textoCliente(e);
     const nuevo = await guardarMensaje({
       organization_id: n.organization_id,
       conversacion_id: convId,
       wa_message_id: e.messageId,
       autor: "cliente",
-      texto: textoCliente(e),
+      texto,
     });
-    if (nuevo) pendientes.push({ phoneNumberId: e.phoneNumberId, waId: e.waId, conversacionId: convId, messageId: e.messageId });
+    if (!nuevo) continue;
+    if (e.media && e.tipo !== "sticker") medios.push({ organizationId: n.organization_id, messageId: e.messageId, media: e.media });
+    if (!esSoloSenal(texto)) pendientes.push({ phoneNumberId: e.phoneNumberId, waId: e.waId, conversacionId: convId, messageId: e.messageId });
   }
   for (const e of ecos) {
     const n = await numero(e.phoneNumberId);
@@ -152,7 +177,7 @@ export async function registrar(entrantes: Entrante[], ecos: Eco[]): Promise<Pen
         .eq("id", convId);
     }
   }
-  return pendientes;
+  return { pendientes, medios };
 }
 
 /** Pause between bubbles, like someone typing: longer for longer messages. */
@@ -292,7 +317,7 @@ export async function responder(p: Pendiente): Promise<void> {
       .map((f) => ({ ...f, at: new Date(f.created_at) })),
   );
   // A later message of the burst arrived: its own run answers all of them.
-  const ultimoCliente = [...turnos].reverse().find((t) => t.autor === "cliente");
+  const ultimoCliente = [...turnos].reverse().find((t) => t.autor === "cliente" && !esSoloSenal(t.texto));
   if (ultimoCliente?.wa_message_id !== p.messageId) return;
 
   const { data: org } = await db().from("organizations").select("name, instagram, puntos_cercanos").eq("id", n.organization_id).single();
@@ -666,5 +691,32 @@ export function notaAviso(a: {
       return `No podemos preparar el pedido ${a.folio} (${a.items}). Motivo que dejó el barista: ${a.motivo ?? "otro"}${a.detalle ? ` — ${a.detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;
     default:
       return null;
+  }
+}
+
+/** Private storage bucket for what customers send (images, receipts, files). */
+export const BUCKET_MEDIOS = "whatsapp-media";
+
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf", "audio/ogg": "ogg", "video/mp4": "mp4" };
+
+/**
+ * Downloads what customers sent (the link lasts minutes) into storage and
+ * ties it to its message, so the barista and the admin see it in the chat.
+ * Best effort, one by one; a failure only leaves the placeholder text.
+ */
+export async function guardarMedios(medios: MedioPendiente[]): Promise<void> {
+  for (const m of medios) {
+    try {
+      const archivo = await descargarMedia(m.media);
+      if (!archivo) continue;
+      const mime = (m.media.mime ?? archivo.mime).split(";")[0].trim();
+      const mes = new Date().toISOString().slice(0, 7);
+      const ruta = `${m.organizationId}/${mes}/${m.messageId.replace(/[^A-Za-z0-9_-]/g, "").slice(-60)}.${EXT[mime] ?? "bin"}`;
+      const { error } = await db().storage.from(BUCKET_MEDIOS).upload(ruta, archivo.bytes, { contentType: mime, upsert: true });
+      if (error) throw error;
+      await db().from("whatsapp_mensajes").update({ media_path: ruta, media_mime: mime }).eq("wa_message_id", m.messageId);
+    } catch (e) {
+      console.warn("[whatsapp] medio:", m.messageId, e);
+    }
   }
 }

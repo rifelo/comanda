@@ -898,3 +898,15 @@
   right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   background: var(--ok); color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
+
+/* «La IA está atendiendo…» strip (actividad-whatsapp.tsx). */
+.app .wa-actividad {
+  position: fixed; z-index: 44;
+  left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px;
+  border-radius: 999px; background: var(--surface); color: var(--text); border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); font-size: 15px; font-weight: 600;
+}
+.app .wa-pulso { width: 10px; height: 10px; border-radius: 999px; background: var(--ok); animation: wa-pulso 1.6s ease-in-out infinite; }
+@keyframes wa-pulso { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { .app .wa-pulso { animation: none; } }

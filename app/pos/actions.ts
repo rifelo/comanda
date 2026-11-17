@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { after } from "next/server";
-import { avisarPedido, avisarPos } from "@/lib/whatsapp/atender";
+import { avisarPedido, avisarPos, BUCKET_MEDIOS } from "@/lib/whatsapp/atender";
 import { siguienteEstado } from "@/lib/whatsapp/flujo";
 import { requireAdmin } from "@/lib/auth";
 import { MOTIVOS_RECHAZO_WA } from "@/lib/pos/types";
@@ -990,7 +990,35 @@ export async function rechazarPedidoWhatsapp(input: unknown): Promise<SimpleResu
   return { ok: true };
 }
 
-export type MensajeConversacion = { autor: "cliente" | "agente" | "equipo"; texto: string; at: string };
+/**
+ * Who the WhatsApp agent is talking to right now: a customer wrote in the
+ * last 3 minutes and the agent is not paused for that chat. Suppliers on the
+ * Proveedores list are left out (the agent doesn't answer them).
+ */
+export async function actividadWhatsapp(): Promise<{ ok: true; activas: { id: string; nombre: string; ultimo: string }[] } | { ok: false }> {
+  const { organizationId: orgId } = await requirePosAuth();
+  const admin = createSupabaseAdminClient();
+  const desde = new Date(Date.now() - 3 * 60_000).toISOString();
+  const ahora = new Date().toISOString();
+  const [{ data: convs }, { data: provs }] = await Promise.all([
+    admin
+      .from("whatsapp_conversaciones")
+      .select("id, wa_id, nombre, ultimo_entrante_at, agente_pausado_hasta")
+      .eq("organization_id", orgId)
+      .gte("ultimo_entrante_at", desde)
+      .order("ultimo_entrante_at", { ascending: false })
+      .limit(10),
+    admin.from("proveedores").select("whatsapp").eq("organization_id", orgId).eq("archived", false),
+  ]);
+  const proveedores = new Set((provs ?? []).map((p) => p.whatsapp as string | null).filter(Boolean));
+  const activas = (convs ?? [])
+    .filter((c) => !proveedores.has(c.wa_id as string))
+    .filter((c) => !c.agente_pausado_hasta || (c.agente_pausado_hasta as string) < ahora)
+    .map((c) => ({ id: c.id as string, nombre: ((c.nombre as string | null) ?? "").split(" ")[0] || "un cliente", ultimo: c.ultimo_entrante_at as string }));
+  return { ok: true, activas };
+}
+
+export type MensajeConversacion = { autor: "cliente" | "agente" | "equipo"; texto: string; at: string; media?: { url: string; mime: string } | null };
 
 /**
  * The WhatsApp chat behind an order, for the barista to read before
@@ -1020,15 +1048,30 @@ export async function conversacionDePedido(input: unknown): Promise<{ ok: true; 
   const desde = new Date(Date.parse(o.created_at as string) - 3 * 3600_000).toISOString();
   const { data, error } = await admin
     .from("whatsapp_mensajes")
-    .select("autor, texto, created_at")
+    .select("autor, texto, created_at, media_path, media_mime")
     .in("conversacion_id", ids)
     .gte("created_at", desde)
     .order("created_at", { ascending: true })
     .limit(120);
   if (error) return { ok: false, error: "No se pudo cargar la conversación." };
+  // What the customer sent (photos, receipts): short-lived signed links.
+  const firmados = new Map<string, string>();
+  await Promise.all(
+    (data ?? [])
+      .filter((m) => m.media_path)
+      .map(async (m) => {
+        const { data: f } = await admin.storage.from(BUCKET_MEDIOS).createSignedUrl(m.media_path as string, 3600);
+        if (f?.signedUrl) firmados.set(m.media_path as string, f.signedUrl);
+      }),
+  );
   return {
     ok: true,
-    mensajes: (data ?? []).map((m) => ({ autor: m.autor as MensajeConversacion["autor"], texto: m.texto as string, at: m.created_at as string })),
+    mensajes: (data ?? []).map((m) => ({
+      autor: m.autor as MensajeConversacion["autor"],
+      texto: m.texto as string,
+      at: m.created_at as string,
+      media: m.media_path && firmados.has(m.media_path as string) ? { url: firmados.get(m.media_path as string)!, mime: (m.media_mime as string | null) ?? "" } : null,
+    })),
   };
 }
 

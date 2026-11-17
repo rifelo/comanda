@@ -61,6 +61,10 @@ export interface Entrante {
   messageId: string;
   /** Text, or null when it was a sticker, audio, location… */
   texto: string | null;
+  /** An image, document, audio, video or sticker: its WhatsApp media id (and the download URL when the webhook brings it). */
+  media: { id: string; mime: string | null; url: string | null } | null;
+  /** A reaction to one of our messages: the emoji (null = the reaction was removed). */
+  reaccion: string | null;
   tipo: string;
   at: Date;
 }
@@ -94,6 +98,37 @@ function textoDe(m: Obj): string | null {
   }
   if (t === "image" || t === "video" || t === "document") return str(obj(m[t]).caption);
   return null;
+}
+
+const CON_MEDIA = new Set(["image", "document", "audio", "video", "sticker"]);
+/** The media a message carries (id, mime type, download URL when present). */
+function mediaDe(m: Obj): Entrante["media"] {
+  const t = str(m.type);
+  if (!t || !CON_MEDIA.has(t)) return null;
+  const o = obj(m[t]);
+  const id = str(o.id);
+  return id ? { id, mime: str(o.mime_type), url: str(o.url) } : null;
+}
+
+/**
+ * Downloads a customer's media through 360dialog: the media object gives a
+ * Meta URL, served by 360dialog on its own host with the API key. The link
+ * lasts minutes, so this runs right after the webhook.
+ */
+export async function descargarMedia(media: { id: string; url: string | null }): Promise<{ bytes: ArrayBuffer; mime: string } | null> {
+  const key = process.env.D360_API_KEY;
+  if (!key) return null;
+  let url = media.url;
+  if (!url) {
+    const res = await fetch(`https://waba-v2.360dialog.io/${encodeURIComponent(media.id)}`, { headers: { "D360-API-KEY": key } });
+    if (!res.ok) throw new Error(`media ${res.status}`);
+    url = str(obj(await res.json()).url);
+  }
+  if (!url) return null;
+  const directo = url.replace(/\\/g, "").replace("https://lookaside.fbsbx.com", "https://waba-v2.360dialog.io");
+  const res = await fetch(directo, { headers: { "D360-API-KEY": key } });
+  if (!res.ok) throw new Error(`descarga ${res.status}`);
+  return { bytes: await res.arrayBuffer(), mime: res.headers.get("content-type") ?? "application/octet-stream" };
 }
 
 /** Customer messages and team echoes in one webhook (failed delivery statuses are logged; the rest is ignored). */
@@ -155,6 +190,8 @@ export function leerWebhook(body: unknown): { entrantes: Entrante[]; ecos: Eco[]
             messageId,
             texto: textoDe(m),
             tipo: str(m.type) ?? "unknown",
+            media: mediaDe(m),
+            reaccion: str(m.type) === "reaction" ? str(obj(m.reaction).emoji) : null,
             at: when(m.timestamp),
           });
         }

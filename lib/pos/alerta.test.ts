@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pedidosNuevos, recordatoriosVencidos } from "./alerta";
+import { conversacionesNuevas, pedidosNuevos, recordatoriosVencidos } from "./alerta";
 
 const ahora = Date.parse("2026-11-10T15:00:00Z");
 const o = (id: string, canal: "pos" | "whatsapp", haceMin: number) => ({ id, canal, createdAt: new Date(ahora - haceMin * 60_000).toISOString() });
@@ -31,5 +31,14 @@ describe("recordatoriosVencidos", () => {
     const avisados = new Map([["a", 2]]);
     recordatoriosVencidos([], avisados, t0 + 11 * 60_000);
     expect(avisados.size).toBe(0);
+  });
+});
+
+describe("conversacionesNuevas", () => {
+  it("chimes once per new customer message", () => {
+    const vistas = new Map<string, string>();
+    expect(conversacionesNuevas(vistas, [{ id: "a", ultimo: "2026-11-17T15:00:00Z" }])).toEqual(["a"]);
+    expect(conversacionesNuevas(vistas, [{ id: "a", ultimo: "2026-11-17T15:00:00Z" }])).toEqual([]);
+    expect(conversacionesNuevas(vistas, [{ id: "a", ultimo: "2026-11-17T15:01:00Z" }, { id: "b", ultimo: "2026-11-17T15:01:00Z" }])).toEqual(["a", "b"]);
   });
 });

@@ -1,6 +1,6 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 import { isAuthorizedWebhook, leerWebhook } from "@/lib/whatsapp/cloud-api";
-import { guardarEstados, registrar, responder } from "@/lib/whatsapp/atender";
+import { guardarEstados, guardarMedios, registrar, responder } from "@/lib/whatsapp/atender";
 
 /**
  * WhatsApp Cloud API webhook, from 360dialog (registered with our Bearer
@@ -36,9 +36,10 @@ export async function POST(req: NextRequest) {
     return new NextResponse("Bad request", { status: 400 });
   }
   const { entrantes, ecos, estados } = leerWebhook(body);
-  const pendientes = await registrar(entrantes, ecos);
+  const { pendientes, medios } = await registrar(entrantes, ecos);
   after(async () => {
     await guardarEstados(estados).catch((e) => console.error("[whatsapp] estados:", e));
+    await guardarMedios(medios).catch((e) => console.error("[whatsapp] medios:", e));
     await Promise.all(
       pendientes.map((p) =>
         responder(p).catch((e) => console.error("[whatsapp] responder:", e)),

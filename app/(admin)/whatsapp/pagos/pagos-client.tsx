@@ -17,7 +17,7 @@ export type PagoPorAprobar = {
   items: string[];
   hora: string;
   minutos: number;
-  chat: { autor: "cliente" | "agente" | "equipo"; texto: string; hora: string }[];
+  chat: { autor: "cliente" | "agente" | "equipo"; texto: string; hora: string; media?: { url: string; mime: string } | null }[];
 };
 
 const pesos = (n: number) => "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -85,7 +85,16 @@ function Pago({ p }: { p: PagoPorAprobar }) {
                 }}
               >
                 <div className="text-muted" style={{ fontSize: 12 }}>{m.autor === "cliente" ? "Cliente" : m.autor === "agente" ? "Agente" : "Equipo"} · {m.hora}</div>
-                <div style={{ fontSize: 14, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.texto}</div>
+                {m.media?.mime.startsWith("image/") ? (
+                  <a href={m.media.url} target="_blank" rel="noopener noreferrer" aria-label="Abrir la imagen en grande">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.media.url} alt="Imagen que envió el cliente" style={{ display: "block", maxWidth: 260, maxHeight: 320, borderRadius: 8 }} />
+                  </a>
+                ) : m.media ? (
+                  <a href={m.media.url} target="_blank" rel="noopener noreferrer" className="font-semibold">Abrir el archivo que envió</a>
+                ) : (
+                  <div style={{ fontSize: 14, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.texto}</div>
+                )}
               </li>
             ))}
           </ol>

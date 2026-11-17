@@ -56,6 +56,7 @@ import { PuntosScreen } from "./_components/puntos";
 import { EtiquetasScreen } from "./_components/etiquetas";
 import { AiDrawer } from "./_components/ai";
 import { WhatsappEntrante } from "./_components/whatsapp-entrante";
+import { ActividadWhatsapp } from "./_components/actividad-whatsapp";
 import { usePosRouting } from "./pos-routes";
 import { useAppClass } from "./pos-theme";
 import "./pos.css";
@@ -232,6 +233,7 @@ function Register({ mode, organizationId }: { mode: "device" | "user"; organizat
       {s.sheet?.mode === "receta" && <RecetaSheet key={`receta:${s.sheet.productId}`} productId={s.sheet.productId} />}
       <PrinterToast />
       <WhatsappEntrante />
+      <ActividadWhatsapp />
       {ventana.role === "secondary" && <OtraVentana onTakeOver={ventana.takeOver} />}
     </div>
   );

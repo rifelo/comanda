@@ -115,3 +115,17 @@ describe("usernames (BSUID)", () => {
     expect(destino("RS.999")).toEqual({ recipient: "RS.999" });
   });
 });
+
+describe("reacciones y medios", () => {
+  const hook = (msg: Record<string, unknown>) => ({
+    entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PN" }, contacts: [{ wa_id: "573001112233", profile: { name: "Ana" } }], messages: [{ from: "573001112233", id: "wamid.x", timestamp: "1", ...msg }] } }] }],
+  });
+  it("reads a reaction's emoji", () => {
+    const [e] = leerWebhook(hook({ type: "reaction", reaction: { message_id: "wamid.ours", emoji: "❤️" } })).entrantes;
+    expect(e).toMatchObject({ tipo: "reaction", reaccion: "❤️", media: null, texto: null });
+  });
+  it("keeps an image's media id, mime type and caption", () => {
+    const [e] = leerWebhook(hook({ type: "image", image: { id: "MID1", mime_type: "image/jpeg", caption: "mi pago" } })).entrantes;
+    expect(e).toMatchObject({ tipo: "image", texto: "mi pago", media: { id: "MID1", mime: "image/jpeg", url: null }, reaccion: null });
+  });
+});

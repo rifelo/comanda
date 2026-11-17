@@ -15,6 +15,10 @@ const hora = (iso: string) => {
 };
 const QUIEN = { cliente: "Cliente", agente: "Agente", equipo: "Equipo" } as const;
 
+/** Notes written for the agent («[El cliente envió una imagen…]») read short for the team. */
+const textoVisible = (t: string) =>
+  t.startsWith("[El cliente envió una imagen") ? "Imagen (cargando…)" : t.startsWith("[El cliente envió un archivo") ? "Archivo (cargando…)" : t.startsWith("[Reaccionó con") ? t.replace(/^\[Reaccionó con\s*/, "Reaccionó con ").replace(/ a nuestro mensaje\]$/, "") : t;
+
 export function ConversacionWa({ ordenId, alto = 320 }: { ordenId: string; alto?: number }) {
   const [mensajes, setMensajes] = React.useState<MensajeConversacion[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -55,7 +59,18 @@ export function ConversacionWa({ ordenId, alto = 320 }: { ordenId: string; alto?
           }}
         >
           <div className="muted" style={{ fontSize: 12, marginBottom: 2 }}>{QUIEN[m.autor]} · {hora(m.at)}</div>
-          <div style={{ fontSize: 15, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.texto}</div>
+          {m.media ? (
+            m.media.mime.startsWith("image/") ? (
+              <a href={m.media.url} target="_blank" rel="noopener noreferrer" aria-label="Abrir la imagen en grande">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={m.media.url} alt="Imagen que envió el cliente" style={{ display: "block", maxWidth: 260, maxHeight: 320, borderRadius: 8, objectFit: "cover" }} />
+              </a>
+            ) : (
+              <a href={m.media.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700 }}>Abrir el archivo que envió</a>
+            )
+          ) : (
+            <div style={{ fontSize: 15, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{textoVisible(m.texto)}</div>
+          )}
         </div>
       ))}
       <div ref={fin} />
