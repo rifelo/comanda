@@ -234,6 +234,20 @@ async function cargarFicha(
   };
 }
 
+/** A number on the café's Proveedores list (their WhatsApp). */
+async function esProveedor(orgId: string, waId: string): Promise<boolean> {
+  if (!esTelefono(waId)) return false;
+  const { data, error } = await db()
+    .from("proveedores")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("whatsapp", waId)
+    .eq("archived", false)
+    .limit(1);
+  if (error) console.warn("[whatsapp] proveedores:", error);
+  return !!data?.length;
+}
+
 const ahoraYopal = () =>
   new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "full", timeStyle: "short" }).format(new Date());
 
@@ -242,6 +256,9 @@ export async function responder(p: Pendiente): Promise<void> {
   // not see "escribiendo…".
   const antes = await numero(p.phoneNumberId);
   if (!antes || !atiendeA(antes.agente_activo, p.waId)) return;
+  // Suppliers write to the same number: those on the Proveedores list are
+  // left to the team (no read receipt, no reply).
+  if (await esProveedor(antes.organization_id, p.waId)) return;
   await marcarLeidoEscribiendo(p.phoneNumberId, p.messageId);
   await new Promise((r) => setTimeout(r, ESPERA_RAFAGA_MS));
 
