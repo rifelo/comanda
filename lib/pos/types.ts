@@ -381,5 +381,5 @@ export type MotivoRechazoWa = (typeof MOTIVOS_RECHAZO_WA)[number];
  * payment) en_preparacion → («Salió») en_camino; or rechazado. «aceptado» is
  * only on orders from before this flow.
  */
-export type WaEstado = "por_aceptar" | "aceptado" | "esperando_pago" | "en_preparacion" | "en_camino" | "rechazado";
+export type WaEstado = "por_aceptar" | "aceptado" | "esperando_pago" | "en_preparacion" | "listo" | "en_camino" | "rechazado";
 export type CancelReason = (typeof CANCEL_REASONS)[number];

@@ -43,8 +43,8 @@ import { CombinarOverlay } from "./combinar";
 import { DescuentoOverlay } from "./descuento";
 import { PremioOverlay } from "./premio";
 import { ConversacionWa } from "./conversacion-wa";
-import { anularDescuento, marcarEnCaminoWhatsapp } from "../actions";
-import { enlaceWhatsapp, mensajeDomiciliario } from "@/lib/pos/domiciliarios";
+import { anularDescuento } from "../actions";
+import { TableroWa, enTablero } from "./pedidos-wa";
 
 /** Human label for a payment method, including the "mixto" summary. */
 export const methodLabel = (m: string | null | undefined): string =>
@@ -111,7 +111,7 @@ function Updated({ at }: { at: number | null }) {
 }
 
 /** Loading a stored order into the ticket replaces what is there — ask only when there is something. */
-function guard(): boolean {
+export function guard(): boolean {
   const s = posStore.get();
   return !s.order.length || !!s.pending || window.confirm("Se perderá el pedido actual. ¿Continuar?");
 }
@@ -130,6 +130,9 @@ export function PedidosPage() {
   const [doneCount, setDoneCount] = React.useState<number | null>(null);
   const [cancCount, setCancCount] = React.useState<number | null>(null);
   const [, tick] = React.useReducer((n: number) => n + 1, 0);
+  // Pendientes splits in two: the register's own («Caja») and WhatsApp's step board.
+  const [vista, setVista] = React.useState<"caja" | "whatsapp">("caja");
+  const enWa = isPend && vista === "whatsapp";
 
   // The history tabs of the old screen collapse into these three («todas» is not one).
   React.useEffect(() => {
@@ -164,8 +167,12 @@ export function PedidosPage() {
 
   // This register's queued orders (offline / still sending) go first in the queue.
   const queued = isPend ? queuedOrders(s) : [];
-  const list = [...queued, ...s.ordenes.filter((o) => (isPend ? true : isCanc ? o.status === "cancelada" : o.status === "pagada" && !!o.entregadaAt))];
-  const pendCount = isPend ? list.length : s.pendientes.length + s.outbox.length;
+  // WhatsApp orders on their way through the team's steps live on the board.
+  const tablero = new Set(enTablero(s.pendientes).map((x) => x.o.id));
+  const list = [...queued, ...s.ordenes.filter((o) => (isPend ? !tablero.has(o.id) : isCanc ? o.status === "cancelada" : o.status === "pagada" && !!o.entregadaAt))];
+  const pendCount = isPend ? list.length : s.pendientes.filter((o) => !tablero.has(o.id)).length + s.outbox.length;
+  const waCount = tablero.size;
+  const waNuevos = s.pendientes.filter((o) => o.canal === "whatsapp" && o.waEstado === "por_aceptar").length;
   const compCount = s.ordenesTab === "completada" ? list.length : doneCount;
   const canCount = isCanc ? list.length : cancCount;
   const combinables = s.pendientes.filter((o) => o.status === "pendiente").length;
@@ -188,7 +195,10 @@ export function PedidosPage() {
         <h1 className="h2">Pedidos</h1>
         <div className="ped-tabs">
           <div className="seg" role="group" aria-label="Estado">
-            <button type="button" aria-pressed={isPend} onClick={() => !isPend && setOrdenesTab("pendiente")}>Pendientes · {pendCount}</button>
+            <button type="button" aria-pressed={isPend && !enWa} onClick={() => { setVista("caja"); if (!isPend) setOrdenesTab("pendiente"); }}>Caja · {pendCount}</button>
+            <button type="button" aria-pressed={enWa} onClick={() => { setVista("whatsapp"); if (!isPend) setOrdenesTab("pendiente"); }}>
+              WhatsApp · {waCount}{waNuevos > 0 && <span className="wa-tab-dot" aria-label={`${waNuevos} por aceptar`} />}
+            </button>
             <button type="button" aria-pressed={s.ordenesTab === "completada"} onClick={() => s.ordenesTab !== "completada" && setOrdenesTab("completada")}>Completados{compCount !== null ? ` · ${compCount}` : ""}</button>
             <button type="button" aria-pressed={isCanc} onClick={() => !isCanc && setOrdenesTab("cancelada")}>Canceladas{canCount !== null ? ` · ${canCount}` : ""}</button>
           </div>
@@ -205,7 +215,14 @@ export function PedidosPage() {
         <button type="button" className="btn ghost sm ped-refresh" onClick={refresh} aria-label="Actualizar" disabled={s.ordenesLoading && !s.ordenes.length}>
           <IconRefresh /><span className="ped-refresh-l">Actualizar</span>
         </button>
-        {isPend && (
+        {enWa && (
+          <div className="wa-leyenda" aria-hidden="true">
+            <span><i style={{ background: "var(--ok)" }} />hecho</span>
+            <span><i style={{ background: "var(--brand)" }} />paso actual</span>
+            <span><i style={{ background: "var(--line)" }} />falta</span>
+          </div>
+        )}
+        {isPend && !enWa && (
           <button type="button" className="btn ghost sm" onClick={startMerge} disabled={combinables < 2} title={combinables < 2 ? "Se necesitan dos o más pedidos sin pagar" : undefined}>
             <span>Combinar<span className="ped-hide-ph"> pedidos</span></span>
           </button>
@@ -215,7 +232,9 @@ export function PedidosPage() {
 
       {error && <div role="alert" className="ped-alert">{error}</div>}
 
-      {!list.length ? (
+      {enWa ? (
+        <TableroWa orders={s.pendientes} />
+      ) : !list.length ? (
         <div className="empty">
           {s.ordenesLoading ? (
             <span style={{ fontSize: 17, fontWeight: 600 }}>Cargando…</span>
@@ -301,19 +320,9 @@ function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCanc
     wa === "por_aceptar" ? <span className="pill late">WhatsApp · por aceptar</span>
     : wa === "esperando_pago" ? <span className="pill late">WhatsApp · esperando aprobación del pago</span>
     : wa === "en_preparacion" ? <span className="pill brand">WhatsApp · en preparación</span>
+    : wa === "listo" ? <span className="pill brand">WhatsApp · listo</span>
     : wa === "en_camino" ? <span className="pill ok">WhatsApp · en camino 🛵</span>
     : null;
-  const domicilioListo = wa === "en_preparacion" && o.orderType === "domicilio";
-  const domiciliarios = s.catalog.pago.domiciliarios ?? [];
-  const [saliendo, setSaliendo] = React.useState(false);
-  const salio = async () => {
-    setSaliendo(true);
-    const r = await marcarEnCaminoWhatsapp({ ordenId: o.id });
-    setSaliendo(false);
-    if (!r.ok) window.alert(r.error);
-    void refreshPendientes();
-  };
-
   return (
     <article className={`order${delivered && o.status === "pagada" ? " done" : ""}${cancelada ? " canc" : ""}${open ? " open" : ""}`} aria-labelledby={id} style={{ position: "relative" }}>
       <div className="oh">
@@ -414,19 +423,6 @@ function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCanc
         {o.status === "pagada" && delivered && !local && (
           <button type="button" className="btn ghost sm" onClick={() => void marcarEntregada(o.id, false)}>Deshacer entrega</button>
         )}
-        {domicilioListo && domiciliarios.map((d) => (
-          <a
-            key={d.numero}
-            className="btn ghost sm"
-            href={enlaceWhatsapp(d.numero, mensajeDomiciliario(d, { folio: o.folio, cliente: name, telefono: o.telefonoRecibe ?? o.customerPhone ?? null, direccion: o.direccion ?? null, items: o.items, total: o.total, pagado: o.status === "pagada" }))}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Contactar a {d.nombre.replace(/\s*\(.*\)\s*$/, "")}
-          </a>
-        ))}
-        {domicilioListo && !domiciliarios.length && <span className="muted" style={{ fontSize: 13 }}>Agrega domiciliarios en Ajustes › Sede</span>}
-        {domicilioListo && <button type="button" className="btn sm" disabled={saliendo} onClick={() => void salio()}>Salió con el domiciliario</button>}
         <span className="grow" />
         {!local && (delivered
           ? o.status === "pagada"

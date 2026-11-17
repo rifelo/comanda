@@ -685,7 +685,13 @@ export function notaAviso(a: {
       return a.recoge
         ? `El pedido ${a.folio} (${a.items}) para recoger ya está en preparación: este mensaje es la confirmación, no digas «te confirmamos». Lo tiene listo en unos 10 minutos y paga al recogerlo aquí. ${tono}`
         : `Ya confirmamos el pago del pedido ${a.folio} (${a.items}) y ya está en preparación. Dile algo como «Ya confirmamos tu pago 🙌 tu pedido ya está en preparación, te avisamos apenas salga con nuestro domiciliario». ${tono}`;
+    case "listo":
+      // Only pick-up is told: a delivery hears from us when it leaves with the courier.
+      return a.recoge && !a.cercano
+        ? `El pedido ${a.folio} (${a.items}) para recoger ya está listo. Cuéntale con alegría que ya puede pasar por él, que lo esperamos, y que paga al recogerlo (p. ej. «Tu pedido ya está listo 🙌 te esperamos»). ${tono}`
+        : null;
     case "en_camino":
+      if (a.cercano) return `El pedido ${a.folio} ya va en camino a ${a.direccion ?? "su punto"}: uno de nosotros se lo lleva ahora mismo, sin costo, y paga al recibirlo. Cuéntaselo con alegría y cercanía. ${tono}`;
       return `El pedido ${a.folio} ya salió con nuestro domiciliario hacia ${a.direccion ?? "su dirección"}. Cuéntale que ya va en camino, con alegría y cercanía (p. ej. «Tu pedido ya va en camino 🛵 nuestro domiciliario va para allá, que lo disfrutes mucho»). ${tono}`;
     case "rechazado":
       return `No podemos preparar el pedido ${a.folio} (${a.items}). Motivo que dejó el barista: ${a.motivo ?? "otro"}${a.detalle ? ` — ${a.detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;

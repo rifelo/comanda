@@ -15,6 +15,8 @@ import { refreshPendientes, usePos } from "../pos-store";
 import { recordatoriosVencidos, sonarAlerta } from "@/lib/pos/alerta";
 import { money, orderName } from "./ordenes";
 import { ConversacionWa } from "./conversacion-wa";
+import { REVISAR_WA } from "./pedidos-wa";
+import { tipoWa } from "@/lib/whatsapp/flujo";
 
 const PISTA: Record<MotivoRechazoWa, string> = {
   "Faltan insumos": "Ej.: no hay leche deslactosada",
@@ -48,8 +50,18 @@ export function WhatsappEntrante() {
     }, 20_000);
     return () => window.clearInterval(t);
   }, []);
+  // «Revisar y aceptar» on the board brings this window back on that order.
+  const [primero, setPrimero] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const on = (e: Event) => {
+      setPrimero((e as CustomEvent<string>).detail);
+      setLuego(new Set());
+    };
+    window.addEventListener(REVISAR_WA, on);
+    return () => window.removeEventListener(REVISAR_WA, on);
+  }, []);
   // A new order brings the overlay back even if earlier ones were left for later.
-  const visibles = porAceptar.filter((o) => !luego.has(o.id));
+  const visibles = porAceptar.filter((o) => !luego.has(o.id)).sort((a, b) => (a.id === primero ? -1 : b.id === primero ? 1 : 0));
   const o = visibles[0] ?? null;
   if (!porAceptar.length) return null;
   if (!o) {
@@ -70,9 +82,16 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
   const [detalle, setDetalle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const recoge = o.orderType !== "domicilio";
+  const tipo = tipoWa(o);
+  const recoge = tipo !== "domicilio";
   // A free nearby point (la droguería, la portería…): the team walks it over.
-  const cercano = recoge && o.seLoLlevamos && !!o.direccion;
+  const cercano = tipo === "cercano";
+  const sigue = tipo === "domicilio"
+    ? ["Aceptar", "El admin confirma el pago", "Preparar (se imprime la comanda)", "Domiciliario", "Entregado"]
+    : tipo === "cercano"
+      ? ["Aceptar", "Preparar (se imprime la comanda)", "Llevarlo", "Entregado y cobrado"]
+      : ["Aceptar", "Preparar (se imprime la comanda)", "Listo · le avisamos", "Cobrar y entregar"];
+  const tel = o.telefonoRecibe ?? o.customerPhone ?? null;
   const nombre = orderName(o);
   const puedeRechazar = !!motivo && (motivo !== "Otro" || detalle.trim().length > 2);
 
@@ -94,12 +113,16 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
               WhatsApp · {cercano ? `Entrega cercana · ${o.direccion}` : recoge ? "Recoger en el café" : "Domicilio"}
             </span>
             <h2 id="wa-t" className="h1">Nuevo pedido {folioTag(o.folio)}{nombre ? ` · ${nombre}` : ""}</h2>
-            {!recoge && o.direccion ? <span className="muted" style={{ fontSize: 15 }}>{o.direccion}</span> : null}
+            {!recoge && o.direccion ? (
+              <span className="muted" style={{ fontSize: 15 }}>
+                {o.direccion}{nombre ? ` · recibe ${nombre}` : ""}{tel ? `, ${tel.replace(/^57(?=3\d{9}$)/, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3")}` : ""}
+              </span>
+            ) : null}
           </div>
           <span className="cmd-num" style={{ fontSize: 22, fontWeight: 700 }}>{money(o.total)}</span>
         </div>
 
-        <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+        <ul className="wa-items-box">
           {o.items.map((it) => (
             <li key={it.id ?? `${it.position}`} style={{ fontSize: 17 }}>
               <b>{it.qty} × {it.name}</b>
@@ -108,6 +131,15 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
           ))}
         </ul>
         {o.note ? <p className="muted" style={{ margin: 0, fontSize: 15 }}>{o.note}</p> : null}
+
+        <div className="wa-sigue">
+          <span className="label">Lo que sigue con este pedido</span>
+          <ol>
+            {sigue.map((p, i) => (
+              <li key={p}><span className={`n${i === 0 ? " now" : ""}`}>{i + 1}</span>{p}</li>
+            ))}
+          </ol>
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button type="button" className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setVerChat((v) => !v)} aria-expanded={verChat}>

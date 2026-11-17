@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { after } from "next/server";
 import { avisarPedido, avisarPos, BUCKET_MEDIOS } from "@/lib/whatsapp/atender";
-import { siguienteEstado } from "@/lib/whatsapp/flujo";
+import { siguienteEstado, tipoWa } from "@/lib/whatsapp/flujo";
 import { requireAdmin } from "@/lib/auth";
 import { MOTIVOS_RECHAZO_WA } from "@/lib/pos/types";
 import { revalidatePath } from "next/cache";
@@ -941,23 +941,52 @@ export async function reclamarComandaWhatsapp(input: unknown): Promise<{ ok: tru
   return { ok: true, imprimir: !!data?.length };
 }
 
-/** «Salió con el domiciliario»: the agent tells the customer their order is on its way. */
+/**
+ * «Salió con el domiciliario» (delivery) or «Listo · llevarlo» (a free nearby
+ * point the team walks over): the agent tells the customer it is on its way.
+ */
 export async function marcarEnCaminoWhatsapp(input: unknown): Promise<SimpleResult> {
+  return pasoWhatsapp(input, "salio");
+}
+
+/**
+ * «Listo»: a pick-up order waits for the customer (the agent tells them it is
+ * ready), a delivery waits for the courier (no message; «Salió» sends one).
+ */
+export async function marcarListoWhatsapp(input: unknown): Promise<SimpleResult> {
+  return pasoWhatsapp(input, "listo");
+}
+
+async function pasoWhatsapp(input: unknown, evento: "listo" | "salio"): Promise<SimpleResult> {
   const parsed = DecisionWaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
   const { supabase, organizationId: orgId } = await requirePosAuth();
-  const { data: cur } = await supabase.from("ordenes").select("wa_estado, order_type").eq("id", parsed.data.ordenId).eq("organization_id", orgId).maybeSingle();
-  const nuevo = siguienteEstado(cur?.wa_estado as never, (cur?.order_type as string) ?? "", "salio");
-  if (!nuevo) return { ok: false, error: "Este pedido no está listo para salir." };
+  const { data: cur } = await supabase
+    .from("ordenes")
+    .select("wa_estado, order_type, se_lo_llevamos, delivery_address")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  const tipo = tipoWa({ orderType: (cur?.order_type as string) ?? "", seLoLlevamos: cur?.se_lo_llevamos as boolean | null, direccion: cur?.delivery_address as string | null });
+  const nuevo = siguienteEstado(cur?.wa_estado as never, tipo, evento);
+  if (!nuevo) return { ok: false, error: evento === "listo" ? "Este pedido ya no está en preparación." : "Este pedido no está listo para salir." };
+  const at = new Date().toISOString();
   const { data, error } = await supabase
     .from("ordenes")
-    .update({ wa_estado: nuevo, wa_en_camino_at: new Date().toISOString() })
+    .update(nuevo === "listo" ? { wa_estado: nuevo, wa_listo_at: at } : { wa_estado: nuevo, wa_en_camino_at: at })
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
     .eq("wa_estado", cur!.wa_estado as string)
     .select("id");
-  if (error || !data?.length) return { ok: false, error: "No se pudo marcar la salida." };
-  after(() => avisarPedido(parsed.data.ordenId).catch((e) => console.error("[aviso whatsapp] en camino:", e)));
+  if (error || !data?.length) {
+    if (error) console.error("[pasoWhatsapp]", evento, error);
+    return { ok: false, error: "No se pudo guardar el paso. Actualiza e intenta de nuevo." };
+  }
+  // The other registers move the card at once.
+  after(async () => {
+    await avisarPos(orgId).catch(() => {});
+    if (nuevo === "en_camino" || tipo === "recoge") await avisarPedido(parsed.data.ordenId).catch((e) => console.error(`[aviso whatsapp] ${nuevo}:`, e));
+  });
   return { ok: true };
 }
 

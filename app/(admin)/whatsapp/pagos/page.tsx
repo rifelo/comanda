@@ -85,9 +85,9 @@ export default async function PagosWhatsappPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-[900px]">
+    <div className="mx-auto w-full max-w-[1180px]">
       <AutoRefresh seconds={20} />
-      <PageHeader title="Pagos WhatsApp" sub="Domicilios esperando que confirmes la transferencia" back="/whatsapp" />
+      <PageHeader title="Pagos WhatsApp" sub="Domicilios aceptados por el barista. Confirma en Nequi o Bold que llegó la transferencia." back="/whatsapp" />
       <div className="px-4 sm:px-7 pb-12">
         <PagosClient pagos={pagos} />
       </div>
