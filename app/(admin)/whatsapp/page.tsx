@@ -81,9 +81,12 @@ export default async function WhatsappPage() {
         sub={`Conversaciones y entregas de los últimos ${DIAS} días`}
         back="/mas"
         actions={
+          <div className="flex flex-wrap" style={{ gap: 8 }}>
+          <Button href="/whatsapp/pagos" variant="ghost" size="sm">Pagos por aprobar</Button>
           <Button href="/whatsapp/aprendizajes" variant="ghost" size="sm">
             Aprendizajes{propuestas ? ` · ${propuestas} por revisar` : ""}
           </Button>
+          </div>
         }
       />
       <div className="px-4 sm:px-7 pb-12">

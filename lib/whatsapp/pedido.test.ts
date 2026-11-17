@@ -18,7 +18,7 @@ const catalog: PosCatalog = {
 };
 
 const pedido = (over: Partial<PedidoAgente> = {}): PedidoAgente => ({
-  tipo: "llevar", nombre: "Laura", direccion: null, nota: null,
+  tipo: "llevar", nombre: "Laura", direccion: null, telefono: null, nota: null,
   lineas: [{ productoId: "p-latte", cantidad: 2, opciones: [{ grupoId: "g-size", opcion: "16 oz" }, { grupoId: "g-base", opcion: "En leche" }] }],
   ...over,
 });
@@ -40,6 +40,7 @@ describe("validarPedido", () => {
     expect(err(pedido({ lineas: [{ productoId: "p-latte", cantidad: 1, opciones: [{ grupoId: "g-size", opcion: "20 oz" }, { grupoId: "g-base", opcion: "En agua" }] }] }))).toMatch(/20 oz/);
     expect(err(pedido({ lineas: [{ productoId: "p-latte", cantidad: 1, opciones: [] }] }))).toBe("Falta elegir Base para Latte frío.");
     expect(err(pedido({ tipo: "domicilio", direccion: "  " }))).toMatch(/dirección/);
+    expect(err(pedido({ tipo: "domicilio", direccion: "Cra 20 #10-30", telefono: null }))).toMatch(/teléfono de quien recibe/);
     expect(err(pedido({ nombre: " " }))).toMatch(/nombre/);
     expect(err(pedido({ lineas: [] }))).toMatch(/no tiene productos/);
   });
@@ -47,8 +48,8 @@ describe("validarPedido", () => {
 
 describe("notaPedido", () => {
   it("puts the phone, the delivery and the customer's note on the ticket", () => {
-    expect(notaPedido(pedido({ tipo: "domicilio", direccion: " Cra 20 #10-30 ", nota: "Sin azúcar" }), "573150000000"))
-      .toBe("WhatsApp +573150000000 · Domicilio: Cra 20 #10-30 · Sin azúcar");
+    expect(notaPedido(pedido({ tipo: "domicilio", direccion: " Cra 20 #10-30 ", telefono: "310 111 2233", nota: "Sin azúcar" }), "573150000000"))
+      .toBe("WhatsApp +573150000000 · Domicilio: Cra 20 #10-30 · Recibe Laura, tel 3101112233 · Sin azúcar");
     expect(notaPedido(pedido(), "573150000000")).toBe("WhatsApp +573150000000 · Para llevar");
   });
 });

@@ -74,6 +74,8 @@ export interface PorAtenderInput {
   sugerencias: number;
   /** Discount requests from the POS waiting for the owner (mig 0085). */
   descuentosPorAprobar?: number;
+  /** WhatsApp deliveries waiting for the admin to approve the transfer. */
+  pagosWhatsappPorAprobar?: number;
   pedidosAbiertos: number;
   pedidosViejos: number;
   porCobrar: number;
@@ -96,6 +98,9 @@ const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many
 export function porAtender(c: PorAtenderInput, fmt: (cop: number) => string): PorAtenderItem[] {
   const late: PorAtenderItem[] = [];
   const rest: PorAtenderItem[] = [];
+  if ((c.pagosWhatsappPorAprobar ?? 0) > 0) {
+    late.push({ id: "pagos-whatsapp", title: n(c.pagosWhatsappPorAprobar ?? 0, "pago de WhatsApp por aprobar", "pagos de WhatsApp por aprobar"), sub: "Pedidos a domicilio esperando que confirmes la transferencia", href: "/whatsapp/pagos", tone: "late" });
+  }
   if ((c.descuentosPorAprobar ?? 0) > 0) {
     late.push({ id: "descuentos", title: n(c.descuentosPorAprobar ?? 0, "descuento por aprobar", "descuentos por aprobar"), sub: "La caja está esperando tu respuesta", href: "/descuentos", tone: "late" });
   }

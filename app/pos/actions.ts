@@ -2,7 +2,9 @@
 
 import { z } from "zod";
 import { after } from "next/server";
-import { avisarDecisionPedido } from "@/lib/whatsapp/atender";
+import { avisarPedido, avisarPos } from "@/lib/whatsapp/atender";
+import { siguienteEstado } from "@/lib/whatsapp/flujo";
+import { requireAdmin } from "@/lib/auth";
 import { MOTIVOS_RECHAZO_WA } from "@/lib/pos/types";
 import { revalidatePath } from "next/cache";
 import { requirePosContext, requirePosAuth, type PosAuth } from "@/lib/pos/server";
@@ -438,7 +440,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, comanda_impresa_at, customer_phone, telefono_recibe, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -486,6 +488,9 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       porVerificar: (o.por_verificar as PosOrder["porVerificar"]) ?? null,
       waEstado: (o.wa_estado as PosOrder["waEstado"]) ?? null,
       direccion: (o.delivery_address as string | null) ?? null,
+      comandaImpresa: Boolean(o.comanda_impresa_at),
+      customerPhone: (o.customer_phone as string | null) ?? null,
+      telefonoRecibe: (o.telefono_recibe as string | null) ?? null,
       baristaId: (o.barista_id as string | null) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
@@ -819,16 +824,25 @@ const RechazoWaSchema = z.object({
 });
 
 /**
- * WhatsApp order accepted at the register: the agent tells the customer it
- * is being made (in the background, so the screen doesn't wait for it).
+ * WhatsApp order accepted at the register. Pick-up goes straight to
+ * preparation (paid at the café); delivery waits for the admin to approve
+ * the transfer. The agent tells the customer either way, in the background.
  */
 export async function aceptarPedidoWhatsapp(input: unknown): Promise<SimpleResult> {
   const parsed = DecisionWaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
   const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { data: cur } = await supabase
+    .from("ordenes")
+    .select("wa_estado, order_type")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  const nuevo = siguienteEstado(cur?.wa_estado as never, (cur?.order_type as string) ?? "", "aceptar");
+  if (!nuevo) return { ok: false, error: "Este pedido ya se aceptó o se rechazó." };
   const { data, error } = await supabase
     .from("ordenes")
-    .update({ wa_estado: "aceptado", wa_decidido_at: new Date().toISOString() })
+    .update({ wa_estado: nuevo, wa_decidido_at: new Date().toISOString() })
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
     .eq("wa_estado", "por_aceptar")
@@ -838,7 +852,112 @@ export async function aceptarPedidoWhatsapp(input: unknown): Promise<SimpleResul
     return { ok: false, error: "No se pudo aceptar el pedido." };
   }
   if (!data?.length) return { ok: false, error: "Este pedido ya se aceptó o se rechazó." };
-  after(() => avisarDecisionPedido(parsed.data.ordenId).catch((e) => console.error("[aviso whatsapp] aceptado:", e)));
+  after(() => avisarPedido(parsed.data.ordenId).catch((e) => console.error("[aviso whatsapp] aceptado:", e)));
+  return { ok: true };
+}
+
+/**
+ * Admin, from /whatsapp/pagos: the customer's transfer arrived. Records it
+ * like a transfer at the register (same applyPago), moves the order into
+ * preparation (the registers print its comanda) and the agent tells the
+ * customer. Admin session only.
+ */
+export async function aprobarPagoWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { profile } = await requireAdmin();
+  const orgId = profile.organization_id as string;
+  const db = createSupabaseAdminClient();
+  const { data: cur } = await db
+    .from("ordenes")
+    .select("wa_estado, order_type, status, total_cop, paid_cop")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (!cur || !siguienteEstado(cur.wa_estado as never, cur.order_type as string, "aprobar_pago")) {
+    return { ok: false, error: "Este pedido ya no está esperando el pago." };
+  }
+  if (cur.status === "pendiente" && Number(cur.total_cop) > Number(cur.paid_cop ?? 0)) {
+    // Same path as «Transferencia · Llegó» at the register; only these three
+    // fields of the context are read.
+    const ctx = { supabase: db, organizationId: orgId, actor: { kind: "user", profileId: profile.id, restaurantId: null } } as unknown as PosAuth;
+    const pago = await applyPago(ctx, parsed.data.ordenId, null, { method: "transferencia" }, undefined);
+    if (!pago.ok) return pago;
+  }
+  const { data, error } = await db
+    .from("ordenes")
+    .update({ wa_estado: "en_preparacion", wa_pago_aprobado_at: new Date().toISOString(), wa_pago_aprobado_por: profile.id })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .eq("wa_estado", "esperando_pago")
+    .select("id");
+  if (error || !data?.length) {
+    console.error("[aprobarPagoWhatsapp]", error);
+    return { ok: false, error: "No se pudo aprobar el pago." };
+  }
+  revalidatePath("/whatsapp/pagos");
+  after(async () => {
+    await avisarPos(orgId).catch(() => {});
+    await avisarPedido(parsed.data.ordenId).catch((e) => console.error("[aviso whatsapp] pago:", e));
+  });
+  return { ok: true };
+}
+
+/** Admin: the transfer hasn't shown up — the agent kindly reminds the customer, with the keys. */
+export async function recordarPagoWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { profile } = await requireAdmin();
+  const { data } = await createSupabaseAdminClient()
+    .from("ordenes")
+    .select("id")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", profile.organization_id as string)
+    .eq("wa_estado", "esperando_pago")
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Este pedido ya no está esperando el pago." };
+  after(() => avisarPedido(parsed.data.ordenId, "recordar_pago").catch((e) => console.error("[aviso whatsapp] recordar:", e)));
+  return { ok: true };
+}
+
+/**
+ * A register claims the printing of a WhatsApp order's comanda and labels:
+ * only the first one to ask gets `true`, so it prints once.
+ */
+export async function reclamarComandaWhatsapp(input: unknown): Promise<{ ok: true; imprimir: boolean } | { ok: false; error: string }> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { data, error } = await supabase
+    .from("ordenes")
+    .update({ comanda_impresa_at: new Date().toISOString() })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .eq("canal", "whatsapp")
+    .eq("wa_estado", "en_preparacion")
+    .is("comanda_impresa_at", null)
+    .select("id");
+  if (error) return { ok: false, error: "No se pudo reclamar la comanda." };
+  return { ok: true, imprimir: !!data?.length };
+}
+
+/** «Salió con el domiciliario»: the agent tells the customer their order is on its way. */
+export async function marcarEnCaminoWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { data: cur } = await supabase.from("ordenes").select("wa_estado, order_type").eq("id", parsed.data.ordenId).eq("organization_id", orgId).maybeSingle();
+  const nuevo = siguienteEstado(cur?.wa_estado as never, (cur?.order_type as string) ?? "", "salio");
+  if (!nuevo) return { ok: false, error: "Este pedido no está listo para salir." };
+  const { data, error } = await supabase
+    .from("ordenes")
+    .update({ wa_estado: nuevo, wa_en_camino_at: new Date().toISOString() })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .eq("wa_estado", cur!.wa_estado as string)
+    .select("id");
+  if (error || !data?.length) return { ok: false, error: "No se pudo marcar la salida." };
+  after(() => avisarPedido(parsed.data.ordenId).catch((e) => console.error("[aviso whatsapp] en camino:", e)));
   return { ok: true };
 }
 
@@ -867,7 +986,7 @@ export async function rechazarPedidoWhatsapp(input: unknown): Promise<SimpleResu
     .eq("id", ordenId)
     .eq("organization_id", orgId);
   if (error) console.error("[rechazarPedidoWhatsapp]", error);
-  after(() => avisarDecisionPedido(ordenId).catch((e) => console.error("[aviso whatsapp] rechazado:", e)));
+  after(() => avisarPedido(ordenId).catch((e) => console.error("[aviso whatsapp] rechazado:", e)));
   return { ok: true };
 }
 

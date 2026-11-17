@@ -30,6 +30,8 @@ export interface LocalInfo {
   instagram: string | null;
   /** Payment keys shared when the customer pays by transfer (Nequi, Bold…). */
   pagos: string | null;
+  /** Free nearby delivery points (the team walks the order over). */
+  puntosCercanos?: string[];
 }
 
 /** What we know about this customer, by phone number. */
@@ -96,9 +98,10 @@ export function enBurbujas(texto: string, max = 4): string[] {
 }
 
 const PedidoInput = z.object({
-  tipo: z.enum(["llevar", "domicilio"]),
+  tipo: z.enum(["llevar", "domicilio", "cercano"]),
   nombre: z.string(),
   direccion: z.string().nullable(),
+  telefono: z.string().nullable(),
   nota: z.string().nullable(),
   lineas: z.array(z.object({
     producto_id: z.string(),
@@ -127,9 +130,10 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
     input_schema: {
       type: "object",
       properties: {
-        tipo: { type: "string", enum: ["llevar", "domicilio"] },
+        tipo: { type: "string", enum: ["llevar", "domicilio", "cercano"], description: "llevar = recoge en el café; cercano = entrega gratis en un punto cercano de la lista (en direccion va el punto); domicilio = con domiciliario." },
         nombre: { type: "string", description: "Nombre de quien recibe o recoge el pedido." },
         direccion: { type: ["string", "null"], description: "Dirección completa con barrio o referencias; null si es para llevar." },
+        telefono: { type: ["string", "null"], description: "Teléfono de quien recibe el domicilio (puede ser el mismo WhatsApp del cliente si así lo dice); null si es para recoger." },
         nota: { type: ["string", "null"], description: "Indicaciones del cliente (sin azúcar, hora de recogida…), o null." },
         lineas: {
           type: "array",
@@ -156,7 +160,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
           },
         },
       },
-      required: ["tipo", "nombre", "direccion", "nota", "lineas"],
+      required: ["tipo", "nombre", "direccion", "telefono", "nota", "lineas"],
       additionalProperties: false,
     },
   },
@@ -295,11 +299,20 @@ Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, 
 
 # Para tomar un pedido
 1. Arma el pedido usando solo productos y opciones del menú de abajo, con sus precios exactos. Si una opción es obligatoria y no la sabes por su ficha (preferencias o elecciones habituales), pregúntala. No ofrezcas lo que está AGOTADO HOY.
-2. Ofrece las dos formas de recibirlo: recoger en el café («te lo preparamos, lo recoges y pagas aquí en el café») o domicilio. Si su ficha ya dice cómo lo recibe, propón esa. Recoger es tipo «llevar» en crear_pedido.
-   Necesitas: recoger o domicilio, el nombre (si la ficha ya lo tiene, usa ese y no lo preguntes) y, si es domicilio, dónde (dirección, o «portería» si así lo recibe).
+2. Cómo lo recibe (si su ficha ya lo dice, propón esa):
+   - Recoger en el café: «te lo preparamos, lo recoges y pagas aquí en el café». Tipo «llevar» en crear_pedido.
+   - Entrega cercana gratis: si es para uno de los puntos cercanos de la lista (abajo, en «Lo que sabes del local»), se lo llevamos nosotros sin costo y paga al recibirlo. Tipo «cercano», con el punto en direccion. Reconócelos aunque los nombre a su manera («a la droguería», «a la portería del hospital», «al materno»).
+   - Domicilio con domiciliario: para pedir los datos manda UN solo mensaje con esta lista para que la llene (puedes adelantar lo que ya sabes):
+     Nombre de quien recibe:
+     Productos:
+     Dirección de entrega:
+     Teléfono:
+     Si dice que el teléfono es este mismo WhatsApp, usa ese número. Tipo «domicilio» en crear_pedido, con dirección y teléfono.
+   Necesitas siempre el nombre (si la ficha ya lo tiene, usa ese y no lo preguntes).
 3. Manda un resumen corto con los productos, sus opciones y el total (sin domicilio) y pide confirmación.
 4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, confirma con calidez el número de pedido y dile, como parte del equipo, que ya le confirmamos que esté en preparación (p. ej. «Listo, tu pedido es el A-1950. Ya te confirmamos que esté en preparación»). Todavía no prometas tiempos: esos van en la confirmación. Si devuelve un problema, resuélvelo con el cliente.
-5. Si pregunta por un pedido que en su ficha aparece «esperando confirmación», dile que ya lo estamos revisando y que en un momento le confirmamos. Si aparece «rechazado», ya se le explicó por qué: ayúdale con otra opción.
+5. Así va un pedido (lo ves en sus últimos pedidos): «esperando que lo aceptemos» → para domicilio «confirmando su pago» → «en preparación» → «en camino con el domiciliario». Si pregunta, contéstale según ese estado, con calidez: esperando → ya lo estamos revisando; confirmando su pago → apenas nos llegue lo empezamos a preparar; en preparación → ya lo estamos haciendo; en camino → ya va para allá. Si aparece «rechazado», ya se le explicó por qué: ayúdale con otra opción.
+6. Domicilio: se paga por transferencia antes de prepararlo. Comparte los datos de pago y dile que apenas confirmemos su pago lo preparamos. Recoger: paga en el café, no hace falta transferir.
 
 No inventes productos, precios, promociones ni tiempos distintos a estos. Quejas, problemas con un pedido o pago, o algo que no puedes resolver: pasar_a_humano.
 Eres parte del equipo: habla siempre en primera persona del plural («te confirmamos», «lo estamos preparando»), nunca de «el café» como si fuera otra persona.
@@ -310,11 +323,12 @@ Si el cliente queda insatisfecho o algo salió mal y no lo pudimos resolver, dis
 /** What changes by the day: the café's data, approved lessons and the menu. */
 export function datosDelDia(local: LocalInfo, menu: string, lecciones: Leccion[] = []): string {
   const pago = local.pagos
-    ? `Si recoge en el café, paga ahí al recogerlo (efectivo, tarjeta o transferencia); no le mandes datos de pago salvo que pida transferir antes. Si es domicilio, paga al recibir (efectivo) o por transferencia; si va a transferir, después de crear el pedido le compartes los datos tal cual:\n${local.pagos}`
-    : "Si recoge en el café, paga ahí al recogerlo; si es domicilio, paga al recibir. No tienes datos de transferencia: si los piden, pasa a humano.";
+    ? `Si recoge en el café, paga ahí al recogerlo (efectivo, tarjeta o transferencia); no le mandes datos de pago salvo que pida transferir antes. Si es domicilio, se paga por transferencia antes de prepararlo: después de crear el pedido le compartes los datos tal cual y le dices que apenas confirmemos su pago lo preparamos:\n${local.pagos}`
+    : "Si recoge en el café, paga ahí al recogerlo. Si es domicilio, se paga por transferencia antes de prepararlo, pero no tienes los datos: si los piden, pasa a humano.";
   return `# Lo que sabes del local
 - Dirección: ${local.direccion ?? "no la tienes; si la piden, pasa a humano"}
 - Horario: ${local.horario ?? "no lo tienes; si lo piden, pasa a humano"}
+- Entregas cercanas gratis (las llevamos nosotros, paga al recibir): ${local.puntosCercanos?.length ? local.puntosCercanos.join("; ") : "ninguna por ahora"}
 - Domicilios: ${local.domicilios ?? "se hacen en Yopal; si hay costo de domicilio lo confirma el equipo. No lo menciones salvo que pregunten"}
 - Menú con fotos: cafepayo.com${local.instagram ? `\n- Instagram: @${local.instagram}` : ""}
 - Pago: ${pago}
@@ -550,6 +564,7 @@ export async function ejecutar(
       tipo: p.data.tipo,
       nombre: p.data.nombre,
       direccion: p.data.direccion,
+      telefono: p.data.telefono,
       nota: p.data.nota,
       lineas: p.data.lineas.map((l) => ({
         productoId: l.producto_id,

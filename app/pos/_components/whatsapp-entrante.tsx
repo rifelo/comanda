@@ -71,6 +71,8 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const recoge = o.orderType !== "domicilio";
+  // A free nearby point (la droguería, la portería…): the team walks it over.
+  const cercano = recoge && o.seLoLlevamos && !!o.direccion;
   const nombre = orderName(o);
   const puedeRechazar = !!motivo && (motivo !== "Otro" || detalle.trim().length > 2);
 
@@ -88,7 +90,9 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
       <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="wa-t" style={{ maxWidth: 640, overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div className="grow" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span className="pill ok" style={{ alignSelf: "flex-start" }}>WhatsApp · {recoge ? "Recoger en el café" : "Domicilio"}</span>
+            <span className="pill ok" style={{ alignSelf: "flex-start" }}>
+              WhatsApp · {cercano ? `Entrega cercana · ${o.direccion}` : recoge ? "Recoger en el café" : "Domicilio"}
+            </span>
             <h2 id="wa-t" className="h1">Nuevo pedido {folioTag(o.folio)}{nombre ? ` · ${nombre}` : ""}</h2>
             {!recoge && o.direccion ? <span className="muted" style={{ fontSize: 15 }}>{o.direccion}</span> : null}
           </div>
@@ -120,8 +124,13 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
               No podemos
             </button>
             <button type="button" className="btn ok lg" style={{ flex: 2 }} disabled={busy} onClick={() => correr(() => aceptarPedidoWhatsapp({ ordenId: o.id }))}>
-              Aceptar y preparar
+              {recoge ? "Aceptar y preparar" : "Aceptar · confirmar pago"}
             </button>
+            {!recoge && (
+              <p className="muted" style={{ margin: 0, fontSize: 14, flexBasis: "100%" }}>
+                Es domicilio: se prepara cuando el admin confirme la transferencia. Al aceptar, le decimos al cliente que estamos confirmando su pago.
+              </p>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

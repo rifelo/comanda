@@ -7,9 +7,12 @@ import { itemRows, priceLines, type OrderLineInput, type PricedItem } from "@/li
  * catalog before anything is written. The agent only proposes; this decides.
  */
 export interface PedidoAgente {
-  tipo: "llevar" | "domicilio";
+  /** «cercano» = a free nearby delivery point; the team walks it over. */
+  tipo: "llevar" | "domicilio" | "cercano";
   nombre: string;
   direccion: string | null;
+  /** Phone of whoever receives a delivery (digits); null for pick-up. */
+  telefono: string | null;
   nota: string | null;
   lineas: { productoId: string; cantidad: number; opciones: { grupoId: string; opcion: string }[] }[];
 }
@@ -28,6 +31,13 @@ export function validarPedido(catalog: PosCatalog, p: PedidoAgente): PedidoValid
   if (!p.nombre.trim()) return { ok: false, error: "Falta el nombre del cliente." };
   if (p.tipo === "domicilio" && !(p.direccion ?? "").trim()) {
     return { ok: false, error: "Es domicilio y falta la dirección de entrega." };
+  }
+  if (p.tipo === "cercano" && !(p.direccion ?? "").trim()) {
+    return { ok: false, error: "Es una entrega cercana y falta cuál punto (p. ej. la droguería)." };
+  }
+  const tel = (p.telefono ?? "").replace(/\D/g, "");
+  if (p.tipo === "domicilio" && (tel.length < 7 || tel.length > 13)) {
+    return { ok: false, error: "Es domicilio y falta el teléfono de quien recibe." };
   }
   const lines: OrderLineInput[] = [];
   for (const l of p.lineas) {
@@ -64,7 +74,11 @@ export function validarPedido(catalog: PosCatalog, p: PedidoAgente): PedidoValid
 export function notaPedido(p: PedidoAgente, telefono: string): string {
   return [
     `WhatsApp +${telefono}`,
-    p.tipo === "domicilio" ? `Domicilio: ${p.direccion!.trim()}` : "Para llevar",
+    p.tipo === "domicilio"
+      ? `Domicilio: ${p.direccion!.trim()} · Recibe ${p.nombre.trim()}, tel ${(p.telefono ?? "").replace(/\D/g, "")}`
+      : p.tipo === "cercano"
+        ? `Se lo llevamos a ${p.direccion!.trim()} (entrega cercana gratis)`
+        : "Para llevar",
     p.nota?.trim() || null,
   ].filter(Boolean).join(" · ");
 }
@@ -92,7 +106,9 @@ export async function guardarPedidoWhatsapp(
       organization_id: orgId,
       restaurant_id: ctx.restaurantId,
       folio,
-      order_type: p.tipo,
+      // A nearby point is a pick-up the barista walks over («Se lo llevamos»).
+      order_type: p.tipo === "cercano" ? "llevar" : p.tipo,
+      se_lo_llevamos: p.tipo === "cercano",
       status: "pendiente",
       subtotal_cop: v.subtotal,
       total_cop: v.subtotal,
@@ -103,7 +119,8 @@ export async function guardarPedidoWhatsapp(
       canal: "whatsapp",
       wa_estado: "por_aceptar",
       customer_phone: ctx.telefono,
-      delivery_address: p.tipo === "domicilio" ? p.direccion!.trim() : null,
+      delivery_address: p.tipo === "llevar" ? null : p.direccion!.trim(),
+      telefono_recibe: p.tipo === "domicilio" ? (p.telefono ?? "").replace(/\D/g, "") || null : null,
     })
     .select("id")
     .single();

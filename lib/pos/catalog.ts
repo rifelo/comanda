@@ -1,3 +1,4 @@
+import { leerDomiciliarios } from "@/lib/pos/domiciliarios";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -90,7 +91,7 @@ export async function getPosCatalog({
     getModificadores(organizationId, client),
     supabase
       .from("organizations")
-      .select("instagram, sticker_url, cup_url, label_art_url, transferencia_llave, transferencia_titular, datafono_liquidacion, recibo_encabezado, recibo_pie, recibo_logo_url, recibo_nombre")
+      .select("instagram, sticker_url, cup_url, label_art_url, transferencia_llave, transferencia_titular, datafono_liquidacion, domiciliarios, recibo_encabezado, recibo_pie, recibo_logo_url, recibo_nombre")
       .eq("id", organizationId)
       .maybeSingle(),
     getEquipo(organizationId),
@@ -329,6 +330,7 @@ export async function getPosCatalog({
       transferenciaLlave: txt(org.transferencia_llave),
       transferenciaTitular: txt(org.transferencia_titular),
       datafonoLiquidacion: txt(org.datafono_liquidacion),
+      domiciliarios: leerDomiciliarios(txt(org.domiciliarios)),
     },
     recibo: { encabezado: txt(org.recibo_encabezado), pie: txt(org.recibo_pie), logo: txt(org.recibo_logo_url), nombre: txt(org.recibo_nombre) },
   };

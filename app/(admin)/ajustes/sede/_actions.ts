@@ -1,5 +1,6 @@
 "use server";
 
+import { lineasSinNumero } from "@/lib/pos/domiciliarios";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
@@ -52,6 +53,10 @@ const ReciboSchema = z.object({
   meta_diaria: z.string().max(20),
   /** WhatsApp the POS sends discount requests to; "" = none. */
   aprobaciones_whatsapp: z.string().max(20),
+  /** Couriers, «Nombre número» per line; "" = none. */
+  domiciliarios: z.string().max(600),
+  /** Free nearby delivery points, one per line; "" = none. */
+  puntos_cercanos: z.string().max(600),
 });
 
 /** What the POS prints on the receipt and shows on the payment pages (organizations). */
@@ -65,6 +70,8 @@ export async function updateRecibo(input: z.infer<typeof ReciboSchema>) {
   const meta = metaDigits ? Number(metaDigits) : null;
   const wa = d.aprobaciones_whatsapp.replace(/[^\d]/g, "");
   if (wa && (wa.length < 10 || wa.length > 13)) return { error: "El WhatsApp de aprobaciones debe tener 10 dígitos (o con indicativo, ej. 57…)." };
+  const sinNumero = lineasSinNumero(d.domiciliarios);
+  if (sinNumero.length) return { error: `A este domiciliario le falta el número: «${sinNumero[0]}». Escribe «Nombre 300 000 0000», uno por línea.` };
   if (meta !== null && (meta <= 0 || meta > 1_000_000_000)) return { error: "La meta del día debe ser un valor en pesos mayor que 0." };
   const { error } = await supabase
     .from("organizations")
@@ -77,6 +84,8 @@ export async function updateRecibo(input: z.infer<typeof ReciboSchema>) {
       datafono_liquidacion: val(d.datafono_liquidacion),
       meta_diaria_cop: meta,
       aprobaciones_whatsapp: wa || null,
+      domiciliarios: val(d.domiciliarios),
+      puntos_cercanos: val(d.puntos_cercanos),
     })
     .eq("id", profile.organization_id);
   if (error) return { error: error.message };

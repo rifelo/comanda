@@ -10,6 +10,8 @@ import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
+import { ESTADO_WA_TEXTO } from "./flujo";
+import type { WaEstado } from "@/lib/pos/types";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
 /**
@@ -217,7 +219,7 @@ async function cargarFicha(
   const pedidos = ordenes.slice(0, 3).map((o) => {
     const dia = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(o.created_at));
     const items = (o.orden_items ?? []).map((i) => `${i.qty} ${i.name}`).join(", ");
-    const estado = o.wa_estado === "por_aceptar" ? "esperando confirmación" : o.wa_estado === "rechazado" ? "rechazado (ya se le explicó)" : o.wa_estado === "aceptado" && o.status === "pendiente" ? "en preparación" : o.status;
+    const estado = o.wa_estado ? ESTADO_WA_TEXTO[o.wa_estado as WaEstado] ?? o.status : o.status;
     return `${o.folio} · ${dia} · ${estado}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
   });
   return {
@@ -249,6 +251,9 @@ async function esProveedor(orgId: string, waId: string): Promise<boolean> {
   if (error) console.warn("[whatsapp] proveedores:", error);
   return !!data?.length;
 }
+
+/** One entry per non-empty line (settings text fields). */
+const lineas = (t: string | null | undefined) => (t ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
 
 const ahoraYopal = () =>
   new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "full", timeStyle: "short" }).format(new Date());
@@ -290,7 +295,7 @@ export async function responder(p: Pendiente): Promise<void> {
   const ultimoCliente = [...turnos].reverse().find((t) => t.autor === "cliente");
   if (ultimoCliente?.wa_message_id !== p.messageId) return;
 
-  const { data: org } = await db().from("organizations").select("name, instagram").eq("id", n.organization_id).single();
+  const { data: org } = await db().from("organizations").select("name, instagram, puntos_cercanos").eq("id", n.organization_id).single();
   const orgName = ((org?.name as string | undefined) ?? "").replace(/'s org$/, "") || "el café";
   const catalog = await getPosCatalog({ organizationId: n.organization_id, userId: null, orgName, client: db() });
 
@@ -331,6 +336,7 @@ export async function responder(p: Pendiente): Promise<void> {
       domicilios: n.domicilios,
       instagram: ((org?.instagram as string | null) ?? "").replace(/^@/, "") || null,
       pagos: n.pagos,
+      puntosCercanos: lineas(org?.puntos_cercanos as string | null),
     },
     ficha,
     lecciones,
@@ -523,7 +529,7 @@ export async function guardarEstados(estados: EstadoEntrega[]): Promise<void> {
 }
 
 /** Same nudge the stations send each other (app/pos/pos-live.ts), so the order shows at once. */
-async function avisarPos(organizationId: string): Promise<void> {
+export async function avisarPos(organizationId: string): Promise<void> {
   try {
     await db().channel(`pos:${organizationId}`).httpSend("ordenes", {});
   } catch (e) {
@@ -532,18 +538,20 @@ async function avisarPos(organizationId: string): Promise<void> {
 }
 
 /**
- * The team accepted or turned down a WhatsApp order in the POS: the agent
- * tells the customer, as one of the team — «ya está en preparación», or the
- * barista's reason with an apology, a promise to improve and an alternative
- * that is available. Best effort: a failure here never undoes the decision.
+ * A step of the team on a WhatsApp order: the agent tells the customer, as
+ * one of the team and warmly, according to the order's state — we're
+ * confirming your payment, it's being made, it's on its way, or why we can't
+ * make it (with an apology, a promise to improve and an alternative).
+ * `recordar_pago` kindly reminds a delivery customer to transfer. Best
+ * effort: a failure here never undoes the step.
  */
-export async function avisarDecisionPedido(ordenId: string): Promise<void> {
+export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Promise<void> {
   const { data: o } = await db()
     .from("ordenes")
-    .select("organization_id, folio, customer_phone, customer_name, order_type, delivery_address, wa_estado, wa_motivo, wa_motivo_detalle, orden_items(name, qty)")
+    .select("organization_id, folio, customer_phone, customer_name, order_type, delivery_address, se_lo_llevamos, wa_estado, wa_motivo, wa_motivo_detalle, orden_items(name, qty)")
     .eq("id", ordenId)
     .maybeSingle();
-  if (!o?.customer_phone || (o.wa_estado !== "aceptado" && o.wa_estado !== "rechazado")) return;
+  if (!o?.customer_phone || !o.wa_estado || o.wa_estado === "por_aceptar") return;
   const orgId = o.organization_id as string;
   const { data: c } = await db()
     .from("whatsapp_conversaciones")
@@ -569,7 +577,7 @@ export async function avisarDecisionPedido(ordenId: string): Promise<void> {
     ((filas ?? []) as { autor: Turno["autor"]; texto: string; created_at: string }[]).reverse().map((f) => ({ ...f, at: new Date(f.created_at) })),
   );
 
-  const { data: org } = await db().from("organizations").select("name, instagram").eq("id", orgId).single();
+  const { data: org } = await db().from("organizations").select("name, instagram, puntos_cercanos").eq("id", orgId).single();
   const orgName = ((org?.name as string | undefined) ?? "").replace(/'s org$/, "") || "el café";
   const catalog = await getPosCatalog({ organizationId: orgId, userId: null, orgName, client: db() });
   const { data: lecc } = await db().from("agente_lecciones").select("id, texto").eq("organization_id", orgId).eq("estado", "aprobada").order("created_at", { ascending: true });
@@ -583,10 +591,19 @@ export async function avisarDecisionPedido(ordenId: string): Promise<void> {
 
   const items = ((o.orden_items ?? []) as { name: string; qty: number }[]).map((i) => `${i.qty} ${i.name}`).join(", ");
   const recoge = o.order_type !== "domicilio";
-  const nota =
-    o.wa_estado === "aceptado"
-      ? `Aceptamos el pedido ${o.folio} (${items}; ${recoge ? "lo recoge en el café" : `domicilio a ${o.delivery_address ?? "su dirección"}`}). Escríbele, como parte del equipo, que su pedido YA está en preparación: este mensaje es la confirmación, así que no digas «te confirmamos» ni repitas el resumen. ${recoge ? "Lo tiene listo en unos 10 minutos y paga al recogerlo aquí." : "Apenas esté listo sale para su dirección."} Uno o dos mensajes cortos.`
-      : `No podemos preparar el pedido ${o.folio} (${items}). Motivo que dejó el barista: ${o.wa_motivo ?? "otro"}${o.wa_motivo_detalle ? ` — ${o.wa_motivo_detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;
+  const nota = notaAviso({
+    estado: o.wa_estado as string,
+    extra,
+    folio: o.folio as string,
+    items,
+    recoge,
+    direccion: (o.delivery_address as string | null) ?? null,
+    motivo: (o.wa_motivo as string | null) ?? null,
+    detalle: (o.wa_motivo_detalle as string | null) ?? null,
+    pagos: n.pagos,
+    cercano: Boolean(o.se_lo_llevamos) && !!o.delivery_address,
+  });
+  if (!nota) return;
   const texto = await redactarAviso({
     catalog,
     local: {
@@ -596,6 +613,7 @@ export async function avisarDecisionPedido(ordenId: string): Promise<void> {
       domicilios: n.domicilios,
       instagram: ((org?.instagram as string | null) ?? "").replace(/^@/, "") || null,
       pagos: n.pagos,
+      puntosCercanos: lineas(org?.puntos_cercanos as string | null),
     },
     ficha,
     lecciones,
@@ -613,4 +631,40 @@ export async function avisarDecisionPedido(ordenId: string): Promise<void> {
     ordenId: null,
     version: `${versionPrompt(lecciones)}·aviso`,
   });
+}
+
+/** What the agent should tell the customer at each step (internal note for redactarAviso). */
+export function notaAviso(a: {
+  estado: string;
+  extra?: "recordar_pago";
+  folio: string;
+  items: string;
+  recoge: boolean;
+  direccion: string | null;
+  motivo: string | null;
+  detalle: string | null;
+  pagos: string | null;
+  /** A free nearby point the team walks the order to. */
+  cercano?: boolean;
+}): string | null {
+  const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en 1 o 2 mensajes cortos, sin repetir el resumen del pedido.";
+  if (a.extra === "recordar_pago") {
+    return `El pedido ${a.folio} (${a.items}) a domicilio sigue esperando su transferencia. Recuérdale con amabilidad, sin presionar, que apenas nos llegue el pago lo empezamos a preparar${a.pagos ? `, y compártele los datos tal cual:\n${a.pagos}` : ""}. ${tono}`;
+  }
+  switch (a.estado) {
+    case "esperando_pago":
+      return `Aceptamos el pedido ${a.folio} (${a.items}, a domicilio). Dile algo como «Super, recibimos tu pedido, es el ${a.folio}, estamos confirmando tu pago para empezar a prepararlo».${a.pagos ? ` Si en esta conversación aún no le compartimos los datos de transferencia, compártelos tal cual:\n${a.pagos}` : ""} ${tono}`;
+    case "en_preparacion":
+    case "aceptado":
+      if (a.cercano) return `El pedido ${a.folio} (${a.items}) ya está en preparación y en unos minutos se lo llevamos a ${a.direccion ?? "su punto"}, sin costo; paga al recibirlo. Este mensaje es la confirmación, no digas «te confirmamos». ${tono}`;
+      return a.recoge
+        ? `El pedido ${a.folio} (${a.items}) para recoger ya está en preparación: este mensaje es la confirmación, no digas «te confirmamos». Lo tiene listo en unos 10 minutos y paga al recogerlo aquí. ${tono}`
+        : `Ya confirmamos el pago del pedido ${a.folio} (${a.items}) y ya está en preparación. Dile algo como «Ya confirmamos tu pago 🙌 tu pedido ya está en preparación, te avisamos apenas salga con nuestro domiciliario». ${tono}`;
+    case "en_camino":
+      return `El pedido ${a.folio} ya salió con nuestro domiciliario hacia ${a.direccion ?? "su dirección"}. Cuéntale que ya va en camino, con alegría y cercanía (p. ej. «Tu pedido ya va en camino 🛵 nuestro domiciliario va para allá, que lo disfrutes mucho»). ${tono}`;
+    case "rechazado":
+      return `No podemos preparar el pedido ${a.folio} (${a.items}). Motivo que dejó el barista: ${a.motivo ?? "otro"}${a.detalle ? ` — ${a.detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;
+    default:
+      return null;
+  }
 }

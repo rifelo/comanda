@@ -61,6 +61,7 @@ import {
   marcarSeLoLlevamos,
   posSuggest,
   transcribeAudio,
+  reclamarComandaWhatsapp,
 } from "./actions";
 import { nudge } from "./pos-live";
 import { printMessageLabel, printCupNameLabel, printCupDrinkLabel } from "@/lib/printer/serial";
@@ -1570,6 +1571,7 @@ export async function refreshPendientes() {
           const nuevos = pedidosNuevos(pendientesConocidos, res.orders, Date.now());
           pendientesConocidos = new Set([...(pendientesConocidos ?? []), ...res.orders.map((o) => o.id)]);
           if (nuevos.length) sonarAlerta();
+          void imprimirComandasWhatsapp(res.orders);
           posStore.set((st) => {
             // A pending order loaded for payment follows the stored total, so
             // the tender never shows a number the server won't charge.
@@ -2114,13 +2116,39 @@ export function reprintComanda() {
 
 /** Receipt or comanda of a stored order, from Pedidos. */
 export function printTicketFor(o: PosOrder, kind: TicketDoc["kind"]) {
+  printTicket(ticketDe(o, kind, true));
+}
+
+const comandasReclamadas = new Set<string>();
+/**
+ * WhatsApp orders that just entered preparation (accepted pick-up, or a
+ * delivery whose payment the admin approved): one register claims each one
+ * and prints its comanda and cup labels, so they print once.
+ */
+async function imprimirComandasWhatsapp(orders: readonly PosOrder[]) {
+  for (const o of orders) {
+    if (o.canal !== "whatsapp" || o.waEstado !== "en_preparacion" || o.comandaImpresa || comandasReclamadas.has(o.id)) continue;
+    comandasReclamadas.add(o.id);
+    const r = await reclamarComandaWhatsapp({ ordenId: o.id }).catch(() => null);
+    if (!r?.ok) {
+      comandasReclamadas.delete(o.id);
+      continue;
+    }
+    if (!r.imprimir) continue;
+    printComanda(ticketDe(o, "comanda", false));
+    printLabelFor(o);
+  }
+}
+
+/** The ticket of a stored order (a reprint from Pedidos is marked as a copy). */
+function ticketDe(o: PosOrder, kind: TicketDoc["kind"], copia: boolean): TicketDoc {
   const s = posStore.get();
   const { lines } = rebuildLines(o, s.catalog);
   const pagos = o.pagos ?? [];
   const pagado = o.status === "pagada";
   const method = o.paymentMethod;
   const approval = pagos.find((p) => p.approvalCode)?.approvalCode ?? null;
-  printTicket({
+  return {
     ...saleTicket(kind, {
       order: lines,
       customerName: o.customerName,
@@ -2137,13 +2165,13 @@ export function printTicketFor(o: PosOrder, kind: TicketDoc["kind"]) {
       change: pagado ? o.change : 0,
       pendiente: o.status === "pendiente",
       porVerificar: o.porVerificar === "transferencia",
-      copia: true,
+      copia,
     }),
     method: pagado && method ? PAY_METHOD_LABEL[method] : undefined,
     tendered: pagado && (method === "efectivo" || method === "mixto") ? o.tendered : null,
     approval,
     partes: pagado && pagos.length > 1 && new Set(pagos.map((p) => p.method)).size > 1 ? pagos.map((p) => ({ metodo: PAY_METHOD_LABEL[p.method], monto: p.amount })) : undefined,
-  });
+  };
 }
 
 /**

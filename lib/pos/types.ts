@@ -163,6 +163,8 @@ export interface PosPagoInfo {
   transferenciaTitular: string | null;
   /** When datáfono money reaches the account, e.g. «1–2 días hábiles». */
   datafonoLiquidacion: string | null;
+  /** The café's couriers (organizations.domiciliarios), for «Contactar domiciliario». */
+  domiciliarios?: { nombre: string; numero: string }[];
 }
 
 /** A barista the register can credit a sale to (ordenes.barista_id). */
@@ -338,6 +340,12 @@ export interface PosOrder {
   waEstado?: WaEstado | null;
   /** Address for a WhatsApp delivery. */
   direccion?: string | null;
+  /** The comanda was already printed by some register (WhatsApp orders). */
+  comandaImpresa?: boolean;
+  /** WhatsApp customer's number (E.164 digits), for the courier. */
+  customerPhone?: string | null;
+  /** Phone of whoever receives the delivery (may differ from the WhatsApp). */
+  telefonoRecibe?: string | null;
   /** Who prepares it (ordenes.barista_id → catalog.equipo); null/absent = nobody credited. */
   baristaId?: string | null;
   tendered: number | null;
@@ -367,6 +375,11 @@ export const CANCEL_REASONS = ["Duplicado", "Error al tomar", "Cliente se fue", 
 /** Why a WhatsApp order can't be made; the agent explains it to the customer (mig 0097). */
 export const MOTIVOS_RECHAZO_WA = ["Faltan insumos", "Problema técnico", "Mucha demanda", "Otro"] as const;
 export type MotivoRechazoWa = (typeof MOTIVOS_RECHAZO_WA)[number];
-/** A WhatsApp order waits for the team: por_aceptar → aceptado | rechazado. */
-export type WaEstado = "por_aceptar" | "aceptado" | "rechazado";
+/**
+ * A WhatsApp order through the team (mig 0098): por_aceptar → (barista)
+ * esperando_pago [delivery] | en_preparacion [pick-up] → (admin approves the
+ * payment) en_preparacion → («Salió») en_camino; or rechazado. «aceptado» is
+ * only on orders from before this flow.
+ */
+export type WaEstado = "por_aceptar" | "aceptado" | "esperando_pago" | "en_preparacion" | "en_camino" | "rechazado";
 export type CancelReason = (typeof CANCEL_REASONS)[number];

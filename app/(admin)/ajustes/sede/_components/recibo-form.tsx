@@ -13,6 +13,8 @@ export type ReciboInitial = {
   datafono_liquidacion: string;
   meta_diaria: string;
   aprobaciones_whatsapp: string;
+  domiciliarios: string;
+  puntos_cercanos: string;
 };
 
 /**
@@ -66,6 +68,24 @@ export function ReciboForm({ initial }: { initial: ReciboInitial }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-line pt-5">
         <Field label="Meta de ventas del día" hint="El equipo la ve en el POS (Hoy en ventas). La semana = 7 × la del día. Vacía = sin meta." inputMode="numeric" placeholder="600.000" maxLength={20} {...field("meta_diaria")} />
         <Field label="WhatsApp para aprobar descuentos" hint="Cuando la caja pide un descuento, le llega aquí un mensaje con el enlace para aprobarlo." inputMode="tel" placeholder="300 000 0000" maxLength={20} {...field("aprobaciones_whatsapp")} />
+      </div>
+      <div className="border-t border-line pt-5">
+        <TextArea
+          label="Domiciliarios"
+          hint="Uno por línea: nombre y WhatsApp. En el POS, «Contactar domiciliario» abre WhatsApp con el pedido listo para enviárselo."
+          placeholder={"Danny 314 469 5514"}
+          rows={3}
+          maxLength={600}
+          {...field("domiciliarios")}
+        />
+        <TextArea
+          label="Entregas cercanas gratis"
+          hint="Puntos a los que llevamos el pedido sin costo y sin domiciliario. Uno por línea; el agente de WhatsApp los ofrece y los reconoce."
+          placeholder={"La droguería BARCO"}
+          rows={3}
+          maxLength={600}
+          {...field("puntos_cercanos")}
+        />
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={save} loading={pending}>Guardar</Button>

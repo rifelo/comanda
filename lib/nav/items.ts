@@ -131,6 +131,7 @@ export const MAS_ITEMS: NavItem[] = [
   { id: "caja", href: "/caja", label: "Caja", icon: "caja", sub: "Arqueos, bases y movimientos", match: ["/caja"] },
   { id: "descuentos", href: "/descuentos", label: "Descuentos", icon: "descuentos", sub: "Precios especiales que pide la caja", match: ["/descuentos"] },
   { id: "gastos", href: "/gastos", label: "Gastos", icon: "gastos", sub: "Costos fijos y del día", match: ["/gastos"] },
+  { id: "pagos-whatsapp", href: "/whatsapp/pagos", label: "Pagos WhatsApp", icon: "whatsapp", sub: "Transferencias de domicilios por aprobar", match: ["/whatsapp/pagos"] },
   { id: "whatsapp", href: "/whatsapp", label: "WhatsApp", icon: "whatsapp", sub: "Conversaciones del agente y entregas", match: ["/whatsapp"] },
   {
     id: "clientes",

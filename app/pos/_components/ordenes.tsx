@@ -43,7 +43,8 @@ import { CombinarOverlay } from "./combinar";
 import { DescuentoOverlay } from "./descuento";
 import { PremioOverlay } from "./premio";
 import { ConversacionWa } from "./conversacion-wa";
-import { anularDescuento } from "../actions";
+import { anularDescuento, marcarEnCaminoWhatsapp } from "../actions";
+import { enlaceWhatsapp, mensajeDomiciliario } from "@/lib/pos/domiciliarios";
 
 /** Human label for a payment method, including the "mixto" summary. */
 export const methodLabel = (m: string | null | undefined): string =>
@@ -294,6 +295,25 @@ function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCanc
   else if (partial) pill = <span className="pill brand">Falta por cobrar {money(due)}</span>;
   else pill = <span className="pill brand">Sin pagar · {money(due)}</span>;
 
+  // WhatsApp orders: where they are in the team's flow, and the courier steps.
+  const wa = o.canal === "whatsapp" && !cancelada && !local ? o.waEstado ?? null : null;
+  const waPill =
+    wa === "por_aceptar" ? <span className="pill late">WhatsApp · por aceptar</span>
+    : wa === "esperando_pago" ? <span className="pill late">WhatsApp · esperando aprobación del pago</span>
+    : wa === "en_preparacion" ? <span className="pill brand">WhatsApp · en preparación</span>
+    : wa === "en_camino" ? <span className="pill ok">WhatsApp · en camino 🛵</span>
+    : null;
+  const domicilioListo = wa === "en_preparacion" && o.orderType === "domicilio";
+  const domiciliarios = s.catalog.pago.domiciliarios ?? [];
+  const [saliendo, setSaliendo] = React.useState(false);
+  const salio = async () => {
+    setSaliendo(true);
+    const r = await marcarEnCaminoWhatsapp({ ordenId: o.id });
+    setSaliendo(false);
+    if (!r.ok) window.alert(r.error);
+    void refreshPendientes();
+  };
+
   return (
     <article className={`order${delivered && o.status === "pagada" ? " done" : ""}${cancelada ? " canc" : ""}${open ? " open" : ""}`} aria-labelledby={id} style={{ position: "relative" }}>
       <div className="oh">
@@ -360,6 +380,7 @@ function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCanc
       </button>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {pill}
+        {waPill}
         {cancelada && !o.mergedInto && cancelMotivo(o.note) && <span className="muted" style={{ fontSize: 13 }}>{cancelMotivo(o.note)}</span>}
         {partial && <span className="muted" style={{ fontSize: 13 }}>{payers.length ? `${payers.join(", ")} ${payers.length > 1 ? "pagaron" : "pagó"}` : `Pagado ${money(o.paid)}`}</span>}
         {barista && <span className="muted" style={{ fontSize: 13 }}>Prepara {barista}</span>}
@@ -393,6 +414,19 @@ function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCanc
         {o.status === "pagada" && delivered && !local && (
           <button type="button" className="btn ghost sm" onClick={() => void marcarEntregada(o.id, false)}>Deshacer entrega</button>
         )}
+        {domicilioListo && domiciliarios.map((d) => (
+          <a
+            key={d.numero}
+            className="btn ghost sm"
+            href={enlaceWhatsapp(d.numero, mensajeDomiciliario(d, { folio: o.folio, cliente: name, telefono: o.telefonoRecibe ?? o.customerPhone ?? null, direccion: o.direccion ?? null, items: o.items, total: o.total, pagado: o.status === "pagada" }))}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Contactar a {d.nombre.replace(/\s*\(.*\)\s*$/, "")}
+          </a>
+        ))}
+        {domicilioListo && !domiciliarios.length && <span className="muted" style={{ fontSize: 13 }}>Agrega domiciliarios en Ajustes › Sede</span>}
+        {domicilioListo && <button type="button" className="btn sm" disabled={saliendo} onClick={() => void salio()}>Salió con el domiciliario</button>}
         <span className="grow" />
         {!local && (delivered
           ? o.status === "pagada"
