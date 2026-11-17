@@ -2,7 +2,7 @@
  * Receiving an order on the tablet: what the team counted against what was
  * ordered, the two photos, the invoice total and how it was paid. Pure
  * helpers — no I/O; unit-tested in recepcion.test.ts. The writes live in
- * app/turno/inventario/recibir/actions.ts.
+ * app/turno/pedidos/actions.ts.
  */
 
 export const PAGOS_RECEPCION = ["efectivo_caja", "transferencia", "dueno", "pendiente"] as const;
@@ -23,7 +23,7 @@ export function errorRecepcion(input: {
   facturaTotal: number | null;
   pago: string | null;
 }): string | null {
-  if (input.lineas.some((l) => l.recibida === null || l.recibida < 0)) return "Cuenta cada producto: escribe cuánto llegó (0 si no llegó).";
+  if (input.lineas.some((l) => l.recibida === null || l.recibida < 0)) return "Revisa cada producto: márcalo con ✓ si llegó completo o «Diferente» y escribe cuánto llegó (0 si no llegó).";
   if (input.lineas.every((l) => l.recibida === 0)) return "No llegó nada: si el pedido no vino, no lo recibas.";
   if (!input.fotoRecibido) return "Falta la foto de lo que llegó.";
   if (!input.fotoFactura) return "Falta la foto de la factura.";

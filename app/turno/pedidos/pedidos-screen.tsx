@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { posMoney } from "@/lib/pos/types";
 import { parseCount } from "@/lib/inventario/conteo";
@@ -26,27 +25,57 @@ interface Pedido {
 
 const num = (n: number) => String(n).replace(".", ",");
 
-export function RecibirScreen({ pedidos }: { pedidos: Pedido[] }) {
+export interface PedidoRecibido {
+  id: string;
+  folio: number;
+  proveedor: string;
+  recibido: string;
+  recibidoPor: string | null;
+  factura: number | null;
+  pago: string | null;
+  nota: string | null;
+  lineas: { id: string; nombre: string; pedida: number; recibida: number | null; enQue: string }[];
+}
+
+/** How a line came: complete, short, more than ordered. */
+function comparar(pedida: number, recibida: number | null): { tipo: "ok" | "falta" | "mas" | "nada"; texto: string } {
+  if (recibida === null) return { tipo: "nada", texto: "sin contar" };
+  const d = Math.round((recibida - pedida) * 100) / 100;
+  if (d === 0) return { tipo: "ok", texto: "completo" };
+  if (recibida === 0) return { tipo: "falta", texto: "no llegó" };
+  return d < 0 ? { tipo: "falta", texto: `faltaron ${num(-d)}` } : { tipo: "mas", texto: `llegaron ${num(d)} de más` };
+}
+const COLOR = { ok: "var(--green)", falta: "var(--red)", mas: "var(--amber, #b7791f)", nada: "var(--muted)" } as const;
+
+export function PedidosScreen({ pedidos, recibidos }: { pedidos: Pedido[]; recibidos: PedidoRecibido[] }) {
+  const [vista, setVista] = React.useState<"llegar" | "recibidos">("llegar");
   const [abierto, setAbierto] = React.useState<string | null>(null);
   const [hecho, setHecho] = React.useState<string | null>(null);
   const sel = pedidos.find((p) => p.id === abierto) ?? null;
+  const verRecibido = recibidos.find((r) => r.id === abierto) ?? null;
 
   return (
     <div className="cmd-paper" style={{ minHeight: "100%", display: "flex", flexDirection: "column", fontFamily: "inherit", color: "var(--ink)" }}>
-      <div style={{ height: 56, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0 }}>
-        {/* Title, sede and person are in the shell header; this bar only goes back. */}
-        {sel
-          ? <button type="button" onClick={() => setAbierto(null)} style={chip}>← Pedidos</button>
-          : <Link href="/turno/inventario" style={chip}>← Inventario</Link>}
+      <div style={{ minHeight: 56, display: "flex", alignItems: "center", gap: 8, padding: "6px 16px", borderBottom: "1px solid var(--line)", background: "var(--paper-lt)", flexShrink: 0, flexWrap: "wrap" }}>
+        {sel || verRecibido ? (
+          <button type="button" onClick={() => setAbierto(null)} style={chip}>← Pedidos</button>
+        ) : (
+          <div role="tablist" aria-label="Pedidos" style={{ display: "flex", gap: 8 }}>
+            <button type="button" role="tab" aria-selected={vista === "llegar"} onClick={() => setVista("llegar")} style={pick(vista === "llegar")}>Por llegar · {pedidos.length}</button>
+            <button type="button" role="tab" aria-selected={vista === "recibidos"} onClick={() => { setVista("recibidos"); setHecho(null); }} style={pick(vista === "recibidos")}>Recibidos · {recibidos.length}</button>
+          </div>
+        )}
       </div>
       <div style={{ padding: "20px 20px 40px", maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
         {sel ? (
           <Recibir key={sel.id} p={sel} onDone={(msg) => { setHecho(msg); setAbierto(null); }} />
-        ) : (
+        ) : verRecibido ? (
+          <Recibido r={verRecibido} />
+        ) : vista === "llegar" ? (
           <>
             {hecho && <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--green)", fontWeight: 600, border: "1.5px solid var(--green)", borderRadius: 6, padding: "10px 14px" }}>✓ {hecho}</p>}
             <div style={kicker}>Por llegar · {pedidos.length}</div>
-            {pedidos.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>No hay pedidos por llegar. Cuando el dueño registre uno aparece aquí para recibirlo.</div>}
+            {pedidos.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>No hay pedidos por llegar. Cuando el dueño confirme uno aparece aquí para recibirlo.</div>}
             {pedidos.map((p) => (
               <button key={p.id} type="button" onClick={() => { setAbierto(p.id); setHecho(null); }} aria-label={`Pedido ${p.folio} de ${p.proveedor}`} style={{ textAlign: "left", border: `1.5px solid ${p.atrasado ? "var(--red)" : "var(--ink)"}`, borderRadius: 8, background: "var(--paper-lt)", padding: "14px 16px", cursor: "pointer", color: "var(--ink)", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 14 }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -56,11 +85,62 @@ export function RecibirScreen({ pedidos }: { pedidos: Pedido[] }) {
                   </span>
                   <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.lineas.map((l) => `${num(l.pedida)} ${l.nombre}`).join(" · ")}</span>
                 </span>
-                <span className="cmd-btn red" style={{ height: 44, display: "inline-flex", alignItems: "center", padding: "0 16px", fontSize: 12 }}>Recibir →</span>
+                <span className="cmd-btn red" style={{ height: 44, display: "inline-flex", alignItems: "center", padding: "0 16px", fontSize: 12 }}>Revisar y recibir →</span>
               </button>
             ))}
           </>
+        ) : (
+          <>
+            <div style={kicker}>Recibidos · últimos 14 días</div>
+            {recibidos.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)" }}>No se ha recibido ningún pedido en los últimos 14 días.</div>}
+            {recibidos.map((r) => {
+              const malas = r.lineas.filter((l) => comparar(l.pedida, l.recibida).tipo !== "ok").length;
+              return (
+                <button key={r.id} type="button" onClick={() => setAbierto(r.id)} aria-label={`Pedido recibido ${r.folio} de ${r.proveedor}`} style={{ textAlign: "left", border: "1.5px solid var(--rule)", borderRadius: 8, background: "var(--paper-lt)", padding: "12px 16px", cursor: "pointer", color: "var(--ink)", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 14 }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="font-bold" style={{ display: "block", fontSize: 17 }}>#{r.folio} · {r.proveedor}</span>
+                    <span style={{ display: "block", fontSize: 12, marginTop: 3, color: "var(--ink-2)" }}>recibido el {r.recibido}{r.recibidoPor ? ` por ${r.recibidoPor}` : ""} · {r.lineas.length} {r.lineas.length === 1 ? "producto" : "productos"}</span>
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: malas ? COLOR.falta : COLOR.ok }}>{malas ? `${malas} con diferencia` : "✓ completo"}</span>
+                </button>
+              );
+            })}
+          </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** A received order: ordered vs arrived, line by line. */
+function Recibido({ r }: { r: PedidoRecibido }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div>
+        <div className="font-bold" style={{ fontSize: 24, lineHeight: 1.1 }}>#{r.folio} · {r.proveedor}</div>
+        <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4 }}>
+          Recibido el {r.recibido}{r.recibidoPor ? ` por ${r.recibidoPor}` : ""}{r.factura ? ` · factura ${posMoney(r.factura)}` : ""}{r.pago ? ` · ${r.pago}` : ""}
+        </div>
+        {r.nota && <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>«{r.nota}»</div>}
+      </div>
+      <div role="list" aria-label="Pedido contra recibido">
+        <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr) 80px 80px", gap: 10, fontSize: 10.5, letterSpacing: ".12em", color: "var(--muted)", padding: "6px 0", borderBottom: "1px solid var(--ink)" }}>
+          <span /> <span>Producto</span><span style={{ textAlign: "right" }}>Pedido</span><span style={{ textAlign: "right" }}>Llegó</span>
+        </div>
+        {r.lineas.map((l) => {
+          const c = comparar(l.pedida, l.recibida);
+          return (
+            <div key={l.id} role="listitem" style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr) 80px 80px", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px dashed var(--rule)" }}>
+              <span aria-hidden style={{ width: 24, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: COLOR[c.tipo], color: "#fff", fontWeight: 800, fontSize: 14 }}>{c.tipo === "ok" ? "✓" : c.tipo === "mas" ? "+" : "!"}</span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 14, fontWeight: 700 }}>{l.nombre}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: COLOR[c.tipo], fontWeight: c.tipo === "ok" ? 500 : 700 }}>{c.texto} · {l.enQue}</span>
+              </span>
+              <span className="cmd-num" style={{ textAlign: "right", fontSize: 15 }}>{num(l.pedida)}</span>
+              <span className="cmd-num" style={{ textAlign: "right", fontSize: 15, fontWeight: 800, color: COLOR[c.tipo] }}>{l.recibida === null ? "—" : num(l.recibida)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -69,6 +149,8 @@ export function RecibirScreen({ pedidos }: { pedidos: Pedido[] }) {
 function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   const router = useRouter();
   const [cant, setCant] = React.useState<Record<string, string>>({});
+  // Lines marked «diferente»: their quantity is typed instead of checked.
+  const [distinto, setDistinto] = React.useState<Record<string, boolean>>({});
   // What the invoice charged for each line (optional): it becomes the item's new cost.
   const [costo, setCosto] = React.useState<Record<string, string>>({});
   const [fotoRecibido, setFotoRecibido] = React.useState<string | null>(null);
@@ -79,6 +161,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const t = parseMonto(total);
+  const revisadas = p.lineas.filter((l) => (cant[l.id] ?? "").trim() && parseCount(cant[l.id]) !== null).length;
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -109,22 +192,47 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
       </div>
 
       <section aria-label="Conteo">
-        <div style={kicker}>1 · Cuenta lo que llegó</div>
-        <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "8px 0 2px" }}>Si la factura trae el precio de cada producto, escríbelo en «$ costó»: así el costo del insumo queda al día.</div>
-        {p.lineas.map((l) => (
-          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 60, padding: "8px 0", borderBottom: "1px dashed var(--rule)", flexWrap: "wrap" }}>
-            <span style={{ flex: "1 1 220px", minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 14.5, fontWeight: 700 }}>{l.nombre}</span>
-              <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>pedido: {num(l.pedida)} {l.enQue}{l.enInventario ? "" : " · no está en el inventario"}</span>
-            </span>
-            <button type="button" onClick={() => setCant((c) => ({ ...c, [l.id]: num(l.pedida) }))} style={{ ...chip, height: 44 }} title="Llegó completo">= {num(l.pedida)}</button>
-            <input value={cant[l.id] ?? ""} onChange={(e) => setCant((c) => ({ ...c, [l.id]: e.target.value }))} inputMode="decimal" placeholder="llegó" aria-label={`Llegó de ${l.nombre}`} style={{ ...field, width: 110, textAlign: "center", fontWeight: 700 }} />
-            <span style={{ fontSize: 12, color: "var(--muted)", width: 70 }}>{l.enQue}</span>
-            {l.enInventario ? (
-              <input value={costo[l.id] ?? ""} onChange={(e) => setCosto((c) => ({ ...c, [l.id]: e.target.value }))} inputMode="numeric" placeholder="$ costó" title="Lo que cobra la factura por esta línea: actualiza el costo del insumo" aria-label={`Costo en factura de ${l.nombre}`} style={{ ...field, width: 120, textAlign: "right", height: 44, fontSize: 14 }} />
-            ) : null}
-          </div>
-        ))}
+        <div style={{ ...kicker, display: "flex", justifyContent: "space-between", gap: 10 }}>
+          <span>1 · Revisa lo que llegó contra lo pedido</span>
+          <span style={{ fontWeight: 700, color: revisadas === p.lineas.length ? "var(--green)" : "var(--ink)" }}>{revisadas} de {p.lineas.length} revisados</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "8px 0 2px", lineHeight: 1.5 }}>Saca cada producto y márcalo: ✓ si llegó completo, «Diferente» si llegó menos, más o nada, y escribe cuánto llegó. Si la factura trae el precio de cada producto, escríbelo en «$ costó».</div>
+        {p.lineas.map((l) => {
+          const v = (cant[l.id] ?? "").trim() ? parseCount(cant[l.id]) : null;
+          const ok = !distinto[l.id] && v !== null && v === l.pedida;
+          const c = distinto[l.id] && v !== null ? comparar(l.pedida, v) : null;
+          return (
+            <div key={l.id} data-linea={l.nombre} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, padding: "8px 10px", margin: "0 -10px", borderBottom: "1px dashed var(--rule)", flexWrap: "wrap", borderRadius: 6, background: ok ? "color-mix(in srgb, var(--green) 10%, transparent)" : c && c.tipo !== "ok" ? "color-mix(in srgb, var(--red) 8%, transparent)" : "transparent" }}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={ok}
+                aria-label={`${l.nombre}: llegó completo (${num(l.pedida)} ${l.enQue})`}
+                onClick={() => {
+                  setDistinto((d) => ({ ...d, [l.id]: false }));
+                  setCant((x) => ({ ...x, [l.id]: ok ? "" : num(l.pedida) }));
+                }}
+                style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 10, border: `2px solid ${ok ? "var(--green)" : "var(--ink)"}`, background: ok ? "var(--green)" : "var(--paper-lt)", color: "#fff", fontSize: 26, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >{ok ? "✓" : ""}</button>
+              <span style={{ flex: "1 1 200px", minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 15, fontWeight: 700 }}>{l.nombre}</span>
+                <span style={{ display: "block", fontSize: 12, color: "var(--ink-2)", marginTop: 2 }}>pedido: <b>{num(l.pedida)} {l.enQue}</b>{l.enInventario ? "" : " · no está en el inventario"}</span>
+                {c && <span style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLOR[c.tipo], marginTop: 2 }}>{c.texto}</span>}
+              </span>
+              {distinto[l.id] ? (
+                <>
+                  <input autoFocus value={cant[l.id] ?? ""} onChange={(e) => setCant((x) => ({ ...x, [l.id]: e.target.value }))} inputMode="decimal" placeholder="llegó" aria-label={`Llegó de ${l.nombre}`} style={{ ...field, width: 100, textAlign: "center", fontWeight: 700 }} />
+                  <span style={{ fontSize: 12, color: "var(--muted)", width: 64 }}>{l.enQue}</span>
+                </>
+              ) : (
+                <button type="button" onClick={() => { setDistinto((d) => ({ ...d, [l.id]: true })); setCant((x) => ({ ...x, [l.id]: "" })); }} style={{ ...chip, height: 44 }}>Diferente</button>
+              )}
+              {l.enInventario ? (
+                <input value={costo[l.id] ?? ""} onChange={(e) => setCosto((x) => ({ ...x, [l.id]: e.target.value }))} inputMode="numeric" placeholder="$ costó" title="Lo que cobra la factura por esta línea: actualiza el costo del insumo" aria-label={`Costo en factura de ${l.nombre}`} style={{ ...field, width: 110, textAlign: "right", height: 44, fontSize: 14 }} />
+              ) : null}
+            </div>
+          );
+        })}
       </section>
 
       <section aria-label="Fotos">
@@ -157,7 +265,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
       </section>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <button type="submit" className="cmd-btn red" disabled={busy} style={{ height: 54, fontSize: 14, padding: "0 26px" }}>{busy ? "Recibiendo…" : "Recibir pedido"}</button>
+        <button type="submit" className="cmd-btn red" disabled={busy} style={{ height: 54, fontSize: 14, padding: "0 26px" }}>{busy ? "Recibiendo…" : revisadas < p.lineas.length ? `Recibir pedido (faltan ${p.lineas.length - revisadas} por revisar)` : "Recibir pedido"}</button>
         {error && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{error}</p>}
       </div>
     </form>

@@ -4,7 +4,7 @@ import { diferencias, errorRecepcion, justificacionPago } from "./recepcion";
 describe("errorRecepcion", () => {
   const ok = { lineas: [{ recibida: 6 }, { recibida: 0 }], fotoRecibido: "a.jpg", fotoFactura: "b.jpg", facturaTotal: 35200, pago: "efectivo_caja" };
   it("accepts a complete reception (a line may not have come)", () => expect(errorRecepcion(ok)).toBeNull());
-  it("every line must be counted", () => expect(errorRecepcion({ ...ok, lineas: [{ recibida: 6 }, { recibida: null }] })).toMatch(/Cuenta/));
+  it("every line must be counted", () => expect(errorRecepcion({ ...ok, lineas: [{ recibida: 6 }, { recibida: null }] })).toMatch(/Revisa cada producto/));
   it("nothing arrived is not a reception", () => expect(errorRecepcion({ ...ok, lineas: [{ recibida: 0 }] })).toMatch(/No llegó nada/));
   it("requires both photos", () => {
     expect(errorRecepcion({ ...ok, fotoRecibido: null })).toMatch(/lo que llegó/);
