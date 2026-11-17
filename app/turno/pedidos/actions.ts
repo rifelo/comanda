@@ -209,6 +209,7 @@ export async function recibirPedido(input: unknown): Promise<RecibirResult> {
     .is("resolved_at", null);
 
   revalidatePath("/turno/inventario", "layout");
+  revalidatePath("/turno/pedidos");
   revalidatePath("/turno/caja", "layout");
   revalidatePath("/inventario/pedidos");
   revalidatePath("/caja");
