@@ -75,7 +75,8 @@ export async function loadPorPedir(db: Db, orgId: string): Promise<PorPedirData>
     listFaltantesAbiertos(db, orgId),
     listSolicitudesAbiertas(db, orgId),
     listProveedoresPedido(db, orgId),
-    db.from("compra_items").select("ingrediente_id, qty_pedida, compra:compras!inner(status)").eq("organization_id", orgId).eq("compra.status", "pedido"),
+    // Orders on their way and the ones still to confirm: neither goes back to «por pedir».
+    db.from("compra_items").select("ingrediente_id, qty_pedida, compra:compras!inner(status)").eq("organization_id", orgId).in("compra.status", ["borrador", "pedido"]),
   ]);
   const items: PedirItem[] = (ings ?? []).map((i) => ({
     id: i.id as string,
@@ -113,7 +114,8 @@ export interface CompraItem {
 export interface Compra {
   id: string;
   folio: number;
-  status: "pedido" | "recibido" | "cerrada" | "cancelada";
+  /** borrador = armed from «Por pedir» and sent by WhatsApp, waiting for the owner to confirm it (0098). */
+  status: "borrador" | "pedido" | "recibido" | "cerrada" | "cancelada";
   origen: "pedido" | "directa";
   proveedor_id: string | null;
   proveedor_name: string | null;
@@ -131,13 +133,15 @@ export interface Compra {
   factura_total_cop: number | null;
   pago_metodo: "efectivo_caja" | "transferencia" | "pendiente" | "dueno" | null;
   recibido_nota: string | null;
+  /** How the owner said it gets paid when confirming it: the drawer on reception, or a transfer already made. */
+  pago_previsto: "caja" | "transferencia" | null;
   items: CompraItem[];
   /** What was paid for it (compra_pagos, mig 0069), oldest first. */
   pagos: PagoCompra[];
 }
 
 const COMPRA_SELECT =
-  "id, folio, status, origen, proveedor_id, pedido_at, entrega_esperada, recibido_at, total_cop, note, recibido_foto_path, factura_foto_path, factura_total_cop, pago_metodo, recibido_nota, proveedor:proveedores(name, whatsapp), pidio:profiles!compras_pedido_by_fkey(full_name), recibio:profiles!compras_recibido_by_fkey(full_name), compra_pagos(id, fecha, monto_cop, medio, referencia, note, created_at), compra_items(id, ingrediente_id, nombre, qty_pedida, qty_recibida, costo_total_cop, vence_el, created_at, ingrediente:ingredientes(name, unit, pack_label, pack_qty, pieza_qty, controla_vencimiento))";
+  "id, folio, status, origen, proveedor_id, pedido_at, entrega_esperada, recibido_at, total_cop, note, recibido_foto_path, factura_foto_path, factura_total_cop, pago_metodo, recibido_nota, pago_previsto, proveedor:proveedores(name, whatsapp), pidio:profiles!compras_pedido_by_fkey(full_name), recibio:profiles!compras_recibido_by_fkey(full_name), compra_pagos(id, fecha, monto_cop, medio, referencia, note, created_at), compra_items(id, ingrediente_id, nombre, qty_pedida, qty_recibida, costo_total_cop, vence_el, created_at, ingrediente:ingredientes(name, unit, pack_label, pack_qty, pieza_qty, controla_vencimiento))";
 
 function mapCompra(r: Record<string, unknown>): Compra {
   const prov = r.proveedor as { name: string; whatsapp: string | null } | { name: string; whatsapp: string | null }[] | null;
@@ -182,6 +186,7 @@ function mapCompra(r: Record<string, unknown>): Compra {
     factura_total_cop: num(r.factura_total_cop),
     pago_metodo: (r.pago_metodo as Compra["pago_metodo"]) ?? null,
     recibido_nota: (r.recibido_nota as string | null) ?? null,
+    pago_previsto: (r.pago_previsto as Compra["pago_previsto"]) ?? null,
     items,
     pagos: ((r.compra_pagos ?? []) as Array<Record<string, unknown>>)
       .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
@@ -216,6 +221,8 @@ export interface NuevoPedido {
   entregaDias: number;
   today: string;
   note: string | null;
+  /** «borrador» until the owner confirms it was placed; «pedido» when it already was. Default «pedido». */
+  status?: "borrador" | "pedido";
   lineas: { ingredienteId: string | null; nombre: string | null; qty: number }[];
   solicitudIds: string[];
   faltanteIds: string[];
@@ -233,7 +240,7 @@ export async function crearPedido(db: Db, p: NuevoPedido): Promise<{ ok: true; i
     const { data: last } = await db.from("compras").select("folio").eq("organization_id", p.orgId).order("folio", { ascending: false }).limit(1).maybeSingle();
     const { data, error } = await db
       .from("compras")
-      .insert({ organization_id: p.orgId, folio: Number(last?.folio ?? 0) + 1, proveedor_id: p.proveedorId, pedido_by: p.userId, entrega_esperada: fechaMas(p.today, p.entregaDias), note: p.note })
+      .insert({ organization_id: p.orgId, folio: Number(last?.folio ?? 0) + 1, proveedor_id: p.proveedorId, pedido_by: p.userId, entrega_esperada: fechaMas(p.today, p.entregaDias), note: p.note, status: p.status ?? "pedido" })
       .select("id, folio")
       .single();
     if (data) compra = { id: data.id as string, folio: Number(data.folio) };
@@ -260,9 +267,9 @@ export async function crearPedido(db: Db, p: NuevoPedido): Promise<{ ok: true; i
   return { ok: true, id: compra.id, folio: compra.folio };
 }
 
-/** Cancel an order that never arrived: its requests are open again. */
+/** Cancel an order that never arrived (or was never confirmed): its requests are open again. */
 export async function cancelarPedido(db: Db, orgId: string, id: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data, error } = await db.from("compras").update({ status: "cancelada" }).eq("organization_id", orgId).eq("id", id).eq("status", "pedido").select("id");
+  const { data, error } = await db.from("compras").update({ status: "cancelada" }).eq("organization_id", orgId).eq("id", id).in("status", ["borrador", "pedido"]).select("id");
   if (error || !data?.length) return { ok: false, error: "Este pedido ya no se puede cancelar." };
   await db.from("inventario_solicitudes").update({ estado: "abierta", compra_id: null, resolved_by: null, resolved_at: null }).eq("organization_id", orgId).eq("compra_id", id);
   await db.from("inventario_faltantes").update({ compra_id: null }).eq("organization_id", orgId).eq("compra_id", id);

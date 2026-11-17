@@ -14,6 +14,7 @@ import { PorPedirMobile, type CaminoView, type ItemUnidad, type NuevoView } from
 import { buildPorPedirMovil, qtyLegible, totales } from "@/lib/compras/por-pedir";
 import { cuando, horaLocal, llegaLabel } from "@/lib/inventario/acabando";
 import { totalCompra } from "@/lib/compras/pagos";
+import type { BorradorView } from "./confirmar-pedido";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pedidos · Comanda" };
@@ -29,8 +30,9 @@ export default async function ComprasPage() {
   const [{ profile, supabase }, sede] = await Promise.all([requireAdmin(), getActiveSede()]);
   const tz = sede?.tz ?? "America/Bogota";
   const today = todayInTz(tz);
-  const [data, pedidos, recibidos, { data: sugeridos }] = await Promise.all([
+  const [data, borradores, pedidos, recibidos, { data: sugeridos }] = await Promise.all([
     loadPorPedir(supabase, profile.organization_id),
+    listCompras(supabase, profile.organization_id, ["borrador"]),
     listCompras(supabase, profile.organization_id, ["pedido"]),
     listCompras(supabase, profile.organization_id, ["recibido", "cerrada"], 15),
     supabase
@@ -66,8 +68,24 @@ export default async function ComprasPage() {
     }),
   }));
 
+  const lineasDe = (c: (typeof pedidos)[number]) =>
+    c.items.map((it) => ({ nombre: it.nombre, cantidad: it.unit ? cantidadLegible(it.qty_pedida, { unit: it.unit, pack_qty: it.pack_qty, pieza_qty: it.pieza_qty, pack_label: it.pack_label }) : String(it.qty_pedida) }));
+  // Sent by WhatsApp, waiting for the owner to mark them as solicitado.
+  const porConfirmar: BorradorView[] = borradores.map((c) => {
+    const lineas = lineasDe(c);
+    return {
+      id: c.id,
+      folio: c.folio,
+      proveedor: c.proveedor_name ?? "Sin proveedor",
+      armado: fechaCorta(todayInTz(tz, new Date(c.pedido_at))),
+      llegaSugerida: c.entrega_esperada ?? today,
+      lineas,
+      wa: waLink(c.proveedor_whatsapp, mensajePedido({ negocio: sede?.name ?? "la cafetería", folio: c.folio, lineas, nota: c.note })),
+    };
+  });
+
   const enCamino: PedidoView[] = pedidos.map((c) => {
-    const lineas = c.items.map((it) => ({ nombre: it.nombre, cantidad: it.unit ? cantidadLegible(it.qty_pedida, { unit: it.unit, pack_qty: it.pack_qty, pieza_qty: it.pieza_qty, pack_label: it.pack_label }) : String(it.qty_pedida) }));
+    const lineas = lineasDe(c);
     return {
       id: c.id,
       folio: c.folio,
@@ -121,6 +139,8 @@ export default async function ComprasPage() {
           unidades={unidades}
           nuevos={nuevos}
           camino={caminoMovil}
+          porConfirmar={porConfirmar}
+          today={today}
           recibidosHoy={recibidosHoy}
           proveedores={data.proveedores.map((p) => ({ id: p.id, name: p.name }))}
           total={resumen.total}
@@ -141,6 +161,7 @@ export default async function ComprasPage() {
       <ComprasClient
         grupos={grupos}
         enCamino={enCamino}
+        porConfirmar={porConfirmar}
         proveedores={data.proveedores.map((p) => ({ id: p.id, name: p.name, whatsapp: p.whatsapp, dias: p.dias_pedido_idx, entregaDias: p.entrega_dias }))}
         items={data.items.map((i) => { const pieza = piezaDe(i); return { id: i.id, name: i.name, enQue: pieza ? nombrePaquete(i, 2) : i.unit }; })}
         today={today}

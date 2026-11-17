@@ -20,6 +20,8 @@ interface Pedido {
   id: string; folio: number; proveedor: string; pedido: string; llega: string | null; atrasado: boolean; nota: string | null; estimado: number | null; lineas: Linea[];
   /** What the owner already paid for it (online, before it came), and how. */
   yaPagado: number; pagadoCon: string | null;
+  /** The owner said, when confirming it, to pay it from the drawer. */
+  pagarDeCaja: boolean;
 }
 
 const num = (n: number) => String(n).replace(".", ",");
@@ -72,7 +74,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
   const [fotoRecibido, setFotoRecibido] = React.useState<string | null>(null);
   const [fotoFactura, setFotoFactura] = React.useState<string | null>(null);
   const [total, setTotal] = React.useState("");
-  const [pago, setPago] = React.useState<PagoRecepcion | null>(p.yaPagado > 0 ? "dueno" : null);
+  const [pago, setPago] = React.useState<PagoRecepcion | null>(p.yaPagado > 0 ? "dueno" : p.pagarDeCaja ? "efectivo_caja" : null);
   const [nota, setNota] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -102,6 +104,7 @@ function Recibir({ p, onDone }: { p: Pedido; onDone: (msg: string) => void }) {
         <div className="font-bold" style={{ fontSize: 26, lineHeight: 1.1 }}>Recibir #{p.folio} · {p.proveedor}</div>
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4 }}>Pedido el {p.pedido}{p.llega ? ` · ${p.atrasado ? "debía llegar" : "llega"} ${p.llega}` : ""}{p.estimado ? ` · estimado ${posMoney(p.estimado)}` : ""}</div>
         {p.nota && <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>«{p.nota}»</div>}
+        {p.yaPagado === 0 && p.pagarDeCaja && <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 700, marginTop: 6 }}>El dueño dijo: se paga con el efectivo de la caja al recibirlo.</div>}
         {p.yaPagado > 0 && <div style={{ fontSize: 13, color: "var(--green)", fontWeight: 700, marginTop: 6 }}>El dueño ya pagó {posMoney(p.yaPagado)}{p.pagadoCon ? ` (${p.pagadoCon})` : ""}: no se paga de la caja.</div>}
       </div>
 

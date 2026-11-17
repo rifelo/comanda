@@ -24,6 +24,7 @@ const section: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: "va
 const DIAS_VENTANA = 90;
 
 const ESTADO: Record<string, { label: string; color: string }> = {
+  borrador: { label: "Por confirmar", color: "var(--muted)" },
   pedido: { label: "En camino", color: "var(--amber)" },
   recibido: { label: "Recibido", color: "var(--green)" },
   cerrada: { label: "Cerrado", color: "var(--muted)" },
@@ -101,7 +102,7 @@ export default async function ProveedorPage({ params }: { params: Promise<{ id: 
           {compras.length === 0 && <div style={{ padding: "14px 0", fontSize: 13, color: "var(--muted)" }}>Todavía no hay pedidos a este proveedor.</div>}
           {compras.map((c) => {
             const total = totalCompra(c);
-            const pago = c.status === "cancelada" || c.status === "pedido" ? null : resumenPago(total, c.pagos);
+            const pago = c.status === "cancelada" || c.status === "pedido" || c.status === "borrador" ? null : resumenPago(total, c.pagos);
             const e = ESTADO[c.status];
             return (
               <div key={c.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[110px_minmax(0,1fr)_auto]" style={{ gap: "4px 14px", alignItems: "baseline", padding: "10px 0", borderBottom: "1px dashed var(--line)", fontSize: 14, opacity: c.status === "cancelada" ? 0.55 : 1 }}>

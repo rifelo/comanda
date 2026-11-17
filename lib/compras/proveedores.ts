@@ -8,7 +8,7 @@ import type { MedioPago } from "./pagos";
  */
 
 export interface CompraResumible {
-  status: "pedido" | "recibido" | "cerrada" | "cancelada";
+  status: "borrador" | "pedido" | "recibido" | "cerrada" | "cancelada";
   pedido_at: string;
   total_cop: number | null;
   factura_total_cop: number | null;
@@ -32,7 +32,8 @@ export interface ResumenProveedor {
 
 /** Summarise a supplier's orders; `desde` is the ISO instant the «comprado» window starts. */
 export function resumenProveedor(compras: ReadonlyArray<CompraResumible>, desde: string): ResumenProveedor {
-  const vivas = compras.filter((c) => c.status !== "cancelada");
+  // A draft (sent by WhatsApp, not confirmed yet) is not a purchase until the owner confirms it.
+  const vivas = compras.filter((c) => c.status !== "cancelada" && c.status !== "borrador");
   const r: ResumenProveedor = { pedidos: vivas.length, ultimoPedido: null, enCamino: 0, comprado: 0, debe: 0, sinTotal: 0 };
   for (const c of vivas) {
     if (!r.ultimoPedido || c.pedido_at > r.ultimoPedido) r.ultimoPedido = c.pedido_at;
