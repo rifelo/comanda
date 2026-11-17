@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { enBurbujas, fichaParaAgente, historialComoMensajes, pulirBurbuja } from "./whatsapp-agent";
+import { enBurbujas, esNotaInterna, fichaParaAgente, historialComoMensajes, pulirBurbuja } from "./whatsapp-agent";
 
 describe("enBurbujas", () => {
   it("splits on blank lines and trims", () => {
@@ -63,5 +63,13 @@ describe("pulirBurbuja", () => {
     expect(pulirBurbuja("Son $12.500")).toBe("Son $12.500");
     expect(pulirBurbuja("Déjame ver...")).toBe("Déjame ver...");
     expect(pulirBurbuja("Gracias. ☕")).toBe("Gracias. ☕");
+  });
+});
+
+describe("esNotaInterna", () => {
+  it("drops the model thinking out loud, keeps real greetings", () => {
+    expect(enBurbujas('Buenos días 11:24 am, saludo según hora: "buenos días" hasta las 12 m\n\nBuenos días\n\nCómo te podemos ayudar?')).toEqual(["Buenos días", "Cómo te podemos ayudar?"]);
+    expect(esNotaInterna("Buenos días Doc. Bibiana ☕")).toBe(false);
+    expect(esNotaInterna("Abrimos a las 6:00 a. m.")).toBe(false);
   });
 });

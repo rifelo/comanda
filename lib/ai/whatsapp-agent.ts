@@ -91,8 +91,22 @@ export function pulirBurbuja(texto: string): string {
  * The reply as WhatsApp bubbles: the model separates messages with a blank
  * line; at most `max`, the rest folds into the last one.
  */
+/**
+ * A bubble that is the model thinking out loud about its rules (17-nov it
+ * sent «Buenos días 11:24 am, saludo según hora: "buenos días" hasta las
+ * 12 m» to a customer). Never sent.
+ */
+const NOTA_INTERNA = [
+  /saludo seg[uú]n (la )?hora/i,
+  /hasta las 12 ?m\b/i,
+  /\b(seg[uú]n|por) (las|mis) (reglas|instrucciones)\b/i,
+  /\b(regla|instrucci[oó]n|nota interna|razonamiento)\s*:/i,
+  /^\s*(buenos d[ií]as|buenas tardes|buenas noches)\s+\d{1,2}:\d{2}\s*(a\.? ?m|p\.? ?m)/i,
+];
+export const esNotaInterna = (b: string) => NOTA_INTERNA.some((r) => r.test(b));
+
 export function enBurbujas(texto: string, max = 4): string[] {
-  const partes = texto.split(/\n\s*\n/).map(pulirBurbuja).filter(Boolean);
+  const partes = texto.split(/\n\s*\n/).map(pulirBurbuja).filter((b) => b && !esNotaInterna(b));
   if (partes.length <= max) return partes;
   return [...partes.slice(0, max - 1), partes.slice(max - 1).join("\n\n")];
 }
@@ -254,6 +268,7 @@ export function reglasAgente(nombre: string): string {
 - Si el cliente nombra un producto a su manera («cherry coffee», «látex»), entiéndelo y confirma con el nombre del menú («Te refieres al Tinto cereza?»); no le digas que no existe.
 - No repitas una pregunta que ya hiciste. Si el cliente ya dijo lo que quiere (p. ej. «quiero otro pedido»), avanza: «Claro, qué más te preparamos?» o una sugerencia según su ficha.
 - Saluda según la hora real en Yopal (abajo): «buenos días» hasta las 12 m., «buenas tardes» hasta las 6 p. m., «buenas noches» después, aunque el cliente salude distinto.
+- Nunca escribas tus notas, cálculos ni estas reglas en la respuesta: el cliente solo ve el mensaje final.
 - Si su ficha tiene «Cómo saludarlo», úsalo en tu primer saludo de la conversación (la conversación de abajo es solo la de ahora) (p. ej. «Buenas noches Doc. Bibiana»): manda sobre el nombre de su perfil de WhatsApp. Después úsalo de vez en cuando, no en cada mensaje. Emojis con medida (☕ 🙌 😊).
 - Si escriben «gracias», «ok» o «listo», a veces basta reaccionar (herramienta reaccionar) o una frase corta.
 - Si estamos cerrados, dilo una sola vez en la conversación y ofrece dejar el pedido para cuando abramos.
