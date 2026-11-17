@@ -3,9 +3,9 @@
  * the WhatsApp agent), so the team hears it over the speaker even when nobody
  * is looking at the screen.
  *
- * The sound is synthesized with Web Audio at full gain (no asset to load,
- * works offline). A browser cannot raise the PC's volume: Windows and the
- * speaker must be turned up. It also cannot start audio before someone has
+ * The sound is synthesized with Web Audio (no asset to load, works
+ * offline): a phone-style «new message» pop and two bell notes. A browser
+ * cannot raise the PC's volume: Windows and the speaker must be turned up. It also cannot start audio before someone has
  * touched the page — the context unlocks on the first tap, which on a
  * register happens within minutes; launching Edge with
  * `--autoplay-policy=no-user-gesture-required` removes even that.
@@ -51,35 +51,87 @@ export function prepararAlerta(): () => void {
 }
 
 /**
- * Three rounds of a rising two-tone chime (~3.5 s), square wave through a
- * limiter so it is as loud as the speaker allows without clipping.
+ * A phone-style «new message» sound, played twice so it carries over the
+ * bar: a short bubble pop, then two bright bell notes (E6 → B6) that ring
+ * out softly — an original sound in the spirit of a social-app message, not
+ * anyone's recording. Sine bells through a limiter, as loud as the speaker
+ * allows without clipping.
  */
 export function sonarAlerta(): void {
   const ac = audio();
   if (!ac) return;
   void ac.resume().catch(() => {});
   const limiter = ac.createDynamicsCompressor();
-  limiter.threshold.value = -3;
-  limiter.ratio.value = 20;
-  limiter.connect(ac.destination);
-  const t0 = ac.currentTime + 0.05;
-  const tono = (freq: number, start: number, dur: number) => {
+  limiter.threshold.value = -6;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.15;
+  const salida = ac.createGain();
+  salida.gain.value = 1.6;
+  limiter.connect(salida).connect(ac.destination);
+
+  /** The «pop»: a very short sine whose pitch drops, like a bubble. */
+  const pop = (start: number) => {
     const osc = ac.createOscillator();
     const g = ac.createGain();
-    osc.type = "square";
-    osc.frequency.value = freq;
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1600, start);
+    osc.frequency.exponentialRampToValueAtTime(700, start + 0.05);
     g.gain.setValueAtTime(0.0001, start);
-    g.gain.exponentialRampToValueAtTime(1, start + 0.01);
-    g.gain.setValueAtTime(1, start + dur - 0.04);
-    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    g.gain.exponentialRampToValueAtTime(0.9, start + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.07);
     osc.connect(g).connect(limiter);
     osc.start(start);
-    osc.stop(start + dur + 0.02);
+    osc.stop(start + 0.09);
   };
-  for (let ronda = 0; ronda < 3; ronda++) {
-    const t = t0 + ronda * 1.2;
-    tono(880, t, 0.22);
-    tono(1175, t + 0.26, 0.22);
-    tono(1568, t + 0.52, 0.4);
+  /** A bell note: fundamental plus a soft octave, fast attack, long ring. */
+  const campana = (freq: number, start: number, dur: number) => {
+    for (const [mult, nivel] of [[1, 0.8], [2, 0.18], [3, 0.06]] as const) {
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq * mult;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(nivel, start + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + dur / mult);
+      osc.connect(g).connect(limiter);
+      osc.start(start);
+      osc.stop(start + dur + 0.05);
+    }
+  };
+
+  const t0 = ac.currentTime + 0.05;
+  for (let vez = 0; vez < 2; vez++) {
+    const t = t0 + vez * 1.1;
+    pop(t);
+    campana(1318.5, t + 0.07, 0.55);
+    campana(1975.5, t + 0.19, 0.8);
   }
+}
+
+/** A WhatsApp order nobody has accepted rings again every 5 minutes. */
+export const RECORDATORIO_MS = 5 * 60 * 1000;
+
+/**
+ * Which waiting orders are due for another ring: one ring per full
+ * `cadaMs` since the order arrived (the arrival ring is round 0). `avisados`
+ * holds the last round rung per order and is updated in place.
+ */
+export function recordatoriosVencidos(
+  pedidos: readonly { id: string; createdAt: string }[],
+  avisados: Map<string, number>,
+  ahora: number,
+  cadaMs = RECORDATORIO_MS,
+): string[] {
+  const vencidos: string[] = [];
+  for (const p of pedidos) {
+    const ronda = Math.floor((ahora - Date.parse(p.createdAt)) / cadaMs);
+    if (ronda >= 1 && ronda > (avisados.get(p.id) ?? 0)) {
+      avisados.set(p.id, ronda);
+      vencidos.push(p.id);
+    }
+  }
+  // Forget orders that are no longer waiting.
+  for (const id of avisados.keys()) if (!pedidos.some((p) => p.id === id)) avisados.delete(id);
+  return vencidos;
 }

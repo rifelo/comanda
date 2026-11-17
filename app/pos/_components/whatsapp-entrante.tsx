@@ -12,6 +12,7 @@ import { MOTIVOS_RECHAZO_WA, type MotivoRechazoWa, type PosOrder } from "@/lib/p
 import { folioTag } from "@/lib/pos/pending";
 import { aceptarPedidoWhatsapp, rechazarPedidoWhatsapp } from "../actions";
 import { refreshPendientes, usePos } from "../pos-store";
+import { recordatoriosVencidos, sonarAlerta } from "@/lib/pos/alerta";
 import { money, orderName } from "./ordenes";
 import { ConversacionWa } from "./conversacion-wa";
 
@@ -29,6 +30,24 @@ export function WhatsappEntrante() {
   const s = usePos();
   const porAceptar = s.pendientes.filter((o) => (o as PosOrder).canal === "whatsapp" && (o as PosOrder).waEstado === "por_aceptar") as PosOrder[];
   const [luego, setLuego] = React.useState<Set<string>>(new Set());
+  // Nobody accepted it yet: ring again every 5 minutes and bring it back up.
+  const [ahora, setAhora] = React.useState(() => Date.now());
+  const avisados = React.useRef(new Map<string, number>());
+  const esperando = React.useRef(porAceptar);
+  React.useEffect(() => {
+    esperando.current = porAceptar;
+  });
+  React.useEffect(() => {
+    const t = window.setInterval(() => {
+      const ya = Date.now();
+      setAhora(ya);
+      if (recordatoriosVencidos(esperando.current, avisados.current, ya).length) {
+        sonarAlerta();
+        setLuego(new Set());
+      }
+    }, 20_000);
+    return () => window.clearInterval(t);
+  }, []);
   // A new order brings the overlay back even if earlier ones were left for later.
   const visibles = porAceptar.filter((o) => !luego.has(o.id));
   const o = visibles[0] ?? null;
@@ -40,10 +59,11 @@ export function WhatsappEntrante() {
       </button>
     );
   }
-  return <Tarjeta key={o.id} o={o} quedan={porAceptar.length - 1} onLuego={() => setLuego((x) => new Set([...x, ...porAceptar.map((p) => p.id)]))} />;
+  return <Tarjeta key={o.id} o={o} ahora={ahora} quedan={porAceptar.length - 1} onLuego={() => setLuego((x) => new Set([...x, ...porAceptar.map((p) => p.id)]))} />;
 }
 
-function Tarjeta({ o, quedan, onLuego }: { o: PosOrder; quedan: number; onLuego: () => void }) {
+function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; quedan: number; onLuego: () => void }) {
+  const minutos = Math.max(0, Math.floor((ahora - Date.parse(o.createdAt)) / 60_000));
   const [rechazando, setRechazando] = React.useState(false);
   const [verChat, setVerChat] = React.useState(false);
   const [motivo, setMotivo] = React.useState<MotivoRechazoWa | null>(null);
@@ -144,7 +164,10 @@ function Tarjeta({ o, quedan, onLuego }: { o: PosOrder; quedan: number; onLuego:
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <span className="muted" style={{ fontSize: 14 }}>{quedan > 0 ? `${quedan} más esperando` : "El cliente espera la confirmación por WhatsApp"}</span>
+          <span className="muted" style={{ fontSize: 14, color: minutos >= 5 ? "var(--late)" : undefined, fontWeight: minutos >= 5 ? 700 : undefined }}>
+            {minutos >= 1 ? `El cliente espera hace ${minutos} min` : "El cliente espera la confirmación"}
+            {quedan > 0 ? ` · ${quedan} más esperando` : ""}
+          </span>
           <button type="button" className="btn ghost sm" disabled={busy} onClick={onLuego}>Ver luego</button>
         </div>
       </section>
