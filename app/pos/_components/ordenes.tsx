@@ -42,6 +42,7 @@ import { CancelarOverlay } from "./cancelar";
 import { CombinarOverlay } from "./combinar";
 import { DescuentoOverlay } from "./descuento";
 import { PremioOverlay } from "./premio";
+import { ConversacionWa } from "./conversacion-wa";
 import { anularDescuento } from "../actions";
 
 /** Human label for a payment method, including the "mixto" summary. */
@@ -504,6 +505,12 @@ function OrderDetail({ o, barista, id }: { o: PosOrder; barista: string | null; 
           )}
         </dd>
       </dl>
+      {o.canal === "whatsapp" && (
+        <details className="ped-det-chat" style={{ marginTop: 12 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 15 }}>Conversación de WhatsApp</summary>
+          <div style={{ marginTop: 10 }}><ConversacionWa ordenId={o.id} alto={420} /></div>
+        </details>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosCatalog } from "@/lib/pos/catalog";
 import { syncOrderConsumption } from "@/lib/pos/stock";
-import { datosDelDia, enBurbujas, fichaParaAgente, menuParaAgente, responderWhatsapp, type CambiosFicha, type FichaCliente, type Respuesta, type Turno } from "@/lib/ai/whatsapp-agent";
+import { datosDelDia, enBurbujas, fichaParaAgente, menuParaAgente, redactarAviso, responderWhatsapp, type CambiosFicha, type FichaCliente, type Respuesta, type Turno } from "@/lib/ai/whatsapp-agent";
 import { responderConConsola } from "@/lib/ai/whatsapp-consola";
 import { enlaceVincular, resumenMiPayoPorTelefono, textoMiPayoParaAgente } from "@/lib/clientes/mi-payo-whatsapp";
 import { enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
@@ -192,7 +192,7 @@ async function cargarFicha(
   const { data: ords } = tel
     ? await db()
         .from("ordenes")
-        .select("folio, status, created_at, order_type, delivery_address, orden_items(name, qty, mods)")
+        .select("folio, status, wa_estado, created_at, order_type, delivery_address, orden_items(name, qty, mods)")
         .eq("organization_id", orgId)
         .eq("customer_phone", tel)
         .neq("status", "cancelada")
@@ -202,6 +202,7 @@ async function cargarFicha(
   type Orden = {
     folio: string;
     status: string;
+    wa_estado: string | null;
     created_at: string;
     order_type: string;
     delivery_address: string | null;
@@ -216,7 +217,8 @@ async function cargarFicha(
   const pedidos = ordenes.slice(0, 3).map((o) => {
     const dia = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(o.created_at));
     const items = (o.orden_items ?? []).map((i) => `${i.qty} ${i.name}`).join(", ");
-    return `${o.folio} · ${dia} · ${o.status}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
+    const estado = o.wa_estado === "por_aceptar" ? "esperando confirmación" : o.wa_estado === "rechazado" ? "rechazado (ya se le explicó)" : o.wa_estado === "aceptado" && o.status === "pendiente" ? "en preparación" : o.status;
+    return `${o.folio} · ${dia} · ${estado}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
   });
   return {
     filaId: f?.id ?? null,
@@ -274,13 +276,13 @@ export async function responder(p: Pendiente): Promise<void> {
   const desde = new Date(Date.now() - HISTORIAL_HORAS * 60 * 60 * 1000).toISOString();
   const { data: filas } = await db()
     .from("whatsapp_mensajes")
-    .select("autor, texto, wa_message_id, created_at")
+    .select("autor, texto, wa_message_id, created_at, prompt_version")
     .eq("conversacion_id", p.conversacionId)
     .gte("created_at", desde)
     .order("created_at", { ascending: false })
     .limit(HISTORIAL_MAX);
   const turnos = ultimaSesion(
-    ((filas ?? []) as { autor: Turno["autor"]; texto: string; wa_message_id: string | null; created_at: string }[])
+    ((filas ?? []) as { autor: Turno["autor"]; texto: string; wa_message_id: string | null; created_at: string; prompt_version: string | null }[])
       .reverse()
       .map((f) => ({ ...f, at: new Date(f.created_at) })),
   );
@@ -383,11 +385,36 @@ export async function responder(p: Pendiente): Promise<void> {
   };
   const res = usaConsola(p.waId) ? await responderPorConsola(entrada, conv, p, version) : await responderWhatsapp(entrada);
   if (res.reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, res.reaccion);
-  // WhatsApp lets a business send ~1 message every 6 s to the same person:
-  // bubbles go out with a typing-sized pause, and on a 429 we wait and retry
-  // once with whatever is left merged into one message, so nothing is lost.
-  const cola = enBurbujas(res.texto);
-  if (res.reaccion && cola.length) await dormir(1_500);
+  await enviarBurbujas({
+    phoneNumberId: p.phoneNumberId,
+    waId: p.waId,
+    organizationId: n.organization_id,
+    conversacionId: p.conversacionId,
+    texto: res.texto,
+    ordenId,
+    version,
+    conReaccion: !!res.reaccion,
+  });
+}
+
+/**
+ * Sends a reply as WhatsApp bubbles and stores each one. WhatsApp lets a
+ * business send ~1 message every 6 s to the same person: bubbles go out with
+ * a typing-sized pause, and on a 429 we wait and retry once with whatever is
+ * left merged into one message, so nothing is lost.
+ */
+async function enviarBurbujas(a: {
+  phoneNumberId: string;
+  waId: string;
+  organizationId: string;
+  conversacionId: string;
+  texto: string;
+  ordenId: string | null;
+  version: string;
+  conReaccion?: boolean;
+}): Promise<void> {
+  const cola = enBurbujas(a.texto);
+  if (a.conReaccion && cola.length) await dormir(1_500);
   for (let i = 0; cola.length; i++) {
     const burbuja = cola.shift()!;
     if (i > 0) await dormir(pausaEscribiendo(burbuja));
@@ -395,14 +422,14 @@ export async function responder(p: Pendiente): Promise<void> {
     let fallo: string | null = null;
     let texto = burbuja;
     try {
-      waId = await enviarTexto(p.phoneNumberId, p.waId, texto);
+      waId = await enviarTexto(a.phoneNumberId, a.waId, texto);
     } catch (e) {
       fallo = (e instanceof Error ? e.message : String(e)).slice(0, 500);
       if (esLimitePorNumero(fallo)) {
         await dormir(ESPERA_LIMITE_MS);
         texto = [burbuja, ...cola.splice(0)].join("\n\n");
         try {
-          waId = await enviarTexto(p.phoneNumberId, p.waId, texto);
+          waId = await enviarTexto(a.phoneNumberId, a.waId, texto);
           fallo = null;
         } catch (e2) {
           fallo = (e2 instanceof Error ? e2.message : String(e2)).slice(0, 500);
@@ -411,13 +438,13 @@ export async function responder(p: Pendiente): Promise<void> {
       if (fallo) console.error("[whatsapp] envío:", fallo);
     }
     await guardarMensaje({
-      organization_id: n.organization_id,
-      conversacion_id: p.conversacionId,
+      organization_id: a.organizationId,
+      conversacion_id: a.conversacionId,
       wa_message_id: waId,
       autor: "agente",
       texto,
-      orden_id: i === 0 ? ordenId : null,
-      prompt_version: version,
+      orden_id: i === 0 ? a.ordenId : null,
+      prompt_version: a.version,
       ...(fallo ? { estado: "failed", error: fallo, estado_at: new Date().toISOString() } : {}),
     });
     if (fallo) break;
@@ -439,8 +466,13 @@ async function responderPorConsola(
   const previa = conv?.agente_sesion_at ? new Date(conv.agente_sesion_at as string) : null;
   const sesionId = sesionVigente(previa) ? ((conv?.agente_sesion_id as string | null) ?? null) : null;
   const nuevo = nuevoDesdeRespuesta(entrada.turnos);
+  // Order notices sent from the POS went out without the session: tell it.
+  const avisos = (entrada.turnos as (Turno & { created_at?: string; prompt_version?: string | null })[]).filter(
+    (t) => t.autor === "agente" && t.prompt_version?.endsWith("·aviso") && (!previa || (t.created_at && new Date(t.created_at) > previa)),
+  );
   const contextoTurno = [
     `Hora en Yopal: ${entrada.ahora}.`,
+    ...(avisos.length ? [`Desde tu última respuesta ya le enviamos al cliente este aviso de su pedido: ${avisos.map((t) => `«${t.texto}»`).join(" ")}`] : []),
     ...(nuevo.equipo.length ? [`Una persona del equipo le escribió al cliente: ${nuevo.equipo.map((t) => `«${t}»`).join(" ")}`] : []),
   ].join("\n");
   try {
@@ -497,4 +529,88 @@ async function avisarPos(organizationId: string): Promise<void> {
   } catch (e) {
     console.warn("[whatsapp] aviso POS:", e);
   }
+}
+
+/**
+ * The team accepted or turned down a WhatsApp order in the POS: the agent
+ * tells the customer, as one of the team — «ya está en preparación», or the
+ * barista's reason with an apology, a promise to improve and an alternative
+ * that is available. Best effort: a failure here never undoes the decision.
+ */
+export async function avisarDecisionPedido(ordenId: string): Promise<void> {
+  const { data: o } = await db()
+    .from("ordenes")
+    .select("organization_id, folio, customer_phone, customer_name, order_type, delivery_address, wa_estado, wa_motivo, wa_motivo_detalle, orden_items(name, qty)")
+    .eq("id", ordenId)
+    .maybeSingle();
+  if (!o?.customer_phone || (o.wa_estado !== "aceptado" && o.wa_estado !== "rechazado")) return;
+  const orgId = o.organization_id as string;
+  const { data: c } = await db()
+    .from("whatsapp_conversaciones")
+    .select("id, phone_number_id, nombre, username, user_id")
+    .eq("organization_id", orgId)
+    .eq("wa_id", o.customer_phone as string)
+    .order("ultimo_entrante_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  if (!c) return;
+  const n = await numero(c.phone_number_id as string);
+  if (!n) return;
+
+  const desde = new Date(Date.now() - HISTORIAL_HORAS * 60 * 60 * 1000).toISOString();
+  const { data: filas } = await db()
+    .from("whatsapp_mensajes")
+    .select("autor, texto, created_at")
+    .eq("conversacion_id", c.id as string)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: false })
+    .limit(HISTORIAL_MAX);
+  const turnos = ultimaSesion(
+    ((filas ?? []) as { autor: Turno["autor"]; texto: string; created_at: string }[]).reverse().map((f) => ({ ...f, at: new Date(f.created_at) })),
+  );
+
+  const { data: org } = await db().from("organizations").select("name, instagram").eq("id", orgId).single();
+  const orgName = ((org?.name as string | undefined) ?? "").replace(/'s org$/, "") || "el café";
+  const catalog = await getPosCatalog({ organizationId: orgId, userId: null, orgName, client: db() });
+  const { data: lecc } = await db().from("agente_lecciones").select("id, texto").eq("organization_id", orgId).eq("estado", "aprobada").order("created_at", { ascending: true });
+  const lecciones = (lecc ?? []) as Leccion[];
+  const { ficha } = await cargarFicha(
+    orgId,
+    { waId: o.customer_phone as string, userId: (c.user_id as string | null) ?? null, username: (c.username as string | null) ?? null },
+    (c.nombre as string | null) ?? null,
+    catalog.modGroups,
+  );
+
+  const items = ((o.orden_items ?? []) as { name: string; qty: number }[]).map((i) => `${i.qty} ${i.name}`).join(", ");
+  const recoge = o.order_type !== "domicilio";
+  const nota =
+    o.wa_estado === "aceptado"
+      ? `Aceptamos el pedido ${o.folio} (${items}; ${recoge ? "lo recoge en el café" : `domicilio a ${o.delivery_address ?? "su dirección"}`}). Escríbele, como parte del equipo, que su pedido YA está en preparación: este mensaje es la confirmación, así que no digas «te confirmamos» ni repitas el resumen. ${recoge ? "Lo tiene listo en unos 10 minutos y paga al recogerlo aquí." : "Apenas esté listo sale para su dirección."} Uno o dos mensajes cortos.`
+      : `No podemos preparar el pedido ${o.folio} (${items}). Motivo que dejó el barista: ${o.wa_motivo ?? "otro"}${o.wa_motivo_detalle ? ` — ${o.wa_motivo_detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;
+  const texto = await redactarAviso({
+    catalog,
+    local: {
+      nombre: orgName,
+      direccion: n.direccion,
+      horario: n.horario,
+      domicilios: n.domicilios,
+      instagram: ((org?.instagram as string | null) ?? "").replace(/^@/, "") || null,
+      pagos: n.pagos,
+    },
+    ficha,
+    lecciones,
+    turnos,
+    ahora: ahoraYopal(),
+    nota,
+  });
+  if (!texto) return;
+  await enviarBurbujas({
+    phoneNumberId: n.phone_number_id,
+    waId: o.customer_phone as string,
+    organizationId: orgId,
+    conversacionId: c.id as string,
+    texto,
+    ordenId: null,
+    version: `${versionPrompt(lecciones)}·aviso`,
+  });
 }

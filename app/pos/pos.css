@@ -890,3 +890,11 @@
   .app .fc-16 li::before { content: "16 oz: "; }
   .app .fc-16 li.igual { display: none; }
 }
+
+/* WhatsApp orders waiting for the team (whatsapp-entrante.tsx). */
+.app .btn.ok { background: var(--ok); color: #fff; }
+.app .btn.wa-flotante {
+  position: fixed; z-index: 45;
+  right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  background: var(--ok); color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}

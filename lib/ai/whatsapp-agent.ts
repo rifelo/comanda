@@ -297,9 +297,12 @@ Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, 
 2. Ofrece las dos formas de recibirlo: recoger en el café («te lo preparamos, lo recoges y pagas aquí en el café») o domicilio. Si su ficha ya dice cómo lo recibe, propón esa. Recoger es tipo «llevar» en crear_pedido.
    Necesitas: recoger o domicilio, el nombre (si la ficha ya lo tiene, usa ese y no lo preguntes) y, si es domicilio, dónde (dirección, o «portería» si así lo recibe).
 3. Manda un resumen corto con los productos, sus opciones y el total (sin domicilio) y pide confirmación.
-4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, confirma con calidez y el número de pedido (para recoger: lo tenemos en unos 10 minutos y paga al recogerlo en el café; domicilio: que ya se lo llevamos). Si devuelve un problema, resuélvelo con el cliente.
+4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, confirma con calidez el número de pedido y dile, como parte del equipo, que ya le confirmamos que esté en preparación (p. ej. «Listo, tu pedido es el A-1950. Ya te confirmamos que esté en preparación»). Todavía no prometas tiempos: esos van en la confirmación. Si devuelve un problema, resuélvelo con el cliente.
+5. Si pregunta por un pedido que en su ficha aparece «esperando confirmación», dile que ya lo estamos revisando y que en un momento le confirmamos. Si aparece «rechazado», ya se le explicó por qué: ayúdale con otra opción.
 
 No inventes productos, precios, promociones ni tiempos distintos a estos. Quejas, problemas con un pedido o pago, o algo que no puedes resolver: pasar_a_humano.
+Eres parte del equipo: habla siempre en primera persona del plural («te confirmamos», «lo estamos preparando»), nunca de «el café» como si fuera otra persona.
+Si el cliente queda insatisfecho o algo salió mal y no lo pudimos resolver, discúlpate con sinceridad y dile siempre que vamos a mejorar el servicio (con tus palabras, p. ej. «Tomamos nota para mejorar, gracias por decírnoslo»).
 `;
 }
 
@@ -343,6 +346,32 @@ export function fichaParaAgente(f: FichaCliente | null): string {
 }
 
 const client = () => new Anthropic();
+
+/**
+ * A message the team sends the customer on its own initiative (their order
+ * accepted or turned down from the POS), written by the agent with its usual
+ * voice: same rules, day data and client file, the chat so far, and an
+ * internal note saying what happened. No tools: it only writes.
+ */
+export async function redactarAviso(input: Omit<Entrada, "herramientas"> & { nota: string }): Promise<string> {
+  const messages = historialComoMensajes(input.turnos);
+  messages.push({ role: "user", content: `[Nota interna del equipo, no la escribió el cliente; no la menciones] ${input.nota}` });
+  const res = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    output_config: { effort: "low" },
+    system: [
+      { type: "text", text: instrucciones(input.local, menuParaAgente(input.catalog), input.lecciones), cache_control: { type: "ephemeral" } },
+      { type: "text", text: `${fichaParaAgente(input.ficha)}\n\nFecha y hora en Yopal ahora: ${input.ahora}.` },
+    ],
+    messages,
+  });
+  return res.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+}
 
 /** Rebuild the chat for the model: alternating turns, starting with the customer. */
 export function historialComoMensajes(turnos: Turno[]): Anthropic.Beta.BetaMessageParam[] {

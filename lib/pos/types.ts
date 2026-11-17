@@ -334,6 +334,10 @@ export interface PosOrder {
   seLoLlevamos: boolean;
   /** «Aún no llega · pagar después»: sent before the transfer showed up. */
   porVerificar: "transferencia" | null;
+  /** WhatsApp orders: waiting for the team to accept, accepted, or turned down (null for station orders). */
+  waEstado?: WaEstado | null;
+  /** Address for a WhatsApp delivery. */
+  direccion?: string | null;
   /** Who prepares it (ordenes.barista_id → catalog.equipo); null/absent = nobody credited. */
   baristaId?: string | null;
   tendered: number | null;
@@ -359,4 +363,10 @@ export type PendingOrder = PosOrder;
  * cancelled orders can be read by cause.
  */
 export const CANCEL_REASONS = ["Duplicado", "Error al tomar", "Cliente se fue", "Se acabó el producto", "Otro"] as const;
+
+/** Why a WhatsApp order can't be made; the agent explains it to the customer (mig 0097). */
+export const MOTIVOS_RECHAZO_WA = ["Faltan insumos", "Problema técnico", "Mucha demanda", "Otro"] as const;
+export type MotivoRechazoWa = (typeof MOTIVOS_RECHAZO_WA)[number];
+/** A WhatsApp order waits for the team: por_aceptar → aceptado | rechazado. */
+export type WaEstado = "por_aceptar" | "aceptado" | "rechazado";
 export type CancelReason = (typeof CANCEL_REASONS)[number];

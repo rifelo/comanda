@@ -1,6 +1,9 @@
 "use server";
 
 import { z } from "zod";
+import { after } from "next/server";
+import { avisarDecisionPedido } from "@/lib/whatsapp/atender";
+import { MOTIVOS_RECHAZO_WA } from "@/lib/pos/types";
 import { revalidatePath } from "next/cache";
 import { requirePosContext, requirePosAuth, type PosAuth } from "@/lib/pos/server";
 import { parseCreadoPor, pickBarista, pickCreatedBy, resolvePersonInOrg } from "@/lib/auth-person";
@@ -435,7 +438,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -481,6 +484,8 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
       seLoLlevamos: Boolean(o.se_lo_llevamos),
       porVerificar: (o.por_verificar as PosOrder["porVerificar"]) ?? null,
+      waEstado: (o.wa_estado as PosOrder["waEstado"]) ?? null,
+      direccion: (o.delivery_address as string | null) ?? null,
       baristaId: (o.barista_id as string | null) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
@@ -804,6 +809,108 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
   // Voided → give the ingredients back.
   await syncOrderConsumption(supabase, orgId, parsed.data.ordenId, actorId(ctx));
   return { ok: true };
+}
+
+const DecisionWaSchema = z.object({ ordenId: z.string().uuid() });
+const RechazoWaSchema = z.object({
+  ordenId: z.string().uuid(),
+  motivo: z.enum(MOTIVOS_RECHAZO_WA),
+  detalle: z.string().trim().max(160).optional(),
+});
+
+/**
+ * WhatsApp order accepted at the register: the agent tells the customer it
+ * is being made (in the background, so the screen doesn't wait for it).
+ */
+export async function aceptarPedidoWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { data, error } = await supabase
+    .from("ordenes")
+    .update({ wa_estado: "aceptado", wa_decidido_at: new Date().toISOString() })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .eq("wa_estado", "por_aceptar")
+    .select("id");
+  if (error) {
+    console.error("[aceptarPedidoWhatsapp]", error);
+    return { ok: false, error: "No se pudo aceptar el pedido." };
+  }
+  if (!data?.length) return { ok: false, error: "Este pedido ya se aceptó o se rechazó." };
+  after(() => avisarDecisionPedido(parsed.data.ordenId).catch((e) => console.error("[aviso whatsapp] aceptado:", e)));
+  return { ok: true };
+}
+
+/**
+ * WhatsApp order turned down: always with a reason, which the agent explains
+ * to the customer with an alternative. The order is cancelled and its
+ * ingredients go back, like any cancellation.
+ */
+export async function rechazarPedidoWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = RechazoWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Escoge un motivo para rechazar el pedido." };
+  const { ordenId, motivo, detalle } = parsed.data;
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { data: cur } = await supabase
+    .from("ordenes")
+    .select("wa_estado")
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (cur?.wa_estado !== "por_aceptar") return { ok: false, error: "Este pedido ya se aceptó o se rechazó." };
+  const cancelado = await cancelarPendiente({ ordenId, motivo: `WhatsApp · ${motivo}${detalle ? `: ${detalle}` : ""}` });
+  if (!cancelado.ok) return cancelado;
+  const { error } = await supabase
+    .from("ordenes")
+    .update({ wa_estado: "rechazado", wa_decidido_at: new Date().toISOString(), wa_motivo: motivo, wa_motivo_detalle: detalle || null })
+    .eq("id", ordenId)
+    .eq("organization_id", orgId);
+  if (error) console.error("[rechazarPedidoWhatsapp]", error);
+  after(() => avisarDecisionPedido(ordenId).catch((e) => console.error("[aviso whatsapp] rechazado:", e)));
+  return { ok: true };
+}
+
+export type MensajeConversacion = { autor: "cliente" | "agente" | "equipo"; texto: string; at: string };
+
+/**
+ * The WhatsApp chat behind an order, for the barista to read before
+ * accepting it: the customer's messages, the agent's and the team's, from a
+ * few hours before the order until now. Staff can't read the chat tables
+ * directly (admin-only RLS), so this reads them for the order's own org.
+ */
+export async function conversacionDePedido(input: unknown): Promise<{ ok: true; mensajes: MensajeConversacion[] } | { ok: false; error: string }> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { data: o } = await supabase
+    .from("ordenes")
+    .select("customer_phone, created_at")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (!o?.customer_phone) return { ok: false, error: "Este pedido no tiene conversación de WhatsApp." };
+  const admin = createSupabaseAdminClient();
+  const { data: convs } = await admin
+    .from("whatsapp_conversaciones")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("wa_id", o.customer_phone as string);
+  const ids = (convs ?? []).map((c) => c.id as string);
+  if (!ids.length) return { ok: true, mensajes: [] };
+  const desde = new Date(Date.parse(o.created_at as string) - 3 * 3600_000).toISOString();
+  const { data, error } = await admin
+    .from("whatsapp_mensajes")
+    .select("autor, texto, created_at")
+    .in("conversacion_id", ids)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: true })
+    .limit(120);
+  if (error) return { ok: false, error: "No se pudo cargar la conversación." };
+  return {
+    ok: true,
+    mensajes: (data ?? []).map((m) => ({ autor: m.autor as MensajeConversacion["autor"], texto: m.texto as string, at: m.created_at as string })),
+  };
 }
 
 const ContarCompletadosSchema = z.object({

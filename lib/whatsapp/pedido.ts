@@ -101,6 +101,7 @@ export async function guardarPedidoWhatsapp(
       customer_name: p.nombre.trim().slice(0, 80),
       customer_names: [],
       canal: "whatsapp",
+      wa_estado: "por_aceptar",
       customer_phone: ctx.telefono,
       delivery_address: p.tipo === "domicilio" ? p.direccion!.trim() : null,
     })
