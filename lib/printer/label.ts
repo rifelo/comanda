@@ -792,13 +792,15 @@ export function renderCupNameLabel(input: CupNameLabelInput): LabelRaster {
   // phrase: bottom-anchored, 520 px wide (clear of the hand), up to 3 lines
   const frase = arte ? "" : input.frase.replace(/\s+/g, " ").trim();
   if (frase) {
-    let fs = 34;
+    // As big as the space under the name allows: 46 px down to 26 (was 34 → 22; owner 2026-11-18).
+    let fs = 46;
     let lines: string[] = [];
-    for (; fs >= 22; fs -= 2) {
+    for (; fs >= 26; fs -= 2) {
       ctx.font = `300 ${fs}px ${delightLight()}`;
       lines = wrap(ctx, frase, 520);
       if (lines.length <= 3 && B - lines.length * Math.round(fs * 1.12) >= nameBottom + 8) break;
     }
+    fs = Math.max(fs, 26); // nothing fit: keep the smallest size the lines were wrapped at
     ctx.font = `300 ${fs}px ${delightLight()}`;
     lines = lines.slice(0, 3);
     const lh = Math.round(fs * 1.12);
