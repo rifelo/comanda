@@ -16,7 +16,7 @@ import * as React from "react";
 import type { PosOrder } from "@/lib/pos/types";
 import { ageLabel, ageMinutes, bogotaClock, folioTag } from "@/lib/pos/pending";
 import { modLabels } from "@/lib/pos/detalle";
-import { pasoWa, type PasoWa } from "@/lib/whatsapp/flujo";
+import { pasoWa, textoDomicilio, type PasoWa } from "@/lib/whatsapp/flujo";
 import { enlaceWhatsapp, mensajeDomiciliario } from "@/lib/pos/domiciliarios";
 import { useTicketPrinter } from "@/lib/printer/tickets";
 import { chargePending, marcarEntregada, printLabelFor, printTicketFor, refreshPendientes, usePos } from "../pos-store";
@@ -136,6 +136,7 @@ function CardWa({ o, paso, onAbrir, domiciliarios }: { o: PosOrder; paso: PasoWa
         </span>
         <span className={`wa-chip${chip.ok ? " ok" : ""}`}>{chip.texto}</span>
         <span className="wa-items">{lineas(o, s.catalog.modGroups).join(" · ")}</span>
+        {o.domicilioCop ? <span className="wa-items">🛵 Domicilio {textoDomicilio(o.domicilioCop, o.domicilioTransferido)}</span> : null}
         <Barras paso={paso} />
       </button>
       <Acciones o={o} paso={paso} domiciliarios={domiciliarios} compacto />
@@ -314,6 +315,7 @@ export function TarjetaPasoWa({ o, paso, onClose }: { o: PosOrder; paso: PasoWa;
             <dt>Productos</dt><dd>{lineas(o, s.catalog.modGroups).join(" · ")}</dd>
             {o.note.trim() && (<><dt>Nota</dt><dd>{o.note}</dd></>)}
             <dt>Pago</dt><dd className={pago.ok ? "wa-ok" : undefined}>{pago.texto}</dd>
+            {o.domicilioCop != null && (<><dt>Domicilio</dt><dd>{textoDomicilio(o.domicilioCop, o.domicilioTransferido)}</dd></>)}
             <dt>Comanda</dt><dd>{o.comandaImpresa ? "Impresa en la caja" : preparando ? "Se imprime sola cuando pase a «Preparar»" : "Aún sin imprimir"}</dd>
           </dl>
 

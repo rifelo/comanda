@@ -13,6 +13,8 @@ export type PagoPorAprobar = {
   direccion: string | null;
   telefonoRecibe: string | null;
   total: number;
+  /** Courier fee the barista set; the customer may add it to the transfer. */
+  domicilio: number | null;
   falta: number;
   items: string[];
   hora: string;
@@ -66,6 +68,8 @@ function Pago({ p }: { p: PagoPorAprobar }) {
   // The owner's own checklist before approving (not stored).
   const [visto, setVisto] = useState<Set<string>>(new Set());
   const monto = p.falta || p.total;
+  // The customer may add the courier's fee to the transfer or pay it on delivery.
+  const conDomicilio = p.domicilio ? monto + p.domicilio : null;
   const correr = (accion: () => Promise<{ ok: boolean; error?: string }>, ok: string) =>
     start(async () => {
       const r = await accion();
@@ -90,6 +94,11 @@ function Pago({ p }: { p: PagoPorAprobar }) {
         {p.telefono ? `+${p.telefono} · ` : ""}pedido a las {p.hora}
       </div>
       <div style={{ fontSize: 15 }}>{p.items.join(", ")}</div>
+      {p.domicilio ? (
+        <div style={{ fontSize: 14 }}>
+          🛵 Domicilio {pesos(p.domicilio)}: puede venir sumado ({pesos(conDomicilio ?? 0)}) o pagárselo al domiciliario.
+        </div>
+      ) : null}
       {p.direccion ? <div style={{ fontSize: 14 }}>📍 {p.direccion}{p.telefonoRecibe ? ` · recibe tel ${p.telefonoRecibe}` : ""}</div> : null}
       {p.chat.length ? (
         <details>
@@ -132,7 +141,7 @@ function Pago({ p }: { p: PagoPorAprobar }) {
                 onChange={() => setVisto((v) => { const n = new Set(v); if (n.has(r)) n.delete(r); else n.add(r); return n; })}
                 style={{ width: 20, height: 20, accentColor: "var(--ok)" }}
               />
-              {r === "Monto exacto" ? `Monto exacto ${pesos(monto)}` : r}
+              {r === "Monto exacto" ? `Monto exacto ${pesos(monto)}${conDomicilio ? ` o ${pesos(conDomicilio)}` : ""}` : r}
             </label>
           ))}
         </div>
@@ -141,9 +150,20 @@ function Pago({ p }: { p: PagoPorAprobar }) {
         <p className="m-0 font-semibold" style={{ color: "var(--ok)" }}>✓ {hecho}</p>
       ) : (
         <div className="flex flex-wrap" style={{ gap: 8 }}>
-          <Button loading={pendiente} onClick={() => correr(() => aprobarPagoWhatsapp({ ordenId: p.id }), "Pago aprobado: ya está en preparación")}>
-            Pago recibido · preparar
-          </Button>
+          {conDomicilio ? (
+            <>
+              <Button loading={pendiente} onClick={() => correr(() => aprobarPagoWhatsapp({ ordenId: p.id, conDomicilio: true }), "Pago aprobado con domicilio: ya está en preparación")}>
+                Llegó {pesos(conDomicilio)} · con domicilio
+              </Button>
+              <Button loading={pendiente} onClick={() => correr(() => aprobarPagoWhatsapp({ ordenId: p.id, conDomicilio: false }), "Pago aprobado: el domicilio se lo paga al domiciliario")}>
+                Llegó {pesos(monto)} · domicilio al domiciliario
+              </Button>
+            </>
+          ) : (
+            <Button loading={pendiente} onClick={() => correr(() => aprobarPagoWhatsapp({ ordenId: p.id }), "Pago aprobado: ya está en preparación")}>
+              Pago recibido · preparar
+            </Button>
+          )}
           <Button variant="ghost" disabled={pendiente} onClick={() => correr(() => recordarPagoWhatsapp({ ordenId: p.id }), "Le recordamos el pago al cliente")}>
             Aún no llega · recordarle
           </Button>

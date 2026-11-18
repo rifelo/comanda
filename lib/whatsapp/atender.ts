@@ -10,7 +10,7 @@ import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
-import { ESTADO_WA_TEXTO, pagosEnConversacion } from "./flujo";
+import { ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop } from "./flujo";
 import type { WaEstado } from "@/lib/pos/types";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
@@ -219,7 +219,7 @@ async function cargarFicha(
   const { data: ords } = tel
     ? await db()
         .from("ordenes")
-        .select("folio, status, wa_estado, created_at, order_type, delivery_address, orden_items(name, qty, mods)")
+        .select("folio, status, wa_estado, total_cop, domicilio_cop, created_at, order_type, delivery_address, orden_items(name, qty, mods)")
         .eq("organization_id", orgId)
         .eq("customer_phone", tel)
         .neq("status", "cancelada")
@@ -233,6 +233,8 @@ async function cargarFicha(
     created_at: string;
     order_type: string;
     delivery_address: string | null;
+    total_cop: number | null;
+    domicilio_cop: number | null;
     orden_items: { name: string; qty: number; mods: Record<string, string | string[]> | null }[];
   };
   const ordenes = (ords ?? []) as Orden[];
@@ -245,7 +247,8 @@ async function cargarFicha(
     const dia = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(o.created_at));
     const items = (o.orden_items ?? []).map((i) => `${i.qty} ${i.name}`).join(", ");
     const estado = o.wa_estado ? ESTADO_WA_TEXTO[o.wa_estado as WaEstado] ?? o.status : o.status;
-    return `${o.folio} · ${dia} · ${estado}: ${items}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
+    const valor = o.total_cop != null ? ` · ${pesosCop(o.total_cop)}${o.domicilio_cop ? ` + domicilio ${pesosCop(o.domicilio_cop)}` : ""}` : "";
+    return `${o.folio} · ${dia} · ${estado}: ${items}${valor}${o.order_type === "domicilio" && o.delivery_address ? ` (a ${o.delivery_address})` : ""}`;
   });
   return {
     filaId: f?.id ?? null,
@@ -575,7 +578,7 @@ export async function avisarPos(organizationId: string): Promise<void> {
 export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Promise<void> {
   const { data: o } = await db()
     .from("ordenes")
-    .select("organization_id, folio, customer_phone, customer_name, order_type, delivery_address, se_lo_llevamos, wa_estado, wa_motivo, wa_motivo_detalle, orden_items(name, qty)")
+    .select("organization_id, folio, customer_phone, customer_name, order_type, delivery_address, se_lo_llevamos, wa_estado, wa_motivo, wa_motivo_detalle, total_cop, domicilio_cop, domicilio_transferido, orden_items(name, qty)")
     .eq("id", ordenId)
     .maybeSingle();
   if (!o?.customer_phone || !o.wa_estado || o.wa_estado === "por_aceptar") return;
@@ -630,6 +633,9 @@ export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Pr
     pagos: n.pagos,
     cercano: Boolean(o.se_lo_llevamos) && !!o.delivery_address,
     pagosYaEnviados: pagosEnConversacion(turnos, n.pagos),
+    total: Number(o.total_cop ?? 0),
+    domicilioCop: (o.domicilio_cop as number | null) ?? null,
+    domicilioTransferido: (o.domicilio_transferido as boolean | null) ?? null,
   });
   if (!nota) return;
   const texto = await redactarAviso({
@@ -677,15 +683,27 @@ export function notaAviso(a: {
   cercano?: boolean;
   /** The payment details are already in this conversation (sent by us). */
   pagosYaEnviados?: boolean;
+  /** Products total (what the café charges). */
+  total?: number;
+  /** Courier fee the barista set (deliveries). */
+  domicilioCop?: number | null;
+  /** true = came in the transfer; false = the customer pays the courier. */
+  domicilioTransferido?: boolean | null;
 }): string | null {
   const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en UN solo mensaje corto, sin repetir el resumen del pedido, el total ni los datos de pago que ya le dimos.";
+  const dom = a.domicilioCop && a.total != null
+    ? `El domicilio vale ${pesosCop(a.domicilioCop)}: puede sumarlo a la transferencia (en total ${pesosCop(a.total + a.domicilioCop)}) o transferir solo los productos (${pesosCop(a.total)}) y pagarle el domicilio al domiciliario al recibir.`
+    : "";
   if (a.extra === "recordar_pago") {
-    return `El pedido ${a.folio} (${a.items}) a domicilio sigue esperando su transferencia. Recuérdale con amabilidad, sin presionar, que apenas nos llegue el pago lo empezamos a preparar${a.pagos ? `, y compártele los datos tal cual:\n${a.pagos}` : ""}. ${tono}`;
+    return `El pedido ${a.folio} (${a.items}) a domicilio sigue esperando su transferencia. Recuérdale con amabilidad, sin presionar, que apenas nos llegue el pago lo empezamos a preparar.${dom ? ` ${dom}` : ""}${a.pagos ? ` Compártele los datos tal cual:\n${a.pagos}` : ""} ${tono}`;
   }
   switch (a.estado) {
     case "esperando_pago":
-      // Usually the agent already gave the folio and the payment details when it
-      // created the order: then there is nothing new to say until the payment is approved.
+      if (dom) {
+        // The courier's fee is new for the customer: amounts and payment details go together.
+        return `Aceptamos el pedido ${a.folio} (${a.items}, a domicilio). En un solo mensaje dile que ya lo aceptamos y lo del domicilio: ${dom}${a.pagos && !a.pagosYaEnviados ? ` Compártele los datos de transferencia tal cual:\n${a.pagos}\n` : " Los datos de pago ya se los dimos: no los repitas."} Cierra con que apenas confirmemos su pago lo preparamos. ${tono}`;
+      }
+      // Nothing new to say if the agent already gave the payment details.
       if (a.pagosYaEnviados) return null;
       return `Aceptamos el pedido ${a.folio} (${a.items}, a domicilio). Dile algo como «Super, recibimos tu pedido, es el ${a.folio}, estamos confirmando tu pago para empezar a prepararlo».${a.pagos ? ` Compártele en ese mismo mensaje los datos de transferencia tal cual:\n${a.pagos}` : ""} ${tono}`;
     case "en_preparacion":
@@ -701,7 +719,7 @@ export function notaAviso(a: {
         : null;
     case "en_camino":
       if (a.cercano) return `El pedido ${a.folio} ya va en camino a su punto (${a.direccion ?? "el que dijo"}; nómbralo como lo dijo el cliente): uno de nosotros se lo lleva ahora mismo. Cuéntaselo con alegría y cercanía, sin volver a decir que es sin costo ni que paga al recibir. ${tono}`;
-      return `El pedido ${a.folio} ya salió con nuestro domiciliario hacia ${a.direccion ?? "su dirección"}. Cuéntale que ya va en camino, con alegría y cercanía (p. ej. «Tu pedido ya va en camino 🛵 nuestro domiciliario va para allá, que lo disfrutes mucho»). ${tono}`;
+      return `El pedido ${a.folio} ya salió con nuestro domiciliario hacia ${a.direccion ?? "su dirección"}. Cuéntale que ya va en camino, con alegría y cercanía (p. ej. «Tu pedido ya va en camino 🛵 nuestro domiciliario va para allá, que lo disfrutes mucho»).${a.domicilioCop && a.domicilioTransferido === false ? ` Recuérdale en la misma frase que el domicilio (${pesosCop(a.domicilioCop)}) se lo paga al domiciliario.` : ""} ${tono}`;
     case "rechazado":
       return `No podemos preparar el pedido ${a.folio} (${a.items}). Motivo que dejó el barista: ${a.motivo ?? "otro"}${a.detalle ? ` — ${a.detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;
     default:

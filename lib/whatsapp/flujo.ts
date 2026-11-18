@@ -100,3 +100,16 @@ export function pagosEnConversacion(turnos: { autor: string; texto: string }[], 
   if (!lineas.length) return false;
   return turnos.some((t) => t.autor !== "cliente" && lineas.some((l) => t.texto.replace(/\s+/g, " ").includes(l)));
 }
+
+/** $7.000 — by hand so server and browser agree. */
+export const pesosCop = (n: number) => `$${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+
+/** Who pays the courier of a WhatsApp delivery, for the team (null = no fee set). */
+export function textoDomicilio(cop: number | null | undefined, transferido: boolean | null | undefined): string | null {
+  if (cop == null) return null;
+  if (cop === 0) return "Sin costo";
+  const v = pesosCop(cop);
+  if (transferido === true) return `${v} · vino en la transferencia: se lo pagamos al domiciliario`;
+  if (transferido === false) return `${v} · el cliente se lo paga al domiciliario`;
+  return `${v} · el cliente lo suma a la transferencia o se lo paga al domiciliario`;
+}

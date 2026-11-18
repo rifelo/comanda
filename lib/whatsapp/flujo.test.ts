@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listoParaPreparar, pasoWa, siguienteEstado, tipoWa, pagosEnConversacion } from "./flujo";
+import { listoParaPreparar, pasoWa, siguienteEstado, tipoWa, pagosEnConversacion, textoDomicilio } from "./flujo";
 
 describe("siguienteEstado", () => {
   it("delivery waits for the payment, pick-up goes straight to preparation", () => {
@@ -69,5 +69,14 @@ describe("pagosEnConversacion", () => {
     expect(pagosEnConversacion([{ autor: "cliente", texto: "Nequi: 3106059758" }], pagos)).toBe(false);
     expect(pagosEnConversacion([{ autor: "agente", texto: "Hola" }], pagos)).toBe(false);
     expect(pagosEnConversacion([{ autor: "agente", texto: "Nequi: 3106059758" }], null)).toBe(false);
+  });
+});
+
+describe("textoDomicilio", () => {
+  it("says who pays the courier", () => {
+    expect(textoDomicilio(null, null)).toBeNull();
+    expect(textoDomicilio(7000, true)).toBe("$7.000 · vino en la transferencia: se lo pagamos al domiciliario");
+    expect(textoDomicilio(7000, false)).toBe("$7.000 · el cliente se lo paga al domiciliario");
+    expect(textoDomicilio(12500, null)).toContain("$12.500");
   });
 });

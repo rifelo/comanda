@@ -82,6 +82,8 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
   const [detalle, setDetalle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // The courier's fee varies by where it goes: the barista sets it here.
+  const [domicilio, setDomicilio] = React.useState("");
   const tipo = tipoWa(o);
   const recoge = tipo !== "domicilio";
   // A free nearby point (la droguería, la portería…): the team walks it over.
@@ -94,6 +96,8 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
   const tel = o.telefonoRecibe ?? o.customerPhone ?? null;
   const nombre = orderName(o);
   const puedeRechazar = !!motivo && (motivo !== "Otro" || detalle.trim().length > 2);
+  const domicilioCop = domicilio ? Number(domicilio) : null;
+  const faltaDomicilio = tipo === "domicilio" && domicilioCop == null;
 
   const correr = async (accion: () => Promise<{ ok: boolean; error?: string }>) => {
     setBusy(true);
@@ -150,17 +154,50 @@ function Tarjeta({ o, ahora, quedan, onLuego }: { o: PosOrder; ahora: number; qu
 
         {error ? <div role="alert" style={{ color: "var(--late)", fontWeight: 600 }}>{error}</div> : null}
 
+        {!rechazando && tipo === "domicilio" ? (
+          <div className="wa-domicilio">
+            <label className="label" htmlFor="wa-domicilio">Valor del domicilio</label>
+            <div className="chips" role="group" aria-label="Valores frecuentes">
+              {[5000, 6000, 7000, 8000, 10000].map((v) => (
+                <button key={v} type="button" className="chip" aria-pressed={domicilioCop === v} onClick={() => setDomicilio(String(v))}>
+                  {money(v)}
+                </button>
+              ))}
+              <input
+                id="wa-domicilio"
+                className="field"
+                inputMode="numeric"
+                placeholder="Otro valor"
+                value={domicilio && ![5000, 6000, 7000, 8000, 10000].includes(Number(domicilio)) ? domicilio : ""}
+                onChange={(e) => setDomicilio(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                style={{ height: 44, width: 140 }}
+              />
+            </div>
+            <span className="muted" style={{ fontSize: 14 }}>
+              {domicilioCop != null
+                ? `Le decimos al cliente: domicilio ${money(domicilioCop)}, total ${money(o.total + domicilioCop)} si lo suma a la transferencia, o se lo paga al domiciliario.`
+                : "Lo cotiza el domiciliario. Se lo decimos al cliente con los datos de pago."}
+            </span>
+          </div>
+        ) : null}
+
         {!rechazando ? (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button type="button" className="btn ghost lg" style={{ flex: 1 }} disabled={busy} onClick={() => setRechazando(true)}>
               No podemos
             </button>
-            <button type="button" className="btn ok lg" style={{ flex: 2 }} disabled={busy} onClick={() => correr(() => aceptarPedidoWhatsapp({ ordenId: o.id }))}>
-              {recoge ? "Aceptar y preparar" : "Aceptar · confirmar pago"}
+            <button
+              type="button"
+              className="btn ok lg"
+              style={{ flex: 2 }}
+              disabled={busy || faltaDomicilio}
+              onClick={() => correr(() => aceptarPedidoWhatsapp({ ordenId: o.id, ...(tipo === "domicilio" && domicilioCop != null ? { domicilioCop } : {}) }))}
+            >
+              {recoge ? "Aceptar y preparar" : faltaDomicilio ? "Escribe el valor del domicilio" : "Aceptar · confirmar pago"}
             </button>
             {!recoge && (
               <p className="muted" style={{ margin: 0, fontSize: 14, flexBasis: "100%" }}>
-                Es domicilio: se prepara cuando el admin confirme la transferencia. Al aceptar, le decimos al cliente que estamos confirmando su pago.
+                Es domicilio: se prepara cuando el admin confirme la transferencia. Al aceptar, le mandamos al cliente el valor del domicilio y los datos de pago.
               </p>
             )}
           </div>

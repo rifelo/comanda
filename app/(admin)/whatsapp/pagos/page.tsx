@@ -29,7 +29,7 @@ export default async function PagosWhatsappPage() {
   const db = createSupabaseAdminClient();
   const { data: ords } = await db
     .from("ordenes")
-    .select("id, folio, customer_name, customer_phone, telefono_recibe, delivery_address, total_cop, paid_cop, created_at, wa_decidido_at, orden_items(name, qty)")
+    .select("id, folio, customer_name, customer_phone, telefono_recibe, delivery_address, total_cop, paid_cop, domicilio_cop, created_at, wa_decidido_at, orden_items(name, qty)")
     .eq("organization_id", profile.organization_id)
     .eq("wa_estado", "esperando_pago")
     .order("created_at", { ascending: true })
@@ -70,6 +70,7 @@ export default async function PagosWhatsappPage() {
       telefonoRecibe: (o.telefono_recibe as string | null) ?? null,
       total: Number(o.total_cop),
       falta: Math.max(0, Number(o.total_cop) - Number(o.paid_cop ?? 0)),
+      domicilio: (o.domicilio_cop as number | null) ?? null,
       items: ((o.orden_items ?? []) as { name: string; qty: number }[]).map((i) => `${i.qty} × ${i.name}`),
       hora: hora(o.created_at as string),
       minutos: Math.max(0, Math.floor((ahora - Date.parse((o.wa_decidido_at as string | null) ?? (o.created_at as string))) / 60_000)),

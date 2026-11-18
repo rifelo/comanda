@@ -440,7 +440,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, comanda_impresa_at, customer_phone, telefono_recibe, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, domicilio_cop, domicilio_transferido, comanda_impresa_at, customer_phone, telefono_recibe, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -488,6 +488,8 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       porVerificar: (o.por_verificar as PosOrder["porVerificar"]) ?? null,
       waEstado: (o.wa_estado as PosOrder["waEstado"]) ?? null,
       direccion: (o.delivery_address as string | null) ?? null,
+      domicilioCop: (o.domicilio_cop as number | null) ?? null,
+      domicilioTransferido: (o.domicilio_transferido as boolean | null) ?? null,
       comandaImpresa: Boolean(o.comanda_impresa_at),
       customerPhone: (o.customer_phone as string | null) ?? null,
       telefonoRecibe: (o.telefono_recibe as string | null) ?? null,
@@ -817,6 +819,8 @@ export async function cancelarPendiente(input: unknown): Promise<SimpleResult> {
 }
 
 const DecisionWaSchema = z.object({ ordenId: z.string().uuid() });
+const AceptarWaSchema = z.object({ ordenId: z.string().uuid(), domicilioCop: z.number().int().min(0).max(200_000).optional() });
+const AprobarPagoWaSchema = z.object({ ordenId: z.string().uuid(), conDomicilio: z.boolean().optional() });
 const RechazoWaSchema = z.object({
   ordenId: z.string().uuid(),
   motivo: z.enum(MOTIVOS_RECHAZO_WA),
@@ -829,7 +833,7 @@ const RechazoWaSchema = z.object({
  * the transfer. The agent tells the customer either way, in the background.
  */
 export async function aceptarPedidoWhatsapp(input: unknown): Promise<SimpleResult> {
-  const parsed = DecisionWaSchema.safeParse(input);
+  const parsed = AceptarWaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
   const { supabase, organizationId: orgId } = await requirePosAuth();
   const { data: cur } = await supabase
@@ -840,9 +844,12 @@ export async function aceptarPedidoWhatsapp(input: unknown): Promise<SimpleResul
     .maybeSingle();
   const nuevo = siguienteEstado(cur?.wa_estado as never, (cur?.order_type as string) ?? "", "aceptar");
   if (!nuevo) return { ok: false, error: "Este pedido ya se aceptó o se rechazó." };
+  // The courier's fee varies: the barista sets it so we can tell the customer.
+  const esDomicilio = cur?.order_type === "domicilio";
+  if (esDomicilio && parsed.data.domicilioCop == null) return { ok: false, error: "Escribe el valor del domicilio." };
   const { data, error } = await supabase
     .from("ordenes")
-    .update({ wa_estado: nuevo, wa_decidido_at: new Date().toISOString() })
+    .update({ wa_estado: nuevo, wa_decidido_at: new Date().toISOString(), ...(esDomicilio ? { domicilio_cop: parsed.data.domicilioCop } : {}) })
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
     .eq("wa_estado", "por_aceptar")
@@ -863,7 +870,7 @@ export async function aceptarPedidoWhatsapp(input: unknown): Promise<SimpleResul
  * customer. Admin session only.
  */
 export async function aprobarPagoWhatsapp(input: unknown): Promise<SimpleResult> {
-  const parsed = DecisionWaSchema.safeParse(input);
+  const parsed = AprobarPagoWaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Pedido inválido." };
   const { profile } = await requireAdmin();
   const orgId = profile.organization_id as string;
@@ -886,7 +893,12 @@ export async function aprobarPagoWhatsapp(input: unknown): Promise<SimpleResult>
   }
   const { data, error } = await db
     .from("ordenes")
-    .update({ wa_estado: "en_preparacion", wa_pago_aprobado_at: new Date().toISOString(), wa_pago_aprobado_por: profile.id })
+    .update({
+      wa_estado: "en_preparacion",
+      wa_pago_aprobado_at: new Date().toISOString(),
+      wa_pago_aprobado_por: profile.id,
+      ...(parsed.data.conDomicilio != null ? { domicilio_transferido: parsed.data.conDomicilio } : {}),
+    })
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
     .eq("wa_estado", "esperando_pago")

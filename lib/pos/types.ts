@@ -340,6 +340,10 @@ export interface PosOrder {
   waEstado?: WaEstado | null;
   /** Address for a WhatsApp delivery. */
   direccion?: string | null;
+  /** WhatsApp delivery: the courier's fee the barista set when accepting (not part of total). */
+  domicilioCop?: number | null;
+  /** true = the customer added the fee to the transfer (pay the courier from the café); false = pays the courier; null = unknown yet. */
+  domicilioTransferido?: boolean | null;
   /** The comanda was already printed by some register (WhatsApp orders). */
   comandaImpresa?: boolean;
   /** WhatsApp customer's number (E.164 digits), for the courier. */
