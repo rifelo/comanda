@@ -48,6 +48,7 @@ import {
   cancelarPendiente,
   cobrarPendiente,
   marcarEntrega,
+  marcarListo as marcarListoAccion,
   crearOrden,
   generarFrase,
   registrarCalificaciones,
@@ -1905,6 +1906,29 @@ export async function marcarEntregada(id: string, entregada: boolean) {
   posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, fixed), pendientes: flip(st.pendientes, fixed) }));
   // A paid order that is now delivered is complete: it leaves the badge (its card stays until the list reloads).
   void refreshPendientes();
+  nudge("ordenes");
+}
+/** «Ya está listo» on the Caja board, optimistic like marcarEntregada. */
+export async function marcarListo(id: string, listo: boolean) {
+  const at = listo ? new Date().toISOString() : null;
+  const flip = (list: PosOrder[], v: string | null) => list.map((o) => (o.id === id ? { ...o, listoAt: v } : o));
+  const before = posStore.get();
+  const prev = [...before.ordenes, ...before.pendientes].find((o) => o.id === id)?.listoAt ?? null;
+  if (!!prev === listo) return;
+  posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, at), pendientes: flip(st.pendientes, at), ordenesError: null }));
+  let res: Awaited<ReturnType<typeof marcarListoAccion>>;
+  try {
+    res = await marcarListoAccion({ ordenId: id, listo });
+  } catch {
+    res = { ok: false, error: "Sin conexión: no se marcó como listo." };
+  }
+  if (!res.ok) {
+    const error = res.error;
+    posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, prev), pendientes: flip(st.pendientes, prev), ordenesError: error }));
+    return;
+  }
+  const fixed = res.listoAt;
+  posStore.set((st) => ({ ...st, ordenes: flip(st.ordenes, fixed), pendientes: flip(st.pendientes, fixed) }));
   nudge("ordenes");
 }
 /** Drop the loaded pending order from the ticket without saving. */

@@ -440,7 +440,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, domicilio_cop, domicilio_transferido, comanda_impresa_at, customer_phone, telefono_recibe, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, listo_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, domicilio_cop, domicilio_transferido, comanda_impresa_at, customer_phone, telefono_recibe, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -483,6 +483,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       createdAt: o.created_at as string,
       paidAt: (o.paid_at as string | null) ?? null,
       entregadaAt: (o.entregada_at as string | null) ?? null,
+      listoAt: (o.listo_at as string | null) ?? null,
       paymentMethod: (o.payment_method as PosOrder["paymentMethod"]) ?? null,
       seLoLlevamos: Boolean(o.se_lo_llevamos),
       porVerificar: (o.por_verificar as PosOrder["porVerificar"]) ?? null,
@@ -1260,6 +1261,29 @@ export async function marcarEntrega(input: unknown): Promise<{ ok: true; entrega
   }
   if (!updated?.length) return { ok: false, error: "Ese pedido ya no está activo." };
   return { ok: true, entregadaAt };
+}
+
+const MarcarListoSchema = z.object({ ordenId: z.string().uuid(), listo: z.boolean() });
+
+/** «Ya está listo» on the Caja board (or undo it). Payment and delivery untouched. */
+export async function marcarListo(input: unknown): Promise<{ ok: true; listoAt: string | null } | { ok: false; error: string }> {
+  const parsed = MarcarListoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const listoAt = parsed.data.listo ? new Date().toISOString() : null;
+  const { data: updated, error } = await supabase
+    .from("ordenes")
+    .update({ listo_at: listoAt })
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .in("status", ["pendiente", "pagada"])
+    .select("id");
+  if (error) {
+    console.error("[marcarListo] update failed:", error);
+    return { ok: false, error: "No se pudo marcar como listo." };
+  }
+  if (!updated?.length) return { ok: false, error: "Ese pedido ya no está activo." };
+  return { ok: true, listoAt };
 }
 
 // ── "frase del día" label ─────────────────────────────────────────────────────

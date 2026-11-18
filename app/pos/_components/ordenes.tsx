@@ -45,6 +45,7 @@ import { PremioOverlay } from "./premio";
 import { ConversacionWa } from "./conversacion-wa";
 import { anularDescuento } from "../actions";
 import { TableroWa, enTablero } from "./pedidos-wa";
+import { TableroCaja } from "./pedidos-caja";
 
 /** Human label for a payment method, including the "mixto" summary. */
 export const methodLabel = (m: string | null | undefined): string =>
@@ -215,7 +216,7 @@ export function PedidosPage() {
         <button type="button" className="btn ghost sm ped-refresh" onClick={refresh} aria-label="Actualizar" disabled={s.ordenesLoading && !s.ordenes.length}>
           <IconRefresh /><span className="ped-refresh-l">Actualizar</span>
         </button>
-        {enWa && (
+        {isPend && (
           <div className="wa-leyenda" aria-hidden="true">
             <span><i style={{ background: "var(--ok)" }} />hecho</span>
             <span><i style={{ background: "var(--brand)" }} />paso actual</span>
@@ -234,6 +235,8 @@ export function PedidosPage() {
 
       {enWa ? (
         <TableroWa orders={s.pendientes} />
+      ) : isPend ? (
+        <TableroCaja orders={list} onCancel={setCancelId} onDescuento={setDescId} onPremio={setPremioId} />
       ) : !list.length ? (
         <div className="empty">
           {s.ordenesLoading ? (
@@ -264,7 +267,7 @@ export function PedidosPage() {
   );
 }
 
-function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCancel: () => void; onDescuento: () => void; onPremio: () => void }) {
+export function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder; onCancel: () => void; onDescuento: () => void; onPremio: () => void }) {
   const s = usePos();
   const name = orderName(o);
   const people = rebuildPeople(o);

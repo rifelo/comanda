@@ -330,6 +330,8 @@ export interface PosOrder {
   paidAt: string | null;
   /** When the order reached the customer; null = still to deliver. */
   entregadaAt: string | null;
+  /** «Ya está listo» on the Caja board; null = still being made. */
+  listoAt?: string | null;
   /** Summary over the payments: the one method, or "mixto". */
   paymentMethod: PayMethodSummary | null;
   /** The barista brings it to the customer («Se lo llevamos»). */

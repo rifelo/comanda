@@ -999,7 +999,7 @@
   .app .wa-paso-aside { display: none; }
 }
 @media (max-width: 1023px) {
-  .app .wa-board { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow-y: auto; padding: 14px 16px 20px; }
+  .app .wa-board { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: max-content; align-content: start; overflow-y: auto; padding: 14px 16px 20px; }
   .app .wa-col { min-height: 220px; }
   .app .wa-col-list { overflow: visible; }
   .app .wa-leyenda { display: none; }
@@ -1027,3 +1027,15 @@
 
 .wa-domicilio{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:14px;background:var(--surface-2,#f0f0ef)}
 .wa-domicilio .chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* «Caja» board: three columns of the WhatsApp board look. */
+.app .wa-board.caja-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.app .caja-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.app .wa-chip.late { background: color-mix(in srgb, var(--late) 14%, transparent); color: var(--late); }
+/* The step view holds the full order card (every other action) under «Ahora te toca». */
+.app .wa-paso.caja-paso { grid-template-columns: minmax(0, 1fr); max-width: 860px; }
+.app .caja-paso-pedido { display: flex; flex-direction: column; gap: 10px; }
+.app .caja-paso-pedido h3 { margin: 0; font-size: 16px; font-weight: 800; }
+.app .caja-paso-pedido .orders { display: block; padding: 0; overflow: visible; }
+@media (max-width: 1023px) { .app .wa-board.caja-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .app .wa-board.caja-board { grid-template-columns: minmax(0, 1fr); } }
