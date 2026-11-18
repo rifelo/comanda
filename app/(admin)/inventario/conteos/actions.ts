@@ -261,8 +261,10 @@ export async function pedirConteoAgente(input: unknown): Promise<AgenteActionRes
 const RevisarSchema = z.object({
   lineaId: z.string().uuid(),
   conteoId: z.string().uuid(),
-  decision: z.enum(["aceptar", "rechazar", "otro_conteo"]),
+  decision: z.enum(["aceptar", "rechazar", "otro_conteo", "yo"]),
   nota: z.string().trim().max(300).optional(),
+  /** «Lo conté yo»: what the admin counted, in stock units. */
+  contado: z.number().finite().min(0).max(10_000_000).optional(),
 });
 
 /** The owner's decision on a line the assistant flagged. */
@@ -276,9 +278,12 @@ export async function revisarLineaAgente(input: unknown): Promise<AgenteActionRe
     reviewerId: user.id,
     hoy: todayInTz(sede?.tz ?? "America/Bogota"),
     nota: parsed.data.nota || null,
+    contado: parsed.data.contado ?? null,
+    reviewerName: profile.full_name ?? null,
   });
   if (!res.ok) return res;
   revalidarAgente(parsed.data.conteoId);
+  revalidatePath("/hoy");
   revalidatePath("/inventario/niveles");
   return { ok: true };
 }

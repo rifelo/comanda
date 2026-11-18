@@ -26,6 +26,7 @@ import {
 import { PedirConteo } from "./_components/pedir-conteo";
 import { PedirAhora } from "./_components/pedir-ahora";
 import { ReglasAgente } from "./_components/reglas-agente";
+import { RevisionLinea } from "./[id]/revision-linea";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Conteos · Comanda" };
@@ -129,7 +130,9 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
   ]);
 
   // ── KPIs ──
-  const lineasRevisar = conteos.flatMap((c) => c.lineas.filter((l) => l.revision === "revisar").map((l) => ({ l, dia: diaDe(c.submittedAt) })));
+  const lineasRevisar = conteos.flatMap((c) =>
+    c.lineas.filter((l) => l.revision === "revisar").map((l) => ({ l, dia: diaDe(c.submittedAt), conteoId: c.id, quien: c.countedBy ? nombreCorto(c.countedBy).split(" ")[0] : null })),
+  );
   const delPeriodo = tareas.filter((t) => t.fecha >= desdeDia && t.fecha <= hoy);
   const hechas = delPeriodo.filter((t) => t.estado === "hecha").length;
   const cerradas = delPeriodo.filter((t) => t.estado === "hecha" || t.estado === "no_encontrado" || t.estado === "vencida").length;
@@ -196,6 +199,24 @@ export default async function ConteosPage({ searchParams }: { searchParams: Prom
             <Kpi titulo="Stock negativo" valor={String(negativos)} color={negativos ? "var(--late)" : undefined} sub={negativos === 1 ? "insumo" : "insumos"} />
             <Kpi titulo={`Faltante · ${DIAS} días`} valor={faltante < 0 ? `−${posMoney(-faltante)}` : posMoney(0)} color={faltante < 0 ? "var(--late)" : undefined} sub="lo contado vs. lo esperado" />
           </div>
+
+          {lineasRevisar.length > 0 && (estado === "todos" || estado === "revisar") && (
+            <section aria-labelledby="pr-t" className="flex flex-col gap-3">
+              <div>
+                <h2 id="pr-t" style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+                  Por revisar · {lineasRevisar.length}
+                </h2>
+                <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--muted)" }}>
+                  El conteo del equipo se salió de lo normal. Pide que lo vuelvan a contar en el próximo turno, o ve a contarlo tú y escribe lo que encontraste.
+                </p>
+              </div>
+              <div className="grid gap-3 min-[1100px]:grid-cols-2">
+                {lineasRevisar.map((x) => (
+                  <RevisionLinea key={x.l.id} conteoId={x.conteoId} linea={x.l} quien={x.quien} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <nav aria-label="Estado del conteo" className="ui-scroll-x inline-flex self-start max-w-full bg-surface-2 rounded-btn p-1 gap-1">
             {ESTADOS.map((e) => {

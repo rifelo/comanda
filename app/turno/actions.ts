@@ -4,6 +4,8 @@ import { faltaJustificar } from "@/lib/caja/arqueo";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireTurnoContext, type TurnoContext } from "@/lib/turno/server";
+import { tareasPendientes } from "@/lib/inventario/agente/db";
+import { todayInTz } from "@/lib/utils";
 
 /**
  * Shared-tablet actions. They run on the service-role client after
@@ -221,6 +223,9 @@ export async function abrirTurnoAs(input: unknown): Promise<Simple> {
     if (!inst) return { ok: false, error: "Turno no encontrado." };
     if (inst.status === "closed") return { ok: false, error: "El turno ya está cerrado." };
     if (!inst.opened_by) {
+      // The inventory count comes before opening (owner, 2026-11-18).
+      const faltan = (await tareasPendientes(ctx.admin, ctx.organizationId, todayInTz(ctx.sede.tz))).length;
+      if (faltan > 0) return { ok: false, error: `Primero cuenta el inventario: ${faltan === 1 ? "falta 1 insumo" : `faltan ${faltan} insumos`}.` };
       const { error } = await ctx.admin
         .from("shift_instances")
         .update({ opened_by: ctx.actor.profileId, opened_at: new Date().toISOString() })

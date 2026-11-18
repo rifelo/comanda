@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { todayInTz } from "@/lib/utils";
 import { resultadosDelDia, tareasPendientes, type ResultadoTablet } from "@/lib/inventario/agente/db";
 import { requireEquipo } from "../../../_components/gate";
 import { VERIF_CSS } from "../estilos";
 import { legible } from "../formato";
+import { volverSeguro } from "../plan";
+import { waNumero } from "@/lib/inventario/agente/aviso";
+import { AvisarAdmin } from "./avisar-admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Verificación lista · Comanda" };
@@ -20,14 +24,23 @@ const PILL: Record<ResultadoTablet["estado"], { label: string; icon: string }> =
  * and whether each difference was adjusted on its own or waits for a second
  * check.
  */
-export default async function VerificarListoPage() {
-  const ctx = await requireEquipo("/turno/inventario/verificar/listo");
+export default async function VerificarListoPage({ searchParams }: { searchParams: Promise<{ volver?: string }> }) {
+  const volver = volverSeguro((await searchParams).volver);
+  const q = volver ? `?volver=${encodeURIComponent(volver)}` : "";
+  const ctx = await requireEquipo(`/turno/inventario/verificar/listo${q}`);
   const { admin, organizationId, sede } = ctx;
   const today = todayInTz(sede.tz);
-  const [resultados, pendientes] = await Promise.all([resultadosDelDia(admin, organizationId, today, { hechaPor: ctx.actor.profileId }), tareasPendientes(admin, organizationId, today)]);
+  const [resultados, pendientes, { data: org }] = await Promise.all([
+    resultadosDelDia(admin, organizationId, today, { hechaPor: ctx.actor.profileId }),
+    tareasPendientes(admin, organizationId, today),
+    admin.from("organizations").select("aprobaciones_whatsapp").eq("id", organizationId).maybeSingle(),
+  ]);
   const nombre = ctx.actor.fullName.trim().split(/\s+/)[0] || "";
   const n = resultados.length;
-  const revisar = resultados.some((r) => r.estado === "revisar");
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? "co-manda.com"}`;
+  const porRevisar = resultados.filter((r) => r.estado === "revisar" && r.counted !== null);
+  const revisar = porRevisar.length > 0;
   return (
     <div className="verif">
       <style>{VERIF_CSS}</style>
@@ -57,6 +70,15 @@ export default async function VerificarListoPage() {
               <p>{n === 1 ? "El insumo quedó verificado." : `Los ${n} insumos quedaron verificados.`} Con esto el inventario es más confiable.</p>
             </div>
           </div>
+        )}
+
+        {revisar && (
+          <AvisarAdmin
+            origin={origin}
+            wa={waNumero(org?.aprobaciones_whatsapp as string | null)}
+            quien={ctx.actor.fullName}
+            items={porRevisar.map((r) => ({ name: r.name, contado: legible(r.counted!, r), sistema: r.expected === null ? null : legible(r.expected, r) }))}
+          />
         )}
 
         <section className="verif-res" aria-labelledby="verif-res-t">
@@ -96,11 +118,15 @@ export default async function VerificarListoPage() {
 
         <div className="verif-fin">
           {pendientes.length > 0 && (
-            <Link href="/turno/inventario/verificar" className="verif-ghost verif-link">
+            <Link href={`/turno/inventario/verificar${q}`} className="verif-ghost verif-link">
               {pendientes.length === 1 ? "Falta 1 insumo · seguir verificando" : `Faltan ${pendientes.length} insumos · seguir verificando`}
             </Link>
           )}
-          <Link href="/turno/inventario" className="verif-solid verif-fija">Volver a inventario</Link>
+          {volver ? (
+            <Link href={volver} className="verif-solid verif-fija verif-link">{pendientes.length ? "Volver a abrir el turno" : "Seguir abriendo el turno"}</Link>
+          ) : (
+            <Link href="/turno/inventario" className="verif-solid verif-fija">Volver a inventario</Link>
+          )}
         </div>
       </main>
     </div>

@@ -796,7 +796,7 @@ export async function resultadosDelDia(db: Db, orgId: string, fecha: string, opt
 
 // ── owner review ────────────────────────────────────────────────────────
 
-export type Decision = "aceptar" | "rechazar" | "otro_conteo";
+export type Decision = "aceptar" | "rechazar" | "otro_conteo" | "yo";
 
 /**
  * The owner's decision on a line waiting for review: accept (its difference
@@ -806,8 +806,9 @@ export type Decision = "aceptar" | "rechazar" | "otro_conteo";
 export async function revisarLinea(
   db: Db,
   orgId: string,
-  input: { lineaId: string; decision: Decision; reviewerId: string; hoy: string; nota?: string | null },
+  input: { lineaId: string; decision: Decision; reviewerId: string; hoy: string; nota?: string | null; contado?: number | null; reviewerName?: string | null },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (input.decision === "yo") return contarYo(db, orgId, { ...input, contado: input.contado ?? null });
   const { data: l } = await db
     .from("inventario_conteo_items")
     .select("id, conteo_id, ingrediente_id, expected, counted, unit_cost_cop, revision, conteo:inventario_conteos!inner(organization_id, restaurant_id, submitted_at)")
@@ -853,6 +854,59 @@ export async function revisarLinea(
       detalle: "El conteo anterior no cuadró",
       creadaPor: input.reviewerId,
     });
+  }
+  await recalcularEstado(db, l.conteo_id as string, input.reviewerId);
+  return { ok: true };
+}
+
+/**
+ * «Lo conté yo»: the admin went and counted the item. The line takes the
+ * admin's number (the team's count stays in its note) and the stock is set
+ * to it — the adjustment is against the stock *now*, since sales may have
+ * moved it after the team counted.
+ */
+async function contarYo(
+  db: Db,
+  orgId: string,
+  input: { lineaId: string; reviewerId: string; contado: number | null; reviewerName?: string | null; nota?: string | null },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (input.contado === null || !Number.isFinite(input.contado) || input.contado < 0) return { ok: false, error: "Escribe cuánto contaste." };
+  const contado = Math.round(input.contado * 1000) / 1000;
+  const { data: l } = await db
+    .from("inventario_conteo_items")
+    .select("id, conteo_id, ingrediente_id, counted, revision, conteo:inventario_conteos!inner(organization_id, submitted_at)")
+    .eq("id", input.lineaId)
+    .maybeSingle();
+  const c = l?.conteo as unknown as { organization_id: string; submitted_at: string } | undefined;
+  if (!l || !c || c.organization_id !== orgId) return { ok: false, error: "Esa línea ya no existe." };
+  if (l.revision !== "revisar") return { ok: false, error: "Esa línea ya fue revisada." };
+  const { data: ing } = await db.from("ingredientes").select("stock_current, cost_cop").eq("organization_id", orgId).eq("id", l.ingrediente_id).maybeSingle();
+  if (!ing) return { ok: false, error: "Ese insumo ya no existe." };
+  const quien = input.reviewerName?.trim().split(/\s+/)[0] || "el administrador";
+  const nota = [`Lo contó ${quien}: el equipo había contado ${Number(l.counted)}`, input.nota].filter(Boolean).join(" · ");
+  const { data: flipped } = await db
+    .from("inventario_conteo_items")
+    .update({ revision: "aplicado", counted: contado, note: nota })
+    .eq("id", l.id)
+    .eq("revision", "revisar")
+    .select("id");
+  if (!flipped?.length) return { ok: false, error: "Esa línea ya fue revisada." };
+  const diff = Math.round((contado - Number(ing.stock_current)) * 1000) / 1000;
+  if (diff !== 0) {
+    const { error } = await db.from("ingrediente_movements").insert({
+      organization_id: orgId,
+      ingrediente_id: l.ingrediente_id,
+      type: "ajuste",
+      delta: diff,
+      unit_cost_cop: Number(ing.cost_cop ?? 0),
+      note: `Verificación de inventario ${diaLocal(c.submitted_at)} · contada por ${quien}${input.nota ? ` · ${input.nota}` : ""}`,
+      created_by: input.reviewerId,
+    });
+    if (error) {
+      console.error("[agente] contarYo ajuste", error);
+      await db.from("inventario_conteo_items").update({ revision: "revisar", counted: l.counted, note: null }).eq("id", l.id);
+      return { ok: false, error: "No se pudo aplicar el ajuste." };
+    }
   }
   await recalcularEstado(db, l.conteo_id as string, input.reviewerId);
   return { ok: true };

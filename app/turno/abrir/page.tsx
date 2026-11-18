@@ -7,6 +7,7 @@ import { assignedFor } from "@/lib/turno/state";
 import { nowInTz, todayInTz } from "@/lib/utils";
 import { ahoraMs, param, requireEquipo, withQuery, type SearchParams } from "../_components/gate";
 import { FlowFrame } from "../_components/flow";
+import { conteoApertura } from "../inventario/verificar/plan";
 import { AbrirStep } from "./abrir-step";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +15,10 @@ export const metadata = { title: "Abrir el turno · Comanda" };
 
 /**
  * «Abrir el turno» (reference boards 5 + 6): 1 · validate the base the last
- * close left (the caja screen, embedded) → the opening tasks in blocks cut
- * from their due times → «Abrir al público». `?paso=` picks a step; without
+ * close left (the caja screen, embedded) → 2 · count today's inventory
+ * verification (required: «Abrir al público» stays locked until nothing is
+ * left) → the opening tasks in blocks cut from their due times → «Abrir al
+ * público». `?paso=` picks a step; without
  * it the first unfinished one opens.
  */
 export default async function AbrirPage({ searchParams }: { searchParams: SearchParams }) {
@@ -23,9 +26,10 @@ export default async function AbrirPage({ searchParams }: { searchParams: Search
   const ctx = await requireEquipo(withQuery("/turno/abrir", sp, ["turno", "paso"]));
   const today = todayInTz(ctx.sede.tz);
   await ensureTodayInstances(ctx, today);
-  const [data, estadoSede] = await Promise.all([
+  const [data, estadoSede, conteo] = await Promise.all([
     getTurnoBoard(ctx),
     loadCajaEstado(ctx.admin, { orgId: ctx.organizationId, restaurantId: ctx.restaurantId, tz: ctx.sede.tz, today }),
+    conteoApertura(ctx, today),
   ]);
   const now = nowInTz(ctx.sede.tz);
   const shift = turnoActual(data.turnos, now, {
@@ -50,6 +54,8 @@ export default async function AbrirPage({ searchParams }: { searchParams: Search
     apertura,
     abierto,
     actual: param(sp, "paso"),
+    // Once the doors are open the count is no longer an opening step.
+    conteo: abierto && conteo.pendientes === 0 && conteo.hechas === 0 ? null : conteo,
   });
   const actual = pasos.find((p) => p.state === "now")?.key ?? "abrir";
   const href = (key: string) => `/turno/abrir${q}&paso=${key}`;
@@ -80,6 +86,8 @@ export default async function AbrirPage({ searchParams }: { searchParams: Search
         abrirTask={abrirTask}
         pendientesApertura={bl.reduce((n, b) => n + b.tasks.filter((t) => !done(t.id)).length, 0)}
         estado={actual === "base" ? estado : null}
+        conteo={conteo}
+        conteoHref={`/turno/inventario/verificar?volver=${encodeURIComponent(href("conteo"))}`}
         actor={{ name: ctx.actor.fullName, isAdmin: ctx.actor.role === "admin" && !ctx.actor.viaDevice }}
         next={next ? { href: href(next.key), label: `Siguiente: ${next.title.toLowerCase()}` } : null}
         hoyHref={`/turno${q}`}

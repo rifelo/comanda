@@ -273,10 +273,16 @@ export function pasosAbrir(args: {
   apertura: string;
   abierto: boolean;
   actual?: string | null;
+  /** Today's inventory verification: what is left to count before opening (omitted = no step). */
+  conteo?: { pendientes: number; hechas: number } | null;
 }): Paso[] {
+  const c = args.conteo;
   return marcar(
     [
       { key: "base", title: "Validar la base", sub: args.baseLista ? "Lista" : "Contar lo que dejaron", done: args.baseLista },
+      ...(c
+        ? [{ key: "conteo", title: "Contar inventario", sub: c.pendientes ? `Faltan ${c.pendientes}` : c.hechas ? "Listo" : "Nada que contar hoy", done: c.pendientes === 0 }]
+        : []),
       ...args.bloques.map((b) => ({ key: b.key, title: b.titulo, sub: `${b.hechas} de ${b.total}`, done: b.total > 0 && b.hechas >= b.total })),
       { key: "abrir", title: "Abrir al público", sub: args.apertura, done: args.abierto },
     ],
