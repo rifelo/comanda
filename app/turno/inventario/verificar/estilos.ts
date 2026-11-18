@@ -45,6 +45,9 @@ export const VERIF_CSS = `
 .verif-solid:disabled, .verif-ghost:disabled { opacity: .45; cursor: default; }
 .verif-link { display: flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box; }
 .verif-fija { flex: none; }
+.verif-aviso { display: flex; flex-direction: column; gap: 10px; padding: 18px; border: 2px solid var(--late); border-radius: 16px; background: var(--surface); }
+.verif-aviso h2 { margin: 0; font-size: 19px; font-weight: 700; }
+.verif-aviso p { margin: 0; font-size: 15px; line-height: 21px; color: var(--muted); }
 .verif-fin { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
 .verif-error { border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; color: var(--late); background: var(--late-soft); }
 .verif-ok { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-radius: 16px; background: var(--ok-soft); }

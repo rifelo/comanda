@@ -37,7 +37,7 @@ const capital = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
  * what the person types. Items with a piece are counted as whole pieces plus
  * loose units; the total goes to the server in stock units.
  */
-export function VerificarScreen({ tareas: inicial }: { tareas: TareaVerificar[] }) {
+export function VerificarScreen({ tareas: inicial, volver = null }: { tareas: TareaVerificar[]; /** Opening flow step to go back to (`/turno/abrir…`). */ volver?: string | null }) {
   const router = useRouter();
   // A snapshot: the server re-renders the page after each answer with fewer
   // tasks, and the walk must keep its own order and count.
@@ -51,8 +51,8 @@ export function VerificarScreen({ tareas: inicial }: { tareas: TareaVerificar[] 
 
   // Navigate on a state change, never inside a transition (Next 16 pending lock).
   React.useEffect(() => {
-    if (fin) router.push(LISTO_HREF);
-  }, [fin, router]);
+    if (fin) router.push(volver ? `${LISTO_HREF}?volver=${encodeURIComponent(volver)}` : LISTO_HREF);
+  }, [fin, router, volver]);
 
   const t = tareas[idx];
   if (!t) return null;
@@ -106,7 +106,7 @@ export function VerificarScreen({ tareas: inicial }: { tareas: TareaVerificar[] 
       <style>{VERIF_CSS}</style>
       <header className="verif-head">
         <div className="verif-headrow">
-          <Link href="/turno/inventario" className="verif-back" aria-label="Volver a inventario">
+          <Link href={volver ?? "/turno/inventario"} className="verif-back" aria-label={volver ? "Volver a abrir el turno" : "Volver a inventario"}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
           </Link>
           <div style={{ flex: 1, minWidth: 0 }}>
