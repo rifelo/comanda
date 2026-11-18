@@ -121,6 +121,7 @@ const PedidoInput = z.object({
     producto_id: z.string(),
     cantidad: z.number().int(),
     opciones: z.array(z.object({ grupo_id: z.string(), opcion: z.string() })),
+    para: z.string().nullable().optional(),
   })),
 });
 const HumanoInput = z.object({ motivo: z.string() });
@@ -168,8 +169,9 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
                   additionalProperties: false,
                 },
               },
+              para: { type: ["string", "null"], description: "Nombre de la persona para quien es este producto (va en la etiqueta de su vaso) cuando el pedido es para varias personas; null si es para quien pide. Si son varias personas, una línea por persona." },
             },
-            required: ["producto_id", "cantidad", "opciones"],
+            required: ["producto_id", "cantidad", "opciones", "para"],
             additionalProperties: false,
           },
         },
@@ -325,7 +327,7 @@ Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, 
      Si dice que el teléfono es este mismo WhatsApp, usa ese número. Tipo «domicilio» en crear_pedido, con dirección y teléfono.
    Necesitas siempre el nombre (si la ficha ya lo tiene, usa ese y no lo preguntes).
 3. Manda el resumen en UN solo mensaje, sin líneas en blanco por dentro y sin anunciarlo antes («te confirmo el pedido:»): productos con sus opciones (y el nombre que va en cada vaso), el total (sin domicilio) y, si es domicilio, quién recibe, dirección y teléfono; termina preguntando si lo enviamos así.
-4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, contesta en UN solo mensaje: para recoger o entrega cercana, el número de pedido y que ya le confirmamos que esté en preparación (p. ej. «Listo, tu pedido es el A-1950, ya te confirmamos que esté en preparación»); para domicilio, el número de pedido y que en un momento le confirmamos el valor del domicilio y le pasamos los datos de pago (todavía no se los des: el domicilio cambia según la dirección y lo cotiza el equipo). Todavía no prometas tiempos: esos van en la confirmación. Si devuelve un problema, resuélvelo con el cliente.
+4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si el pedido es para varias personas (p. ej. «Marielita. Paola. Yeny»), manda una línea por persona con su nombre en «para» (3 tintos para 3 personas = 3 líneas de 1 tinto): ese nombre se imprime en la etiqueta de su vaso. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, contesta en UN solo mensaje: para recoger o entrega cercana, el número de pedido y que ya le confirmamos que esté en preparación (p. ej. «Listo, tu pedido es el A-1950, ya te confirmamos que esté en preparación»); para domicilio, el número de pedido y que en un momento le confirmamos el valor del domicilio y le pasamos los datos de pago (todavía no se los des: el domicilio cambia según la dirección y lo cotiza el equipo). Todavía no prometas tiempos: esos van en la confirmación. Si devuelve un problema, resuélvelo con el cliente.
 5. Así va un pedido (lo ves en sus últimos pedidos): «esperando que lo aceptemos» → para domicilio «confirmando su pago» → «en preparación» → «en camino con el domiciliario». Si pregunta, contéstale según ese estado, con calidez: esperando → ya lo estamos revisando; confirmando su pago → apenas nos llegue lo empezamos a preparar; en preparación → ya lo estamos haciendo; en camino → ya va para allá. Si aparece «rechazado», ya se le explicó por qué: ayúdale con otra opción.
 6. Domicilio: se paga por transferencia antes de prepararlo. El valor del domicilio cambia según la dirección: nunca lo inventes; lo cotiza el equipo al aceptar y se lo mandamos con los datos de pago. Puede sumarlo a la transferencia o pagárselo al domiciliario al recibir; si pregunta cuánto paga y en sus últimos pedidos ya aparece el domicilio, dale las dos cuentas. No repitas el número, el total ni los datos de pago si ya están en la conversación. Cuando mande el comprobante, contesta con un solo mensaje corto (p. ej. «Recibido 🙌 apenas lo confirmemos lo preparamos»). Recoger: paga en el café, no hace falta transferir.
 
@@ -585,6 +587,7 @@ export async function ejecutar(
         productoId: l.producto_id,
         cantidad: l.cantidad,
         opciones: l.opciones.map((o) => ({ grupoId: o.grupo_id, opcion: o.opcion })),
+        para: l.para ?? null,
       })),
     });
     return r.ok

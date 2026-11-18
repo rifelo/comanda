@@ -14,7 +14,13 @@ export interface PedidoAgente {
   /** Phone of whoever receives a delivery (digits); null for pick-up. */
   telefono: string | null;
   nota: string | null;
-  lineas: { productoId: string; cantidad: number; opciones: { grupoId: string; opcion: string }[] }[];
+  lineas: {
+    productoId: string;
+    cantidad: number;
+    opciones: { grupoId: string; opcion: string }[];
+    /** Whose cup it is (the name on its label) when the order is for several people; null = the customer. */
+    para?: string | null;
+  }[];
 }
 
 export type PedidoValidado =
@@ -63,11 +69,22 @@ export function validarPedido(catalog: PosCatalog, p: PedidoAgente): PedidoValid
       const g = catalog.modGroups[gid];
       if (g?.required && !mods[gid]) return { ok: false, error: `Falta elegir ${g.name} para ${prod.name}.` };
     }
-    lines.push({ kind: "item", id: prod.id, qty: l.cantidad, mods });
+    const para = (l.para ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+    lines.push({ kind: "item", id: prod.id, qty: l.cantidad, mods, ...(para ? { customer: para } : {}) });
   }
   const priced = priceLines(catalog, lines);
   if (!priced.ok) return priced;
   return { ok: true, lines, items: priced.items, subtotal: priced.subtotal };
+}
+
+/** The people of a multi-person order, in order of appearance (the POS's «people» chips → one label name per cup). */
+export function personasDelPedido(lines: ReadonlyArray<OrderLineInput>): string[] {
+  const out: string[] = [];
+  for (const l of lines) {
+    const n = l.customer?.trim();
+    if (n && !out.some((x) => x.toLocaleLowerCase() === n.toLocaleLowerCase())) out.push(n);
+  }
+  return out;
 }
 
 /** The ticket note the register shows: who, how to reach them, where it goes. */
@@ -115,7 +132,7 @@ export async function guardarPedidoWhatsapp(
       sin_gluten: false,
       notes: notaPedido(p, ctx.telefono),
       customer_name: p.nombre.trim().slice(0, 80),
-      customer_names: [],
+      customer_names: personasDelPedido(v.lines),
       canal: "whatsapp",
       wa_estado: "por_aceptar",
       customer_phone: ctx.telefono,

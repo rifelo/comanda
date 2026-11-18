@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PosCatalog, PosMenuItem } from "@/lib/pos/types";
-import { notaPedido, validarPedido, type PedidoAgente } from "./pedido";
+import { notaPedido, personasDelPedido, validarPedido, type PedidoAgente } from "./pedido";
 
 const latte: PosMenuItem = {
   id: "p-latte", name: "Latte frío", catId: "c", sub: "", sku: "BF-005", price: 8500,
@@ -43,6 +43,23 @@ describe("validarPedido", () => {
     expect(err(pedido({ tipo: "domicilio", direccion: "Cra 20 #10-30", telefono: null }))).toMatch(/teléfono de quien recibe/);
     expect(err(pedido({ nombre: " " }))).toMatch(/nombre/);
     expect(err(pedido({ lineas: [] }))).toMatch(/no tiene productos/);
+  });
+});
+
+describe("para quién es cada vaso", () => {
+  it("puts each person's name on their line so every cup label carries it", () => {
+    const tinto = (para: string | null) => ({ productoId: "p-latte", cantidad: 1, opciones: [{ grupoId: "g-base", opcion: "En agua" }], para });
+    const v = validarPedido(catalog, pedido({ nombre: "Marielita", lineas: [tinto(" Marielita "), tinto("Paola"), tinto("Yeny"), tinto(null)] }));
+    expect(v.ok && v.lines.map((l) => l.customer)).toEqual(["Marielita", "Paola", "Yeny", undefined]);
+    expect(v.ok && personasDelPedido(v.lines)).toEqual(["Marielita", "Paola", "Yeny"]);
+  });
+
+  it("dedupes names regardless of case", () => {
+    expect(personasDelPedido([
+      { kind: "item", id: "a", qty: 1, mods: {}, customer: "Aleja" },
+      { kind: "item", id: "a", qty: 1, mods: {}, customer: "aleja" },
+      { kind: "item", id: "a", qty: 1, mods: {} },
+    ])).toEqual(["Aleja"]);
   });
 });
 
