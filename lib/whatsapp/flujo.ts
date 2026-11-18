@@ -93,3 +93,10 @@ export function pasoWa(o: {
   // en_camino: a delivery is on its last step; a nearby point is being walked over.
   return { tipo, pasos, actual: tipo === "domicilio" ? 4 : 2, columna: 4 };
 }
+
+/** Did we already send the payment details in this session? (any line of them, from the agent or the team). */
+export function pagosEnConversacion(turnos: { autor: string; texto: string }[], pagos: string | null): boolean {
+  const lineas = (pagos ?? "").split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter((l) => l.length >= 6);
+  if (!lineas.length) return false;
+  return turnos.some((t) => t.autor !== "cliente" && lineas.some((l) => t.texto.replace(/\s+/g, " ").includes(l)));
+}

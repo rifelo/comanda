@@ -10,7 +10,7 @@ import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
-import { ESTADO_WA_TEXTO } from "./flujo";
+import { ESTADO_WA_TEXTO, pagosEnConversacion } from "./flujo";
 import type { WaEstado } from "@/lib/pos/types";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
@@ -443,8 +443,10 @@ async function enviarBurbujas(a: {
   ordenId: string | null;
   version: string;
   conReaccion?: boolean;
+  /** Team notices go out as a single message. */
+  maxBurbujas?: number;
 }): Promise<void> {
-  const cola = enBurbujas(a.texto);
+  const cola = enBurbujas(a.texto, a.maxBurbujas);
   if (a.conReaccion && cola.length) await dormir(1_500);
   for (let i = 0; cola.length; i++) {
     const burbuja = cola.shift()!;
@@ -627,6 +629,7 @@ export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Pr
     detalle: (o.wa_motivo_detalle as string | null) ?? null,
     pagos: n.pagos,
     cercano: Boolean(o.se_lo_llevamos) && !!o.delivery_address,
+    pagosYaEnviados: pagosEnConversacion(turnos, n.pagos),
   });
   if (!nota) return;
   const texto = await redactarAviso({
@@ -655,6 +658,7 @@ export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Pr
     texto,
     ordenId: null,
     version: `${versionPrompt(lecciones)}·aviso`,
+    maxBurbujas: 1,
   });
 }
 
@@ -671,17 +675,22 @@ export function notaAviso(a: {
   pagos: string | null;
   /** A free nearby point the team walks the order to. */
   cercano?: boolean;
+  /** The payment details are already in this conversation (sent by us). */
+  pagosYaEnviados?: boolean;
 }): string | null {
-  const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en 1 o 2 mensajes cortos, sin repetir el resumen del pedido.";
+  const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en UN solo mensaje corto, sin repetir el resumen del pedido, el total ni los datos de pago que ya le dimos.";
   if (a.extra === "recordar_pago") {
     return `El pedido ${a.folio} (${a.items}) a domicilio sigue esperando su transferencia. Recuérdale con amabilidad, sin presionar, que apenas nos llegue el pago lo empezamos a preparar${a.pagos ? `, y compártele los datos tal cual:\n${a.pagos}` : ""}. ${tono}`;
   }
   switch (a.estado) {
     case "esperando_pago":
-      return `Aceptamos el pedido ${a.folio} (${a.items}, a domicilio). Dile algo como «Super, recibimos tu pedido, es el ${a.folio}, estamos confirmando tu pago para empezar a prepararlo».${a.pagos ? ` Si en esta conversación aún no le compartimos los datos de transferencia, compártelos tal cual:\n${a.pagos}` : ""} ${tono}`;
+      // Usually the agent already gave the folio and the payment details when it
+      // created the order: then there is nothing new to say until the payment is approved.
+      if (a.pagosYaEnviados) return null;
+      return `Aceptamos el pedido ${a.folio} (${a.items}, a domicilio). Dile algo como «Super, recibimos tu pedido, es el ${a.folio}, estamos confirmando tu pago para empezar a prepararlo».${a.pagos ? ` Compártele en ese mismo mensaje los datos de transferencia tal cual:\n${a.pagos}` : ""} ${tono}`;
     case "en_preparacion":
     case "aceptado":
-      if (a.cercano) return `El pedido ${a.folio} (${a.items}) ya está en preparación y en unos minutos se lo llevamos a ${a.direccion ?? "su punto"}, sin costo; paga al recibirlo. Este mensaje es la confirmación, no digas «te confirmamos». ${tono}`;
+      if (a.cercano) return `El pedido ${a.folio} (${a.items}) ya está en preparación y en unos minutos se lo llevamos a su punto (${a.direccion ?? "el que dijo"}; nómbralo como lo dijo el cliente), sin costo. Que paga al recibirlo dilo solo si aún no se lo dijimos. Este mensaje es la confirmación, no digas «te confirmamos». ${tono}`;
       return a.recoge
         ? `El pedido ${a.folio} (${a.items}) para recoger ya está en preparación: este mensaje es la confirmación, no digas «te confirmamos». Lo tiene listo en unos 10 minutos y paga al recogerlo aquí. ${tono}`
         : `Ya confirmamos el pago del pedido ${a.folio} (${a.items}) y ya está en preparación. Dile algo como «Ya confirmamos tu pago 🙌 tu pedido ya está en preparación, te avisamos apenas salga con nuestro domiciliario». ${tono}`;
@@ -691,7 +700,7 @@ export function notaAviso(a: {
         ? `El pedido ${a.folio} (${a.items}) para recoger ya está listo. Cuéntale con alegría que ya puede pasar por él, que lo esperamos, y que paga al recogerlo (p. ej. «Tu pedido ya está listo 🙌 te esperamos»). ${tono}`
         : null;
     case "en_camino":
-      if (a.cercano) return `El pedido ${a.folio} ya va en camino a ${a.direccion ?? "su punto"}: uno de nosotros se lo lleva ahora mismo, sin costo, y paga al recibirlo. Cuéntaselo con alegría y cercanía. ${tono}`;
+      if (a.cercano) return `El pedido ${a.folio} ya va en camino a su punto (${a.direccion ?? "el que dijo"}; nómbralo como lo dijo el cliente): uno de nosotros se lo lleva ahora mismo. Cuéntaselo con alegría y cercanía, sin volver a decir que es sin costo ni que paga al recibir. ${tono}`;
       return `El pedido ${a.folio} ya salió con nuestro domiciliario hacia ${a.direccion ?? "su dirección"}. Cuéntale que ya va en camino, con alegría y cercanía (p. ej. «Tu pedido ya va en camino 🛵 nuestro domiciliario va para allá, que lo disfrutes mucho»). ${tono}`;
     case "rechazado":
       return `No podemos preparar el pedido ${a.folio} (${a.items}). Motivo que dejó el barista: ${a.motivo ?? "otro"}${a.detalle ? ` — ${a.detalle}` : ""}. Escríbele, como parte del equipo: discúlpate con calidez, explícale el motivo con tus palabras y sin tecnicismos, dile que vamos a mejorar el servicio, y recomiéndale una alternativa del menú que sí esté disponible y se parezca a lo que pidió (si el motivo es mucha demanda, ofrece prepararlo un poco más tarde). Pregúntale si quiere que se la preparemos. Dos o tres mensajes cortos.`;

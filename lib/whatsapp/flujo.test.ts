@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listoParaPreparar, pasoWa, siguienteEstado, tipoWa } from "./flujo";
+import { listoParaPreparar, pasoWa, siguienteEstado, tipoWa, pagosEnConversacion } from "./flujo";
 
 describe("siguienteEstado", () => {
   it("delivery waits for the payment, pick-up goes straight to preparation", () => {
@@ -57,5 +57,17 @@ describe("pasoWa", () => {
   it("leaves out turned-down and non-WhatsApp orders", () => {
     expect(pasoWa({ ...dom, waEstado: "rechazado" })).toBeNull();
     expect(pasoWa({ ...dom, waEstado: null })).toBeNull();
+  });
+});
+
+describe("pagosEnConversacion", () => {
+  const pagos = "Nequi: 3106059758\nBold: @bold3106059758";
+  it("sees the payment details we already sent", () => {
+    expect(pagosEnConversacion([{ autor: "agente", texto: "Para el domicilio:\nNequi:  3106059758\nBold: @bold3106059758" }], pagos)).toBe(true);
+  });
+  it("ignores the customer quoting them and empty config", () => {
+    expect(pagosEnConversacion([{ autor: "cliente", texto: "Nequi: 3106059758" }], pagos)).toBe(false);
+    expect(pagosEnConversacion([{ autor: "agente", texto: "Hola" }], pagos)).toBe(false);
+    expect(pagosEnConversacion([{ autor: "agente", texto: "Nequi: 3106059758" }], null)).toBe(false);
   });
 });
