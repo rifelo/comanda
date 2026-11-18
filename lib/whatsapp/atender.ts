@@ -111,7 +111,7 @@ const textoCliente = (e: Entrante) => {
     const que = e.tipo === "image" ? "una imagen" : "un archivo";
     return `[El cliente envió ${que}${e.texto ? ` con el texto «${e.texto}»` : ""}. El equipo la ve en el POS; tú no la puedes ver. Si parece un comprobante de pago, dile que ya lo recibimos y que lo estamos verificando; si no, pregúntale con naturalidad qué necesita.]`;
   }
-  return e.texto ?? `[El cliente envió ${e.tipo === "audio" ? "un audio" : e.tipo === "location" ? "una ubicación" : "un mensaje"} que no puedes ver; pídele que lo escriba.]`;
+  return e.texto ?? `[El cliente envió ${e.tipo === "audio" ? "un audio" : e.tipo === "location" ? "una ubicación" : "un mensaje"} que no puedes ver: contesta «Ok entendido, ya lo revisamos» y usa pasar_a_humano para que alguien del equipo lo revise.]`;
 };
 
 /**

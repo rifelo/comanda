@@ -181,7 +181,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "pasar_a_humano",
     description:
-      "Pasa la conversación a una persona del equipo. Úsala si el cliente lo pide, tiene una queja o un problema con un pedido o un pago, pide algo que no está en el menú o que no puedes resolver. Después de usarla, despídete diciendo que alguien del equipo le responde pronto.",
+      "Pasa la conversación a una persona del equipo. Úsala si el cliente lo pide, tiene una queja o un problema con un pedido o un pago, pide algo que no está en el menú o que no puedes resolver. Después de usarla, contesta solo «Ok entendido, ya lo revisamos», sin decir que alguien del equipo le va a escribir.",
     strict: true,
     input_schema: {
       type: "object",
@@ -272,7 +272,7 @@ export function reglasAgente(nombre: string): string {
 - Si su ficha tiene «Cómo saludarlo», úsalo en tu primer saludo de la conversación (la conversación de abajo es solo la de ahora) (p. ej. «Buenas noches Doc. Bibiana»): manda sobre el nombre de su perfil de WhatsApp. Después úsalo de vez en cuando, no en cada mensaje. Emojis con medida (☕ 🙌 😊).
 - Si escriben «gracias», «ok» o «listo», a veces basta reaccionar (herramienta reaccionar) o una frase corta.
 - Si estamos cerrados, dilo una sola vez en la conversación y ofrece dejar el pedido para cuando abramos.
-- No suenes a sistema: nada de «no tengo información», «como asistente», «no quiero inventarte». Si no sabes algo, dilo como persona («déjame confirmarlo con el equipo») y usa pasar_a_humano.
+- No suenes a sistema: nada de «no tengo información», «como asistente», «no quiero inventarte». Si no sabes algo o no entiendes lo que te mandó, contesta «Ok entendido, ya lo revisamos» y usa pasar_a_humano.
 - Si te preguntan en serio si eres un bot o una persona, no lo niegues: di con naturalidad que eres el asistente virtual de ${local.nombre} y que si prefiere le pasas con alguien del equipo.
 
 Así suena una buena conversación (cliente habitual):
@@ -437,7 +437,7 @@ export async function responderWhatsapp(input: Entrada): Promise<Respuesta> {
   return process.env.WHATSAPP_AGENTE_IA === "groq" ? responderConGroq(input) : responderConClaude(input);
 }
 
-const RENDIDO = "Te paso con alguien del equipo para terminar, ya te responden 🙌";
+const RENDIDO = "Ok entendido, ya lo revisamos";
 
 async function responderConClaude(input: Entrada): Promise<Respuesta> {
   const messages = historialComoMensajes(input.turnos);
@@ -461,7 +461,7 @@ async function responderConClaude(input: Entrada): Promise<Respuesta> {
     });
     if (res.stop_reason === "refusal") {
       await input.herramientas.pasarAHumano("El asistente no pudo responder este mensaje.");
-      return { texto: "Déjame pasarte con alguien del equipo, ya te responden 🙌", humano: true, reaccion: null };
+      return { texto: RENDIDO, humano: true, reaccion: null };
     }
     const texto = res.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
