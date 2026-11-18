@@ -18,6 +18,7 @@ export type IconName =
   | "tareas"
   | "caja"
   | "inventario"
+  | "pedidos"
   | "pos"
   | "productos"
   | "equipo"
@@ -64,6 +65,7 @@ export const EQUIPO_TABS: NavItem[] = [
     icon: "inventario",
     match: ["/turno/inventario", "/turno/conteo"],
   },
+  { id: "pedidos", href: "/turno/pedidos", label: "Pedidos", icon: "pedidos", match: ["/turno/pedidos"] },
   { id: "pos", href: "/pos", label: "POS", icon: "pos", match: ["/pos"] },
 ];
 

@@ -155,6 +155,12 @@ describe("pasos", () => {
     expect(siguientePaso(p, "abrir")).toBeNull();
     expect(pasosAbrir({ baseLista: false, bloques: [], apertura: "7:00", abierto: false, actual: "abrir" }).map((s) => s.state)).toEqual(["todo", "now"]);
   });
+  it("Abrir: the inventory count goes right after the base", () => {
+    const p = pasosAbrir({ baseLista: true, bloques: [], apertura: "7:00", abierto: false, conteo: { pendientes: 3, hechas: 1 } });
+    expect(p.map((s) => s.key)).toEqual(["base", "conteo", "abrir"]);
+    expect(p[1]).toMatchObject({ state: "now", sub: "Faltan 3" });
+    expect(pasosAbrir({ baseLista: true, bloques: [], apertura: "7:00", abierto: false, conteo: { pendientes: 0, hechas: 0 } })[1]).toMatchObject({ state: "done", sub: "Nada que contar hoy" });
+  });
   it("Cerrar: skips the count when it doesn't apply", () => {
     const p = pasosCerrar({ tareas: { hechas: 30, total: 30 }, conteo: { debe: false, hecho: false, nombre: "Conteo diario" }, arqueo: true, base: { lista: false, monto: "$ 179.400" }, entregado: false });
     expect(p.map((s) => s.state)).toEqual(["done", "done", "done", "now", "todo"]);

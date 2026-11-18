@@ -414,7 +414,7 @@ export function AcabandoScreen({ data, today, actorName, isAdmin, verificar, por
 
   const tools = (
     <>
-      <Link href="/turno/inventario/recibir" className="acab-tool">
+      <Link href="/turno/pedidos" className="acab-tool">
         <span style={{ flex: 1 }}>Recibir pedido<br /><small>{porLlegar ? `${porLlegar} por llegar` : "nada por llegar"}</small></span>
       </Link>
       <Link href="/turno/inventario/merma" className="acab-tool">

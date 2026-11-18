@@ -79,6 +79,8 @@ export interface PorAtenderInput {
   pedidosAbiertos: number;
   pedidosViejos: number;
   porCobrar: number;
+  /** Inventory verification lines waiting for the admin's second check. */
+  segundaRevision?: number;
 }
 
 export interface PorAtenderItem {
@@ -103,6 +105,9 @@ export function porAtender(c: PorAtenderInput, fmt: (cop: number) => string): Po
   }
   if ((c.descuentosPorAprobar ?? 0) > 0) {
     late.push({ id: "descuentos", title: n(c.descuentosPorAprobar ?? 0, "descuento por aprobar", "descuentos por aprobar"), sub: "La caja está esperando tu respuesta", href: "/descuentos", tone: "late" });
+  }
+  if ((c.segundaRevision ?? 0) > 0) {
+    late.push({ id: "segunda-revision", title: n(c.segundaRevision ?? 0, "conteo necesita segunda revisión", "conteos necesitan segunda revisión"), sub: "Pide otro conteo o cuéntalo tú", href: "/inventario/conteos?estado=revisar", tone: "late" });
   }
   if (c.base.estado === "no_cuadro") {
     late.push({ id: "base", title: "La base no cuadró", sub: `${c.base.turno ? `Base de ${c.base.turno}` : "Último cierre"}: revisa la caja`, href: "/caja", tone: "late" });

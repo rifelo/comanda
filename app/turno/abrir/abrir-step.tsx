@@ -10,6 +10,7 @@ import type { TemplateTask } from "@/lib/types";
 import { abrirTurnoAs, completeTaskAs } from "../actions";
 import { CajaApp } from "../caja/_components/caja-app";
 import { TareaRow, useTareas } from "../_components/tareas";
+import type { ConteoApertura } from "../inventario/verificar/plan";
 
 const itemDe = (t: TemplateTask, shift: TurnoShift): ItemTarea => ({ kind: "tarea", id: t.id, task: t, estado: shift.completions[t.id] ? "hecha" : "pendiente", tarde: 0 });
 
@@ -23,6 +24,8 @@ export function AbrirStep({
   abrirTask,
   pendientesApertura,
   estado,
+  conteo,
+  conteoHref,
   actor,
   next,
   hoyHref,
@@ -36,6 +39,8 @@ export function AbrirStep({
   abrirTask: TemplateTask | null;
   pendientesApertura: number;
   estado: CajaEstado | null;
+  conteo: ConteoApertura;
+  conteoHref: string;
   actor: { name: string; isAdmin: boolean };
   next: { href: string; label: string } | null;
   hoyHref: string;
@@ -62,6 +67,46 @@ export function AbrirStep({
         />
         <div className="flex-1" />
         <div className="flex justify-end">{next ? <Button href={next.href}>{next.label}</Button> : null}</div>
+      </Card>
+    );
+  }
+
+  if (paso === "conteo") {
+    const listo = conteo.pendientes === 0;
+    return (
+      <Card className="flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 className="ui-h1 m-0 flex-1">Contar inventario</h2>
+          <span className="ui-sub text-[15px]">{listo ? (conteo.hechas ? `${conteo.hechas} contados` : "") : `Faltan ${conteo.pendientes}`}</span>
+        </div>
+        {listo ? (
+          <EmptyState
+            title={conteo.hechas ? "El inventario de hoy ya está contado" : "Hoy no hay nada que contar"}
+            text={conteo.hechas ? "Lo que no cuadró le llega al administrador para una segunda revisión." : "El control de inventario no pidió conteos para hoy."}
+          />
+        ) : (
+          <>
+            <p className="ui-sub m-0">
+              Antes de abrir, cuenta los insumos que pidió el control de inventario. Es a ciegas: escribe lo que ves, sin mirar el sistema. No se puede abrir al público hasta terminar.
+            </p>
+            <ul className="m-0 pl-5 text-[15px] leading-7">
+              {conteo.nombres.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+              {conteo.pendientes > conteo.nombres.length ? <li className="text-muted">y {conteo.pendientes - conteo.nombres.length} más</li> : null}
+            </ul>
+          </>
+        )}
+        <div className="flex-1" />
+        <div className="flex justify-end gap-2 pt-3.5">
+          {listo ? (
+            next ? <Button href={next.href}>{next.label}</Button> : null
+          ) : (
+            <Button href={conteoHref} size="lg">
+              {conteo.hechas ? "Seguir contando" : "Empezar a contar"}
+            </Button>
+          )}
+        </div>
       </Card>
     );
   }
@@ -96,6 +141,7 @@ export function AbrirStep({
   // «Abrir al público»
   const abrirHecha = abrirTask ? !!shift.completions[abrirTask.id] : true;
   const necesitaFoto = !!abrirTask && abrirTask.requires_photo && !abrirHecha;
+  const faltaConteo = conteo.pendientes > 0;
   async function abrir() {
     if (busy) return;
     setBusy(true);
@@ -116,6 +162,11 @@ export function AbrirStep({
   return (
     <Card className="flex-1">
       <h2 className="ui-h1 m-0">Abrir al público</h2>
+      {faltaConteo ? (
+        <Banner tone="late">
+          Falta contar {conteo.pendientes === 1 ? "1 insumo" : `${conteo.pendientes} insumos`} del inventario. Termina el conteo para poder abrir.
+        </Banner>
+      ) : null}
       {pendientesApertura > 0 ? (
         <Banner tone="brand">
           Quedan {pendientesApertura} {pendientesApertura === 1 ? "tarea" : "tareas"} de apertura sin marcar. Puedes abrir igual; quedan en Tareas.
@@ -129,9 +180,15 @@ export function AbrirStep({
         <p className="ui-sub m-0">Cuando todo esté listo, abre las puertas.</p>
       )}
       <div className="flex-1" />
-      <Button size="lg" block onClick={() => void abrir()} loading={busy} disabled={necesitaFoto}>
-        {necesitaFoto ? "Toma la foto para abrir" : "Abrir al público"}
-      </Button>
+      {faltaConteo ? (
+        <Button size="lg" block href={conteoHref}>
+          Contar inventario (faltan {conteo.pendientes})
+        </Button>
+      ) : (
+        <Button size="lg" block onClick={() => void abrir()} loading={busy} disabled={necesitaFoto}>
+          {necesitaFoto ? "Toma la foto para abrir" : "Abrir al público"}
+        </Button>
+      )}
       {camera}
     </Card>
   );
