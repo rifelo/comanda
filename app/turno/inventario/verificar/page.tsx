@@ -30,7 +30,7 @@ export default async function VerificarPage({ searchParams }: { searchParams: Pr
   return (
     <VerificarScreen
       volver={volver}
-      tareas={tareas.map((t) => ({ id: t.id, name: t.name, unit: t.unit, ubicacion: t.ubicacion, pieza: t.pieza, packLabel: t.packLabel, nota: t.nota }))}
+      tareas={tareas.map((t) => ({ id: t.id, name: t.name, unit: t.unit, ubicacion: t.ubicacion, pieza: t.pieza, packLabel: t.packLabel, nota: t.nota, soloCerrados: t.soloCerrados }))}
     />
   );
 }

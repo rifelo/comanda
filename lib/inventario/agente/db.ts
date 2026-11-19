@@ -2,10 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listFaltantesAbiertos } from "../faltantes-db";
 import { CONSUMO_VENTANA, LOTE_VENTANA, calcularPar, confiabilidadPar, loteHabitual, type Confiabilidad, type ParResultado } from "./par";
-import { cantidadLegible, piezaDe } from "../niveles";
+import { cantidadLegible, nombrePaquete, piezaDe } from "../niveles";
 import {
   CONFIG_DEFAULT,
   ROTACION_VENTANA,
+  conteoConAbierto,
   diasEntre,
   lineaAplicaSola,
   rotacionDe,
@@ -577,6 +578,8 @@ export interface TareaTablet {
   packLabel: string | null;
   /** Counting rule typed by the owner (ingredientes.conteo_nota, mig 0081). */
   nota: string | null;
+  /** Only closed packages are counted; one open package is assumed in use (mig 0104). */
+  soloCerrados: boolean;
   motivo: Motivo;
   fecha: string;
 }
@@ -585,7 +588,7 @@ export interface TareaTablet {
 export async function tareasPendientes(db: Db, orgId: string, hoy: string): Promise<TareaTablet[]> {
   const { data, error } = await db
     .from("agente_tareas")
-    .select("id, ingrediente_id, motivo, fecha, prioridad, ing:ingredientes!inner(name, unit, ubicacion, pieza_qty, pack_qty, pack_label, conteo_nota, archived)")
+    .select("id, ingrediente_id, motivo, fecha, prioridad, ing:ingredientes!inner(name, unit, ubicacion, pieza_qty, pack_qty, pack_label, conteo_nota, solo_cerrados, archived)")
     .eq("organization_id", orgId)
     .eq("estado", "pendiente")
     .lte("fecha", hoy)
@@ -596,7 +599,7 @@ export async function tareasPendientes(db: Db, orgId: string, hoy: string): Prom
   }
   return (data ?? [])
     .map((r) => {
-      const i = r.ing as unknown as { name: string; unit: string; ubicacion: string | null; pieza_qty: number | null; pack_qty: number | null; pack_label: string | null; conteo_nota: string | null; archived: boolean };
+      const i = r.ing as unknown as { name: string; unit: string; ubicacion: string | null; pieza_qty: number | null; pack_qty: number | null; pack_label: string | null; conteo_nota: string | null; solo_cerrados: boolean | null; archived: boolean };
       return {
         id: r.id as string,
         ingredienteId: r.ingrediente_id as string,
@@ -606,6 +609,7 @@ export async function tareasPendientes(db: Db, orgId: string, hoy: string): Prom
         pieza: piezaDe({ unit: i.unit, pack_qty: i.pack_qty, pieza_qty: i.pieza_qty }),
         packLabel: i.pack_label,
         nota: i.conteo_nota?.trim() || null,
+        soloCerrados: i.solo_cerrados === true,
         motivo: r.motivo as Motivo,
         fecha: r.fecha as string,
         archived: i.archived,
@@ -657,7 +661,7 @@ export async function responderTarea(
 
   const { data: ing } = await db
     .from("ingredientes")
-    .select("id, unit, stock_current, cost_cop, pieza_qty, pack_qty")
+    .select("id, unit, stock_current, cost_cop, pieza_qty, pack_qty, pack_label, solo_cerrados")
     .eq("organization_id", orgId)
     .eq("id", t.ingrediente_id)
     .maybeSingle();
@@ -679,9 +683,14 @@ export async function responderTarea(
   }
 
   const expected = Number(ing.stock_current);
-  const counted = Math.round(input.counted * 1000) / 1000;
   const costo = Number(ing.cost_cop ?? 0);
-  const sola = lineaAplicaSola({ expected, counted, pieza: piezaDe({ unit: ing.unit as string, pack_qty: ing.pack_qty as number | null, pieza_qty: ing.pieza_qty as number | null }) });
+  const pieza = piezaDe({ unit: ing.unit as string, pack_qty: ing.pack_qty as number | null, pieza_qty: ing.pieza_qty as number | null });
+  // Closed packages only (ice): the open one in use is not a difference.
+  const cerrados = ing.solo_cerrados === true && pieza ? Math.round(input.counted * 1000) / 1000 : null;
+  const counted = cerrados !== null && pieza ? conteoConAbierto({ expected, cerrados, pieza }) : Math.round(input.counted * 1000) / 1000;
+  const notaCerrados =
+    cerrados !== null && pieza ? `Contó ${Math.round(cerrados / pieza)} ${nombrePaquete({ pack_label: ing.pack_label as string | null }, Math.round(cerrados / pieza))} ${Math.round(cerrados / pieza) === 1 ? "cerrado" : "cerrados"}; se asume 1 abierto en uso` : null;
+  const sola = lineaAplicaSola({ expected, counted, pieza });
   const { error: iErr } = await db.from("inventario_conteo_items").insert({
     conteo_id: conteoId,
     ingrediente_id: t.ingrediente_id,
@@ -689,6 +698,7 @@ export async function responderTarea(
     counted,
     unit_cost_cop: costo,
     tarea_id: t.id,
+    note: notaCerrados,
     revision: sola ? "aplicado" : "revisar",
   });
   if (iErr) {
