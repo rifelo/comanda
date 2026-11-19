@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAJA_ROTACION_DIAS, CONFIG_DEFAULT, desconfianza, diasEntre, lineaAplicaSola, planificar, rotacionDe, type Candidato } from "./planificador";
+import { BAJA_ROTACION_DIAS, CONFIG_DEFAULT, desconfianza, conteoConAbierto, diasEntre, lineaAplicaSola, planificar, rotacionDe, type Candidato } from "./planificador";
 
 const base = (over: Partial<Candidato>): Candidato => ({
   ingredienteId: "x",
@@ -133,4 +133,12 @@ describe("lineaAplicaSola", () => {
 
 it("diasEntre", () => {
   expect(diasEntre("2026-11-01", "2026-11-11")).toBe(10);
+});
+
+it("conteoConAbierto: one open package in use is not a difference", () => {
+  const p = { cerrados: 9000, pieza: 3000 };
+  expect(conteoConAbierto({ ...p, expected: 10500 })).toBe(10500); // 3 closed + part of the open one
+  expect(conteoConAbierto({ ...p, expected: 9000 })).toBe(9000);
+  expect(conteoConAbierto({ ...p, expected: 6000 })).toBe(9000); // system short: up to the closed ones
+  expect(conteoConAbierto({ ...p, expected: 15000 })).toBe(12000); // system long: closed + one whole package
 });
