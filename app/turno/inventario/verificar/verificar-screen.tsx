@@ -19,6 +19,8 @@ export type TareaVerificar = {
   packLabel: string | null;
   /** The owner's rule for counting this item, if any. */
   nota?: string | null;
+  /** Only closed packages are counted (ice): no loose field. */
+  soloCerrados?: boolean;
 };
 
 type Campo = "paq" | "sue";
@@ -60,7 +62,8 @@ export function VerificarScreen({ tareas: inicial, volver = null }: { tareas: Ta
   const pieza = t.pieza && t.pieza > 1 ? t.pieza : null;
   const decimal = conDecimales(t.unit);
   const paquetes = capital(t.packLabel ? nombrePaquete({ pack_label: t.packLabel }, 2) : "paquetes");
-  const total = Math.round(((pieza ? Math.floor(num(vals.paq)) * pieza : 0) + num(vals.sue)) * 1000) / 1000;
+  const cerrados = !!pieza && t.soloCerrados === true;
+  const total = Math.round(((pieza ? Math.floor(num(vals.paq)) * pieza : 0) + (cerrados ? 0 : num(vals.sue))) * 1000) / 1000;
   const escrito = vals.paq !== "" || vals.sue !== "";
   const decimalAqui = decimal && activo === "sue";
   const teclas = ["1", "2", "3", "4", "5", "6", "7", "8", "9", decimalAqui ? "," : "C", "0", "⌫"];
@@ -96,7 +99,9 @@ export function VerificarScreen({ tareas: inicial, volver = null }: { tareas: Ta
     }
   }
 
-  const ayuda = pieza
+  const ayuda = cerrados
+    ? `Cuenta solo ${nombrePaquete({ pack_label: t.packLabel }, 2)} cerrados de ${fmtNum(pieza as number)} ${t.unit}. El que está abierto en uso no se cuenta.`
+    : pieza
     ? `Primero lo que está completo: ${nombrePaquete({ pack_label: t.packLabel }, 2)} de ${fmtNum(pieza)} ${t.unit}. Después lo que queda suelto, en ${t.unit}.`
     : `Cuenta todo lo que hay, en ${t.unit}.`;
   const bloqueado = busy || fin;
@@ -137,17 +142,17 @@ export function VerificarScreen({ tareas: inicial, volver = null }: { tareas: Ta
           <div className="verif-fields">
             {pieza && (
               <button type="button" className="verif-fld" aria-pressed={activo === "paq"} onClick={() => setActivo("paq")}>
-                <span className="verif-fld-label">{paquetes} de {fmtNum(pieza)}</span>
+                <span className="verif-fld-label">{paquetes}{cerrados ? " cerrados" : ""} de {fmtNum(pieza)}</span>
                 <span className="verif-fld-num" data-vacio={vals.paq === "" ? "1" : undefined}>{vals.paq || "0"}</span>
               </button>
             )}
-            <button type="button" className="verif-fld" aria-pressed={activo === "sue"} onClick={() => setActivo("sue")}>
+            {!cerrados && <button type="button" className="verif-fld" aria-pressed={activo === "sue"} onClick={() => setActivo("sue")}>
               <span className="verif-fld-label">{pieza ? `${t.unit} sueltos` : `Cantidad en ${t.unit}`}</span>
               <span className="verif-fld-num" data-vacio={vals.sue === "" ? "1" : undefined}>{vals.sue || "0"}</span>
-            </button>
+            </button>}
           </div>
 
-          {pieza && (
+          {pieza && !cerrados && (
             <div className="verif-total" aria-live="polite">
               <span>Total que vas a reportar</span>
               <span>{fmtNum(total)} {t.unit}</span>

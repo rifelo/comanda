@@ -235,6 +235,16 @@ export function lineaAplicaSola(l: { expected: number; counted: number; pieza: n
   return diff <= margen + 1e-9;
 }
 
+/**
+ * Items counted only as closed packages (ice in 3 kg bags, mig 0104): sales
+ * keep taking grams, and one package is assumed open in use. So the system's
+ * stock agrees with any value from the closed packages up to one package
+ * more; outside that range the count moves to the nearest edge.
+ */
+export function conteoConAbierto(l: { expected: number; cerrados: number; pieza: number }): number {
+  return Math.min(Math.max(l.expected, l.cerrados), l.cerrados + l.pieza);
+}
+
 /** Days between two ISO dates (YYYY-MM-DD), b − a. */
 export function diasEntre(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
