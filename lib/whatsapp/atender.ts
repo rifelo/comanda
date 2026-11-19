@@ -490,7 +490,8 @@ async function enviarBurbujas(a: {
 /**
  * The Claude Console agent: one session per conversation, reused while the
  * chat is active. It keeps its own history, so it gets only what is new; the
- * day's data and the client file go in when a session starts. If the Console
+ * day's data and the client file go in when a session starts, and the Mi Pa'Yo
+ * points on every turn (they change mid-chat). If the Console
  * fails, the in-app agent answers instead so the customer is never left hanging.
  */
 async function responderPorConsola(
@@ -510,6 +511,8 @@ async function responderPorConsola(
     `Hora en Yopal: ${entrada.ahora}.`,
     ...(avisos.length ? [`Desde tu última respuesta ya le enviamos al cliente este aviso de su pedido: ${avisos.map((t) => `«${t.texto}»`).join(" ")}`] : []),
     ...(nuevo.equipo.length ? [`Una persona del equipo le escribió al cliente: ${nuevo.equipo.map((t) => `«${t}»`).join(" ")}`] : []),
+    // The file goes in only when the session starts; points change mid-chat (a cup scanned, the @ just linked).
+    ...(entrada.ficha?.mipayo ? [`Mi Pa'Yo del cliente ahora mismo (manda sobre lo que tenías antes):\n${entrada.ficha.mipayo}`] : []),
   ].join("\n");
   try {
     const r = await responderConConsola({
