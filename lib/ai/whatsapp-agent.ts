@@ -63,6 +63,8 @@ export type Turno = { autor: "cliente" | "agente" | "equipo"; texto: string };
 export type Herramientas = {
   /** Validates and saves; returns what the agent should tell the customer, or the problem. */
   crearPedido: (p: PedidoAgente) => Promise<{ ok: true; folio: string; total: number } | { ok: false; error: string }>;
+  /** Rewrites a not-yet-accepted order whole, keeping its number. */
+  modificarPedido: (folio: string, p: PedidoAgente) => Promise<{ ok: true; folio: string; total: number } | { ok: false; error: string }>;
   pasarAHumano: (motivo: string) => Promise<void>;
   recordarCliente: (cambios: CambiosFicha) => Promise<void>;
 };
@@ -124,6 +126,7 @@ const PedidoInput = z.object({
     para: z.string().nullable().optional(),
   })),
 });
+const ModificarInput = PedidoInput.extend({ folio: z.string() });
 const HumanoInput = z.object({ motivo: z.string() });
 const FichaInput = z.object({
   trato: z.string().nullable(),
@@ -136,15 +139,7 @@ const FichaInput = z.object({
 const ReaccionInput = z.object({ emoji: z.enum(REACCIONES) });
 const campoFicha = (description: string) => ({ type: ["string", "null"], description: `${description} null si no cambia.` });
 
-export const TOOLS: Anthropic.Beta.BetaTool[] = [
-  {
-    name: "crear_pedido",
-    description:
-      "Envía el pedido al punto de venta como orden pendiente para que el equipo lo prepare. Úsala solo cuando el cliente ya confirmó el resumen (productos, opciones y total) y tienes su nombre y, si es domicilio, la dirección. Devuelve el número de pedido o el problema que hay que resolver con el cliente.",
-    strict: true,
-    input_schema: {
-      type: "object",
-      properties: {
+const TOOLS_PEDIDO_PROPS = {
         tipo: { type: "string", enum: ["llevar", "domicilio", "cercano"], description: "llevar = recoge en el café; cercano = entrega gratis en un punto cercano de la lista (en direccion va el punto); domicilio = con domiciliario." },
         nombre: { type: "string", description: "Nombre de quien recibe o recoge el pedido." },
         direccion: { type: ["string", "null"], description: "Dirección completa con barrio o referencias; null si es para llevar." },
@@ -175,8 +170,33 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
             additionalProperties: false,
           },
         },
-      },
+      };
+
+export const TOOLS: Anthropic.Beta.BetaTool[] = [
+  {
+    name: "crear_pedido",
+    description:
+      "Envía el pedido al punto de venta como orden pendiente para que el equipo lo prepare. Úsala solo cuando el cliente ya confirmó el resumen (productos, opciones y total) y tienes su nombre y, si es domicilio, la dirección. Devuelve el número de pedido o el problema que hay que resolver con el cliente.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: TOOLS_PEDIDO_PROPS,
       required: ["tipo", "nombre", "direccion", "telefono", "nota", "lineas"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "modificar_pedido",
+    description:
+      "Cambia un pedido que el cliente ya hizo y que el equipo todavía no ha aceptado (sus últimos pedidos dicen «esperando que lo aceptemos»): agregar o quitar productos, cambiar opciones, el nombre de un vaso, o pasar de recoger a entrega (o al revés). Manda el pedido COMPLETO como debe quedar, no solo el cambio; conserva el mismo número. Úsala solo cuando el cliente confirmó cómo queda. Si el pedido ya fue aceptado, devuelve el problema.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: {
+        folio: { type: "string", description: "Número del pedido a cambiar, p. ej. A-2102." },
+        ...(TOOLS_PEDIDO_PROPS),
+      },
+      required: ["folio", "tipo", "nombre", "direccion", "telefono", "nota", "lineas"],
       additionalProperties: false,
     },
   },
@@ -328,6 +348,7 @@ Cuando aprendas algo nuevo y útil de él (una preferencia nueva o que cambió, 
    Necesitas siempre el nombre (si la ficha ya lo tiene, usa ese y no lo preguntes).
 3. Manda el resumen en UN solo mensaje, sin líneas en blanco por dentro y sin anunciarlo antes («te confirmo el pedido:»): productos con sus opciones (y el nombre que va en cada vaso), el total (sin domicilio) y, si es domicilio, quién recibe, dirección y teléfono; termina preguntando si lo enviamos así.
 4. Solo cuando confirme, usa crear_pedido, una sola vez por pedido. Si el pedido es para varias personas (p. ej. «Marielita. Paola. Yeny»), manda una línea por persona con su nombre en «para» (3 tintos para 3 personas = 3 líneas de 1 tinto): ese nombre se imprime en la etiqueta de su vaso. Si en sus últimos pedidos ya aparece uno de hoy con esos productos, ese pedido YA está hecho: no lo vuelvas a crear; si quiere otro igual, confírmalo primero. Si sale bien, contesta en UN solo mensaje: para recoger o entrega cercana, el número de pedido y que ya le confirmamos que esté en preparación (p. ej. «Listo, tu pedido es el A-1950, ya te confirmamos que esté en preparación»); para domicilio, el número de pedido y que en un momento le confirmamos el valor del domicilio y le pasamos los datos de pago (todavía no se los des: el domicilio cambia según la dirección y lo cotiza el equipo). Todavía no prometas tiempos: esos van en la confirmación. Si devuelve un problema, resuélvelo con el cliente.
+4b. Si después de crear el pedido el cliente quiere cambiar algo (agregar o quitar un producto, otra opción, otro nombre en un vaso, que se lo llevemos en vez de recogerlo) y en sus últimos pedidos ese pedido sigue «esperando que lo aceptemos», confirma en un solo mensaje cómo queda y, cuando diga que sí, usa modificar_pedido con el pedido completo y el mismo número: nunca crees un pedido aparte para lo que agrega. Luego contesta en una frase que ya quedó cambiado (con el número y el total nuevo). Si ya lo aceptamos o te devuelve que ya fue aceptado, usa pasar_a_humano con el cambio exacto y contesta «Ok entendido, ya lo revisamos».
 5. Así va un pedido (lo ves en sus últimos pedidos): «esperando que lo aceptemos» → para domicilio «confirmando su pago» → «en preparación» → «en camino con el domiciliario». Si pregunta, contéstale según ese estado, con calidez: esperando → ya lo estamos revisando; confirmando su pago → apenas nos llegue lo empezamos a preparar; en preparación → ya lo estamos haciendo; en camino → ya va para allá. Si aparece «rechazado», ya se le explicó por qué: ayúdale con otra opción.
 6. Domicilio: se paga por transferencia antes de prepararlo. El valor del domicilio cambia según la dirección: nunca lo inventes; lo cotiza el equipo al aceptar y se lo mandamos con los datos de pago. Puede sumarlo a la transferencia o pagárselo al domiciliario al recibir; si pregunta cuánto paga y en sus últimos pedidos ya aparece el domicilio, dale las dos cuentas. No repitas el número, el total ni los datos de pago si ya están en la conversación. Cuando mande el comprobante, contesta con un solo mensaje corto (p. ej. «Recibido 🙌 apenas lo confirmemos lo preparamos»). Recoger: paga en el café, no hace falta transferir.
 
@@ -569,6 +590,22 @@ async function responderConGroq(input: Entrada): Promise<Respuesta> {
   return { texto: RENDIDO, humano: true, reaccion: null };
 }
 
+function aPedido(d: z.infer<typeof PedidoInput>): PedidoAgente {
+  return {
+    tipo: d.tipo,
+    nombre: d.nombre,
+    direccion: d.direccion,
+    telefono: d.telefono,
+    nota: d.nota,
+    lineas: d.lineas.map((l) => ({
+      productoId: l.producto_id,
+      cantidad: l.cantidad,
+      opciones: l.opciones.map((o) => ({ grupoId: o.grupo_id, opcion: o.opcion })),
+      para: l.para ?? null,
+    })),
+  };
+}
+
 export async function ejecutar(
   uso: Anthropic.Beta.BetaToolUseBlock,
   h: Herramientas,
@@ -577,21 +614,17 @@ export async function ejecutar(
   if (uso.name === "crear_pedido") {
     const p = PedidoInput.safeParse(uso.input);
     if (!p.success) return { content: "Datos del pedido incompletos; revisa y vuelve a intentarlo.", is_error: true };
-    const r = await h.crearPedido({
-      tipo: p.data.tipo,
-      nombre: p.data.nombre,
-      direccion: p.data.direccion,
-      telefono: p.data.telefono,
-      nota: p.data.nota,
-      lineas: p.data.lineas.map((l) => ({
-        productoId: l.producto_id,
-        cantidad: l.cantidad,
-        opciones: l.opciones.map((o) => ({ grupoId: o.grupo_id, opcion: o.opcion })),
-        para: l.para ?? null,
-      })),
-    });
+    const r = await h.crearPedido(aPedido(p.data));
     return r.ok
       ? { content: `Pedido creado: número ${r.folio}, total de productos ${posMoney(r.total)}.` }
+      : { content: r.error, is_error: true };
+  }
+  if (uso.name === "modificar_pedido") {
+    const p = ModificarInput.safeParse(uso.input);
+    if (!p.success) return { content: "Datos del pedido incompletos; revisa y vuelve a intentarlo.", is_error: true };
+    const r = await h.modificarPedido(p.data.folio, aPedido(p.data));
+    return r.ok
+      ? { content: `Pedido ${r.folio} actualizado, total de productos ${posMoney(r.total)}. El equipo lo ve ya cambiado.` }
       : { content: r.error, is_error: true };
   }
   if (uso.name === "pasar_a_humano") {

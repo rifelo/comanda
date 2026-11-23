@@ -7,7 +7,7 @@ import { datosDelDia, enBurbujas, fichaParaAgente, menuParaAgente, redactarAviso
 import { responderConConsola } from "@/lib/ai/whatsapp-consola";
 import { enlaceVincular, resumenMiPayoPorTelefono, textoMiPayoParaAgente } from "@/lib/clientes/mi-payo-whatsapp";
 import { descargarMedia, enviarReaccion, enviarTexto, marcarLeidoEscribiendo, type Eco, type Entrante, type EstadoEntrega } from "./cloud-api";
-import { guardarPedidoWhatsapp, validarPedido } from "./pedido";
+import { guardarPedidoWhatsapp, modificarPedidoWhatsapp, validarPedido } from "./pedido";
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
@@ -378,6 +378,17 @@ export async function responder(p: Pendiente): Promise<void> {
         const r = await guardarPedidoWhatsapp(db(), { organizationId: n.organization_id, restaurantId: n.restaurant_id, telefono: p.waId }, pedido, v);
         if (!r.ok) return r;
         ordenId = r.ordenId;
+        await syncOrderConsumption(db(), n.organization_id, r.ordenId, null);
+        await avisarPos(n.organization_id);
+        return { ok: true, folio: r.folio, total: v.subtotal };
+      },
+      modificarPedido: async (folio, pedido) => {
+        const v = validarPedido(catalog, pedido);
+        if (!v.ok) return v;
+        const r = await modificarPedidoWhatsapp(db(), { organizationId: n.organization_id, telefono: p.waId }, folio, pedido, v);
+        if (!r.ok) return r;
+        ordenId = r.ordenId;
+        // Lines changed → take or give back only the difference.
         await syncOrderConsumption(db(), n.organization_id, r.ordenId, null);
         await avisarPos(n.organization_id);
         return { ok: true, folio: r.folio, total: v.subtotal };

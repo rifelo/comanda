@@ -153,3 +153,76 @@ export async function guardarPedidoWhatsapp(
   }
   return { ok: true, ordenId: orden.id as string, folio };
 }
+
+export type ModificarResultado =
+  | { ok: true; ordenId: string; folio: string }
+  | { ok: false; error: string };
+
+/**
+ * The customer changes an order the bar hasn't accepted yet (another product,
+ * pick-up → portería, a different name on a cup): the order keeps its number
+ * and is rewritten whole. Only this customer's WhatsApp orders still
+ * «por aceptar»; once the bar took it, the change goes to a person.
+ */
+export async function modificarPedidoWhatsapp(
+  db: SupabaseClient,
+  ctx: { organizationId: string; telefono: string },
+  folio: string,
+  p: PedidoAgente,
+  v: Extract<PedidoValidado, { ok: true }>,
+): Promise<ModificarResultado> {
+  const { organizationId: orgId } = ctx;
+  const numero = folio.trim().toUpperCase().replace(/^(?:A-?)?/, "A-");
+  const { data: orden } = await db
+    .from("ordenes")
+    .select("id, folio, status, wa_estado")
+    .eq("organization_id", orgId)
+    .eq("canal", "whatsapp")
+    .eq("customer_phone", ctx.telefono)
+    .eq("folio", numero)
+    .maybeSingle();
+  if (!orden) return { ok: false, error: `No encontré el pedido ${numero} de este cliente. Revisa el número en sus últimos pedidos.` };
+  if (orden.status !== "pendiente" || orden.wa_estado !== "por_aceptar") {
+    return {
+      ok: false,
+      error: `El pedido ${numero} ya fue aceptado por el equipo y no se puede cambiar desde aquí. Usa pasar_a_humano con el cambio exacto que pide el cliente y contesta «Ok entendido, ya lo revisamos».`,
+    };
+  }
+  const ordenId = orden.id as string;
+  // Claim the order first: if the bar accepts it at this same moment, nothing changes.
+  const { data: tomado, error: updErr } = await db
+    .from("ordenes")
+    .update({
+      order_type: p.tipo === "cercano" ? "llevar" : p.tipo,
+      se_lo_llevamos: p.tipo === "cercano",
+      subtotal_cop: v.subtotal,
+      total_cop: v.subtotal,
+      notes: `Modificado por el cliente · ${notaPedido(p, ctx.telefono)}`,
+      customer_name: p.nombre.trim().slice(0, 80),
+      customer_names: personasDelPedido(v.lines),
+      delivery_address: p.tipo === "llevar" ? null : p.direccion!.trim(),
+      telefono_recibe: p.tipo === "domicilio" ? (p.telefono ?? "").replace(/\D/g, "") || null : null,
+    })
+    .eq("id", ordenId)
+    .eq("organization_id", orgId)
+    .eq("status", "pendiente")
+    .eq("wa_estado", "por_aceptar")
+    .select("id");
+  if (updErr || !tomado?.length) {
+    if (updErr) console.error("[modificarPedidoWhatsapp] orden:", updErr);
+    return { ok: false, error: `El pedido ${numero} acaba de ser aceptado por el equipo. Usa pasar_a_humano con el cambio exacto y contesta «Ok entendido, ya lo revisamos».` };
+  }
+  const { data: viejos } = await db.from("orden_items").select("id").eq("orden_id", ordenId).eq("organization_id", orgId);
+  // New lines first, so a failure never leaves the order empty.
+  const { error: insErr } = await db.from("orden_items").insert(itemRows(orgId, ordenId, v.items));
+  if (insErr) {
+    console.error("[modificarPedidoWhatsapp] items:", insErr);
+    return { ok: false, error: "No se pudieron guardar los productos nuevos. Usa pasar_a_humano con el cambio." };
+  }
+  const ids = ((viejos ?? []) as { id: string }[]).map((r) => r.id);
+  if (ids.length) {
+    const { error: delErr } = await db.from("orden_items").delete().in("id", ids).eq("organization_id", orgId);
+    if (delErr) console.error("[modificarPedidoWhatsapp] borrar items:", delErr);
+  }
+  return { ok: true, ordenId, folio: numero };
+}
