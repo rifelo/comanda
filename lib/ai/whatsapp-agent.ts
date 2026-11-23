@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { EMPAQUE_DOMICILIO_SKU } from "@/lib/pos/empaque";
 import { posMoney, type PosCatalog } from "@/lib/pos/types";
 import type { PedidoAgente } from "@/lib/whatsapp/pedido";
 import { GROQ_TEXT_MODEL } from "@/lib/ai/groq";
@@ -251,7 +252,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
 export function menuParaAgente(catalog: PosCatalog): string {
   const out: string[] = [];
   for (const cat of catalog.cats) {
-    const items = catalog.menu.filter((p) => p.catId === cat.id);
+    const items = catalog.menu.filter((p) => p.catId === cat.id && p.sku !== EMPAQUE_DOMICILIO_SKU);
     if (!items.length) continue;
     out.push(`## ${cat.label}`);
     for (const p of items) {
@@ -265,6 +266,13 @@ export function menuParaAgente(catalog: PosCatalog): string {
           (opts.length ? `\n  Opciones: ${opts.join("; ")}` : ""),
       );
     }
+  }
+  const empaque = catalog.menu.find((p) => p.sku === EMPAQUE_DOMICILIO_SKU);
+  if (empaque) {
+    out.push(
+      "## Empaque de domicilio",
+      `- Todo domicilio con bebidas lleva empaque (portavasos y bolsa): ${posMoney(empaque.price)} por bolsa, y en cada bolsa van hasta 4 bebidas (1 a 4 bebidas = 1 bolsa, 5 a 8 = 2…). En el resumen ponlo como una línea más, después de los productos («1 Empaque — ${posMoney(empaque.price)}»), y súmalo al total. No lo mandes en crear_pedido ni en modificar_pedido: el sistema lo agrega solo. No aplica si recoge en el café, en entregas cercanas ni si el domicilio no lleva bebidas. Es aparte del valor del domicilio.`,
+    );
   }
   return out.join("\n");
 }

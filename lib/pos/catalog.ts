@@ -74,7 +74,7 @@ export async function getPosCatalog({
       .eq("organization_id", organizationId),
     supabase
       .from("producto_categorias")
-      .select("id, organization_id, parent_id, label, position, created_at, imprime_etiqueta")
+      .select("id, organization_id, parent_id, label, position, created_at, imprime_etiqueta, empaque")
       .eq("organization_id", organizationId)
       .order("position"),
     userId
@@ -250,6 +250,7 @@ export async function getPosCatalog({
       mods,
       desc: p.description ?? "",
       printsLabel,
+      empaque: own?.empaque ?? top?.empaque ?? null,
       spec: drinkSpec({ coffeeG, categoryLabel: own?.label ?? top?.label ?? null }),
       image: (p.image_url ?? "").trim() || null,
       prep: capas ? fichaATexto(capas).split("\n") : prepSteps(p.preparacion),

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PosCatalog } from "@/lib/pos/types";
+import { bolsasDomicilio, EMPAQUE_DOMICILIO_SKU } from "@/lib/pos/empaque";
 import { itemRows, priceLines, type OrderLineInput, type PricedItem } from "@/lib/pos/lineas";
 
 /**
@@ -45,8 +46,12 @@ export function validarPedido(catalog: PosCatalog, p: PedidoAgente): PedidoValid
   if (p.tipo === "domicilio" && (tel.length < 7 || tel.length > 13)) {
     return { ok: false, error: "Es domicilio y falta el teléfono de quien recibe." };
   }
+  // The delivery packaging is ours to add: one line per bag (up to 4 drinks each).
+  const empaque = catalog.menu.find((x) => x.sku === EMPAQUE_DOMICILIO_SKU) ?? null;
   const lines: OrderLineInput[] = [];
+  let bebidas = 0;
   for (const l of p.lineas) {
+    if (empaque && l.productoId === empaque.id) continue;
     const prod = catalog.byId[l.productoId];
     if (!prod) return { ok: false, error: `El producto ${l.productoId} no existe en el menú.` };
     if (prod.stock === "sin") return { ok: false, error: `${prod.name} está agotado hoy.` };
@@ -71,7 +76,11 @@ export function validarPedido(catalog: PosCatalog, p: PedidoAgente): PedidoValid
     }
     const para = (l.para ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
     lines.push({ kind: "item", id: prod.id, qty: l.cantidad, mods, ...(para ? { customer: para } : {}) });
+    if (prod.empaque === "bebida") bebidas += l.cantidad;
   }
+  if (!lines.length) return { ok: false, error: "El pedido no tiene productos." };
+  const bolsas = p.tipo === "domicilio" && empaque ? bolsasDomicilio(bebidas) : 0;
+  if (bolsas > 0) lines.push({ kind: "item", id: empaque!.id, qty: bolsas, mods: {} });
   const priced = priceLines(catalog, lines);
   if (!priced.ok) return priced;
   return { ok: true, lines, items: priced.items, subtotal: priced.subtotal };

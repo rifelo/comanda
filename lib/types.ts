@@ -239,6 +239,8 @@ export interface ProductoCategoria {
   /** Products here get the menu cup label when sold (0027, renamed in 0029).
    *  Off for food and for bottled drinks handed over as they are. */
   imprime_etiqueta?: boolean;
+  /** Take-away / delivery packaging (0083): bebida → cup holders, comida → greaseproof bag. */
+  empaque?: "bebida" | "comida" | null;
 }
 
 export interface Producto {

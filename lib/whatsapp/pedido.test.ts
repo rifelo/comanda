@@ -23,6 +23,31 @@ const pedido = (over: Partial<PedidoAgente> = {}): PedidoAgente => ({
   ...over,
 });
 
+describe("empaque de domicilio", () => {
+  const bolsa: PosMenuItem = { ...latte, id: "p-empaque", name: "Empaque domicilio", sku: "EM-001", price: 2000, mods: [], printsLabel: false };
+  const bebida: PosMenuItem = { ...latte, id: "p-tinto", name: "Tinto", price: 3000, mods: [], empaque: "bebida" };
+  const pan: PosMenuItem = { ...latte, id: "p-pan", name: "Pan", price: 4000, mods: [], empaque: "comida" };
+  const cat: PosCatalog = { ...catalog, menu: [bebida, pan, bolsa], byId: { "p-tinto": bebida, "p-pan": pan, "p-empaque": bolsa } };
+  const dom = (lineas: PedidoAgente["lineas"], tipo: PedidoAgente["tipo"] = "domicilio") =>
+    validarPedido(cat, pedido({ tipo, direccion: "Cra 20 #10-30", telefono: "3001234567", lineas }));
+  const linea = (productoId: string, cantidad: number) => ({ productoId, cantidad, opciones: [] });
+
+  it("adds one bag per 4 drinks to a delivery", () => {
+    const v = dom([linea("p-tinto", 5), linea("p-pan", 1)]);
+    expect(v.ok && v.subtotal).toBe(5 * 3000 + 4000 + 2 * 2000);
+    expect(v.ok && v.lines.at(-1)).toEqual({ kind: "item", id: "p-empaque", qty: 2, mods: {} });
+  });
+  it("ignores a bag line sent by the agent and adds its own", () => {
+    const v = dom([linea("p-tinto", 1), linea("p-empaque", 3)]);
+    expect(v.ok && v.subtotal).toBe(3000 + 2000);
+  });
+  it("charges nothing for pick-up, nearby points or a delivery without drinks", () => {
+    expect((dom([linea("p-tinto", 2)], "llevar") as { subtotal: number }).subtotal).toBe(6000);
+    expect((dom([linea("p-tinto", 2)], "cercano") as { subtotal: number }).subtotal).toBe(6000);
+    expect((dom([linea("p-pan", 2)]) as { subtotal: number }).subtotal).toBe(8000);
+  });
+});
+
 describe("validarPedido", () => {
   it("prices the lines from the catalog, options included", () => {
     const v = validarPedido(catalog, pedido());
