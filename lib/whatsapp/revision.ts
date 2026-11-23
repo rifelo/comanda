@@ -125,8 +125,9 @@ export async function revisarDia(db: SupabaseClient, orgId: string, fecha: strin
 
 async function pedirLecciones(db: SupabaseClient, orgId: string, conversaciones: string) {
   const [{ data: num }, { data: org }, { data: lecc }] = await Promise.all([
-    db.from("whatsapp_numeros").select("direccion, horario, domicilios, pagos").eq("organization_id", orgId).limit(1).maybeSingle(),
-    db.from("organizations").select("name").eq("id", orgId).single(),
+    // The live number (an org may keep an old test number without payment data).
+    db.from("whatsapp_numeros").select("direccion, horario, domicilios, pagos").eq("organization_id", orgId).order("agente_activo", { ascending: false }).limit(1).maybeSingle(),
+    db.from("organizations").select("name, puntos_cercanos").eq("id", orgId).single(),
     db.from("agente_lecciones").select("texto, estado").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(80),
   ]);
   const reglas = instrucciones(
@@ -137,6 +138,7 @@ async function pedirLecciones(db: SupabaseClient, orgId: string, conversaciones:
       domicilios: (num?.domicilios as string | null) ?? null,
       instagram: null,
       pagos: (num?.pagos as string | null) ?? null,
+      puntosCercanos: ((org?.puntos_cercanos as string | null) ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
     },
     "(menú omitido)",
   );

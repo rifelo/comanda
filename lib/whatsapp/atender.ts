@@ -418,6 +418,13 @@ export async function responder(p: Pendiente): Promise<void> {
     },
   };
   const res = usaConsola(p.waId) ? await responderPorConsola(entrada, conv, p, version) : await responderWhatsapp(entrada);
+  // The customer wrote again while this reply was being written: that message's
+  // own run answers everything together (no double greeting, no repeated
+  // question). A reply that created an order or handed over still goes out.
+  if (!ordenId && !res.humano && (await hayMensajeNuevo(p.conversacionId, ultimoCliente.at))) {
+    console.info("[whatsapp] respuesta descartada: el cliente escribió de nuevo", p.waId);
+    return;
+  }
   if (res.reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, res.reaccion);
   await enviarBurbujas({
     phoneNumberId: p.phoneNumberId,
@@ -429,6 +436,19 @@ export async function responder(p: Pendiente): Promise<void> {
     version,
     conReaccion: !!res.reaccion,
   });
+}
+
+/** True when the customer sent something (not just a reaction or sticker) after `desde`. */
+async function hayMensajeNuevo(conversacionId: string, desde: Date): Promise<boolean> {
+  const { data, error } = await db()
+    .from("whatsapp_mensajes")
+    .select("texto")
+    .eq("conversacion_id", conversacionId)
+    .eq("autor", "cliente")
+    .gt("created_at", desde.toISOString())
+    .limit(10);
+  if (error) return false;
+  return ((data ?? []) as { texto: string }[]).some((m) => !esSoloSenal(m.texto));
 }
 
 /**
@@ -503,12 +523,17 @@ async function responderPorConsola(
   const previa = conv?.agente_sesion_at ? new Date(conv.agente_sesion_at as string) : null;
   const sesionId = sesionVigente(previa) ? ((conv?.agente_sesion_id as string | null) ?? null) : null;
   const nuevo = nuevoDesdeRespuesta(entrada.turnos);
+  // The session answered after the last reply we stored: that answer was dropped
+  // because the customer kept writing, so the customer never saw it.
+  const ultimaGuardada = [...(entrada.turnos as (Turno & { created_at?: string })[])].reverse().find((t) => t.autor === "agente")?.created_at;
+  const descartada = !!previa && sesionId !== null && (!ultimaGuardada || new Date(ultimaGuardada) < previa);
   // Order notices sent from the POS went out without the session: tell it.
   const avisos = (entrada.turnos as (Turno & { created_at?: string; prompt_version?: string | null })[]).filter(
     (t) => t.autor === "agente" && t.prompt_version?.endsWith("·aviso") && (!previa || (t.created_at && new Date(t.created_at) > previa)),
   );
   const contextoTurno = [
     `Hora en Yopal: ${entrada.ahora}.`,
+    ...(descartada ? ["Tu respuesta anterior NO le llegó al cliente (siguió escribiendo antes de que saliera): contesta ahora todo junto, sin repetir el saludo si ya lo habías saludado antes."] : []),
     ...(avisos.length ? [`Desde tu última respuesta ya le enviamos al cliente este aviso de su pedido: ${avisos.map((t) => `«${t.texto}»`).join(" ")}`] : []),
     ...(nuevo.equipo.length ? [`Una persona del equipo le escribió al cliente: ${nuevo.equipo.map((t) => `«${t}»`).join(" ")}`] : []),
     // The file goes in only when the session starts; points change mid-chat (a cup scanned, the @ just linked).
