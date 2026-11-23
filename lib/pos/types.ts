@@ -45,6 +45,8 @@ export interface PosMenuItem {
   capas?: BloqueVista[] | null;
   /** How the finished drink looks (productos.referencia_visual). */
   visual?: string | null;
+  /** Packaging kind of its category (0083): a «bebida» counts for the delivery bags. */
+  empaque?: "bebida" | "comida" | null;
   /** Price with the «16 oz» option, null when the product has no 16 oz. */
   price16?: number | null;
 }
