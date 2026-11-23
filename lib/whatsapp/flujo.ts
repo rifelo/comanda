@@ -113,3 +113,8 @@ export function textoDomicilio(cop: number | null | undefined, transferido: bool
   if (transferido === false) return `${v} · el cliente se lo paga al domiciliario`;
   return `${v} · el cliente lo suma a la transferencia o se lo paga al domiciliario`;
 }
+
+/** «gracias», «muchas gracias», «mil gracias», «Dios le pague»… */
+export function agradece(texto: string): boolean {
+  return /\bgraci+a+s*\b|\bdios (?:le|te|les) pague\b|\bthank/i.test(texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+}

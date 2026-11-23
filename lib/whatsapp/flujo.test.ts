@@ -80,3 +80,11 @@ describe("textoDomicilio", () => {
     expect(textoDomicilio(12500, null)).toContain("$12.500");
   });
 });
+
+describe("agradece", () => {
+  it("reconoce los agradecimientos", async () => {
+    const { agradece } = await import("./flujo");
+    for (const t of ["Gracias", "muchas gracias!!", "Mil gracias 🙏", "graciass", "Dios le pague", "ok gracias doc"]) expect(agradece(t)).toBe(true);
+    for (const t of ["Hola", "un americano", "Engracia está aquí"]) expect(agradece(t)).toBe(false);
+  });
+});

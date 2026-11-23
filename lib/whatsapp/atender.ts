@@ -11,7 +11,7 @@ import { guardarPedidoWhatsapp, modificarPedidoWhatsapp, validarPedido } from ".
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
-import { ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop } from "./flujo";
+import { agradece, ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop } from "./flujo";
 import type { WaEstado } from "@/lib/pos/types";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
@@ -437,7 +437,9 @@ export async function responder(p: Pendiente): Promise<void> {
     console.info("[whatsapp] respuesta descartada: el cliente escribió de nuevo", p.waId);
     return;
   }
-  if (res.reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, res.reaccion);
+  // A thank-you always gets a heart, even when the model forgot to react.
+  const reaccion = res.reaccion ?? (agradece(ultimoCliente.texto) ? "❤️" : null);
+  if (reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, reaccion);
   await enviarBurbujas({
     phoneNumberId: p.phoneNumberId,
     waId: p.waId,
@@ -446,7 +448,7 @@ export async function responder(p: Pendiente): Promise<void> {
     texto: res.texto,
     ordenId,
     version,
-    conReaccion: !!res.reaccion,
+    conReaccion: !!reaccion,
   });
 }
 
