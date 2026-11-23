@@ -76,15 +76,15 @@ export async function loadHoyExtras(ctx: TurnoContext): Promise<{ enfocar: (inst
 }
 
 /**
- * Late items of the turno in play — the red badge on the «Tareas» tab — in
- * two light queries (pages other than Hoy/Tareas don't load the board).
+ * The turno in play right now and its task list (pending/done), in two light
+ * queries — shared by the «Tareas» badge and the register's reminder.
  */
-export async function contarAtrasadas(ctx: TurnoContext): Promise<number> {
-  const date = todayInTz(ctx.sede.tz);
-  const { data: rows } = await ctx.admin
+async function listaEnJuego(admin: TurnoContext["admin"], restaurantId: string, tz: string) {
+  const date = todayInTz(tz);
+  const { data: rows } = await admin
     .from("shift_instances")
     .select("id, status, opened_by, template:checklist_templates!inner(id, inicio, fin, active, template_tasks(id, title, due_time, order_index, dias))")
-    .eq("restaurant_id", ctx.restaurantId)
+    .eq("restaurant_id", restaurantId)
     .eq("date", date);
   type Row = { id: string; status: string; opened_by: string | null; template: { id: string; inicio: string; fin: string; active: boolean; template_tasks: TemplateTask[] } | { id: string; inicio: string; fin: string; active: boolean; template_tasks: TemplateTask[] }[] };
   const list = ((rows ?? []) as Row[])
@@ -94,12 +94,12 @@ export async function contarAtrasadas(ctx: TurnoContext): Promise<number> {
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => a.template.inicio.localeCompare(b.template.inicio));
-  const now = nowInTz(ctx.sede.tz);
+  const now = nowInTz(tz);
   const cur = turnoActual(list, now);
-  if (!cur || cur.instance.status === "closed") return 0;
+  if (!cur || cur.instance.status === "closed") return null;
   const [{ data: comps }, { data: adHoc }] = await Promise.all([
-    ctx.admin.from("task_completions").select("template_task_id").eq("shift_instance_id", cur.instance.id),
-    ctx.admin.from("ad_hoc_tasks").select("id, due_time, status, created_at").eq("shift_instance_id", cur.instance.id).eq("status", "pending"),
+    admin.from("task_completions").select("template_task_id").eq("shift_instance_id", cur.instance.id),
+    admin.from("ad_hoc_tasks").select("id, title, due_time, status, created_at").eq("shift_instance_id", cur.instance.id).eq("status", "pending"),
   ]);
   const done = new Set((comps ?? []).map((c) => c.template_task_id as string));
   const tasks = tareasDelDia(cur.tasks, date, done);
@@ -110,5 +110,30 @@ export async function contarAtrasadas(ctx: TurnoContext): Promise<number> {
     now,
     inicio: cur.template.inicio,
     fin: cur.template.fin,
-  }).atrasadas;
+  });
+}
+
+/**
+ * Late items of the turno in play — the red badge on the «Tareas» tab — in
+ * two light queries (pages other than Hoy/Tareas don't load the board).
+ */
+export async function contarAtrasadas(ctx: TurnoContext): Promise<number> {
+  return (await listaEnJuego(ctx.admin, ctx.restaurantId, ctx.sede.tz))?.atrasadas ?? 0;
+}
+
+/**
+ * The turno's late, undone tasks (most overdue first) for the register's
+ * reminder: id, title and minutes past their time.
+ */
+export async function tareasAtrasadas(
+  admin: TurnoContext["admin"],
+  restaurantId: string,
+  tz: string,
+): Promise<{ id: string; titulo: string; tarde: number }[]> {
+  const l = await listaEnJuego(admin, restaurantId, tz);
+  if (!l) return [];
+  return l.pendientes
+    .filter((x) => x.estado === "atrasada")
+    .map((x) => ({ id: x.id, titulo: x.task.title, tarde: x.tarde }))
+    .sort((a, b) => b.tarde - a.tarde);
 }
