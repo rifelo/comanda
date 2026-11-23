@@ -747,6 +747,12 @@ export function notaAviso(a: {
   /** true = came in the transfer; false = the customer pays the courier. */
   domicilioTransferido?: boolean | null;
 }): string | null {
+  // Pick-up / nearby point: pays on receipt unless the conversation settled a
+  // transfer (we sent the payment keys, or the customer said they'd transfer).
+  const pagoAlRecibir = (x: { pagosYaEnviados?: boolean }, cuando: string) =>
+    x.pagosYaEnviados
+      ? "Ya le mandamos los datos de pago en la conversación: NO le digas que paga " + cuando + "; si en la conversación quedó que paga por transferencia y todavía no mandó el comprobante, recuérdale con cariño que nos lo mande cuando la haga."
+      : "Si en la conversación quedó que paga por transferencia (QR, Nequi, llaves), no le digas que paga " + cuando + "; si no, dile que paga " + cuando + " solo si aún no se lo dijimos.";
   const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en UN solo mensaje corto, sin repetir el resumen del pedido, el total ni los datos de pago que ya le dimos.";
   const dom = a.domicilioCop && a.total != null
     ? `El domicilio vale ${pesosCop(a.domicilioCop)}: puede sumarlo a la transferencia (en total ${pesosCop(a.total + a.domicilioCop)}) o transferir solo los productos (${pesosCop(a.total)}) y pagarle el domicilio al domiciliario al recibir.`
@@ -765,14 +771,14 @@ export function notaAviso(a: {
       return `Aceptamos el pedido ${a.folio} (${a.items}, a domicilio). Dile algo como «Super, recibimos tu pedido, es el ${a.folio}, estamos confirmando tu pago para empezar a prepararlo».${a.pagos ? ` Compártele en ese mismo mensaje los datos de transferencia tal cual:\n${a.pagos}` : ""} ${tono}`;
     case "en_preparacion":
     case "aceptado":
-      if (a.cercano) return `El pedido ${a.folio} (${a.items}) ya está en preparación y en unos minutos se lo llevamos a su punto (${a.direccion ?? "el que dijo"}; nómbralo como lo dijo el cliente), sin costo. Que paga al recibirlo dilo solo si aún no se lo dijimos. Este mensaje es la confirmación, no digas «te confirmamos». ${tono}`;
+      if (a.cercano) return `El pedido ${a.folio} (${a.items}) ya está en preparación y en unos minutos se lo llevamos a su punto (${a.direccion ?? "el que dijo"}; nómbralo como lo dijo el cliente), sin costo. ${pagoAlRecibir(a, "al recibirlo")} Este mensaje es la confirmación, no digas «te confirmamos». ${tono}`;
       return a.recoge
-        ? `El pedido ${a.folio} (${a.items}) para recoger ya está en preparación: este mensaje es la confirmación, no digas «te confirmamos». Lo tiene listo en unos 10 minutos y paga al recogerlo aquí. ${tono}`
+        ? `El pedido ${a.folio} (${a.items}) para recoger ya está en preparación: este mensaje es la confirmación, no digas «te confirmamos». Lo tiene listo en unos 10 minutos. ${pagoAlRecibir(a, "al recogerlo aquí")} ${tono}`
         : `Ya confirmamos el pago del pedido ${a.folio} (${a.items}) y ya está en preparación. Dile algo como «Ya confirmamos tu pago 🙌 tu pedido ya está en preparación, te avisamos apenas salga con nuestro domiciliario». ${tono}`;
     case "listo":
       // Only pick-up is told: a delivery hears from us when it leaves with the courier.
       return a.recoge && !a.cercano
-        ? `El pedido ${a.folio} (${a.items}) para recoger ya está listo. Cuéntale con alegría que ya puede pasar por él, que lo esperamos, y que paga al recogerlo (p. ej. «Tu pedido ya está listo 🙌 te esperamos»). ${tono}`
+        ? `El pedido ${a.folio} (${a.items}) para recoger ya está listo. Cuéntale con alegría que ya puede pasar por él y que lo esperamos${a.pagosYaEnviados ? "" : ", y que paga al recogerlo"} (p. ej. «Tu pedido ya está listo 🙌 te esperamos»). ${tono}`
         : null;
     case "en_camino":
       if (a.cercano) return `El pedido ${a.folio} ya va en camino a su punto (${a.direccion ?? "el que dijo"}; nómbralo como lo dijo el cliente): uno de nosotros se lo lleva ahora mismo. Cuéntaselo con alegría y cercanía, sin volver a decir que es sin costo ni que paga al recibir. ${tono}`;
