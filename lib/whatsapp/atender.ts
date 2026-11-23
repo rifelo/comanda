@@ -433,7 +433,7 @@ export async function responder(p: Pendiente): Promise<void> {
   // The customer wrote again while this reply was being written: that message's
   // own run answers everything together (no double greeting, no repeated
   // question). A reply that created an order or handed over still goes out.
-  if (!ordenId && !res.humano && (await hayMensajeNuevo(p.conversacionId, ultimoCliente.at))) {
+  if (!ordenId && !res.humano && (await hayMensajeNuevo(p.conversacionId, ultimoCliente.at, p.messageId))) {
     console.info("[whatsapp] respuesta descartada: el cliente escribió de nuevo", p.waId);
     return;
   }
@@ -459,13 +459,16 @@ function agotadosAhora(catalog: PosCatalog): string {
 }
 
 /** True when the customer sent something (not just a reaction or sticker) after `desde`. */
-async function hayMensajeNuevo(conversacionId: string, desde: Date): Promise<boolean> {
+async function hayMensajeNuevo(conversacionId: string, desde: Date, respondido: string): Promise<boolean> {
+  // created_at has microseconds and `desde` only milliseconds: the message being
+  // answered is itself «after» it, so it is excluded by id.
   const { data, error } = await db()
     .from("whatsapp_mensajes")
     .select("texto")
     .eq("conversacion_id", conversacionId)
     .eq("autor", "cliente")
-    .gt("created_at", desde.toISOString())
+    .neq("wa_message_id", respondido)
+    .gte("created_at", desde.toISOString())
     .limit(10);
   if (error) return false;
   return ((data ?? []) as { texto: string }[]).some((m) => !esSoloSenal(m.texto));
