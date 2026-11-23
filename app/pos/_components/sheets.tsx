@@ -6,6 +6,8 @@
  * it from the options page with its own `onClose`.
  */
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { marcarAgotado } from "../actions";
 import { useCatalog, posStore, tapItem } from "../pos-store";
 import { money, Overlay } from "./ticket";
 import { CloseX } from "./top-bar";
@@ -23,6 +25,9 @@ export function RecetaSheet({ productId, onClose, onAdd }: {
   const catalog = useCatalog();
   const p = catalog.byId[productId];
   const [zoom, setZoom] = React.useState(false);
+  const router = useRouter();
+  const [cambiando, startCambio] = React.useTransition();
+  const [errorStock, setErrorStock] = React.useState<string | null>(null);
   const close = React.useCallback(() => (onClose ? onClose() : posStore.set({ sheet: null })), [onClose]);
   const add = () => {
     if (onAdd) return onAdd();
@@ -32,6 +37,15 @@ export function RecetaSheet({ productId, onClose, onAdd }: {
   React.useEffect(() => { if (!p) close(); }, [p, close]);
   if (!p) return null;
   const out = p.stock === "sin";
+  // «Se acabó» / «Ya hay»: the POS greys it out and the WhatsApp agent stops offering it.
+  const cambiarStock = () => {
+    setErrorStock(null);
+    startCambio(async () => {
+      const r = await marcarAgotado({ productoId: p.id, agotado: !out });
+      if (!r.ok) setErrorStock(r.error);
+      else router.refresh();
+    });
+  };
   const filas = filasFicha(p, catalog.modGroups);
   return (
     <Overlay onClose={() => (zoom ? setZoom(false) : close())} labelledBy="rc" maxWidth={980} style={{ gap: 22 }}>
@@ -96,6 +110,10 @@ export function RecetaSheet({ productId, onClose, onAdd }: {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         {out && <span className="pill late">Agotado</span>}
+        <button type="button" className="btn ghost" disabled={cambiando} onClick={cambiarStock}>
+          {cambiando ? "Guardando…" : out ? "Ya hay · volver a vender" : "Se acabó · marcar agotado"}
+        </button>
+        {errorStock && <span className="muted" role="alert" style={{ fontSize: 14 }}>{errorStock}</span>}
         <span className="grow" />
         <button type="button" className="btn ghost" onClick={close}>Cerrar</button>
         <button type="button" className="btn" disabled={out} onClick={add}>Agregar al pedido</button>

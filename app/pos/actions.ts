@@ -1980,3 +1980,32 @@ export async function canjearPremio(input: unknown): Promise<CanjearPremioResult
   revalidatePath("/pos");
   return { ok: true, quedan: Number(quedan), etiqueta: `${producto.name} · ${premio.titulo}`, total: r.total };
 }
+
+const MarcarAgotadoSchema = z.object({ productoId: z.string().uuid(), agotado: z.boolean() });
+export type MarcarAgotadoResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * «Se acabó» / «Ya hay» from the recipe sheet: anyone on the register flips a
+ * product's availability (productos.stock_status). The POS greys it out and
+ * the WhatsApp agent stops offering it on its next reply.
+ */
+export async function marcarAgotado(input: unknown): Promise<MarcarAgotadoResult> {
+  const parsed = MarcarAgotadoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Producto inválido." };
+  const { organizationId: orgId } = await requirePosAuth();
+  const { productoId, agotado } = parsed.data;
+  // productos is admin-write under RLS; the register writes for whoever is on shift.
+  const { data, error } = await createSupabaseAdminClient()
+    .from("productos")
+    .update({ stock_status: agotado ? "sin" : "ok" })
+    .eq("id", productoId)
+    .eq("organization_id", orgId)
+    .select("id");
+  if (error || !data?.length) {
+    if (error) console.error("[marcarAgotado]", error);
+    return { ok: false, error: "No se pudo cambiar. Intenta de nuevo." };
+  }
+  revalidatePath("/pos");
+  revalidatePath("/productos");
+  return { ok: true };
+}

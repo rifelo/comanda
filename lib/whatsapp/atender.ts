@@ -1,6 +1,7 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPosCatalog } from "@/lib/pos/catalog";
+import type { PosCatalog } from "@/lib/pos/types";
 import { syncOrderConsumption } from "@/lib/pos/stock";
 import { datosDelDia, enBurbujas, fichaParaAgente, menuParaAgente, redactarAviso, responderWhatsapp, type CambiosFicha, type FichaCliente, type Respuesta, type Turno } from "@/lib/ai/whatsapp-agent";
 import { responderConConsola } from "@/lib/ai/whatsapp-consola";
@@ -438,6 +439,14 @@ export async function responder(p: Pendiente): Promise<void> {
   });
 }
 
+/** What the bar marked agotado right now (the Console session's menu is from when it started). */
+function agotadosAhora(catalog: PosCatalog): string {
+  const fuera = catalog.menu.filter((m) => m.stock === "sin").map((m) => m.name);
+  return fuera.length
+    ? `Agotado ahora mismo (manda sobre el menú que tenías): ${fuera.join(", ")}. No lo ofrezcas ni lo metas en un pedido; si lo piden, di que hoy se nos acabó y sugiere algo parecido que sí haya.`
+    : "Ahora mismo no hay nada agotado: todo el menú está disponible.";
+}
+
 /** True when the customer sent something (not just a reaction or sticker) after `desde`. */
 async function hayMensajeNuevo(conversacionId: string, desde: Date): Promise<boolean> {
   const { data, error } = await db()
@@ -538,6 +547,8 @@ async function responderPorConsola(
     ...(nuevo.equipo.length ? [`Una persona del equipo le escribió al cliente: ${nuevo.equipo.map((t) => `«${t}»`).join(" ")}`] : []),
     // The file goes in only when the session starts; points change mid-chat (a cup scanned, the @ just linked).
     ...(entrada.ficha?.mipayo ? [`Mi Pa'Yo del cliente ahora mismo (manda sobre lo que tenías antes):\n${entrada.ficha.mipayo}`] : []),
+    // The menu also goes in only at session start; the bar marks things agotado mid-chat.
+    agotadosAhora(entrada.catalog),
   ].join("\n");
   try {
     const r = await responderConConsola({

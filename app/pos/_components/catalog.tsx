@@ -196,9 +196,9 @@ function ProductTile({ p, qty, hl }: { p: PosMenuItem; qty: number; hl: boolean 
       type="button"
       data-id={p.id}
       className={"tile" + (out ? " off" : "") + (hl ? " hl" : "")}
-      disabled={out}
+      // Not `disabled`: a held agotado tile still opens its recipe, where «Ya hay» lives.
       aria-disabled={out || undefined}
-      onClick={hold.guard(() => tapItem(p.id))}
+      onClick={hold.guard(() => { if (!out) tapItem(p.id); })}
       onPointerDown={hold.onPointerDown}
       onPointerUp={hold.onPointerUp}
       onPointerLeave={hold.onPointerLeave}
