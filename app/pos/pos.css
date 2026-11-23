@@ -911,6 +911,20 @@
 @keyframes wa-pulso { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
 @media (prefers-reduced-motion: reduce) { .app .wa-pulso { animation: none; } }
 
+/* «Falta una tarea del turno» (recordatorio-tareas.tsx): above the WhatsApp strip, bottom left. */
+.app .tarea-recordatorio {
+  position: fixed; z-index: 44;
+  left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  max-width: min(460px, calc(100vw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px;
+  border-radius: 16px; background: var(--surface); color: var(--text); border: 2px solid var(--late);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+}
+.app .tarea-rec-icono { flex-shrink: 0; width: 32px; height: 32px; border-radius: 999px; background: var(--late); color: #fff; font-weight: 800; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+.app .tarea-rec-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.app .tarea-rec-txt b { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app .tarea-rec-txt small { font-size: 13px; color: var(--muted); }
+
 /* ── Pedidos › WhatsApp paso a paso (pedidos-wa.tsx; canvas «Pedidos WhatsApp · POS paso a paso») ── */
 .app .wa-tab-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--late); display: inline-block; }
 .app .wa-leyenda { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }

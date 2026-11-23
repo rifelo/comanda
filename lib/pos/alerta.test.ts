@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conversacionesNuevas, pedidosNuevos, recordatoriosVencidos } from "./alerta";
+import { conversacionesNuevas, pedidosNuevos, recordatorioTareas, recordatoriosVencidos } from "./alerta";
 
 const ahora = Date.parse("2026-11-10T15:00:00Z");
 const o = (id: string, canal: "pos" | "whatsapp", haceMin: number) => ({ id, canal, createdAt: new Date(ahora - haceMin * 60_000).toISOString() });
@@ -40,5 +40,38 @@ describe("conversacionesNuevas", () => {
     expect(conversacionesNuevas(vistas, [{ id: "a", ultimo: "2026-11-17T15:00:00Z" }])).toEqual(["a"]);
     expect(conversacionesNuevas(vistas, [{ id: "a", ultimo: "2026-11-17T15:00:00Z" }])).toEqual([]);
     expect(conversacionesNuevas(vistas, [{ id: "a", ultimo: "2026-11-17T15:01:00Z" }, { id: "b", ultimo: "2026-11-17T15:01:00Z" }])).toEqual(["a", "b"]);
+  });
+});
+
+describe("recordatorioTareas", () => {
+  const MIN = 60_000;
+  const nuevo = () => ({ sonadas: new Set<string>(), ultimo: 0 });
+
+  it("stays quiet until a task is past the grace period", () => {
+    const e = nuevo();
+    expect(recordatorioTareas([{ id: "a", tarde: 4 }], e, 10 * MIN)).toBe(false);
+    expect(recordatorioTareas([{ id: "a", tarde: 5 }], e, 11 * MIN)).toBe(true);
+  });
+
+  it("rings once for several late tasks, then every 10 minutes", () => {
+    const e = nuevo();
+    const late = [{ id: "a", tarde: 8 }, { id: "b", tarde: 6 }];
+    expect(recordatorioTareas(late, e, 100 * MIN)).toBe(true);
+    expect(recordatorioTareas(late, e, 101 * MIN)).toBe(false);
+    expect(recordatorioTareas(late, e, 109 * MIN)).toBe(false);
+    expect(recordatorioTareas(late, e, 110 * MIN)).toBe(true);
+  });
+
+  it("rings at once when another task turns late", () => {
+    const e = nuevo();
+    expect(recordatorioTareas([{ id: "a", tarde: 6 }], e, 100 * MIN)).toBe(true);
+    expect(recordatorioTareas([{ id: "a", tarde: 8 }, { id: "b", tarde: 5 }], e, 102 * MIN)).toBe(true);
+  });
+
+  it("goes quiet once the tasks are done, and forgets them", () => {
+    const e = nuevo();
+    recordatorioTareas([{ id: "a", tarde: 6 }], e, 100 * MIN);
+    expect(recordatorioTareas([], e, 120 * MIN)).toBe(false);
+    expect(e.sonadas.size).toBe(0);
   });
 });

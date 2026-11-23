@@ -173,3 +173,77 @@ export function conversacionesNuevas(
   for (const c of activas) vistas.set(c.id, c.ultimo);
   return nuevas;
 }
+
+// ── Recordatorio de tareas del turno ─────────────────────────────────────
+
+/** A task rings once it is this many minutes past its time and still undone. */
+export const TAREA_GRACIA_MIN = 5;
+/** While any task stays late, the register rings again this often. */
+export const TAREA_REPETIR_MS = 10 * 60 * 1000;
+
+/**
+ * Whether the register should ring for late turno tasks now. A task that
+ * just crossed the grace period rings at once; otherwise, while any stays
+ * late, one ring every `repetirMs` — never one per task. `estado` is kept
+ * by the caller and updated in place.
+ */
+export function recordatorioTareas(
+  vencidas: readonly { id: string; tarde: number }[],
+  estado: { sonadas: Set<string>; ultimo: number },
+  ahora: number,
+  opts: { graciaMin?: number; repetirMs?: number } = {},
+): boolean {
+  const gracia = opts.graciaMin ?? TAREA_GRACIA_MIN;
+  const repetir = opts.repetirMs ?? TAREA_REPETIR_MS;
+  const ya = vencidas.filter((t) => t.tarde >= gracia);
+  const ids = new Set(ya.map((t) => t.id));
+  for (const id of estado.sonadas) if (!ids.has(id)) estado.sonadas.delete(id);
+  if (!ya.length) return false;
+  const nueva = ya.some((t) => !estado.sonadas.has(t.id));
+  for (const id of ids) estado.sonadas.add(id);
+  if (nueva || ahora - estado.ultimo >= repetir) {
+    estado.ultimo = ahora;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * «Falta una tarea»: three falling chime notes (G6 → E6 → C6), twice — a
+ * different shape from the order alert (which climbs), so the team can tell
+ * a reminder from a new order by ear. As loud as the order alert.
+ */
+export function sonarRecordatorio(): void {
+  const ac = audio();
+  if (!ac) return;
+  void ac.resume().catch(() => {});
+  const limiter = ac.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.15;
+  const salida = ac.createGain();
+  salida.gain.value = 1.5;
+  limiter.connect(salida).connect(ac.destination);
+  const nota = (freq: number, start: number, dur: number) => {
+    for (const [mult, nivel] of [[1, 0.75], [2, 0.15], [4, 0.04]] as const) {
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq * mult;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(nivel, start + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + dur / mult);
+      osc.connect(g).connect(limiter);
+      osc.start(start);
+      osc.stop(start + dur + 0.05);
+    }
+  };
+  const t0 = ac.currentTime + 0.05;
+  for (let vez = 0; vez < 2; vez++) {
+    const t = t0 + vez * 1.4;
+    nota(1568, t, 0.5);
+    nota(1318.5, t + 0.28, 0.5);
+    nota(1046.5, t + 0.56, 0.8);
+  }
+}

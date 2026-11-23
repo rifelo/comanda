@@ -41,6 +41,7 @@ import { motivoNoAplica, premioPorId } from "@/lib/clientes/premios";
 import { codigoValido } from "@/lib/clientes/premios-codigo";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resumirVentas, ventanaVentas, type ResumenVentas, type VentaOrden } from "@/lib/pos/ventas";
+import { tareasAtrasadas } from "@/lib/turno/reads";
 
 // ── payloads (lines are re-priced in lib/pos/lineas.ts, never trusted) ──────
 const PaymentSchema = z.object({
@@ -2008,4 +2009,21 @@ export async function marcarAgotado(input: unknown): Promise<MarcarAgotadoResult
   revalidatePath("/pos");
   revalidatePath("/productos");
   return { ok: true };
+}
+
+/**
+ * The turno's late, undone tasks for the register's reminder (polled once a
+ * minute by recordatorio-tareas.tsx). The sede is the station's; a station
+ * without one uses the org's first sede.
+ */
+export async function tareasAtrasadasPos(): Promise<{ ok: true; tareas: { id: string; titulo: string; tarde: number }[] } | { ok: false }> {
+  const { organizationId: orgId, actor } = await requirePosAuth();
+  const admin = createSupabaseAdminClient();
+  const propio = actor.kind === "device" ? actor.device.restaurantId : actor.restaurantId;
+  let q = admin.from("restaurants").select("id, timezone").eq("organization_id", orgId);
+  if (propio) q = q.eq("id", propio);
+  const { data: sede } = await q.order("created_at").limit(1).maybeSingle();
+  if (!sede) return { ok: false };
+  const tareas = await tareasAtrasadas(admin, sede.id as string, (sede.timezone as string | null) ?? "America/Bogota");
+  return { ok: true, tareas };
 }
