@@ -118,3 +118,16 @@ export function textoDomicilio(cop: number | null | undefined, transferido: bool
 export function agradece(texto: string): boolean {
   return /\bgraci+a+s*\b|\bdios (?:le|te|les) pague\b|\bthank/i.test(texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
 }
+
+/**
+ * How long the agent waits for the customer to finish a burst before
+ * answering. Measured on 14 days of chats (178 back-to-back messages):
+ * 4 s grouped 45 %, 10 s groups 80 %. After a bare greeting («Hola»,
+ * «Buen día») the order usually comes within half a minute, so it waits
+ * longer instead of answering the greeting on its own.
+ */
+export function esperaRafagaMs(texto: string | null | undefined): number {
+  const t = (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-zñ ]+/g, " ").replace(/\s+/g, " ").trim();
+  const soloSaludo = /^(?:(?:hola|holi|ola|buenas|buen dia|buenos dias|buenas tardes|buenas noches|buen diaa|que mas|oye|doc|vecina?|veci|una pregunta|pregunta|disculpa|disculpe)\s?)+$/.test(t);
+  return soloSaludo ? 25_000 : 10_000;
+}

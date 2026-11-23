@@ -11,7 +11,7 @@ import { guardarPedidoWhatsapp, modificarPedidoWhatsapp, validarPedido } from ".
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
-import { agradece, ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop } from "./flujo";
+import { agradece, esperaRafagaMs, ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop } from "./flujo";
 import type { WaEstado } from "@/lib/pos/types";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
@@ -20,11 +20,10 @@ import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type 
  *
  * `registrar` runs inside the request: it stores every message once (Meta
  * retries, `wa_message_id` is unique) and returns the customer messages that
- * still need an answer. `responder` runs after the 200 went back: it waits a
- * few seconds so a customer who types in bursts gets one answer, then lets the
- * agent reply — unless someone from the team is already in the chat.
+ * still need an answer. `responder` runs after the 200 went back: it waits for
+ * the customer to finish a burst (esperaRafagaMs) so they get one answer, then
+ * lets the agent reply — unless someone from the team is already in the chat.
  */
-const ESPERA_RAFAGA_MS = 4_000;
 /** The team wrote from the phone: the agent steps back this long. */
 const PAUSA_EQUIPO_MS = 2 * 60 * 60 * 1000;
 /** Handed over to a person: the agent stays out until the team is done. */
@@ -296,7 +295,10 @@ export async function responder(p: Pendiente): Promise<void> {
   // left to the team (no read receipt, no reply).
   if (await esProveedor(antes.organization_id, p.waId)) return;
   await marcarLeidoEscribiendo(p.phoneNumberId, p.messageId);
-  await new Promise((r) => setTimeout(r, ESPERA_RAFAGA_MS));
+  // Wait for the customer to finish a burst («Hola» / «Buen día» / the order):
+  // only the run of the last message answers, once, for all of them.
+  const { data: este } = await db().from("whatsapp_mensajes").select("texto").eq("conversacion_id", p.conversacionId).eq("wa_message_id", p.messageId).maybeSingle();
+  await new Promise((r) => setTimeout(r, esperaRafagaMs((este?.texto as string | null) ?? null)));
 
   const n = await numero(p.phoneNumberId);
   if (!n || !atiendeA(n.agente_activo, p.waId)) return;

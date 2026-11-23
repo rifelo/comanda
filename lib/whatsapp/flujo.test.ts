@@ -88,3 +88,11 @@ describe("agradece", () => {
     for (const t of ["Hola", "un americano", "Engracia está aquí"]) expect(agradece(t)).toBe(false);
   });
 });
+
+describe("esperaRafagaMs", () => {
+  it("espera más tras un saludo suelto", async () => {
+    const { esperaRafagaMs } = await import("./flujo");
+    for (const t of ["Hola", "Buen día", "Buenos días!!", "Hola buenas tardes 😊", "Doc", "Una pregunta"]) expect(esperaRafagaMs(t)).toBe(25_000);
+    for (const t of ["Me ayudas con un americano por fis", "Hola, un latte para recoger", "Gracias", ""]) expect(esperaRafagaMs(t)).toBe(10_000);
+  });
+});
