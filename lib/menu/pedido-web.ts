@@ -12,7 +12,12 @@ export interface LineaCarrito {
   sku: string;
   opcion: string | null;
   cantidad: number;
+  /** Drinks only: whose cup each one is (the name on its label), by position; a blank one takes the order's name. */
+  para?: string[];
 }
+
+/** Sections whose products are served in a cup with a name label. */
+export const SECCIONES_CON_ETIQUETA: ReadonlyArray<string> = ["caliente", "frio", "jugos"];
 
 /** What a line needs from the menu to be priced and named. */
 export interface ProductoCarrito {
@@ -21,6 +26,8 @@ export interface ProductoCarrito {
   price: number;
   agotado: boolean;
   options: { name: string; delta: number }[];
+  /** Its section on the menu («frio»): decides whether its cups carry a name. */
+  cat?: string;
 }
 
 export interface LineaPedido {
@@ -31,6 +38,10 @@ export interface LineaPedido {
   cantidad: number;
   unitario: number;
   total: number;
+  /** A drink: each cup carries a name label. */
+  conNombre: boolean;
+  /** One entry per cup when `conNombre` ("" = not written yet); empty otherwise. */
+  para: string[];
 }
 
 export type Entrega =
@@ -52,7 +63,34 @@ export function sumar(carrito: ReadonlyArray<LineaCarrito>, sku: string, opcion:
   const actual = carrito.find((l) => claveLinea(l.sku, l.opcion) === clave);
   const cantidad = Math.min(MAX_POR_LINEA, Math.max(0, (actual?.cantidad ?? 0) + Math.trunc(delta)));
   if (!actual) return cantidad > 0 ? [...carrito, { sku, opcion, cantidad }] : [...carrito];
-  return carrito.flatMap((l) => (l === actual ? (cantidad > 0 ? [{ ...l, cantidad }] : []) : [l]));
+  // Taking a cup away takes the last name with it.
+  return carrito.flatMap((l) => (l === actual ? (cantidad > 0 ? [{ ...l, cantidad, ...(l.para ? { para: l.para.slice(0, cantidad) } : {}) }] : []) : [l]));
+}
+
+/** Add `n` cups of a drink, all for `nombre` (the name typed in its sheet). */
+export function agregarPara(carrito: ReadonlyArray<LineaCarrito>, sku: string, opcion: string | null, n: number, nombre: string): LineaCarrito[] {
+  const clave = claveLinea(sku, opcion);
+  const antes = carrito.find((l) => claveLinea(l.sku, l.opcion) === clave)?.cantidad ?? 0;
+  let out = sumar(carrito, sku, opcion, n);
+  const ahora = out.find((l) => claveLinea(l.sku, l.opcion) === clave)?.cantidad ?? 0;
+  for (let i = antes; i < ahora; i++) out = nombrar(out, sku, opcion, i, nombre.replace(/\s+/g, " ").trim());
+  return out;
+}
+
+/** Does this section's product go in a cup with a name label? */
+export function llevaEtiqueta(cat: string | null | undefined): boolean {
+  return !!cat && SECCIONES_CON_ETIQUETA.includes(cat);
+}
+
+/** Write whose cup number `i` (from 0) of a line is. */
+export function nombrar(carrito: ReadonlyArray<LineaCarrito>, sku: string, opcion: string | null, i: number, nombre: string): LineaCarrito[] {
+  const clave = claveLinea(sku, opcion);
+  return carrito.map((l) => {
+    if (claveLinea(l.sku, l.opcion) !== clave || i < 0 || i >= l.cantidad) return l;
+    const para = Array.from({ length: l.cantidad }, (_, k) => l.para?.[k] ?? "");
+    para[i] = nombre.slice(0, 40);
+    return { ...l, para };
+  });
 }
 
 /**
@@ -69,7 +107,9 @@ export function lineasDelPedido(carrito: ReadonlyArray<LineaCarrito>, productos:
     if (l.opcion ? !opt : p.options.length > 0) continue;
     const unitario = p.price + (opt?.delta ?? 0);
     const cantidad = Math.min(MAX_POR_LINEA, l.cantidad);
-    out.push({ clave: claveLinea(l.sku, l.opcion), sku: l.sku, nombre: p.name, opcion: l.opcion, cantidad, unitario, total: unitario * cantidad });
+    const conNombre = llevaEtiqueta(p.cat);
+    const para = conNombre ? Array.from({ length: cantidad }, (_, k) => (typeof l.para?.[k] === "string" ? l.para[k] : "")) : [];
+    out.push({ clave: claveLinea(l.sku, l.opcion), sku: l.sku, nombre: p.name, opcion: l.opcion, cantidad, unitario, total: unitario * cantidad, conNombre, para });
   }
   return out;
 }
@@ -104,12 +144,22 @@ export function mensajePedido(lineas: ReadonlyArray<LineaPedido>, datos: { nombr
   const nota = limpio(datos.nota ?? "", 240);
   return [
     "Hola, quiero hacer este pedido:",
-    ...lineas.map((l) => `• ${l.cantidad} × ${l.nombre}${l.opcion ? ` (${l.opcion.charAt(0).toLowerCase()}${l.opcion.slice(1)})` : ""} — ${money(l.total)}`),
+    ...lineas.map((l) => `• ${l.cantidad} × ${l.nombre}${l.opcion ? ` (${l.opcion.charAt(0).toLowerCase()}${l.opcion.slice(1)})` : ""} — ${money(l.total)}${paraQuien(l, datos.nombre)}`),
     `Total productos: ${money(totalPedido(lineas))}`,
     donde,
     `A nombre de: ${limpio(datos.nombre, 60)}`,
     ...(nota ? [`Nota: ${nota}`] : []),
   ].join("\n");
+}
+
+/**
+ * « · para Ana, Luis»: the names for a drink's labels, one per cup. A cup left
+ * blank takes the order's name; a line where nobody wrote a name says nothing
+ * (the order's name covers it).
+ */
+function paraQuien(l: LineaPedido, nombre: string): string {
+  if (!l.conNombre || !l.para.some((n) => limpio(n, 40))) return "";
+  return ` · para ${l.para.map((n) => limpio(n, 40) || limpio(nombre, 60)).join(", ")}`;
 }
 
 /** The café's WhatsApp chat with the message already written. */

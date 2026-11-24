@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { enlaceWhatsapp, faltaPara, lineasDelPedido, mensajePedido, sumar, totalPedido, unidades, type ProductoCarrito } from "./pedido-web";
+import { agregarPara, enlaceWhatsapp, faltaPara, lineasDelPedido, mensajePedido, nombrar, sumar, totalPedido, unidades, type ProductoCarrito } from "./pedido-web";
 
 const menu = new Map<string, ProductoCarrito>([
-  ["BF-005", { sku: "BF-005", name: "Latte frío", price: 8500, agotado: false, options: [] }],
+  ["BF-005", { sku: "BF-005", name: "Latte frío", price: 8500, agotado: false, options: [], cat: "frio" }],
+  ["PO-001", { sku: "PO-001", name: "Torta", price: 6000, agotado: false, options: [], cat: "postres" }],
   ["JU-001", { sku: "JU-001", name: "Jugo de mora", price: 7000, agotado: false, options: [{ name: "En agua", delta: 0 }, { name: "En leche", delta: 1000 }] }],
   ["BC-003", { sku: "BC-003", name: "Tinto", price: 3000, agotado: true, options: [] }],
 ]);
@@ -69,5 +70,30 @@ describe("faltaPara", () => {
     expect(faltaPara(lineas, " ", { tipo: "recoger" })).toMatch(/nombre/);
     expect(faltaPara(lineas, "Ana", { tipo: "domicilio", direccion: "  " })).toMatch(/dirección/);
     expect(faltaPara(lineas, "Ana", { tipo: "domicilio", direccion: "Cra 20 # 8-15" })).toBeNull();
+  });
+});
+
+describe("nombres por vaso", () => {
+  it("cada vaso de una bebida lleva su nombre; lo que no es bebida, no", () => {
+    let c = sumar(sumar([], "BF-005", null, 2), "PO-001", null, 1);
+    c = nombrar(c, "BF-005", null, 1, "Luis");
+    const l = lineasDelPedido(c, menu);
+    expect(l[0]).toMatchObject({ conNombre: true, para: ["", "Luis"] });
+    expect(l[1]).toMatchObject({ conNombre: false, para: [] });
+    const m = mensajePedido(l, { nombre: "Ana", entrega: { tipo: "recoger" } });
+    expect(m).toContain("• 2 × Latte frío — $17.000 · para Ana, Luis");
+    expect(m).toContain("• 1 × Torta — $6.000\n");
+  });
+  it("sin nombres escritos la línea no dice para quién, y quitar un vaso quita su nombre", () => {
+    const c = sumar([], "BF-005", null, 2);
+    expect(mensajePedido(lineasDelPedido(c, menu), { nombre: "Ana", entrega: { tipo: "recoger" } })).toContain("• 2 × Latte frío — $17.000\n");
+    const d = sumar(nombrar(c, "BF-005", null, 1, "Luis"), "BF-005", null, -1);
+    expect(d[0].para).toEqual([""]);
+    expect(nombrar(c, "BF-005", null, 5, "X")).toEqual(c);
+  });
+  it("agregar desde la ficha pone el nombre a los vasos nuevos, sin tocar los que ya estaban", () => {
+    let c = agregarPara([], "BF-005", null, 1, " Ana ");
+    c = agregarPara(c, "BF-005", null, 2, "Luis");
+    expect(c).toEqual([{ sku: "BF-005", opcion: null, cantidad: 3, para: ["Ana", "Luis", "Luis"] }]);
   });
 });
