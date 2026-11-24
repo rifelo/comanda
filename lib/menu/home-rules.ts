@@ -6,6 +6,8 @@ export interface Favorita {
   price: number;
   /** «Frío, con café» for coffee-bar drinks; the item's one-liner otherwise. */
   nota: string;
+  /** Its studio photo, when the product has one. */
+  imagen: string | null;
 }
 
 /** Sections whose drinks read «Caliente/Frío, con/sin café». */
@@ -28,7 +30,7 @@ export function elegirFavoritas(secciones: ReadonlyArray<MenuSection>, promo: Re
     const e = porSku.get(sku);
     if (!e || e.item.agotado || out.some((f) => f.sku === sku)) continue;
     const nota = BARRA.has(e.seccion.id) ? `${e.seccion.label}, ${e.item.cafe ? "con café" : "sin café"}` : e.item.short;
-    out.push({ sku, name: e.item.name, price: e.item.price, nota });
+    out.push({ sku, name: e.item.name, price: e.item.price, nota, imagen: e.item.image ?? null });
   }
   return out;
 }

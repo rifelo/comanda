@@ -54,6 +54,23 @@ export async function favoritasDelMes(ahora: Date = new Date()): Promise<Favorit
   return elegirFavoritas(secciones, promo, vendidos, 3);
 }
 
+export interface BebidaHome {
+  sku: string;
+  name: string;
+  price: number;
+  imagen: string;
+}
+
+/** «Nuestras bebidas» on the Home: the menu's drinks that have a photo, in the menu's order. */
+export async function bebidasConFoto(): Promise<BebidaHome[]> {
+  const secciones = await loadMenu();
+  return secciones
+    .filter((s) => ["caliente", "frio", "jugos"].includes(s.id))
+    .flatMap((s) => s.items)
+    .filter((i) => i.image && !i.agotado)
+    .map((i) => ({ sku: i.sku, name: i.name, price: i.price, imagen: i.image! }));
+}
+
 export interface Lider {
   puesto: number;
   instagram: string;

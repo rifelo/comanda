@@ -96,7 +96,12 @@ export default async function ColeccionPage() {
           <ul className="pyy-album">
             {g.cartas.map((c) => (
               <li key={c.nombre} className={`pyy-carta${c.veces ? "" : " pyy-carta--nueva"}`}>
-                <Taza />
+                {c.imagen ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- product photo from storage
+                  <img src={c.imagen} alt="" loading="lazy" decoding="async" className="pyy-carta__foto" />
+                ) : (
+                  <Taza />
+                )}
                 <span className="pyy-carta__nombre">{c.nombre}</span>
                 {c.veces ? <span className="pyy-chip">×{c.veces}</span> : <span className="pyy-meta--s">Sin probar</span>}
               </li>

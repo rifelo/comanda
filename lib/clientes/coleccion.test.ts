@@ -25,7 +25,7 @@ describe("coleccion", () => {
     expect(c.descubiertas).toBe(3);
     expect(c.carta).toBe(5);
     const cal = c.grupos.find((g) => g.grupo === "Calientes")!;
-    expect(cal.cartas).toEqual([{ nombre: "Cappuccino", veces: 3 }, { nombre: "Tinto", veces: 0 }]);
+    expect(cal.cartas).toEqual([{ nombre: "Cappuccino", veces: 3, imagen: null }, { nombre: "Tinto", veces: 0, imagen: null }]);
     expect(c.grupos.find((g) => g.grupo === "Frías")!.descubiertas).toBe(2);
   });
   it("las bebidas que ya no están en la carta van a «pasadas»; botellas y comida no cuentan", () => {

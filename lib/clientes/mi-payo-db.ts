@@ -175,7 +175,7 @@ export async function registroDeEscaneo(codigo: string, instagram: string, total
 export async function cargarCarta(orgId: string): Promise<{ carta: BebidaCarta[]; fuera: string[] }> {
   const { data, error } = await createSupabaseAdminClient()
     .from("productos")
-    .select("name, price_cop, categoria:producto_categorias(label)")
+    .select("name, price_cop, image_url, categoria:producto_categorias(label)")
     .eq("organization_id", orgId);
   if (error) throw error;
   const carta: BebidaCarta[] = [];
@@ -184,7 +184,7 @@ export async function cargarCarta(orgId: string): Promise<{ carta: BebidaCarta[]
     const c = p.categoria as { label: string } | { label: string }[] | null;
     const label = (Array.isArray(c) ? c[0]?.label : c?.label) ?? "";
     const grupo = GRUPO_DE[label];
-    if (grupo && Number(p.price_cop) > 0) carta.push({ nombre: p.name as string, grupo });
+    if (grupo && Number(p.price_cop) > 0) carta.push({ nombre: p.name as string, grupo, imagen: ((p.image_url as string | null) ?? "").trim() || null });
     else fuera.push(p.name as string);
   }
   return { carta, fuera };
