@@ -47,6 +47,29 @@ export function errorPreparacion(p: {
   return null;
 }
 
+/**
+ * The portion the drinks use (Cold foam tradicional → 30 g): the amount most
+ * recipes take, ties → the smaller one. Null when no product uses it.
+ */
+export function porcionHabitual(usos: ReadonlyArray<{ qty: number }>): number | null {
+  if (!usos.length) return null;
+  const n = new Map<number, number>();
+  for (const u of usos) n.set(u.qty, (n.get(u.qty) ?? 0) + 1);
+  return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+}
+
+/** Units a new preparación can be measured in. */
+export const UNIDADES_PREPARACION = ["g", "ml", "und"] as const;
+
+/** Why a new preparación can't be created, or null. */
+export function errorNuevaPreparacion(p: { nombre: string; unidad: string; rinde: number }): string | null {
+  if (!p.nombre.trim()) return "Escribe el nombre.";
+  if (p.nombre.trim().length > 120) return "El nombre es muy largo.";
+  if (!(UNIDADES_PREPARACION as readonly string[]).includes(p.unidad)) return "Elige la unidad.";
+  if (!(p.rinde > 0)) return "Escribe cuánto sale de una tanda.";
+  return null;
+}
+
 /** "1", "1,5", "2" — batches as the team reads them. */
 export function fmtTandas(n: number): string {
   return String(Math.round(n * 100) / 100).replace(".", ",");

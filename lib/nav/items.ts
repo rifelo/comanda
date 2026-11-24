@@ -104,9 +104,10 @@ export const DUENO_TABS: NavItem[] = [
     href: "/productos",
     label: "Productos",
     icon: "productos",
-    match: ["/productos", "/catalogo", "/recetas", "/modificadores"],
+    match: ["/productos", "/catalogo", "/recetas", "/modificadores", "/preparaciones"],
     sections: [
       { href: "/productos", label: "Productos", match: ["/productos", "/catalogo", "/recetas"] },
+      { href: "/preparaciones", label: "Preparaciones", match: ["/preparaciones"] },
       { href: "/modificadores", label: "Modificadores", match: ["/modificadores"] },
     ],
   },
