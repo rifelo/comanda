@@ -2,261 +2,268 @@
 
 import * as React from "react";
 import { enlacePedido, ORIGENES } from "@/lib/menu/origenes";
-import { fraseDePedido, gruposCafe, money, perfilCon, porPrecio, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { gruposCafe, money, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
+import { claveLinea, enlaceWhatsapp, faltaPara, lineasDelPedido, mensajePedido, sumar, totalPedido, unidades, type Entrega, type LineaCarrito, type LineaPedido } from "@/lib/menu/pedido-web";
+import "./inicio/inicio.css";
+import "./tienda.css";
 
 interface Props {
   sections: MenuSection[];
-  moods: { id: string; label: string; hint: string }[];
-  profileLabels: string[];
-  /** What an option adds to the profile, by option name. */
-  profileByOption: Record<string, number[]>;
   header: { titulo: string; texto: string };
   footer: { tagline: string; texto: string; instagram: string };
-  /** Brand art by file name → public path; null while the file is missing. */
-  arte: Record<string, string | null>;
   compartir: { url: string; qr: string; titulo: string; texto: string; mensaje: string };
-  /** The featured drinks; every sku is on the menu. */
-  promo: { sticker: string; items: { sku: string; tagline: string }[] } | null;
 }
 
-const Chevron = ({ color = "currentColor", size = 16 }: { color?: string; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+const LOGO = "/brand/payo-mark.svg";
+const MANO = "/menu/art/mano-taza.svg";
+const GUARDADO = "payo-pedido-v1";
+
+/** «$8.5K» in the numbers' face; read out whole ($8.500). */
+function Precio({ n, className = "" }: { n: number; className?: string }) {
+  return (
+    <span className={`pyh-n ${className}`} aria-label={money(n)}>
+      <span aria-hidden="true">${precioK(n)}</span>
+    </span>
+  );
+}
+
+function Cerrar({ ref, onClick }: { ref: React.Ref<HTMLButtonElement>; onClick: () => void }) {
+  return (
+    <button ref={ref} type="button" aria-label="Cerrar" className="pyt-cerrar" onClick={onClick}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+    </button>
+  );
+}
+
+const IconoCompartir = ({ size = 18 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
 );
 
+const IconoWhatsapp = ({ size = 20 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 21l1.6-4.7A8.5 8.5 0 1 1 8 19.6L3 21Z" />
+    <path d="M9 8.6c0 3.200 3.200 6.400 6.400 6.400l1.100-1.600-2-1.100-.9.800c-1-.5-2.200-1.700-2.700-2.700l.8-.9-1.100-2L9 8.600Z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+/** − n +, for one line of the order. */
+function Cantidad({ n, nombre, onMenos, onMas, chico }: { n: number; nombre: string; onMenos: () => void; onMas: () => void; chico?: boolean }) {
+  return (
+    <span className={`pyt-cant${chico ? " pyt-cant--s" : ""}`}>
+      <button type="button" aria-label={`Quitar uno de ${nombre}`} onClick={onMenos}>−</button>
+      <span className="pyh-n" aria-live="polite" aria-label={`${n} en el pedido`}>{n}</span>
+      <button type="button" aria-label={`Agregar otro ${nombre}`} onClick={onMas}>+</button>
+    </span>
+  );
+}
+
 /**
- * A brand illustration, cropped by the bottom edge of its container. While
- * the SVG has not been delivered (arte[name] is null) it draws a labelled
- * outline in its place, so the missing file is obvious and never invented.
+ * cafepayo.com/menu as a shop: photo cards by section, a cart that lives on the
+ * phone, and the order leaves as a WhatsApp message to the café. Nothing is
+ * charged or saved here; the café answers in the chat.
  */
-function Arte({ arte, name, className }: { arte: Props["arte"]; name: string | null; className: string }) {
-  if (!name) return null;
-  const src = arte[name];
-  // eslint-disable-next-line @next/next/no-img-element
-  if (src) return <img src={src} alt="" className={`pym-art ${className}`} />;
-  // TODO(marca): falta el archivo `name` del Manual de Marca 2026.
-  return <span aria-hidden="true" className={`pym-art pym-art--todo ${className}`}>{name}</span>;
-}
-
-/** The wordmark. A text stand-in until the logo SVG is delivered. */
-function Logo({ arte, name, className }: { arte: Props["arte"]; name: "logo" | "logoSticker"; className: string }) {
-  const src = arte[name];
-  // eslint-disable-next-line @next/next/no-img-element
-  if (src) return <img src={src} alt="Café Pa' Yo" className={className} />;
-  // TODO(marca): falta cafe-payo-logo-principal.svg / el logo sticker crema.
-  return <span className={`pym-wordmark ${className}`}>Café Pa&apos; Yo</span>;
-}
-
-export function MenuClient({ sections, moods, profileLabels, profileByOption, header, footer, arte, compartir, promo }: Props) {
-  const [mood, setMood] = React.useState<string | null>(null);
-  const [open, setOpen] = React.useState<string | null>(null);
-  const [option, setOption] = React.useState(0);
-  const [sharing, setSharing] = React.useState(false);
+export function MenuClient({ sections, header, footer, compartir }: Props) {
+  const [abierto, setAbierto] = React.useState<string | null>(null);
+  const [viendoPedido, setViendoPedido] = React.useState(false);
+  const [compartiendo, setCompartiendo] = React.useState(false);
+  const [carrito, setCarrito] = React.useState<LineaCarrito[]>([]);
+  const [nombre, setNombre] = React.useState("");
+  const [cargado, setCargado] = React.useState(false);
   const opener = React.useRef<HTMLElement | null>(null);
-  /** A category tapped while a mood was filtering: jump there once the full menu is back. */
-  const [irA, setIrA] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    if (!irA || mood) return;
-    // After the full menu has painted, or the jump lands short.
-    const f = requestAnimationFrame(() => {
-      document.getElementById(`cat-${irA}`)?.scrollIntoView({ block: "start" });
-      setIrA(null);
-    });
-    return () => cancelAnimationFrame(f);
-  }, [irA, mood]);
 
-  // Came from the QR of a printed piece (?desde=…): that place gets its order button.
+  // Came from the QR of a printed piece (?desde=…): that place is a delivery point.
   // Read on the client, so the page itself stays cached for everyone.
   const [desde, setDesde] = React.useState<string | null>(null);
   React.useEffect(() => {
     const o = new URLSearchParams(window.location.search).get("desde");
-    queueMicrotask(() => setDesde(o && ORIGENES[o] ? o : null));
+    let guardado: { carrito?: LineaCarrito[]; nombre?: string } = {};
+    try {
+      guardado = JSON.parse(window.localStorage.getItem(GUARDADO) ?? "{}") ?? {};
+    } catch {
+      /* private window or a broken entry: start empty */
+    }
+    queueMicrotask(() => {
+      setDesde(o && ORIGENES[o] ? o : null);
+      if (Array.isArray(guardado.carrito)) setCarrito(guardado.carrito.filter((l) => l && typeof l.sku === "string" && Number.isInteger(l.cantidad)));
+      if (typeof guardado.nombre === "string") setNombre(guardado.nombre);
+      setCargado(true);
+    });
   }, []);
-  const pedir = desde ? enlacePedido(desde) : null;
+  React.useEffect(() => {
+    if (!cargado) return;
+    try {
+      window.localStorage.setItem(GUARDADO, JSON.stringify({ carrito, nombre }));
+    } catch {
+      /* the order still works for this visit */
+    }
+  }, [carrito, nombre, cargado]);
 
-  const all = React.useMemo(() => sections.flatMap((s) => s.items), [sections]);
-  const bySku = React.useMemo(() => new Map(all.map((i) => [i.sku, i])), [all]);
-  const sel = open ? bySku.get(open) ?? null : null;
-  /** Open a product's sheet; `from` is the row tapped, to give the focus back on close. */
-  function show(sku: string, from?: HTMLElement) {
-    if (from) opener.current = from;
-    setOption(0);
-    setOpen(sku);
-  }
-  const close = React.useCallback(() => {
-    setOpen(null);
-    setSharing(false);
+  const todos = React.useMemo(() => sections.flatMap((s) => s.items), [sections]);
+  const porSku = React.useMemo(() => new Map(todos.map((i) => [i.sku, i])), [todos]);
+  const lineas = React.useMemo(() => lineasDelPedido(carrito, porSku), [carrito, porSku]);
+  const enPedido = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lineas) m.set(l.sku, (m.get(l.sku) ?? 0) + l.cantidad);
+    return m;
+  }, [lineas]);
+  const total = totalPedido(lineas);
+  const cuantos = unidades(lineas);
+  const sel = abierto ? porSku.get(abierto) ?? null : null;
+
+  const cambiar = React.useCallback((sku: string, opcion: string | null, delta: number) => setCarrito((c) => sumar(c, sku, opcion, delta)), []);
+  const cerrar = React.useCallback(() => {
+    setAbierto(null);
+    setViendoPedido(false);
+    setCompartiendo(false);
     opener.current?.focus();
   }, []);
-  function share(from: HTMLElement) {
+  function ver(sku: string, from: HTMLElement) {
     opener.current = from;
-    setSharing(true);
+    setAbierto(sku);
   }
 
-  const moodObj = moods.find((m) => m.id === mood) ?? null;
-  const shown: { id: string; label: string; sub: string; art: string | null; items: MenuItem[] }[] = moodObj
-    ? (() => {
-        const hits = all.filter((i) => i.tags.includes(moodObj.id)).sort(porPrecio);
-        return [{ id: moodObj.id, label: moodObj.label, sub: `${hits.length} ${hits.length === 1 ? "opción" : "opciones"} en todo el menú. ${moodObj.hint}.`, art: "mano-taza.svg", items: hits }];
-      })()
-    : sections;
-
   return (
-    <div className="pym-page">
-      <header className="pym-header">
-        <a href="https://cafepayo.com" aria-label="Inicio de Café Pa' Yo" className="pym-header__home"><Logo arte={arte} name="logo" className="pym-header__logo" /></a>
-        <button type="button" className="pym-share" aria-label="Compartir el menú" onClick={(e) => share(e.currentTarget)}><IconoCompartir /></button>
-        <h1 className="pym-header__title">{header.titulo}</h1>
-        <p className="pym-header__text">{header.texto}</p>
-        <Arte arte={arte} name="mano-taza.svg" className="pym-header__art" />
-      </header>
-      {desde && pedir && (
-        <a className="pym-desde" href={pedir} target="_blank" rel="noopener noreferrer">
-          <span className="pym-desde__texto">
-            <strong>Pide y te lo llevamos a {ORIGENES[desde].entrega}</strong>
-            <span>{ORIGENES[desde].nombre} · sin costo de envío</span>
-          </span>
-          <span className="pym-pill pym-pill--solid pym-desde__boton">Pedir por WhatsApp</span>
-        </a>
-      )}
-
-      {promo && (
-        <section aria-label={promo.sticker} className="pym-block">
-          <div className="pym-promo">
-            <span className="pym-sticker">{promo.sticker}</span>
-            {promo.items.map((f) => {
-              const it = bySku.get(f.sku);
-              if (!it) return null;
-              return (
-                <button key={f.sku} type="button" className="pym-promo__row" onClick={(e) => show(f.sku, e.currentTarget)}>
-                  <span className="pym-promo__text">
-                    <span className="pym-promo__name">{it.name}</span>
-                    <span className="pym-promo__tagline">{f.tagline}</span>
-                  </span>
-                  <span className="pym-promo__side">
-                    <Precio n={it.price} className="pym-promo__price" />
-                    <Chevron size={16} />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      <section className="pym-moods">
-        <div className="pym-moods__head">
-          <h2 className="pym-h2">¿Qué se te antoja?</h2>
-          {mood && <button type="button" className="pym-pill" onClick={() => setMood(null)}>Ver todo</button>}
+    <div className={`pyh pyt${cuantos > 0 ? " pyt--con-pedido" : ""}`}>
+      <header className="pyh-head">
+        <div className="pyh-wrap pyh-head__in">
+          <a href="https://cafepayo.com" className="pyh-marca" aria-label="Inicio de Café Pa' Yo">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={LOGO} alt="" />
+            <span>Café Pa&apos; Yo</span>
+          </a>
+          <nav aria-label="Principal" className="pyh-nav">
+            <a href="/menu/puntos">Mis puntos</a>
+            <button type="button" className="pyt-icono" aria-label="Compartir el menú" onClick={(e) => { opener.current = e.currentTarget; setCompartiendo(true); }}><IconoCompartir /></button>
+          </nav>
         </div>
-        <div className="pym-moods__grid">
-          {moods.map((m) => (
-            <button key={m.id} type="button" className="pym-mood" aria-pressed={mood === m.id} onClick={() => setMood(mood === m.id ? null : m.id)}>
-              <span className="pym-mood__label">{m.label}</span>
-              <span className="pym-mood__hint">{m.hint}</span>
-            </button>
-          ))}
+      </header>
+
+      <section className="pyt-intro">
+        <div className="pyh-wrap pyt-intro__in">
+          <span className="pyh-k">{header.titulo}</span>
+          <h1>Arma tu pedido</h1>
+          <p>Elige lo que quieres y envíalo por WhatsApp. Lo recoges en el café o te lo llevamos.</p>
+          {desde && (
+            <p className="pyt-desde">
+              <strong>Te lo llevamos a {ORIGENES[desde].entrega}</strong> de {ORIGENES[desde].nombre}, sin costo de envío.
+            </p>
+          )}
         </div>
       </section>
 
-      {/* Always there, also while a mood filters: a category then clears the mood and jumps to it. */}
-      <nav aria-label="Categorías" className="pym-nav">
-        <div className="pym-nav__row">
+      <nav aria-label="Categorías" className="pyt-cats">
+        <div className="pyh-wrap pyt-cats__fila">
           {sections.map((s) => (
-            <a
-              key={s.id}
-              href={`#cat-${s.id}`}
-              className="pym-pill"
-              onClick={(e) => {
-                if (!mood) return;
-                e.preventDefault();
-                setMood(null);
-                setIrA(s.id);
-              }}
-            >
-              {s.label}
-            </a>
+            <a key={s.id} href={`#cat-${s.id}`} className="pyt-cat">{s.label}</a>
           ))}
         </div>
       </nav>
 
-      <main className="pym-main">
-        {shown.map((sec) => (
-          <section key={sec.id} id={`cat-${sec.id}`} className="pym-section">
-            <div className="pym-band">
-              <h2 className="pym-band__title">{sec.label}</h2>
-              <p className="pym-band__sub">{sec.sub}</p>
-              <Arte arte={arte} name={sec.art} className="pym-band__art" />
-            </div>
-            {gruposCafe(sec.items).map((g) => (
-              <div key={g.id} role={g.label ? "group" : undefined} aria-label={g.label ? `${sec.label} · ${g.label}` : undefined}>
-              {g.label && <h3 className="pym-grupo">{g.label} <span className="pym-grupo__n">{g.items.length}</span></h3>}
-              {g.items.map((it) => (
-                <button key={it.sku} type="button" className="pym-row" onClick={(e) => show(it.sku, e.currentTarget)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
-                  {it.image && <img src={it.image} alt="" loading="lazy" decoding="async" className="pym-row__foto" />}
-                  <span className="pym-row__main">
-                    <span className="pym-row__head">
-                      <span className="pym-row__name">{it.name}</span>
-                      {it.nuevo && <span className="pym-tag">Nuevo</span>}
-                      {it.agotado && <span className="pym-tag pym-tag--off">Agotado hoy</span>}
-                    </span>
-                    {it.short && <span className="pym-row__short">{it.short}</span>}
-                  </span>
-                  <span className="pym-row__side">
-                    <Precio n={it.price} className="pym-row__price" />
-                    <Chevron />
-                  </span>
-                </button>
-              ))}
+      <main>
+        {sections.map((sec) => (
+          <section key={sec.id} id={`cat-${sec.id}`} className="pyt-seccion" aria-labelledby={`cat-t-${sec.id}`}>
+            <div className="pyh-wrap pyh-bloque">
+              <div className="pyh-titulo">
+                <h2 id={`cat-t-${sec.id}`}>{sec.label}</h2>
+                <span className="pyh-meta pyh-meta--m">{sec.sub}</span>
               </div>
-            ))}
+              {gruposCafe(sec.items).map((g) => (
+                <div key={g.id} className="pyt-grupo" role={g.label ? "group" : undefined} aria-label={g.label ? `${sec.label} · ${g.label}` : undefined}>
+                  {g.label && <h3 className="pyh-k">{g.label} · {g.items.length}</h3>}
+                  <ul className="pyt-grid">
+                    {g.items.map((it) => (
+                      <Tarjeta
+                        key={it.sku}
+                        item={it}
+                        n={enPedido.get(it.sku) ?? 0}
+                        onVer={(el) => ver(it.sku, el)}
+                        onMas={() => cambiar(it.sku, null, 1)}
+                        onMenos={() => cambiar(it.sku, null, -1)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </section>
         ))}
       </main>
 
-      <footer className="pym-footer">
-        <Logo arte={arte} name="logoSticker" className="pym-footer__logo" />
-        <p className="pym-footer__tagline">{footer.tagline}</p>
-        <p className="pym-footer__text">{footer.texto} <strong>{footer.instagram}</strong></p>
-        <a href="/menu/puntos" className="pym-pill pym-footer__puntos">Ver mis puntos</a>
-        <button type="button" className="pym-pill pym-footer__share" onClick={(e) => share(e.currentTarget)}><IconoCompartir size={16} /> Compartir el menú</button>
-        <Arte arte={arte} name="mano-taza-amarilla.svg" className="pym-footer__art" />
+      <footer className="pyh-pie">
+        <div className="pyh-wrap pyh-pie__in">
+          <div className="pyh-pie__firma">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={LOGO} alt="Café Pa' Yo" />
+            <span>{footer.tagline}</span>
+          </div>
+          <nav aria-label="Enlaces" className="pyh-pie__links">
+            <a href="https://cafepayo.com">Inicio</a>
+            <a href="/menu/puntos">Mis puntos</a>
+            <a href={`https://instagram.com/${footer.instagram.replace(/^@/, "")}`} rel="noopener">Instagram</a>
+          </nav>
+        </div>
       </footer>
 
-      {sharing && <Compartir c={compartir} onClose={close} />}
+      {cuantos > 0 && !viendoPedido && !sel && (
+        <div className="pyt-barra">
+          <button type="button" className="pyt-barra__btn" onClick={(e) => { opener.current = e.currentTarget; setViendoPedido(true); }}>
+            <span className="pyt-barra__n pyh-n">{cuantos}</span>
+            <span className="pyt-barra__txt">Ver mi pedido</span>
+            <Precio n={total} />
+          </button>
+        </div>
+      )}
 
-      {sel && (
-        <Ficha
-          key={sel.sku}
-          item={sel}
-          section={sections.find((s) => s.id === sel.cat) ?? null}
-          pair={(() => { const s = sections.find((x) => x.id === sel.cat); return s?.pair && s.pair !== sel.sku ? bySku.get(s.pair) ?? null : null; })()}
-          option={option}
-          onOption={setOption}
-          profileLabels={profileLabels}
-          profileByOption={profileByOption}
-          arte={arte}
-          onOpen={(sku) => show(sku)}
-          onClose={close}
+      {compartiendo && <Compartir c={compartir} onClose={cerrar} />}
+      {sel && <Ficha key={sel.sku} item={sel} seccion={sections.find((s) => s.id === sel.cat)?.label ?? ""} onAgregar={(op, n) => { cambiar(sel.sku, op, n); cerrar(); }} onClose={cerrar} />}
+      {viendoPedido && (
+        <Pedido
+          lineas={lineas}
+          total={total}
+          nombre={nombre}
+          onNombre={setNombre}
+          punto={desde ? `${ORIGENES[desde].entrega} de ${ORIGENES[desde].nombre}` : null}
+          onCambiar={cambiar}
+          onVaciar={() => setCarrito([])}
+          onClose={cerrar}
         />
+      )}
+      {/* the plain chat for whoever would rather write than tap */}
+      {desde && cuantos === 0 && enlacePedido(desde) && (
+        <a className="pyt-chat" href={enlacePedido(desde)!} target="_blank" rel="noopener noreferrer" aria-label="Escribir al WhatsApp del café"><IconoWhatsapp size={24} /></a>
       )}
     </div>
   );
 }
 
-/** «$8.5K» with a small «$», in the drinks' name face; read out whole ($8.500). */
-function Precio({ n, className }: { n: number; className: string }) {
+/** A product in the grid: the photo and name open its sheet; the round button adds one (or opens the sheet when there is something to choose). */
+function Tarjeta({ item, n, onVer, onMas, onMenos }: { item: MenuItem; n: number; onVer: (el: HTMLElement) => void; onMas: () => void; onMenos: () => void }) {
+  const conOpciones = item.options.length > 0;
   return (
-    <span className={`${className} pym-precio`} aria-label={money(n)}>
-      <span aria-hidden="true" className="pym-precio__signo">$</span>
-      <span aria-hidden="true">{precioK(n)}</span>
-    </span>
+    <li className={`pyt-card${item.agotado ? " pyt-card--off" : ""}`}>
+      <button type="button" className="pyt-card__ver" onClick={(e) => onVer(e.currentTarget)}>
+        <span className={`pyt-card__foto${item.image ? "" : " pyt-card__foto--arte"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
+          <img src={item.image ?? MANO} alt="" loading="lazy" decoding="async" />
+          {item.nuevo && !item.agotado && <span className="pyt-tag">Nuevo</span>}
+          {item.agotado && <span className="pyt-tag pyt-tag--off">Agotado hoy</span>}
+        </span>
+        <span className="pyt-card__nombre">{item.name}</span>
+        {item.short && <span className="pyt-card__short">{item.short}</span>}
+      </button>
+      <div className="pyt-card__pie">
+        <Precio n={item.price} className="pyt-card__precio" />
+        {item.agotado ? null : n > 0 && !conOpciones ? (
+          <Cantidad chico n={n} nombre={item.name} onMenos={onMenos} onMas={onMas} />
+        ) : (
+          <button type="button" className="pyt-mas" aria-label={`Agregar ${item.name} al pedido`} onClick={(e) => (conOpciones ? onVer(e.currentTarget) : onMas())}>
+            {n > 0 ? <span className="pyh-n">{n}</span> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>}
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
-
-const IconoCompartir = ({ size = 20 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
-);
 
 /** While a sheet is open: focus its close button, lock the page behind, close on Escape. */
 function useSheet(onClose: () => void, closeRef: React.RefObject<HTMLButtonElement | null>) {
@@ -372,129 +379,186 @@ function Compartir({ c, onClose }: { c: Props["compartir"]; onClose: () => void 
   }
   return (
     <>
-      <button ref={overlayRef} type="button" aria-label="Cerrar" className="pym-overlay" onClick={onClose} tabIndex={-1} />
-      <div ref={sheetRef} role="dialog" aria-modal="true" aria-label={c.titulo} className="pym-sheet">
-        <div className="pym-sheet__head pym-sheet__head--short">
-          <span aria-hidden="true" className="pym-grab" />
-          <div className="pym-sheet__top">
-            <h2 className="pym-h2">{c.titulo}</h2>
-            <button ref={closeRef} type="button" aria-label="Cerrar" className="pym-close" onClick={onClose}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          </div>
+      <button ref={overlayRef} type="button" aria-label="Cerrar" className="pyt-overlay" onClick={onClose} tabIndex={-1} />
+      <div ref={sheetRef} role="dialog" aria-modal="true" aria-label={c.titulo} className="pyt-sheet">
+        <div className="pyt-sheet__top">
+          <h2>{c.titulo}</h2>
+          <Cerrar ref={closeRef} onClick={onClose} />
         </div>
-        <div className="pym-sheet__body pym-qr">
+        <div className="pyt-sheet__body pyt-qr">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={c.qr} alt={`Código QR de ${c.url.replace(/^https?:\/\//, "")}`} className="pym-qr__img" width={260} height={260} />
-          <p className="pym-qr__url">{c.url.replace(/^https?:\/\//, "")}</p>
-          <p className="pym-qr__text">{c.texto}</p>
-          <div className="pym-qr__actions">
-            {puedeCompartir && <button type="button" className="pym-pill pym-pill--wide pym-pill--solid" onClick={() => void enviar()}>Enviar enlace</button>}
-            <button type="button" className="pym-pill pym-pill--wide" onClick={() => void copiar()}>{copiado ? "Enlace copiado" : "Copiar enlace"}</button>
+          <img src={c.qr} alt={`Código QR de ${c.url.replace(/^https?:\/\//, "")}`} className="pyt-qr__img" width={260} height={260} />
+          <p className="pyt-qr__url pyh-n">{c.url.replace(/^https?:\/\//, "")}</p>
+          <p className="pyh-meta pyh-meta--m">{c.texto}</p>
+          <div className="pyt-qr__actions">
+            {puedeCompartir && <button type="button" className="pyh-btn" onClick={() => void enviar()}>Enviar enlace</button>}
+            <button type="button" className="pyh-btn pyh-btn--linea" onClick={() => void copiar()}>{copiado ? "Enlace copiado" : "Copiar enlace"}</button>
           </div>
-          <span role="status" className="pym-sr">{copiado ? "Enlace copiado" : ""}</span>
+          <span role="status" className="pyt-sr">{copiado ? "Enlace copiado" : ""}</span>
         </div>
       </div>
     </>
   );
 }
 
-/** The product sheet: slides up from the bottom, closes on the overlay, the X, Escape or a swipe down. */
-function Ficha({ item, section, pair, option, onOption, profileLabels, profileByOption, arte, onOpen, onClose }: {
-  item: MenuItem;
-  section: MenuSection | null;
-  pair: MenuItem | null;
-  option: number;
-  onOption: (i: number) => void;
-  profileLabels: string[];
-  profileByOption: Record<string, number[]>;
-  arte: Props["arte"];
-  onOpen: (sku: string) => void;
-  onClose: () => void;
-}) {
+/** The product sheet: photo, what it is, what it has, the choice it needs and how many. */
+function Ficha({ item, seccion, onAgregar, onClose }: { item: MenuItem; seccion: string; onAgregar: (opcion: string | null, n: number) => void; onClose: () => void }) {
   const closeRef = React.useRef<HTMLButtonElement>(null);
-  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
   const overlayRef = React.useRef<HTMLButtonElement>(null);
   useSheet(onClose, closeRef);
-  useSwipeDown(dialogRef, overlayRef, onClose);
-  React.useEffect(() => { dialogRef.current?.scrollTo({ top: 0 }); }, []);
-
-  const opt = item.options[option] ?? null;
-  const price = item.price + (opt?.delta ?? 0);
-  const perfil = item.p ? perfilCon(item.p, opt ? profileByOption[opt.name] : undefined) : null;
+  useSwipeDown(sheetRef, overlayRef, onClose);
+  const [opcion, setOpcion] = React.useState(0);
+  const [n, setN] = React.useState(1);
+  const opt = item.options[opcion] ?? null;
+  const precio = item.price + (opt?.delta ?? 0);
   return (
     <>
-      <button ref={overlayRef} type="button" aria-label="Cerrar detalle" className="pym-overlay" onClick={onClose} tabIndex={-1} />
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={item.name} className="pym-sheet">
-        <div className="pym-sheet__head">
-          <span aria-hidden="true" className="pym-grab" />
-          <div className="pym-sheet__top">
-            <span className="pym-badge">{section?.label ?? ""}</span>
-            <button ref={closeRef} type="button" aria-label="Cerrar" className="pym-close" onClick={onClose}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          </div>
-          <h2 className="pym-sheet__name">{item.name}</h2>
-          <Precio n={price} className="pym-sheet__price" />
-          <Arte arte={arte} name={section?.art ?? "mano-taza.svg"} className="pym-sheet__art" />
+      <button ref={overlayRef} type="button" aria-label="Cerrar detalle" className="pyt-overlay" onClick={onClose} tabIndex={-1} />
+      <div ref={sheetRef} role="dialog" aria-modal="true" aria-label={item.name} className="pyt-sheet">
+        <div className="pyt-sheet__top">
+          <span className="pyh-k">{seccion}</span>
+          <Cerrar ref={closeRef} onClick={onClose} />
         </div>
-
-        <div className="pym-sheet__body">
+        <div className="pyt-sheet__body">
           {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
-          {item.image && <img src={item.image} alt={item.name} className="pym-sheet__foto" />}
-          {item.agotado && <p className="pym-off">Hoy se nos acabó. Pregunta en caja cuándo vuelve.</p>}
-          {item.desc && <p className="pym-desc">{item.desc}</p>}
-
+          {item.image && <img src={item.image} alt="" className="pyt-ficha__foto" />}
+          <div className="pyt-ficha__fila">
+            <h2>{item.name}</h2>
+            <Precio n={precio} className="pyt-ficha__precio" />
+          </div>
+          {item.desc && <p className="pyt-ficha__desc">{item.desc}</p>}
+          {item.lleva.length > 0 && <p className="pyh-meta pyh-meta--m">Lleva: {item.lleva.join(" · ")}</p>}
           {item.options.length > 0 && (
-            <div className="pym-group">
-              <h3 className="pym-h3">¿Cómo lo quieres?</h3>
-              <div className="pym-options" style={{ gridTemplateColumns: `repeat(${Math.min(item.options.length, 2)}, minmax(0, 1fr))` }}>
+            <div className="pyt-campo" role="group" aria-label="¿Cómo lo quieres?">
+              <span className="pyh-k">¿Cómo lo quieres?</span>
+              <div className="pyt-opciones">
                 {item.options.map((o, i) => (
-                  <button key={o.name} type="button" className="pym-pill pym-pill--wide" aria-pressed={option === i} onClick={() => onOption(i)}>
+                  <button key={o.name} type="button" className="pyt-opcion" aria-pressed={opcion === i} onClick={() => setOpcion(i)}>
                     {o.name}{o.delta > 0 ? ` +${money(o.delta)}` : ""}
                   </button>
                 ))}
               </div>
             </div>
           )}
-
-          {perfil && (
-            <div className="pym-group">
-              <h3 className="pym-h3">Perfil de sabor</h3>
-              {perfil.slice(0, profileLabels.length).map((v, idx) => (
-                <div key={profileLabels[idx]} className="pym-profile" role="img" aria-label={`${profileLabels[idx]}: ${v} de 5`}>
-                  <span className="pym-profile__label">{profileLabels[idx]}</span>
-                  <span className="pym-profile__segs">
-                    {[0, 1, 2, 3, 4].map((j) => <span key={j} className={j < v ? "pym-seg pym-seg--on" : "pym-seg"} />)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {item.lleva.length > 0 && (
-            <div className="pym-group">
-              <h3 className="pym-h3">Lleva</h3>
-              <div className="pym-chips">{item.lleva.map((l) => <span key={l} className="pym-chip">{l}</span>)}</div>
-            </div>
-          )}
-
-          {pair && (
-            <div className="pym-group">
-              <h3 className="pym-h3">Va bien con</h3>
-              <button type="button" className="pym-pair" onClick={() => onOpen(pair.sku)}>
-                <span className="pym-pair__name">{pair.name}</span>
-                <Precio n={pair.price} className="pym-pair__price" />
-                <Chevron />
+          {item.agotado ? (
+            <p className="pyt-aviso">Hoy se nos acabó. Escríbenos y te contamos cuándo vuelve.</p>
+          ) : (
+            <div className="pyt-ficha__accion">
+              <Cantidad n={n} nombre={item.name} onMenos={() => setN((x) => Math.max(1, x - 1))} onMas={() => setN((x) => Math.min(20, x + 1))} />
+              <button type="button" className="pyh-btn pyt-ficha__agregar" onClick={() => onAgregar(opt?.name ?? null, n)}>
+                Agregar · {money(precio * n)}
               </button>
             </div>
           )}
+        </div>
+      </div>
+    </>
+  );
+}
 
-          <div className="pym-order">
-            <span className="pym-order__kicker">Pídelo en tu mesa</span>
-            <span className="pym-order__text">Dile a quien te atiende: <strong>{fraseDePedido(item.name, opt?.name ?? null)}</strong></span>
-            <Arte arte={arte} name="mano-taza-amarilla.svg" className="pym-order__art" />
-          </div>
+/** The order: its lines, who it is for, where it goes, and the button that opens WhatsApp with everything written. */
+function Pedido({ lineas, total, nombre, onNombre, punto, onCambiar, onVaciar, onClose }: {
+  lineas: LineaPedido[];
+  total: number;
+  nombre: string;
+  onNombre: (s: string) => void;
+  /** «la portería de ESE Salud Yopal» when the visit came from that place's QR. */
+  punto: string | null;
+  onCambiar: (sku: string, opcion: string | null, delta: number) => void;
+  onVaciar: () => void;
+  onClose: () => void;
+}) {
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const overlayRef = React.useRef<HTMLButtonElement>(null);
+  useSheet(onClose, closeRef);
+  useSwipeDown(sheetRef, overlayRef, onClose);
+  const [tipo, setTipo] = React.useState<Entrega["tipo"]>(punto ? "punto" : "recoger");
+  const [direccion, setDireccion] = React.useState("");
+  const [nota, setNota] = React.useState("");
+  const [intento, setIntento] = React.useState(false);
+  const entrega: Entrega = tipo === "domicilio" ? { tipo, direccion } : tipo === "punto" && punto ? { tipo, lugar: punto } : { tipo: "recoger" };
+  const falta = faltaPara(lineas, nombre, entrega);
+  const enlace = falta ? null : enlaceWhatsapp(mensajePedido(lineas, { nombre, entrega, nota }));
+  const formas: { id: Entrega["tipo"]; label: string; hint: string }[] = [
+    ...(punto ? [{ id: "punto" as const, label: `En ${punto.split(" de ")[0]}`, hint: "Sin costo de envío" }] : []),
+    { id: "recoger", label: "Lo recojo", hint: "En el café" },
+    { id: "domicilio", label: "Domicilio", hint: "En Yopal" },
+  ];
+  return (
+    <>
+      <button ref={overlayRef} type="button" aria-label="Cerrar el pedido" className="pyt-overlay" onClick={onClose} tabIndex={-1} />
+      <div ref={sheetRef} role="dialog" aria-modal="true" aria-label="Mi pedido" className="pyt-sheet">
+        <div className="pyt-sheet__top">
+          <h2>Mi pedido</h2>
+          <Cerrar ref={closeRef} onClick={onClose} />
+        </div>
+        <div className="pyt-sheet__body">
+          {lineas.length === 0 ? (
+            <p className="pyt-aviso">Tu pedido está vacío. Agrega algo del menú.</p>
+          ) : (
+            <>
+              <ul className="pyt-lineas">
+                {lineas.map((l) => (
+                  <li key={claveLinea(l.sku, l.opcion)}>
+                    <span className="pyt-lineas__txt">
+                      <strong>{l.nombre}</strong>
+                      {l.opcion && <span className="pyh-meta">{l.opcion}</span>}
+                    </span>
+                    <Cantidad chico n={l.cantidad} nombre={l.nombre} onMenos={() => onCambiar(l.sku, l.opcion, -1)} onMas={() => onCambiar(l.sku, l.opcion, 1)} />
+                    <Precio n={l.total} className="pyt-lineas__precio" />
+                  </li>
+                ))}
+              </ul>
+              <div className="pyt-total">
+                <span>Total productos</span>
+                <span className="pyh-n">{money(total)}</span>
+              </div>
+
+              <div className="pyt-campo" role="radiogroup" aria-label="¿Cómo lo recibes?">
+                <span className="pyh-k">¿Cómo lo recibes?</span>
+                <div className="pyt-opciones">
+                  {formas.map((f) => (
+                    <button key={f.id} type="button" role="radio" aria-checked={tipo === f.id} className="pyt-opcion pyt-opcion--dos" onClick={() => setTipo(f.id)}>
+                      <strong>{f.label}</strong>
+                      <span>{f.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {tipo === "domicilio" && (
+                <>
+                  <label className="pyt-campo">
+                    <span className="pyh-k">Dirección de entrega</span>
+                    <input value={direccion} onChange={(e) => setDireccion(e.target.value)} maxLength={160} autoComplete="street-address" placeholder="Barrio, calle y número" />
+                  </label>
+                  <p className="pyh-meta">Al domicilio se le suman el empaque ($2.000 por bolsa de hasta 4 bebidas) y el envío. Te confirmamos el total por WhatsApp.</p>
+                </>
+              )}
+              <label className="pyt-campo">
+                <span className="pyh-k">Tu nombre</span>
+                <input value={nombre} onChange={(e) => onNombre(e.target.value)} maxLength={60} autoComplete="given-name" placeholder="Para marcar tu vaso" />
+              </label>
+              <label className="pyt-campo">
+                <span className="pyh-k">Nota (opcional)</span>
+                <input value={nota} onChange={(e) => setNota(e.target.value)} maxLength={240} placeholder="Sin azúcar, vaso grande, leche deslactosada…" />
+              </label>
+
+              {intento && falta && <p role="alert" className="pyt-aviso pyt-aviso--error">{falta}</p>}
+              {enlace ? (
+                <a className="pyh-btn pyt-enviar" href={enlace} target="_blank" rel="noopener noreferrer">
+                  <IconoWhatsapp /> Enviar pedido por WhatsApp
+                </a>
+              ) : (
+                <button type="button" className="pyh-btn pyt-enviar" onClick={() => setIntento(true)}>
+                  <IconoWhatsapp /> Enviar pedido por WhatsApp
+                </button>
+              )}
+              <p className="pyh-meta pyt-centro">Se abre WhatsApp con tu pedido escrito. Envíalo y te confirmamos por ahí; pagas al recibir.</p>
+              <button type="button" className="pyt-vaciar" onClick={onVaciar}>Vaciar pedido</button>
+            </>
+          )}
         </div>
       </div>
     </>
