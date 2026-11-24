@@ -192,6 +192,8 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
               {g.label && <h3 className="pym-grupo">{g.label} <span className="pym-grupo__n">{g.items.length}</span></h3>}
               {g.items.map((it) => (
                 <button key={it.sku} type="button" className="pym-row" onClick={(e) => show(it.sku, e.currentTarget)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
+                  {it.image && <img src={it.image} alt="" loading="lazy" decoding="async" className="pym-row__foto" />}
                   <span className="pym-row__main">
                     <span className="pym-row__head">
                       <span className="pym-row__name">{it.name}</span>
@@ -438,6 +440,8 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
         </div>
 
         <div className="pym-sheet__body">
+          {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
+          {item.image && <img src={item.image} alt={item.name} className="pym-sheet__foto" />}
           {item.agotado && <p className="pym-off">Hoy se nos acabó. Pregunta en caja cuándo vuelve.</p>}
           {item.desc && <p className="pym-desc">{item.desc}</p>}
 

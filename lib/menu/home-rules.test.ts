@@ -3,7 +3,7 @@ import { elegirFavoritas } from "./home-rules";
 import type { MenuItem, MenuSection } from "./menu";
 
 const item = (sku: string, name: string, extra: Partial<MenuItem> = {}): MenuItem => ({
-  sku, cat: "", name, price: 8500, short: `${name} rico`, desc: "", lleva: [], p: null, tags: [], nuevo: false, agotado: false, options: [], cafe: true, ...extra,
+  sku, cat: "", name, price: 8500, short: `${name} rico`, desc: "", lleva: [], p: null, tags: [], nuevo: false, agotado: false, options: [], cafe: true, image: null, ...extra,
 });
 const secciones: MenuSection[] = [
   { id: "frio", label: "Frío", sub: "", art: null, pair: null, items: [item("BF-008", "Café dalgona"), item("BF-012", "Latte frío"), item("BF-020", "Té frío", { cafe: false })] },

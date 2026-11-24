@@ -15,7 +15,7 @@ export async function loadMenu(): Promise<MenuSection[]> {
   const db = createSupabaseAdminClient();
   const orgId = menuContent.organizationId;
   const [{ data: productos }, { data: links }, { data: grupos }, { data: receta }] = await Promise.all([
-    db.from("productos").select("id, sku, name, price_cop, stock_status, description, categoria:producto_categorias(label)").eq("organization_id", orgId),
+    db.from("productos").select("id, sku, name, price_cop, stock_status, description, image_url, categoria:producto_categorias(label)").eq("organization_id", orgId),
     db.from("producto_modifier_groups").select("producto_id, group_id").eq("organization_id", orgId),
     db.from("modifier_groups").select("id, type, required, modifier_options(name, price_delta_cop, available, position)").eq("organization_id", orgId),
     db.from("receta_items").select("producto_id, ingrediente:ingredientes(name)").eq("organization_id", orgId),
@@ -52,6 +52,7 @@ export async function loadMenu(): Promise<MenuSection[]> {
       category: (Array.isArray(cat) ? cat[0]?.label : cat?.label) ?? null,
       options: gid ? opciones.get(gid)! : [],
       cafe: conCafe.has(p.id as string),
+      image: (p.image_url as string | null) ?? null,
     };
   });
   return buildMenu(menuContent, catalog);
