@@ -26,6 +26,12 @@ export async function proxy(request: NextRequest) {
       return NextResponse.rewrite(url);
     }
     if (path === "/menu") return NextResponse.next();
+    // "/desde/<origen>" is the QR of a printed piece (app/menu/desde): counts the scan, then the menu.
+    if (path.startsWith("/desde/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/menu${path}`;
+      return NextResponse.rewrite(url);
+    }
     // "/c/<code>" is the rating page behind the QR on the cup (app/c).
     if (path.startsWith("/menu/") || path.startsWith("/c/") || path.startsWith("/_next")) return NextResponse.next();
     const home = request.nextUrl.clone();

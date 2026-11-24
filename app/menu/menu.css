@@ -164,3 +164,13 @@ html:has(.pym) { scroll-behavior: smooth; }
 /* The brand's sticker mark (hand + cup) replaces the wordmark logo on cafepayo.com (owner, 2026-11-08). */
 .pym-header__logo { width: 112px; }
 .pym-footer__logo { width: 120px; }
+
+/* Order banner for whoever came from the QR of a printed piece (?desde=…) */
+.pym-desde { position: sticky; top: 8px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 14px 0; padding: 12px 14px; border: 2px solid var(--cafe); border-radius: 18px; background: var(--crema); color: var(--cafe); text-decoration: none; box-shadow: 0 6px 18px rgba(46, 23, 14, 0.14); }
+.pym-desde__texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; line-height: 1.25; }
+.pym-desde__texto strong { font-size: 15px; }
+.pym-desde__boton { flex-shrink: 0; white-space: nowrap; }
+
+/* Product photos (the board's studio shots): a thumbnail in the row, the whole cup in the sheet */
+.pym-row__foto { flex-shrink: 0; width: 60px; height: 60px; border-radius: 14px; object-fit: cover; object-position: 50% 42%; background: var(--crema); }
+.pym-sheet__foto { display: block; width: 100%; max-width: 300px; aspect-ratio: 1 / 1; margin: 0 auto 6px; object-fit: cover; border-radius: 18px; background: var(--crema); }

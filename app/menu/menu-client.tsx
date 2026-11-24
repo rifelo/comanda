@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { enlacePedido, ORIGENES } from "@/lib/menu/origenes";
 import { fraseDePedido, gruposCafe, money, perfilCon, porPrecio, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
 
 interface Props {
@@ -63,6 +64,15 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
     return () => cancelAnimationFrame(f);
   }, [irA, mood]);
 
+  // Came from the QR of a printed piece (?desde=…): that place gets its order button.
+  // Read on the client, so the page itself stays cached for everyone.
+  const [desde, setDesde] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const o = new URLSearchParams(window.location.search).get("desde");
+    queueMicrotask(() => setDesde(o && ORIGENES[o] ? o : null));
+  }, []);
+  const pedir = desde ? enlacePedido(desde) : null;
+
   const all = React.useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const bySku = React.useMemo(() => new Map(all.map((i) => [i.sku, i])), [all]);
   const sel = open ? bySku.get(open) ?? null : null;
@@ -99,6 +109,15 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
         <p className="pym-header__text">{header.texto}</p>
         <Arte arte={arte} name="mano-taza.svg" className="pym-header__art" />
       </header>
+      {desde && pedir && (
+        <a className="pym-desde" href={pedir} target="_blank" rel="noopener noreferrer">
+          <span className="pym-desde__texto">
+            <strong>Pide y te lo llevamos a {ORIGENES[desde].entrega}</strong>
+            <span>{ORIGENES[desde].nombre} · sin costo de envío</span>
+          </span>
+          <span className="pym-pill pym-pill--solid pym-desde__boton">Pedir por WhatsApp</span>
+        </a>
+      )}
 
       {promo && (
         <section aria-label={promo.sticker} className="pym-block">
@@ -173,6 +192,8 @@ export function MenuClient({ sections, moods, profileLabels, profileByOption, he
               {g.label && <h3 className="pym-grupo">{g.label} <span className="pym-grupo__n">{g.items.length}</span></h3>}
               {g.items.map((it) => (
                 <button key={it.sku} type="button" className="pym-row" onClick={(e) => show(it.sku, e.currentTarget)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
+                  {it.image && <img src={it.image} alt="" loading="lazy" decoding="async" className="pym-row__foto" />}
                   <span className="pym-row__main">
                     <span className="pym-row__head">
                       <span className="pym-row__name">{it.name}</span>
@@ -419,6 +440,8 @@ function Ficha({ item, section, pair, option, onOption, profileLabels, profileBy
         </div>
 
         <div className="pym-sheet__body">
+          {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage, already sized */}
+          {item.image && <img src={item.image} alt={item.name} className="pym-sheet__foto" />}
           {item.agotado && <p className="pym-off">Hoy se nos acabó. Pregunta en caja cuándo vuelve.</p>}
           {item.desc && <p className="pym-desc">{item.desc}</p>}
 

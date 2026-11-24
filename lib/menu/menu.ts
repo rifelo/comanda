@@ -32,7 +32,8 @@ export interface MenuContent {
   promo: { on: boolean; sticker: string; items: { sku: string; tagline: string }[] };
   /** Brand art by file name → public path, or null while the file is missing. */
   arte: Record<string, string | null>;
-  categories: { id: string; pos: string[]; label: string; sub: string; pair: string | null; art: string | null }[];
+  /** `skus`, when given, is the exact list this section shows, in that order (the printed board); without it the section follows the POS category, cheapest first. */
+  categories: { id: string; pos: string[]; label: string; sub: string; pair: string | null; art: string | null; skus?: string[] }[];
   moods: { id: string; label: string; hint: string }[];
   profileLabels: string[];
   /** What choosing an option adds to the profile: a juice "En leche" is creamier. */
@@ -54,6 +55,8 @@ export interface CatalogProduct {
   options: { name: string; delta: number }[];
   /** Its recipe has a coffee ingredient (see esCafe). */
   cafe: boolean;
+  /** Public URL of its photo, if it has one. */
+  image?: string | null;
 }
 
 export interface MenuItem {
@@ -70,6 +73,7 @@ export interface MenuItem {
   agotado: boolean;
   options: { name: string; delta: number }[];
   cafe: boolean;
+  image: string | null;
 }
 export interface MenuSection {
   id: string;
@@ -106,11 +110,15 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
   const sections = content.categories.map((c) => ({ id: c.id, label: c.label, sub: c.sub, art: c.art, pair: c.pair, items: [] as MenuItem[] }));
   const catOf = new Map<string, string>();
   for (const c of content.categories) for (const label of c.pos) catOf.set(label.toLowerCase(), c.id);
+  const listas = new Map(content.categories.filter((c) => c.skus?.length).map((c) => [c.id, c.skus!]));
   for (const p of [...products].sort((a, b) => a.sku.localeCompare(b.sku))) {
     if (p.price <= 0) continue;
     const cat = p.category ? catOf.get(p.category.toLowerCase()) : undefined;
     const section = sections.find((s) => s.id === cat);
     if (!section) continue;
+    // A section with its own list shows only those products.
+    const lista = listas.get(section.id);
+    if (lista && !lista.includes(p.sku)) continue;
     const extra = content.items[p.sku] ?? {};
     const descr = (p.description ?? "").trim();
     section.items.push({
@@ -127,10 +135,16 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
       agotado: p.stock === "sin",
       options: p.options,
       cafe: extra.cafe ?? p.cafe,
+      image: (p.image ?? "").trim() || null,
     });
   }
   // Cheapest first, so each section reads as a ladder of prices; same price, by name.
-  for (const s of sections) s.items.sort(porPrecio);
+  // A section with its own list keeps that order (the board's).
+  for (const s of sections) {
+    const lista = listas.get(s.id);
+    if (lista) s.items.sort((a, b) => lista.indexOf(a.sku) - lista.indexOf(b.sku));
+    else s.items.sort(porPrecio);
+  }
   const visibles = sections.filter((s) => s.items.length > 0);
   // A pairing that is not on the menu is no pairing.
   const skus = new Set(visibles.flatMap((s) => s.items.map((i) => i.sku)));

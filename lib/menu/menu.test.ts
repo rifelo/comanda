@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import contenido from "./menu.json";
 import { buildMenu, esCafe, fraseDePedido, gruposCafe, money, perfilCon, precioK, type CatalogProduct, type MenuContent } from "./menu";
 
-const content = contenido as MenuContent;
+// The rules below are about following the POS category; the board lists of the real file are tested apart.
+const content = { ...(contenido as MenuContent), categories: (contenido as MenuContent).categories.map((c) => ({ ...c, skus: undefined })) } as MenuContent;
 const prod = (over: Partial<CatalogProduct> & { sku: string; name: string }): CatalogProduct => ({ price: 7000, stock: "ok", description: null, category: "Frío", options: [], cafe: false, ...over });
 
 describe("buildMenu", () => {
@@ -103,5 +104,32 @@ describe("con café / sin café", () => {
   it("draws no heading when a section is all one kind", () => {
     const jugos = menu.find((s) => s.id === "jugos")!;
     expect(gruposCafe(jugos.items)).toEqual([{ id: "sin", label: null, items: jugos.items }]);
+  });
+});
+
+describe("a section with its own list (the printed board)", () => {
+  const prod = (sku: string, price: number, category = "Frío"): CatalogProduct => ({ sku, name: sku, price, stock: "ok", description: null, category, options: [], cafe: false, image: `https://fotos/${sku}.jpg` });
+  const conLista = (skus?: string[]): MenuContent => ({
+    ...({} as MenuContent),
+    categories: [{ id: "frio", pos: ["Frío"], label: "Frío", sub: "", pair: null, art: null, ...(skus ? { skus } : {}) }],
+    items: {},
+  });
+  it("shows only the listed products, in the list's order, with their photo", () => {
+    const m = buildMenu(conLista(["B", "A"]), [prod("A", 9000), prod("B", 12000), prod("C", 5000)]);
+    expect(m[0].items.map((i) => i.sku)).toEqual(["B", "A"]);
+    expect(m[0].items[0].image).toBe("https://fotos/B.jpg");
+  });
+  it("without a list it follows the POS category, cheapest first", () => {
+    const m = buildMenu(conLista(), [prod("A", 9000), prod("B", 12000), prod("C", 5000)]);
+    expect(m[0].items.map((i) => i.sku)).toEqual(["C", "A", "B"]);
+  });
+});
+
+describe("the real menu file", () => {
+  it("lists the board's drinks: 10 hot, 15 cold, 5 juices, none repeated", () => {
+    const listas = (contenido as MenuContent).categories.filter((c) => c.skus).map((c) => [c.id, c.skus!.length]);
+    expect(listas).toEqual([["caliente", 10], ["frio", 15], ["jugos", 5]]);
+    const todos = (contenido as MenuContent).categories.flatMap((c) => c.skus ?? []);
+    expect(new Set(todos).size).toBe(todos.length);
   });
 });
