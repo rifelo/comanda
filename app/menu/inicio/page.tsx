@@ -4,7 +4,7 @@ import { inicio, miles, puestoDe } from "@/lib/clientes/mi-payo";
 import { cargarCliente, cargarEscaneos, cargarRanking } from "@/lib/clientes/mi-payo-db";
 import { instagramDeSesion } from "@/lib/clientes/sesion";
 import { menuContent } from "@/lib/menu/data";
-import { favoritasDelMes, mesActual, podioDelMes, type Favorita, type Lider } from "@/lib/menu/home";
+import { bebidasConFoto, favoritasDelMes, mesActual, podioDelMes, type BebidaHome, type Favorita, type Lider } from "@/lib/menu/home";
 import { precioK } from "@/lib/menu/menu";
 import "./inicio.css";
 
@@ -71,8 +71,9 @@ function Seguro<T>(p: Promise<T>, vacio: T, donde: string): Promise<T> {
  */
 export default async function HomePage() {
   const ahora = new Date();
-  const [favoritas, podio, yo] = await Promise.all([
+  const [favoritas, bebidas, podio, yo] = await Promise.all([
     Seguro<Favorita[]>(favoritasDelMes(ahora), [], "favoritas"),
+    Seguro<BebidaHome[]>(bebidasConFoto(), [], "bebidas"),
     Seguro<Lider[]>(podioDelMes(ahora), [], "podio"),
     mio(),
   ]);
@@ -140,10 +141,17 @@ export default async function HomePage() {
               <div className="pyh-favs">
                 {favoritas.map((f) => (
                   <a key={f.sku} href={MENU} className="pyh-fav">
-                    <div className="pyh-fav__arte" aria-hidden="true">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={MANO} alt="" />
-                    </div>
+                    {f.imagen ? (
+                      <div className="pyh-fav__arte pyh-fav__arte--foto" aria-hidden="true">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage */}
+                        <img src={f.imagen} alt="" loading="lazy" decoding="async" />
+                      </div>
+                    ) : (
+                      <div className="pyh-fav__arte" aria-hidden="true">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={MANO} alt="" />
+                      </div>
+                    )}
                     <div className="pyh-fav__fila">
                       <span className="pyh-fav__nombre">{f.name}</span>
                       <span className="pyh-n pyh-fav__precio">${precioK(f.price)}</span>
@@ -152,6 +160,34 @@ export default async function HomePage() {
                   </a>
                 ))}
               </div>
+            </div>
+          </section>
+        )}
+
+        {bebidas.length > 0 && (
+          <section id="bebidas" aria-labelledby="bebidas-t">
+            <div className="pyh-wrap pyh-bloque">
+              <div className="pyh-bloque__head">
+                <div className="pyh-titulo">
+                  <span className="pyh-k">La carta</span>
+                  <h2 id="bebidas-t">Nuestras bebidas</h2>
+                </div>
+                <a href={MENU} className="pyh-mas">
+                  Ver todo el menú →
+                </a>
+              </div>
+              <ul className="pyh-bebidas">
+                {bebidas.map((b) => (
+                  <li key={b.sku}>
+                    <a href={MENU} className="pyh-bebida">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- product photo from storage */}
+                      <img src={b.imagen} alt="" loading="lazy" decoding="async" />
+                      <span className="pyh-bebida__nombre">{b.name}</span>
+                      <span className="pyh-n pyh-bebida__precio">${precioK(b.price)}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
           </section>
         )}

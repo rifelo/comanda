@@ -13,9 +13,9 @@ export const GRUPOS: readonly Grupo[] = ["Calientes", "Frías", "Jugos", "Kombuc
 export const GRUPO_DE: Readonly<Record<string, Grupo>> = { Caliente: "Calientes", Frío: "Frías", Jugos: "Jugos", Kombucha: "Kombuchas" };
 
 /** One drink of the current menu. */
-export interface BebidaCarta { nombre: string; grupo: Grupo }
+export interface BebidaCarta { nombre: string; grupo: Grupo; imagen?: string | null }
 
-export interface Carta { nombre: string; veces: number }
+export interface Carta { nombre: string; veces: number; imagen?: string | null }
 export interface GrupoColeccion { grupo: Grupo; descubiertas: number; total: number; cartas: Carta[] }
 export interface Coleccion {
   /** Drinks had, all time. */
@@ -42,7 +42,7 @@ export function coleccion(es: ReadonlyArray<Escaneo>, carta: ReadonlyArray<Bebid
   const grupos = GRUPOS.map((grupo) => {
     const cartas = carta
       .filter((b) => b.grupo === grupo)
-      .map((b) => ({ nombre: b.nombre, veces: veces.get(clave(b.nombre))?.veces ?? 0 }))
+      .map((b) => ({ nombre: b.nombre, veces: veces.get(clave(b.nombre))?.veces ?? 0, imagen: b.imagen ?? null }))
       .sort((a, b) => b.veces - a.veces || a.nombre.localeCompare(b.nombre, "es"));
     return { grupo, descubiertas: cartas.filter((c) => c.veces > 0).length, total: cartas.length, cartas };
   }).filter((g) => g.total > 0);
