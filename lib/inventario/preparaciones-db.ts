@@ -114,6 +114,34 @@ export async function recostearPreparacion(db: Db, orgId: string, prepId: string
   return costo;
 }
 
+export interface UsoPreparacion {
+  productoId: string;
+  sku: string | null;
+  name: string;
+  qty: number;
+}
+
+/** The products whose recipe takes each preparación (Cold foam tradicional → 20 drinks × 30 g), by name. */
+export async function usosDePreparaciones(db: Db, orgId: string, ids: string[]): Promise<Map<string, UsoPreparacion[]>> {
+  const out = new Map<string, UsoPreparacion[]>();
+  if (!ids.length) return out;
+  const { data, error } = await db
+    .from("receta_items")
+    .select("ingrediente_id, qty, producto_id, p:productos(name, sku)")
+    .eq("organization_id", orgId)
+    .in("ingrediente_id", ids);
+  if (error) console.error("[preparaciones] usos", error);
+  for (const r of (data ?? []) as any[]) {
+    const p = one(r.p) as { name: string; sku: string | null } | null;
+    if (!p) continue;
+    const list = out.get(r.ingrediente_id) ?? [];
+    list.push({ productoId: r.producto_id, sku: p.sku ?? null, name: p.name, qty: Number(r.qty) });
+    out.set(r.ingrediente_id, list);
+  }
+  for (const list of out.values()) list.sort((a, b) => a.name.localeCompare(b.name, "es"));
+  return out;
+}
+
 /** Preparaciones that use an ingredient (to re-price them when its cost changes). */
 export async function preparacionesQueUsan(db: Db, orgId: string, ingredienteId: string): Promise<string[]> {
   const { data } = await db.from("preparacion_items").select("preparacion_id").eq("organization_id", orgId).eq("ingrediente_id", ingredienteId);

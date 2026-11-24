@@ -25,6 +25,7 @@ describe("activeTabFor · dueño", () => {
     expect(dueno("/compras")).toBe("inventario");
     expect(dueno("/catalogo")).toBe("productos");
     expect(dueno("/recetas")).toBe("productos");
+    expect(dueno("/preparaciones")).toBe("productos");
     expect(dueno("/productos/123")).toBe("productos");
     expect(dueno("/turnos/asignacion")).toBe("equipo");
     expect(dueno("/equipo/horario")).toBe("equipo");

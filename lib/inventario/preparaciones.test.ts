@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costoPorUnidad, costoTanda, errorPreparacion, fmtTandas } from "./preparaciones";
+import { costoPorUnidad, costoTanda, errorNuevaPreparacion, errorPreparacion, fmtTandas, porcionHabitual } from "./preparaciones";
 
 // Crema chantilly (PP-03): 250 ml whip + 125 ml leche + 10 ml vainilla + 1 cápsula → 385 g
 const chantilly = [
@@ -30,5 +30,18 @@ describe("preparaciones", () => {
   it("formats batches", () => {
     expect(fmtTandas(1)).toBe("1");
     expect(fmtTandas(1.5)).toBe("1,5");
+  });
+
+  it("finds the portion most drinks use", () => {
+    expect(porcionHabitual([])).toBeNull();
+    expect(porcionHabitual([{ qty: 30 }, { qty: 30 }, { qty: 40 }])).toBe(30);
+    expect(porcionHabitual([{ qty: 40 }, { qty: 30 }])).toBe(30);
+  });
+
+  it("validates a new preparación", () => {
+    expect(errorNuevaPreparacion({ nombre: "Cold foam de matcha", unidad: "g", rinde: 170 })).toBeNull();
+    expect(errorNuevaPreparacion({ nombre: "  ", unidad: "g", rinde: 170 })).toBe("Escribe el nombre.");
+    expect(errorNuevaPreparacion({ nombre: "Jarabe", unidad: "kg", rinde: 1 })).toBe("Elige la unidad.");
+    expect(errorNuevaPreparacion({ nombre: "Jarabe", unidad: "ml", rinde: 0 })).toBe("Escribe cuánto sale de una tanda.");
   });
 });
