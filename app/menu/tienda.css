@@ -118,3 +118,5 @@
 .pyt-vasito { transform: scale(.88); transform-origin: 50% 100%; transition: transform .18s ease-out; }
 .pyt-vasito--grande { transform: none; }
 @media (prefers-reduced-motion: reduce) { .pyt-vasito { transition: none; } }
+.pyt-sheet { transition: bottom .15s ease-out; }
+.pyt-sheet input { scroll-margin: 90px 0; }
