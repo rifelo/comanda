@@ -53,6 +53,8 @@ export interface CatalogProduct {
   category: string | null;
   /** Options of its required single-choice modifier group, if it has one. */
   options: { name: string; delta: number }[];
+  /** Its sizes («12 oz», «16 oz» with its surcharge), first = the listed price; empty when it comes in one size. */
+  sizes?: { name: string; delta: number }[];
   /** Its recipe has a coffee ingredient (see esCafe). */
   cafe: boolean;
   /** Public URL of its photo, if it has one. */
@@ -72,6 +74,8 @@ export interface MenuItem {
   nuevo: boolean;
   agotado: boolean;
   options: { name: string; delta: number }[];
+  /** «12 oz» / «16 oz»; empty when it comes in one size. */
+  sizes: { name: string; delta: number }[];
   cafe: boolean;
   image: string | null;
 }
@@ -134,6 +138,7 @@ export function buildMenu(content: MenuContent, products: ReadonlyArray<CatalogP
       nuevo: extra.nuevo === true,
       agotado: p.stock === "sin",
       options: p.options,
+      sizes: p.sizes ?? [],
       cafe: extra.cafe ?? p.cafe,
       image: (p.image ?? "").trim() || null,
     });

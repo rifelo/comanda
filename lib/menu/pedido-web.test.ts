@@ -5,23 +5,24 @@ const menu = new Map<string, ProductoCarrito>([
   ["BF-005", { sku: "BF-005", name: "Latte frío", price: 8500, agotado: false, options: [], cat: "frio" }],
   ["PO-001", { sku: "PO-001", name: "Torta", price: 6000, agotado: false, options: [], cat: "postres" }],
   ["JU-001", { sku: "JU-001", name: "Jugo de mora", price: 7000, agotado: false, options: [{ name: "En agua", delta: 0 }, { name: "En leche", delta: 1000 }] }],
+  ["BF-009", { sku: "BF-009", name: "Tinto tónico", price: 12000, agotado: false, options: [], sizes: [{ name: "12 oz", delta: 0 }, { name: "16 oz", delta: 1500 }], cat: "frio" }],
   ["BC-003", { sku: "BC-003", name: "Tinto", price: 3000, agotado: true, options: [] }],
 ]);
 
 describe("sumar", () => {
   it("agrega, acumula y quita la línea al llegar a 0", () => {
-    let c = sumar([], "BF-005", null, 1);
-    c = sumar(c, "BF-005", null, 1);
+    let c = sumar([], { sku: "BF-005", opcion: null }, 1);
+    c = sumar(c, { sku: "BF-005", opcion: null }, 1);
     expect(c).toEqual([{ sku: "BF-005", opcion: null, cantidad: 2 }]);
-    expect(sumar(c, "BF-005", null, -2)).toEqual([]);
+    expect(sumar(c, { sku: "BF-005", opcion: null }, -2)).toEqual([]);
   });
   it("el mismo jugo en agua y en leche son dos líneas", () => {
-    const c = sumar(sumar([], "JU-001", "En agua", 1), "JU-001", "En leche", 1);
+    const c = sumar(sumar([], { sku: "JU-001", opcion: "En agua" }, 1), { sku: "JU-001", opcion: "En leche" }, 1);
     expect(c).toHaveLength(2);
   });
   it("no pasa de 20 por línea ni crea líneas en 0", () => {
-    expect(sumar([], "BF-005", null, 99)[0].cantidad).toBe(20);
-    expect(sumar([], "BF-005", null, -1)).toEqual([]);
+    expect(sumar([], { sku: "BF-005", opcion: null }, 99)[0].cantidad).toBe(20);
+    expect(sumar([], { sku: "BF-005", opcion: null }, -1)).toEqual([]);
   });
 });
 
@@ -75,8 +76,8 @@ describe("faltaPara", () => {
 
 describe("nombres por vaso", () => {
   it("cada vaso de una bebida lleva su nombre; lo que no es bebida, no", () => {
-    let c = sumar(sumar([], "BF-005", null, 2), "PO-001", null, 1);
-    c = nombrar(c, "BF-005", null, 1, "Luis");
+    let c = sumar(sumar([], { sku: "BF-005", opcion: null }, 2), { sku: "PO-001", opcion: null }, 1);
+    c = nombrar(c, { sku: "BF-005", opcion: null }, 1, "Luis");
     const l = lineasDelPedido(c, menu);
     expect(l[0]).toMatchObject({ conNombre: true, para: ["", "Luis"] });
     expect(l[1]).toMatchObject({ conNombre: false, para: [] });
@@ -85,15 +86,29 @@ describe("nombres por vaso", () => {
     expect(m).toContain("• 1 × Torta — $6.000\n");
   });
   it("sin nombres escritos la línea no dice para quién, y quitar un vaso quita su nombre", () => {
-    const c = sumar([], "BF-005", null, 2);
+    const c = sumar([], { sku: "BF-005", opcion: null }, 2);
     expect(mensajePedido(lineasDelPedido(c, menu), { nombre: "Ana", entrega: { tipo: "recoger" } })).toContain("• 2 × Latte frío — $17.000\n");
-    const d = sumar(nombrar(c, "BF-005", null, 1, "Luis"), "BF-005", null, -1);
+    const d = sumar(nombrar(c, { sku: "BF-005", opcion: null }, 1, "Luis"), { sku: "BF-005", opcion: null }, -1);
     expect(d[0].para).toEqual([""]);
-    expect(nombrar(c, "BF-005", null, 5, "X")).toEqual(c);
+    expect(nombrar(c, { sku: "BF-005", opcion: null }, 5, "X")).toEqual(c);
   });
   it("agregar desde la ficha pone el nombre a los vasos nuevos, sin tocar los que ya estaban", () => {
-    let c = agregarPara([], "BF-005", null, 1, " Ana ");
-    c = agregarPara(c, "BF-005", null, 2, "Luis");
+    let c = agregarPara([], { sku: "BF-005", opcion: null }, 1, " Ana ");
+    c = agregarPara(c, { sku: "BF-005", opcion: null }, 2, "Luis");
     expect(c).toEqual([{ sku: "BF-005", opcion: null, cantidad: 3, para: ["Ana", "Luis", "Luis"] }]);
+  });
+});
+
+describe("tamaños", () => {
+  it("12 y 16 oz son líneas distintas, con su recargo y su nombre en el mensaje", () => {
+    let c = sumar([], { sku: "BF-009", opcion: null, tamano: "12 oz" }, 1);
+    c = sumar(c, { sku: "BF-009", opcion: null, tamano: "16 oz" }, 2);
+    const l = lineasDelPedido(c, menu);
+    expect(l.map((x) => [x.tamano, x.total])).toEqual([["12 oz", 12000], ["16 oz", 27000]]);
+    expect(mensajePedido(l, { nombre: "Ana", entrega: { tipo: "recoger" } })).toContain("• 2 × Tinto tónico 16 oz — $27.000");
+  });
+  it("sin tamaño guardado, o con uno que ya no existe, va el primero", () => {
+    const l = lineasDelPedido([{ sku: "BF-009", opcion: null, cantidad: 1 }, { sku: "BF-009", opcion: null, tamano: "20 oz", cantidad: 1 }], menu);
+    expect(l.map((x) => x.tamano)).toEqual(["12 oz", "12 oz"]);
   });
 });
