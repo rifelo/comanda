@@ -302,6 +302,47 @@ function useSheet(onClose: () => void, closeRef: React.RefObject<HTMLButtonEleme
 }
 
 /**
+ * Keep the field being typed in above the phone's keyboard. The keyboard covers
+ * the bottom of the page without resizing it (iOS always, Android by default),
+ * so the sheet is lifted by the keyboard's height, made to fit what is left,
+ * and the focused field is scrolled to the middle of it.
+ */
+function useTeclado(sheetRef: React.RefObject<HTMLDivElement | null>) {
+  React.useEffect(() => {
+    const sheet = sheetRef.current;
+    const vv = window.visualViewport;
+    if (!sheet) return;
+    const campo = () => {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement && sheet.contains(el) && /^(INPUT|TEXTAREA)$/.test(el.tagName)) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    const ajustar = () => {
+      if (!vv) return;
+      const tapado = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      // Under ~80 px it is the browser's own bars moving, not a keyboard.
+      if (tapado > 80) {
+        sheet.style.bottom = `${tapado}px`;
+        sheet.style.maxHeight = `${Math.round(vv.height - 12)}px`;
+      } else {
+        sheet.style.bottom = "";
+        sheet.style.maxHeight = "";
+      }
+      campo();
+    };
+    // The keyboard takes a moment to finish opening.
+    const alEnfocar = () => { window.setTimeout(campo, 350); };
+    vv?.addEventListener("resize", ajustar);
+    vv?.addEventListener("scroll", ajustar);
+    sheet.addEventListener("focusin", alEnfocar);
+    return () => {
+      vv?.removeEventListener("resize", ajustar);
+      vv?.removeEventListener("scroll", ajustar);
+      sheet.removeEventListener("focusin", alEnfocar);
+    };
+  }, [sheetRef]);
+}
+
+/**
  * Swipe a sheet down to close it, as an alternative to the X. The drag only
  * starts when the sheet is scrolled to the top (a long sheet keeps its own
  * scroll); the sheet follows the finger and the overlay fades with it. Let go
@@ -437,6 +478,7 @@ function Ficha({ item, seccion, nombre, onAgregar, onClose }: {
   const overlayRef = React.useRef<HTMLButtonElement>(null);
   useSheet(onClose, closeRef);
   useSwipeDown(sheetRef, overlayRef, onClose);
+  useTeclado(sheetRef);
   const [opcion, setOpcion] = React.useState(0);
   const [n, setN] = React.useState(1);
   const conEtiqueta = llevaEtiqueta(item.cat);
@@ -569,6 +611,7 @@ function Pedido({ lineas, total, nombre, onNombre, punto, onCambiar, onNombrar, 
   const overlayRef = React.useRef<HTMLButtonElement>(null);
   useSheet(onClose, closeRef);
   useSwipeDown(sheetRef, overlayRef, onClose);
+  useTeclado(sheetRef);
   const [tipo, setTipo] = React.useState<Entrega["tipo"]>(punto ? "punto" : "recoger");
   const [direccion, setDireccion] = React.useState("");
   const [nota, setNota] = React.useState("");
