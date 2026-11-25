@@ -120,3 +120,6 @@
 @media (prefers-reduced-motion: reduce) { .pyt-vasito { transition: none; } }
 .pyt-sheet { transition: bottom .15s ease-out; }
 .pyt-sheet input { scroll-margin: 90px 0; }
+/* zoom in on the name label when a long name is set small */
+.pyt-vasito__zoom { transform-box: view-box; transform-origin: 100px 90px; transition: transform .35s cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .pyt-vasito__zoom { transition: none; } }

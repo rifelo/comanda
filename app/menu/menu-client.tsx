@@ -570,18 +570,26 @@ function dosLineas(texto: string, max: number): string[] {
 function VasoConEtiqueta({ nombre, bebida, grande }: { nombre: string; bebida: string; grande?: boolean }) {
   const n = nombre.replace(/\s+/g, " ").trim();
   const texto = n || "Tu nombre";
-  // Dela Gothic One is wide: about 0.78 em per letter, in a label 72 units wide.
-  const cuerpo = Math.max(6, Math.min(17, Math.floor((72 / (Math.max(3, texto.length) * 0.78)) * 10) / 10));
+  // A long name goes on two lines, as on the printed label. Dela Gothic One is wide:
+  // about 0.78 em per letter, in a label 72 units wide.
+  const renglones = texto.length > 12 && texto.includes(" ") ? dosLineas(texto, Math.ceil(texto.length / 2) + 2) : [texto];
+  const largo = Math.max(3, ...renglones.map((l) => l.length));
+  const cuerpo = Math.max(5, Math.min(17, Math.floor((72 / (largo * 0.78)) * 10) / 10));
+  // A long name is set small to fit its label, so the drawing moves in on the label to keep it readable.
+  const zoom = cuerpo < 11 ? Math.min(2.2, Math.round((11.5 / cuerpo) * 100) / 100) : 1;
   const lineas = dosLineas(bebida, 10);
   return (
     <svg className={`pyt-vasito${grande ? " pyt-vasito--grande" : ""}`} viewBox="0 0 200 224" role="img" aria-label={`Vaso con la etiqueta «Pa' ${texto}»`}>
+      <g className="pyt-vasito__zoom" style={{ transform: `scale(${zoom})` }}>
       <ellipse cx="100" cy="212" rx="52" ry="7" fill="#502b1c" opacity=".1" />
       <path d="M44 36 L156 36 L139 204 Q100 214 61 204 Z" fill="#fffdf6" stroke="#502b1c" strokeWidth="2.5" strokeLinejoin="round" />
       <rect x="34" y="20" width="132" height="18" rx="7" fill="#fffdf6" stroke="#502b1c" strokeWidth="2.5" />
       <g transform="rotate(-3 100 88)">
         <rect x="56" y="58" width="88" height="56" rx="7" fill="#ffffff" stroke="#502b1c" strokeWidth="1.5" />
         <text x="65" y="75" className="pyt-vasito__pa">Pa&apos;</text>
-        <text x="65" y={78 + cuerpo} className="pyt-vasito__nombre" style={{ fontSize: cuerpo, opacity: n ? 1 : 0.35 }}>{texto}</text>
+        {renglones.map((l, k) => (
+          <text key={k} x="65" y={78 + cuerpo + k * cuerpo * 1.2} className="pyt-vasito__nombre" style={{ fontSize: cuerpo, opacity: n ? 1 : 0.35 }}>{l}</text>
+        ))}
       </g>
       <g transform="rotate(-3 100 150)">
         <rect x="62" y="124" width="76" height="46" rx="7" fill="#ffffff" stroke="#502b1c" strokeWidth="1.5" />
@@ -589,6 +597,7 @@ function VasoConEtiqueta({ nombre, bebida, grande }: { nombre: string; bebida: s
           <text key={i} x="70" y={(lineas.length === 1 ? 151 : 144) + i * 12} className="pyt-vasito__bebida">{l}</text>
         ))}
       </g>
+    </g>
     </svg>
   );
 }
