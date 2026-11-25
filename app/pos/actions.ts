@@ -977,7 +977,7 @@ async function pasoWhatsapp(input: unknown, evento: "listo" | "salio"): Promise<
   const { supabase, organizationId: orgId } = await requirePosAuth();
   const { data: cur } = await supabase
     .from("ordenes")
-    .select("wa_estado, order_type, se_lo_llevamos, delivery_address")
+    .select("wa_estado, order_type, se_lo_llevamos, delivery_address, wa_listo_at, wa_en_camino_at")
     .eq("id", parsed.data.ordenId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -999,7 +999,9 @@ async function pasoWhatsapp(input: unknown, evento: "listo" | "salio"): Promise<
   // The other registers move the card at once.
   after(async () => {
     await avisarPos(orgId).catch(() => {});
-    if (nuevo === "en_camino" || tipo === "recoge") await avisarPedido(parsed.data.ordenId).catch((e) => console.error(`[aviso whatsapp] ${nuevo}:`, e));
+    // Marked a second time (step undone and redone): the customer already heard it.
+    const yaAvisado = nuevo === "listo" ? !!cur?.wa_listo_at : !!cur?.wa_en_camino_at;
+    if (!yaAvisado && (nuevo === "en_camino" || tipo === "recoge")) await avisarPedido(parsed.data.ordenId).catch((e) => console.error(`[aviso whatsapp] ${nuevo}:`, e));
   });
   return { ok: true };
 }

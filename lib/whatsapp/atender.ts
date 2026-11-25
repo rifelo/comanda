@@ -447,11 +447,23 @@ export async function responder(p: Pendiente): Promise<void> {
     waId: p.waId,
     organizationId: n.organization_id,
     conversacionId: p.conversacionId,
-    texto: res.texto,
+    texto: sinNotasInternas(res.texto),
     ordenId,
     version,
     conReaccion: !!reaccion,
   });
+}
+
+/**
+ * The Console session sometimes narrates its own actions («Reaccioné con ❤️ …
+ * No envié texto…») instead of staying silent: that is never for the customer.
+ */
+export function sinNotasInternas(texto: string): string {
+  return texto
+    .split(/\n\s*\n/)
+    .filter((b) => !/^\s*(reaccion[eé]|no envi[eé]|no respond[ií]|\[?nota interna|us[eé] (la herramienta|pasar_a_humano|crear_pedido|reaccionar))/i.test(b) && !/\bno envi[eé] (texto|mensaje)\b/i.test(b))
+    .join("\n\n")
+    .trim();
 }
 
 /** What the bar marked agotado right now (the Console session's menu is from when it started). */
