@@ -115,3 +115,6 @@
 .pyt-vasito__bebida { font-size: 8.5px; word-spacing: 2px; }
 .pyt-vasito__nombre { transition: font-size .12s ease-out; }
 .pyt-etiqueta__campo { flex: 1 1 auto; min-width: 0; }
+.pyt-vasito { transform: scale(.88); transform-origin: 50% 100%; transition: transform .18s ease-out; }
+.pyt-vasito--grande { transform: none; }
+@media (prefers-reduced-motion: reduce) { .pyt-vasito { transition: none; } }

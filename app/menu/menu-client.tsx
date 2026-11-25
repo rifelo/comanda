@@ -3,7 +3,7 @@
 import * as React from "react";
 import { enlacePedido, ORIGENES } from "@/lib/menu/origenes";
 import { gruposCafe, money, precioK, type MenuItem, type MenuSection } from "@/lib/menu/menu";
-import { agregarPara, claveLinea, enlaceWhatsapp, faltaPara, lineasDelPedido, llevaEtiqueta, mensajePedido, nombrar, sumar, totalPedido, unidades, type Entrega, type LineaCarrito, type LineaPedido } from "@/lib/menu/pedido-web";
+import { agregarPara, enlaceWhatsapp, faltaPara, lineasDelPedido, llevaEtiqueta, mensajePedido, nombrar, sumar, totalPedido, unidades, type Entrega, type LineaCarrito, type LineaPedido, type RefLinea } from "@/lib/menu/pedido-web";
 import "./inicio/inicio.css";
 import "./tienda.css";
 
@@ -110,8 +110,8 @@ export function MenuClient({ sections, header, footer, compartir }: Props) {
   const cuantos = unidades(lineas);
   const sel = abierto ? porSku.get(abierto) ?? null : null;
 
-  const cambiar = React.useCallback((sku: string, opcion: string | null, delta: number) => setCarrito((c) => sumar(c, sku, opcion, delta)), []);
-  const nombrarVaso = React.useCallback((sku: string, opcion: string | null, i: number, n: string) => setCarrito((c) => nombrar(c, sku, opcion, i, n)), []);
+  const cambiar = React.useCallback((ref: RefLinea, delta: number) => setCarrito((c) => sumar(c, ref, delta)), []);
+  const nombrarVaso = React.useCallback((ref: RefLinea, i: number, n: string) => setCarrito((c) => nombrar(c, ref, i, n)), []);
   const cerrar = React.useCallback(() => {
     setAbierto(null);
     setViendoPedido(false);
@@ -178,8 +178,8 @@ export function MenuClient({ sections, header, footer, compartir }: Props) {
                         item={it}
                         n={enPedido.get(it.sku) ?? 0}
                         onVer={(el) => ver(it.sku, el)}
-                        onMas={() => cambiar(it.sku, null, 1)}
-                        onMenos={() => cambiar(it.sku, null, -1)}
+                        onMas={() => cambiar({ sku: it.sku, opcion: null }, 1)}
+                        onMenos={() => cambiar({ sku: it.sku, opcion: null }, -1)}
                       />
                     ))}
                   </ul>
@@ -222,10 +222,11 @@ export function MenuClient({ sections, header, footer, compartir }: Props) {
           item={sel}
           seccion={sections.find((s) => s.id === sel.cat)?.label ?? ""}
           nombre={nombre}
-          onAgregar={(op, n, para) => {
-            if (para === null) cambiar(sel.sku, op, n);
+          onAgregar={(op, tamano, n, para) => {
+            const ref = { sku: sel.sku, opcion: op, tamano };
+            if (para === null) cambiar(ref, n);
             else {
-              setCarrito((c) => agregarPara(c, sel.sku, op, n, para));
+              setCarrito((c) => agregarPara(c, ref, n, para));
               // The first name typed is also who orders, until they say otherwise.
               if (!nombre.trim() && para.trim()) setNombre(para.trim());
             }
@@ -258,7 +259,7 @@ export function MenuClient({ sections, header, footer, compartir }: Props) {
 /** A product in the grid: the photo and name open its sheet; the round button adds one (or opens the sheet when there is something to choose). */
 function Tarjeta({ item, n, onVer, onMas, onMenos }: { item: MenuItem; n: number; onVer: (el: HTMLElement) => void; onMas: () => void; onMenos: () => void }) {
   // A drink always opens its sheet: it needs the name for its label.
-  const conOpciones = item.options.length > 0 || llevaEtiqueta(item.cat);
+  const conOpciones = item.options.length > 0 || item.sizes.length > 0 || llevaEtiqueta(item.cat);
   return (
     <li className={`pyt-card${item.agotado ? " pyt-card--off" : ""}`}>
       <button type="button" className="pyt-card__ver" onClick={(e) => onVer(e.currentTarget)}>
@@ -428,7 +429,7 @@ function Ficha({ item, seccion, nombre, onAgregar, onClose }: {
   /** Who is ordering, if already known: the name the label starts with. */
   nombre: string;
   /** `para` is the name for the cups' labels; null for what has no label. */
-  onAgregar: (opcion: string | null, n: number, para: string | null) => void;
+  onAgregar: (opcion: string | null, tamano: string | null, n: number, para: string | null) => void;
   onClose: () => void;
 }) {
   const closeRef = React.useRef<HTMLButtonElement>(null);
@@ -440,8 +441,10 @@ function Ficha({ item, seccion, nombre, onAgregar, onClose }: {
   const [n, setN] = React.useState(1);
   const conEtiqueta = llevaEtiqueta(item.cat);
   const [para, setPara] = React.useState(nombre);
+  const [tamano, setTamano] = React.useState(0);
   const opt = item.options[opcion] ?? null;
-  const precio = item.price + (opt?.delta ?? 0);
+  const tam = item.sizes[tamano] ?? null;
+  const precio = item.price + (opt?.delta ?? 0) + (tam?.delta ?? 0);
   return (
     <>
       <button ref={overlayRef} type="button" aria-label="Cerrar detalle" className="pyt-overlay" onClick={onClose} tabIndex={-1} />
@@ -471,9 +474,22 @@ function Ficha({ item, seccion, nombre, onAgregar, onClose }: {
               </div>
             </div>
           )}
+          {item.sizes.length > 0 && (
+            <div className="pyt-campo" role="group" aria-label="Tamaño">
+              <span className="pyh-k">Tamaño</span>
+              <div className="pyt-opciones">
+                {item.sizes.map((t, i) => (
+                  <button key={t.name} type="button" className="pyt-opcion pyt-opcion--dos" aria-pressed={tamano === i} onClick={() => setTamano(i)}>
+                    <strong>{t.name}</strong>
+                    <span>{money(item.price + (opt?.delta ?? 0) + t.delta)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {conEtiqueta && !item.agotado && (
             <div className="pyt-etiqueta">
-              <VasoConEtiqueta nombre={para} bebida={item.name} />
+              <VasoConEtiqueta nombre={para} bebida={item.name} grande={tamano > 0} />
               <label className="pyt-campo pyt-etiqueta__campo">
                 <span className="pyh-k">¿Para quién es?</span>
                 <input value={para} onChange={(e) => setPara(e.target.value)} maxLength={40} autoComplete="given-name" placeholder="Nombre" />
@@ -486,7 +502,7 @@ function Ficha({ item, seccion, nombre, onAgregar, onClose }: {
           ) : (
             <div className="pyt-ficha__accion">
               <Cantidad n={n} nombre={item.name} onMenos={() => setN((x) => Math.max(1, x - 1))} onMas={() => setN((x) => Math.min(20, x + 1))} />
-              <button type="button" className="pyh-btn pyt-ficha__agregar" onClick={() => onAgregar(opt?.name ?? null, n, conEtiqueta ? para : null)}>
+              <button type="button" className="pyh-btn pyt-ficha__agregar" onClick={() => onAgregar(opt?.name ?? null, tam?.name ?? null, n, conEtiqueta ? para : null)}>
                 Agregar · {money(precio * n)}
               </button>
             </div>
@@ -509,14 +525,14 @@ function dosLineas(texto: string, max: number): string[] {
 }
 
 /** A drawing of the cup with its two labels: «Pa' <nombre>» changes as the name is typed. */
-function VasoConEtiqueta({ nombre, bebida }: { nombre: string; bebida: string }) {
+function VasoConEtiqueta({ nombre, bebida, grande }: { nombre: string; bebida: string; grande?: boolean }) {
   const n = nombre.replace(/\s+/g, " ").trim();
   const texto = n || "Tu nombre";
   // Dela Gothic One is wide: about 0.78 em per letter, in a label 72 units wide.
   const cuerpo = Math.max(6, Math.min(17, Math.floor((72 / (Math.max(3, texto.length) * 0.78)) * 10) / 10));
   const lineas = dosLineas(bebida, 10);
   return (
-    <svg className="pyt-vasito" viewBox="0 0 200 224" role="img" aria-label={`Vaso con la etiqueta «Pa' ${texto}»`}>
+    <svg className={`pyt-vasito${grande ? " pyt-vasito--grande" : ""}`} viewBox="0 0 200 224" role="img" aria-label={`Vaso con la etiqueta «Pa' ${texto}»`}>
       <ellipse cx="100" cy="212" rx="52" ry="7" fill="#502b1c" opacity=".1" />
       <path d="M44 36 L156 36 L139 204 Q100 214 61 204 Z" fill="#fffdf6" stroke="#502b1c" strokeWidth="2.5" strokeLinejoin="round" />
       <rect x="34" y="20" width="132" height="18" rx="7" fill="#fffdf6" stroke="#502b1c" strokeWidth="2.5" />
@@ -543,8 +559,8 @@ function Pedido({ lineas, total, nombre, onNombre, punto, onCambiar, onNombrar, 
   onNombre: (s: string) => void;
   /** «la portería de ESE Salud Yopal» when the visit came from that place's QR. */
   punto: string | null;
-  onCambiar: (sku: string, opcion: string | null, delta: number) => void;
-  onNombrar: (sku: string, opcion: string | null, i: number, nombre: string) => void;
+  onCambiar: (ref: RefLinea, delta: number) => void;
+  onNombrar: (ref: RefLinea, i: number, nombre: string) => void;
   onVaciar: () => void;
   onClose: () => void;
 }) {
@@ -580,19 +596,19 @@ function Pedido({ lineas, total, nombre, onNombre, punto, onCambiar, onNombrar, 
             <>
               <ul className="pyt-lineas">
                 {lineas.map((l) => (
-                  <li key={claveLinea(l.sku, l.opcion)}>
+                  <li key={l.clave}>
                     <span className="pyt-lineas__txt">
                       <strong>{l.nombre}</strong>
-                      {l.opcion && <span className="pyh-meta">{l.opcion}</span>}
+                      {(l.tamano || l.opcion) && <span className="pyh-meta">{[l.tamano, l.opcion].filter(Boolean).join(" · ")}</span>}
                     </span>
-                    <Cantidad chico n={l.cantidad} nombre={l.nombre} onMenos={() => onCambiar(l.sku, l.opcion, -1)} onMas={() => onCambiar(l.sku, l.opcion, 1)} />
+                    <Cantidad chico n={l.cantidad} nombre={l.nombre} onMenos={() => onCambiar(l, -1)} onMas={() => onCambiar(l, 1)} />
                     <Precio n={l.total} className="pyt-lineas__precio" />
                     {l.conNombre && (
                       <div className="pyt-vasos" role="group" aria-label={`Nombres para ${l.nombre}`}>
                         {l.para.map((n, i) => (
                           <label key={i} className="pyt-vaso">
                             <span>{l.cantidad > 1 ? `Vaso ${i + 1}` : "Para"}</span>
-                            <input value={n} onChange={(e) => onNombrar(l.sku, l.opcion, i, e.target.value)} maxLength={40} autoComplete="off" placeholder={nombre.trim() || "Nombre en la etiqueta"} aria-label={`Nombre en la etiqueta del vaso ${i + 1} de ${l.nombre}`} />
+                            <input value={n} onChange={(e) => onNombrar(l, i, e.target.value)} maxLength={40} autoComplete="off" placeholder={nombre.trim() || "Nombre en la etiqueta"} aria-label={`Nombre en la etiqueta del vaso ${i + 1} de ${l.nombre}`} />
                           </label>
                         ))}
                       </div>

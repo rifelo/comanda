@@ -11,6 +11,8 @@ import { WHATSAPP_PEDIDOS } from "./origenes";
 export interface LineaCarrito {
   sku: string;
   opcion: string | null;
+  /** «16 oz», for what comes in sizes; null/absent otherwise. */
+  tamano?: string | null;
   cantidad: number;
   /** Drinks only: whose cup each one is (the name on its label), by position; a blank one takes the order's name. */
   para?: string[];
@@ -26,6 +28,7 @@ export interface ProductoCarrito {
   price: number;
   agotado: boolean;
   options: { name: string; delta: number }[];
+  sizes?: { name: string; delta: number }[];
   /** Its section on the menu («frio»): decides whether its cups carry a name. */
   cat?: string;
 }
@@ -35,6 +38,7 @@ export interface LineaPedido {
   sku: string;
   nombre: string;
   opcion: string | null;
+  tamano: string | null;
   cantidad: number;
   unitario: number;
   total: number;
@@ -52,28 +56,35 @@ export type Entrega =
 
 export const MAX_POR_LINEA = 20;
 
-/** A line's identity in the cart: the same drink in water and in milk are two lines. */
-export function claveLinea(sku: string, opcion: string | null): string {
-  return `${sku}|${opcion ?? ""}`;
+/** What picks a line out of the cart: the product with its choices. */
+export interface RefLinea {
+  sku: string;
+  opcion: string | null;
+  tamano?: string | null;
+}
+
+/** A line's identity in the cart: the same drink in water and in milk, or in 12 and 16 oz, are separate lines. */
+export function claveLinea(r: RefLinea): string {
+  return `${r.sku}|${r.opcion ?? ""}|${r.tamano ?? ""}`;
 }
 
 /** Add (or take away, with a negative `delta`) units of a line; a line that reaches 0 leaves the cart. */
-export function sumar(carrito: ReadonlyArray<LineaCarrito>, sku: string, opcion: string | null, delta: number): LineaCarrito[] {
-  const clave = claveLinea(sku, opcion);
-  const actual = carrito.find((l) => claveLinea(l.sku, l.opcion) === clave);
+export function sumar(carrito: ReadonlyArray<LineaCarrito>, ref: RefLinea, delta: number): LineaCarrito[] {
+  const clave = claveLinea(ref);
+  const actual = carrito.find((l) => claveLinea(l) === clave);
   const cantidad = Math.min(MAX_POR_LINEA, Math.max(0, (actual?.cantidad ?? 0) + Math.trunc(delta)));
-  if (!actual) return cantidad > 0 ? [...carrito, { sku, opcion, cantidad }] : [...carrito];
+  if (!actual) return cantidad > 0 ? [...carrito, { sku: ref.sku, opcion: ref.opcion, ...(ref.tamano ? { tamano: ref.tamano } : {}), cantidad }] : [...carrito];
   // Taking a cup away takes the last name with it.
   return carrito.flatMap((l) => (l === actual ? (cantidad > 0 ? [{ ...l, cantidad, ...(l.para ? { para: l.para.slice(0, cantidad) } : {}) }] : []) : [l]));
 }
 
 /** Add `n` cups of a drink, all for `nombre` (the name typed in its sheet). */
-export function agregarPara(carrito: ReadonlyArray<LineaCarrito>, sku: string, opcion: string | null, n: number, nombre: string): LineaCarrito[] {
-  const clave = claveLinea(sku, opcion);
-  const antes = carrito.find((l) => claveLinea(l.sku, l.opcion) === clave)?.cantidad ?? 0;
-  let out = sumar(carrito, sku, opcion, n);
-  const ahora = out.find((l) => claveLinea(l.sku, l.opcion) === clave)?.cantidad ?? 0;
-  for (let i = antes; i < ahora; i++) out = nombrar(out, sku, opcion, i, nombre.replace(/\s+/g, " ").trim());
+export function agregarPara(carrito: ReadonlyArray<LineaCarrito>, ref: RefLinea, n: number, nombre: string): LineaCarrito[] {
+  const clave = claveLinea(ref);
+  const antes = carrito.find((l) => claveLinea(l) === clave)?.cantidad ?? 0;
+  let out = sumar(carrito, ref, n);
+  const ahora = out.find((l) => claveLinea(l) === clave)?.cantidad ?? 0;
+  for (let i = antes; i < ahora; i++) out = nombrar(out, ref, i, nombre.replace(/\s+/g, " ").trim());
   return out;
 }
 
@@ -83,10 +94,10 @@ export function llevaEtiqueta(cat: string | null | undefined): boolean {
 }
 
 /** Write whose cup number `i` (from 0) of a line is. */
-export function nombrar(carrito: ReadonlyArray<LineaCarrito>, sku: string, opcion: string | null, i: number, nombre: string): LineaCarrito[] {
-  const clave = claveLinea(sku, opcion);
+export function nombrar(carrito: ReadonlyArray<LineaCarrito>, ref: RefLinea, i: number, nombre: string): LineaCarrito[] {
+  const clave = claveLinea(ref);
   return carrito.map((l) => {
-    if (claveLinea(l.sku, l.opcion) !== clave || i < 0 || i >= l.cantidad) return l;
+    if (claveLinea(l) !== clave || i < 0 || i >= l.cantidad) return l;
     const para = Array.from({ length: l.cantidad }, (_, k) => l.para?.[k] ?? "");
     para[i] = nombre.slice(0, 40);
     return { ...l, para };
@@ -105,11 +116,14 @@ export function lineasDelPedido(carrito: ReadonlyArray<LineaCarrito>, productos:
     if (!p || p.agotado || !Number.isInteger(l.cantidad) || l.cantidad < 1) continue;
     const opt = l.opcion ? p.options.find((o) => o.name === l.opcion) : null;
     if (l.opcion ? !opt : p.options.length > 0) continue;
-    const unitario = p.price + (opt?.delta ?? 0);
+    // A size the product no longer has falls back to its first one; a product in sizes always has one.
+    const sizes = p.sizes ?? [];
+    const tam = sizes.length ? sizes.find((t) => t.name === l.tamano) ?? sizes[0] : null;
+    const unitario = p.price + (opt?.delta ?? 0) + (tam?.delta ?? 0);
     const cantidad = Math.min(MAX_POR_LINEA, l.cantidad);
     const conNombre = llevaEtiqueta(p.cat);
     const para = conNombre ? Array.from({ length: cantidad }, (_, k) => (typeof l.para?.[k] === "string" ? l.para[k] : "")) : [];
-    out.push({ clave: claveLinea(l.sku, l.opcion), sku: l.sku, nombre: p.name, opcion: l.opcion, cantidad, unitario, total: unitario * cantidad, conNombre, para });
+    out.push({ clave: claveLinea({ sku: l.sku, opcion: l.opcion, tamano: tam?.name ?? null }), sku: l.sku, nombre: p.name, opcion: l.opcion, tamano: tam?.name ?? null, cantidad, unitario, total: unitario * cantidad, conNombre, para });
   }
   return out;
 }
@@ -144,7 +158,7 @@ export function mensajePedido(lineas: ReadonlyArray<LineaPedido>, datos: { nombr
   const nota = limpio(datos.nota ?? "", 240);
   return [
     "Hola, quiero hacer este pedido:",
-    ...lineas.map((l) => `• ${l.cantidad} × ${l.nombre}${l.opcion ? ` (${l.opcion.charAt(0).toLowerCase()}${l.opcion.slice(1)})` : ""} — ${money(l.total)}${paraQuien(l, datos.nombre)}`),
+    ...lineas.map((l) => `• ${l.cantidad} × ${l.nombre}${l.tamano ? ` ${l.tamano}` : ""}${l.opcion ? ` (${l.opcion.charAt(0).toLowerCase()}${l.opcion.slice(1)})` : ""} — ${money(l.total)}${paraQuien(l, datos.nombre)}`),
     `Total productos: ${money(totalPedido(lineas))}`,
     donde,
     `A nombre de: ${limpio(datos.nombre, 60)}`,

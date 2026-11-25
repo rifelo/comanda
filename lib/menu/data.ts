@@ -17,7 +17,7 @@ export async function loadMenu(): Promise<MenuSection[]> {
   const [{ data: productos }, { data: links }, { data: grupos }, { data: receta }] = await Promise.all([
     db.from("productos").select("id, sku, name, price_cop, stock_status, description, image_url, categoria:producto_categorias(label)").eq("organization_id", orgId),
     db.from("producto_modifier_groups").select("producto_id, group_id").eq("organization_id", orgId),
-    db.from("modifier_groups").select("id, type, required, modifier_options(name, price_delta_cop, available, position)").eq("organization_id", orgId),
+    db.from("modifier_groups").select("id, name, type, required, modifier_options(name, price_delta_cop, available, position)").eq("organization_id", orgId),
     db.from("receta_items").select("producto_id, ingrediente:ingredientes(name)").eq("organization_id", orgId),
   ]);
   // «Con café» comes from the recipe, so a new drink lands in the right group by itself.
@@ -28,17 +28,23 @@ export async function loadMenu(): Promise<MenuSection[]> {
     if (esCafe(name)) conCafe.add(r.producto_id as string);
   }
   // Only a required single choice changes what the customer asks for ("en agua / en leche").
+  // «Tamaño» is the other choice a customer makes; the POS leaves it optional (12 oz unless said).
   const opciones = new Map<string, { name: string; delta: number }[]>();
+  const tamanos = new Map<string, { name: string; delta: number }[]>();
   for (const g of grupos ?? []) {
-    if (g.type !== "single" || !g.required) continue;
+    const esTamano = g.type === "single" && /^tama[ñn]o$/i.test(String(g.name ?? "").trim());
+    if (g.type !== "single" || (!g.required && !esTamano)) continue;
     const opts = ((g.modifier_options ?? []) as Array<{ name: string; price_delta_cop: number; available: boolean; position: number }>)
       .filter((o) => o.available)
       .sort((a, b) => a.position - b.position)
       .map((o) => ({ name: o.name, delta: Number(o.price_delta_cop) }));
-    if (opts.length > 1) opciones.set(g.id as string, opts);
+    if (opts.length > 1) (esTamano ? tamanos : opciones).set(g.id as string, opts);
   }
   const grupoDe = new Map<string, string>();
   for (const l of links ?? []) if (opciones.has(l.group_id as string) && !grupoDe.has(l.producto_id as string)) grupoDe.set(l.producto_id as string, l.group_id as string);
+
+  const tamanoDe = new Map<string, string>();
+  for (const l of links ?? []) if (tamanos.has(l.group_id as string)) tamanoDe.set(l.producto_id as string, l.group_id as string);
 
   const catalog: CatalogProduct[] = (productos ?? []).map((p) => {
     const cat = p.categoria as unknown as { label: string } | { label: string }[] | null;
@@ -51,6 +57,7 @@ export async function loadMenu(): Promise<MenuSection[]> {
       description: (p.description as string | null) ?? null,
       category: (Array.isArray(cat) ? cat[0]?.label : cat?.label) ?? null,
       options: gid ? opciones.get(gid)! : [],
+      sizes: tamanoDe.has(p.id as string) ? tamanos.get(tamanoDe.get(p.id as string)!)! : [],
       cafe: conCafe.has(p.id as string),
       image: (p.image_url as string | null) ?? null,
     };
