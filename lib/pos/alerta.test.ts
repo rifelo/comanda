@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conversacionesNuevas, pedidosNuevos, recordatorioTareas, recordatoriosVencidos } from "./alerta";
+import { conversacionesNuevas, dentroDePantalla, pedidosNuevos, recordatorioTareas, recordatoriosVencidos } from "./alerta";
 
 const ahora = Date.parse("2026-11-10T15:00:00Z");
 const o = (id: string, canal: "pos" | "whatsapp", haceMin: number) => ({ id, canal, createdAt: new Date(ahora - haceMin * 60_000).toISOString() });
@@ -73,5 +73,17 @@ describe("recordatorioTareas", () => {
     recordatorioTareas([{ id: "a", tarde: 6 }], e, 100 * MIN);
     expect(recordatorioTareas([], e, 120 * MIN)).toBe(false);
     expect(e.sonadas.size).toBe(0);
+  });
+});
+
+describe("dentroDePantalla", () => {
+  const caja = { w: 300, h: 60 };
+  const pantalla = { w: 1280, h: 800 };
+  it("keeps a position that already fits", () => {
+    expect(dentroDePantalla({ x: 100, y: 200 }, caja, pantalla)).toEqual({ x: 100, y: 200 });
+  });
+  it("pulls a reminder dragged past an edge back on screen", () => {
+    expect(dentroDePantalla({ x: -50, y: 900 }, caja, pantalla)).toEqual({ x: 8, y: 732 });
+    expect(dentroDePantalla({ x: 1200, y: -10 }, caja, pantalla)).toEqual({ x: 972, y: 8 });
   });
 });
