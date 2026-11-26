@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageLabel, bogotaClock, bogotaDay, bogotaTime, dayLabel, folioTag, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
+import { ageLabel, bogotaClock, bogotaDay, bogotaTime, dayLabel, diasEsperando, esPorCobrar, folioTag, linesPayload, normalizePerson, rebuildLines, rebuildPeople, sanitizeMods, shiftDay, timeAgo } from "./pending";
 import type { PendingOrder, PosCatalog, PosMenuItem } from "./types";
 
 const latte: PosMenuItem = {
@@ -148,5 +148,23 @@ describe("Pedidos card labels", () => {
   it("formats the delivery time without a leading zero", () => {
     expect(bogotaClock("2026-10-31T14:31:00Z")).toBe("9:31");
     expect(bogotaClock("2026-10-31T22:05:00Z")).toBe("17:05");
+  });
+});
+
+describe("esPorCobrar", () => {
+  const today = "2026-11-26";
+  it("an unpaid order from an earlier Bogotá day is por cobrar", () => {
+    expect(esPorCobrar({ status: "pendiente", createdAt: "2026-11-21T17:17:00Z" }, today)).toBe(true);
+    // 23:30 Bogotá on the 25th is 04:30 UTC on the 26th: still yesterday.
+    expect(esPorCobrar({ status: "pendiente", createdAt: "2026-11-26T04:30:00Z" }, today)).toBe(true);
+  });
+  it("today's unpaid, paid or queued orders are not", () => {
+    expect(esPorCobrar({ status: "pendiente", createdAt: "2026-11-26T05:10:00Z" }, today)).toBe(false);
+    expect(esPorCobrar({ status: "pagada", createdAt: "2026-11-21T17:17:00Z" }, today)).toBe(false);
+    expect(esPorCobrar({ status: "pendiente", createdAt: "2026-11-21T17:17:00Z", local: "offline" }, today)).toBe(false);
+  });
+  it("counts waiting days by calendar day", () => {
+    expect(diasEsperando("2026-11-21T17:17:00Z", today)).toBe(5);
+    expect(diasEsperando("2026-11-26T04:30:00Z", today)).toBe(1);
   });
 });

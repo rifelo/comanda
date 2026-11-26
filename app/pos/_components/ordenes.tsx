@@ -12,7 +12,7 @@
  */
 import * as React from "react";
 import { PAY_METHOD_LABEL, type PayMethodSummary, type PosOrder } from "@/lib/pos/types";
-import { ageLabel, ageMinutes, bogotaClock, bogotaDay, dayLabel, folioTag, rebuildPeople, shiftDay } from "@/lib/pos/pending";
+import { ageLabel, ageMinutes, bogotaClock, bogotaDay, dayLabel, diasEsperando, esPorCobrar, folioTag, rebuildPeople, shiftDay } from "@/lib/pos/pending";
 import { ORDER_TYPE_LABEL, cancelMotivo, modLabels } from "@/lib/pos/detalle";
 import {
   usePos,
@@ -131,9 +131,11 @@ export function PedidosPage() {
   const [doneCount, setDoneCount] = React.useState<number | null>(null);
   const [cancCount, setCancCount] = React.useState<number | null>(null);
   const [, tick] = React.useReducer((n: number) => n + 1, 0);
-  // Pendientes splits in two: the register's own («Caja») and WhatsApp's step board.
-  const [vista, setVista] = React.useState<"caja" | "whatsapp">("caja");
+  // Pendientes splits in three: the register's own («Caja»), WhatsApp's step
+  // board and «Por cobrar» (unpaid from an earlier day, kept out of the day's queues).
+  const [vista, setVista] = React.useState<"caja" | "whatsapp" | "cobrar">("caja");
   const enWa = isPend && vista === "whatsapp";
+  const enCobrar = isPend && vista === "cobrar";
 
   // The history tabs of the old screen collapse into these three («todas» is not one).
   React.useEffect(() => {
@@ -168,10 +170,13 @@ export function PedidosPage() {
 
   // This register's queued orders (offline / still sending) go first in the queue.
   const queued = isPend ? queuedOrders(s) : [];
+  const porCobrar = s.pendientes.filter((o) => esPorCobrar(o, today)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const cobrarIds = new Set(porCobrar.map((o) => o.id));
+  const delDia = s.pendientes.filter((o) => !cobrarIds.has(o.id));
   // WhatsApp orders on their way through the team's steps live on the board.
-  const tablero = new Set(enTablero(s.pendientes).map((x) => x.o.id));
-  const list = [...queued, ...s.ordenes.filter((o) => (isPend ? !tablero.has(o.id) : isCanc ? o.status === "cancelada" : o.status === "pagada" && !!o.entregadaAt))];
-  const pendCount = isPend ? list.length : s.pendientes.filter((o) => !tablero.has(o.id)).length + s.outbox.length;
+  const tablero = new Set(enTablero(delDia).map((x) => x.o.id));
+  const list = [...queued, ...s.ordenes.filter((o) => (isPend ? !tablero.has(o.id) && !esPorCobrar(o, today) : isCanc ? o.status === "cancelada" : o.status === "pagada" && !!o.entregadaAt))];
+  const pendCount = isPend ? list.length : delDia.filter((o) => !tablero.has(o.id)).length + s.outbox.length;
   const waCount = tablero.size;
   const waNuevos = s.pendientes.filter((o) => o.canal === "whatsapp" && o.waEstado === "por_aceptar").length;
   const compCount = s.ordenesTab === "completada" ? list.length : doneCount;
@@ -196,10 +201,11 @@ export function PedidosPage() {
         <h1 className="h2">Pedidos</h1>
         <div className="ped-tabs">
           <div className="seg" role="group" aria-label="Estado">
-            <button type="button" aria-pressed={isPend && !enWa} onClick={() => { setVista("caja"); if (!isPend) setOrdenesTab("pendiente"); }}>Caja · {pendCount}</button>
+            <button type="button" aria-pressed={isPend && vista === "caja"} onClick={() => { setVista("caja"); if (!isPend) setOrdenesTab("pendiente"); }}>Caja · {pendCount}</button>
             <button type="button" aria-pressed={enWa} onClick={() => { setVista("whatsapp"); if (!isPend) setOrdenesTab("pendiente"); }}>
               WhatsApp · {waCount}{waNuevos > 0 && <span className="wa-tab-dot" aria-label={`${waNuevos} por aceptar`} />}
             </button>
+            <button type="button" aria-pressed={enCobrar} onClick={() => { setVista("cobrar"); if (!isPend) setOrdenesTab("pendiente"); }}>Por cobrar · {porCobrar.length}</button>
             <button type="button" aria-pressed={s.ordenesTab === "completada"} onClick={() => s.ordenesTab !== "completada" && setOrdenesTab("completada")}>Completados{compCount !== null ? ` · ${compCount}` : ""}</button>
             <button type="button" aria-pressed={isCanc} onClick={() => !isCanc && setOrdenesTab("cancelada")}>Canceladas{canCount !== null ? ` · ${canCount}` : ""}</button>
           </div>
@@ -216,14 +222,14 @@ export function PedidosPage() {
         <button type="button" className="btn ghost sm ped-refresh" onClick={refresh} aria-label="Actualizar" disabled={s.ordenesLoading && !s.ordenes.length}>
           <IconRefresh /><span className="ped-refresh-l">Actualizar</span>
         </button>
-        {isPend && (
+        {enWa && (
           <div className="wa-leyenda" aria-hidden="true">
             <span><i style={{ background: "var(--ok)" }} />hecho</span>
             <span><i style={{ background: "var(--brand)" }} />paso actual</span>
             <span><i style={{ background: "var(--line)" }} />falta</span>
           </div>
         )}
-        {isPend && !enWa && (
+        {isPend && vista === "caja" && (
           <button type="button" className="btn ghost sm" onClick={startMerge} disabled={combinables < 2} title={combinables < 2 ? "Se necesitan dos o más pedidos sin pagar" : undefined}>
             <span>Combinar<span className="ped-hide-ph"> pedidos</span></span>
           </button>
@@ -234,7 +240,9 @@ export function PedidosPage() {
       {error && <div role="alert" className="ped-alert">{error}</div>}
 
       {enWa ? (
-        <TableroWa orders={s.pendientes} />
+        <TableroWa orders={delDia} />
+      ) : enCobrar ? (
+        <PorCobrar orders={porCobrar} today={today} onCancel={setCancelId} onDescuento={setDescId} onPremio={setPremioId} />
       ) : isPend ? (
         <TableroCaja orders={list} onCancel={setCancelId} onDescuento={setDescId} onPremio={setPremioId} />
       ) : !list.length ? (
@@ -263,6 +271,42 @@ export function PedidosPage() {
       {descOrder && <DescuentoOverlay o={descOrder} onClose={() => setDescId(null)} />}
       {premioOrder && <PremioOverlay o={premioOrder} onClose={() => setPremioId(null)} />}
       {s.merge.on && <CombinarOverlay />}
+    </div>
+  );
+}
+
+/**
+ * «Por cobrar»: unpaid orders from earlier days, oldest first. Charged from
+ * here like any pending order; the arqueo shows that money on its own line
+ * and the sale stays on the day it was made.
+ */
+function PorCobrar({ orders, today, onCancel, onDescuento, onPremio }: { orders: PosOrder[]; today: string; onCancel: (id: string) => void; onDescuento: (id: string) => void; onPremio: (id: string) => void }) {
+  if (!orders.length) {
+    return (
+      <div className="empty">
+        <IconCheck size={44} w={2} />
+        <span style={{ fontSize: 17, fontWeight: 600, color: "var(--text)" }}>Nada por cobrar</span>
+        <span style={{ fontSize: 14 }}>Aquí llegan los pedidos que quedaron sin pagar de días anteriores.</span>
+      </div>
+    );
+  }
+  const total = orders.reduce((n, o) => n + owed(o), 0);
+  return (
+    <div className="scroll" style={{ flex: 1, minHeight: 0 }}>
+      <p className="cobrar-nota">
+        {orders.length === 1 ? "1 pedido" : `${orders.length} pedidos`} sin pagar de días anteriores · {money(total)}. Al cobrarlos, el dinero sale aparte en el arqueo como «cobros de días anteriores» y la venta queda en su día.
+      </p>
+      <div className="orders" aria-label="Pedidos por cobrar">
+        {orders.map((o) => {
+          const dias = diasEsperando(o.createdAt, today);
+          return (
+            <div key={o.id} className="cobrar-item">
+              <span className="cobrar-dia">{dayLabel(bogotaDay(Date.parse(o.createdAt)), today)} · {bogotaClock(o.createdAt)} · hace {dias === 1 ? "1 día" : `${dias} días`}</span>
+              <OrderCard o={o} onCancel={() => onCancel(o.id)} onDescuento={() => onDescuento(o.id)} onPremio={() => onPremio(o.id)} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

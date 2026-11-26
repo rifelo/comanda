@@ -347,7 +347,10 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
           <span className="cj-lab">De dónde sale el esperado</span>
           <div className="cj-ledger">
             <div><span><b>Base</b> con la que abrió<br /><small>{baseInicialHint}</small></span><span>{plata(r.baseInicial)}</span></div>
-            <div><span><b>Ventas en efectivo</b> · {r.pagos.count} pago{r.pagos.count === 1 ? "" : "s"} del POS</span><span>+ {plata(r.pagos.efectivo)}</span></div>
+            <div><span><b>Ventas en efectivo</b> · {r.pagos.count - (r.pagos.anteriores?.count ?? 0)} pago{r.pagos.count - (r.pagos.anteriores?.count ?? 0) === 1 ? "" : "s"} del POS</span><span>+ {plata(r.pagos.efectivo - (r.pagos.anteriores?.efectivo ?? 0))}</span></div>
+            {(r.pagos.anteriores?.efectivo ?? 0) > 0 && (
+              <div><span><b>Cobros de días anteriores</b> · en efectivo<br /><small>pedidos que quedaron por cobrar; la venta queda en su día</small></span><span>+ {plata(r.pagos.anteriores!.efectivo)}</span></div>
+            )}
             {enVentana.map((m) => (
               <div key={m.key}>
                 <span><b>{m.tipo === "ingreso" ? "Entrada" : "Salida"}</b> · {MOTIVO_CAJA[m.motivo].label} · {hora(m.at, tz)}{m.by ? ` · ${m.by.split(" ")[0]}` : ""}<br /><small>“{m.justificacion}”</small>{m.detalle.denominaciones?.length ? <><br /><small>{piezasTexto(m.detalle.denominaciones)}</small></> : null}</span>
@@ -362,6 +365,9 @@ function Resultado({ tz, online, r, movimientos, baseInicialHint, guardarNota, o
               <span>Datáfono <b>{plata(r.pagos.datafono)}</b></span>
               <span>Transferencias <b>{plata(r.pagos.transferencia)}</b></span>
               <span>Total del turno <b>{plata(r.pagos.efectivo + r.pagos.datafono + r.pagos.transferencia)}</b></span>
+              {(r.pagos.anteriores?.count ?? 0) > 0 && (
+                <span>Incluye cobros de días anteriores <b>{plata(r.pagos.anteriores!.efectivo + r.pagos.anteriores!.datafono + r.pagos.anteriores!.transferencia)}</b></span>
+              )}
             </div>
           </div>
         </aside>

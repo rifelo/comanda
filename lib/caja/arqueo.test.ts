@@ -10,6 +10,8 @@ import {
   localToUtc,
   parseCantidad,
   resumenPagos,
+  resumenConAnteriores,
+  diaLocal,
   totalContado,
   ventanaTurno,
 } from "./arqueo";
@@ -125,5 +127,27 @@ describe("ventanaDesdeUltimo", () => {
   it("keeps the turno's own window with no previous arqueo, or one ending later", () => {
     expect(ventanaDesdeUltimo(turno, null)).toEqual(turno);
     expect(ventanaDesdeUltimo(turno, "2026-11-03T02:00:00.000Z")).toEqual(turno);
+  });
+});
+
+describe("resumenConAnteriores", () => {
+  const tz = "America/Bogota";
+  it("keeps everything in the totals and puts the earlier-day orders on their own line", () => {
+    const r = resumenConAnteriores(
+      [
+        { method: "efectivo", amount_cop: 7000, pagadoEn: "2026-11-26T14:00:00Z", ordenCreadaEn: "2026-11-26T13:50:00Z" },
+        { method: "efectivo", amount_cop: 10000, pagadoEn: "2026-11-26T14:05:00Z", ordenCreadaEn: "2026-11-21T17:17:00Z" },
+        { method: "transferencia", amount_cop: 15000, pagadoEn: "2026-11-26T15:00:00Z", ordenCreadaEn: "2026-11-23T19:11:00Z" },
+      ],
+      tz,
+    );
+    expect(r).toMatchObject({ efectivo: 17000, transferencia: 15000, count: 3 });
+    expect(r.anteriores).toEqual({ efectivo: 10000, datafono: 0, transferencia: 15000, count: 2 });
+  });
+  it("an order made late at night and paid the same Bogotá night is not from an earlier day", () => {
+    // 22:30 and 23:40 Bogotá on the 25th (03:30 / 04:40 UTC on the 26th).
+    const r = resumenConAnteriores([{ method: "efectivo", amount_cop: 5000, pagadoEn: "2026-11-26T04:40:00Z", ordenCreadaEn: "2026-11-26T03:30:00Z" }], tz);
+    expect(r.anteriores?.count).toBe(0);
+    expect(diaLocal("2026-11-26T04:40:00Z", tz)).toBe("2026-11-25");
   });
 });

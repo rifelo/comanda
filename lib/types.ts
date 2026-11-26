@@ -415,6 +415,9 @@ export interface CajaCierre {
   tarjeta_cop: number;
   transferencia_cop: number;
   pagos_count: number;
+  /** Payments for orders from an earlier day («Por cobrar»), already inside the totals above (mig 0106). */
+  anteriores_cop: number;
+  anteriores_efectivo_cop: number;
   esperado_cop: number;
   contado_cop: number;
   /** contado - esperado; negative = missing. */

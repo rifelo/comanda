@@ -247,3 +247,18 @@ export function sonarRecordatorio(): void {
     nota(1046.5, t + 0.56, 0.8);
   }
 }
+
+/**
+ * Where the dragged task reminder may sit: its top-left corner kept inside
+ * the screen with a small margin, so it can't be dropped out of reach.
+ */
+export function dentroDePantalla(
+  p: { x: number; y: number },
+  caja: { w: number; h: number },
+  pantalla: { w: number; h: number },
+  margen = 8,
+): { x: number; y: number } {
+  const maxX = Math.max(margen, pantalla.w - caja.w - margen);
+  const maxY = Math.max(margen, pantalla.h - caja.h - margen);
+  return { x: Math.min(maxX, Math.max(margen, Math.round(p.x))), y: Math.min(maxY, Math.max(margen, Math.round(p.y))) };
+}
