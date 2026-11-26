@@ -33,6 +33,7 @@ import type {
 import { bogotaDay, shiftDay } from "@/lib/pos/pending";
 import { cancelNotes, summarizeMethod } from "@/lib/pos/pagos";
 import { syncOrderConsumption } from "@/lib/pos/stock";
+import { getPosCatalog } from "@/lib/pos/catalog";
 import { LineSchema, itemRows, priceLines, type PricedItem } from "@/lib/pos/lineas";
 import { aplicarDescuentos, etiquetaDescuento, type DescuentoRegla } from "@/lib/pos/descuentos";
 import { calcularOrden, descuentosDeOrdenes, reglasAprobadas, repricearOrden } from "@/lib/pos/descuentos-db";
@@ -441,7 +442,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
   let q = supabase
     .from("ordenes")
     .select(
-      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, listo_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, domicilio_cop, domicilio_transferido, comanda_impresa_at, customer_phone, telefono_recibe, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
+      "id, folio, status, order_type, canal, total_cop, sin_gluten, notes, customer_name, customer_names, created_at, paid_at, entregada_at, listo_at, payment_method, tendered_cop, change_cop, paid_cop, merged_into, se_lo_llevamos, por_verificar, wa_estado, delivery_address, domicilio_cop, domicilio_transferido, comanda_impresa_at, customer_phone, telefono_recibe, wa_cambio, barista_id, orden_items(id, kind, producto_id, combo_id, name, qty, unit_price_cop, mods, position, customer_name), orden_pagos(id, customer_name, method, amount_cop, tendered_cop, change_cop, aprobacion, created_at)",
     )
     .eq("organization_id", orgId);
   if (status === "pendiente") q = q.or("status.eq.pendiente,and(status.eq.pagada,entregada_at.is.null)");
@@ -495,6 +496,7 @@ export async function listarOrdenes(input: unknown = {}): Promise<ListarPendient
       comandaImpresa: Boolean(o.comanda_impresa_at),
       customerPhone: (o.customer_phone as string | null) ?? null,
       telefonoRecibe: (o.telefono_recibe as string | null) ?? null,
+      waCambio: o.wa_cambio ? { texto: String((o.wa_cambio as { texto?: unknown }).texto ?? ""), at: String((o.wa_cambio as { at?: unknown }).at ?? "") } : null,
       baristaId: (o.barista_id as string | null) ?? null,
       tendered: (o.tendered_cop as number | null) ?? null,
       change: (o.change_cop as number) ?? 0,
@@ -953,6 +955,74 @@ export async function reclamarComandaWhatsapp(input: unknown): Promise<{ ok: tru
     .select("id");
   if (error) return { ok: false, error: "No se pudo reclamar la comanda." };
   return { ok: true, imprimir: !!data?.length };
+}
+
+/**
+ * «Agregar al pedido»: the change the customer asked for over WhatsApp after
+ * the order was accepted (ordenes.wa_cambio) replaces its lines; stock follows
+ * the difference and the agent tells the customer the new total. Only while
+ * it's unpaid: a paid order gets the extra charged as a new one.
+ */
+export async function aplicarCambioWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const ctx = await requirePosAuth();
+  const { supabase, organizationId: orgId } = ctx;
+  const { data: o } = await supabase
+    .from("ordenes")
+    .select("id, status, notes, wa_cambio, descuento_cop")
+    .eq("id", parsed.data.ordenId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  const cambio = o?.wa_cambio as { texto: string; subtotal: number; items: PricedItem[]; campos: Record<string, unknown> } | null | undefined;
+  if (!o || !cambio) return { ok: false, error: "Este pedido ya no tiene un cambio pendiente." };
+  if (o.status !== "pendiente") return { ok: false, error: "Este pedido ya está pagado: cobra lo nuevo como un pedido aparte y toca «Descartar»." };
+  const { data: viejos } = await supabase.from("orden_items").select("id").eq("orden_id", o.id).eq("organization_id", orgId);
+  const { error: insErr } = await supabase.from("orden_items").insert(itemRows(orgId, o.id as string, cambio.items));
+  if (insErr) {
+    console.error("[aplicarCambioWhatsapp] items:", insErr);
+    return { ok: false, error: "No se pudieron guardar los productos. Intenta de nuevo." };
+  }
+  const ids = ((viejos ?? []) as { id: string }[]).map((r) => r.id);
+  if (ids.length) await supabase.from("orden_items").delete().in("id", ids).eq("organization_id", orgId);
+  const { error } = await supabase
+    .from("ordenes")
+    .update({
+      ...cambio.campos,
+      subtotal_cop: cambio.subtotal,
+      total_cop: cambio.subtotal,
+      notes: `${(o.notes as string | null) ?? ""} · Cambio del cliente: ${cambio.texto}`.replace(/^ · /, ""),
+      wa_cambio: null,
+    })
+    .eq("id", o.id)
+    .eq("organization_id", orgId);
+  if (error) {
+    console.error("[aplicarCambioWhatsapp] orden:", error);
+    return { ok: false, error: "No se pudo guardar el cambio. Intenta de nuevo." };
+  }
+  // An approved discount keeps applying to the new lines.
+  if (Number(o.descuento_cop ?? 0) > 0) {
+    const catalog = await getPosCatalog({ organizationId: orgId, userId: null, orgName: "", client: supabase });
+    await repricearOrden(supabase, orgId, o.id as string, catalog);
+  }
+  await syncOrderConsumption(supabase, orgId, o.id as string, actorId(ctx));
+  after(async () => {
+    await avisarPos(orgId).catch(() => {});
+    await avisarPedido(o.id as string, "cambio_aplicado", cambio.texto).catch((e) => console.error("[aviso whatsapp] cambio:", e));
+  });
+  revalidatePath("/pos");
+  return { ok: true };
+}
+
+/** «Descartar»: the team handled the change another way (or it can't be done). */
+export async function descartarCambioWhatsapp(input: unknown): Promise<SimpleResult> {
+  const parsed = DecisionWaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pedido inválido." };
+  const { supabase, organizationId: orgId } = await requirePosAuth();
+  const { error } = await supabase.from("ordenes").update({ wa_cambio: null }).eq("id", parsed.data.ordenId).eq("organization_id", orgId);
+  if (error) return { ok: false, error: "No se pudo descartar. Intenta de nuevo." };
+  after(() => avisarPos(orgId).catch(() => {}));
+  return { ok: true };
 }
 
 /**

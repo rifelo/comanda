@@ -44,7 +44,7 @@ import { DescuentoOverlay } from "./descuento";
 import { PremioOverlay } from "./premio";
 import { ConversacionWa } from "./conversacion-wa";
 import { anularDescuento } from "../actions";
-import { TableroWa, enTablero } from "./pedidos-wa";
+import { CambioWa, TableroWa, enTablero } from "./pedidos-wa";
 import { TableroCaja } from "./pedidos-caja";
 
 /** Human label for a payment method, including the "mixto" summary. */
@@ -441,6 +441,7 @@ export function OrderCard({ o, onCancel, onDescuento, onPremio }: { o: PosOrder;
         {partial && <span className="muted" style={{ fontSize: 13 }}>{payers.length ? `${payers.join(", ")} ${payers.length > 1 ? "pagaron" : "pagó"}` : `Pagado ${money(o.paid)}`}</span>}
         {barista && <span className="muted" style={{ fontSize: 13 }}>Prepara {barista}</span>}
       </div>
+      {wa && <CambioWa o={o} />}
       {pendiente && descs.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {descs.map((d) =>

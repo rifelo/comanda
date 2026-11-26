@@ -165,7 +165,39 @@ export async function guardarPedidoWhatsapp(
 
 export type ModificarResultado =
   | { ok: true; ordenId: string; folio: string }
+  /** Already accepted: the change waits on the POS card for the team. */
+  | { ok: true; ordenId: string; folio: string; pendienteEquipo: true; texto: string }
   | { ok: false; error: string };
+
+type FilaItem = { name: string; qty: number; unit_price_cop: number; mods: unknown; customer_name: string | null };
+
+const pesosTexto = (n: number) => `$${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+
+/** What changes between the order's lines and the new ones, in words for the team: «+ 1 Torta ($7.000) · − 1 Latte». */
+export function textoCambio(antes: FilaItem[], despues: PricedItem[]): string {
+  const clave = (name: string, mods: unknown, quien: string | null) => `${name}|${JSON.stringify(mods ?? {})}|${quien ?? ""}`;
+  const cuenta = new Map<string, { name: string; quien: string | null; unit: number; qty: number }>();
+  for (const r of antes) {
+    const k = clave(r.name, r.mods, r.customer_name);
+    const c = cuenta.get(k) ?? { name: r.name, quien: r.customer_name, unit: r.unit_price_cop, qty: 0 };
+    c.qty -= r.qty;
+    cuenta.set(k, c);
+  }
+  for (const it of despues) {
+    const quien = it.line.customer || null;
+    const k = clave(it.name, it.line.mods ?? {}, quien);
+    const c = cuenta.get(k) ?? { name: it.name, quien, unit: it.unit, qty: 0 };
+    c.qty += it.line.qty;
+    cuenta.set(k, c);
+  }
+  const partes: string[] = [];
+  for (const c of cuenta.values()) {
+    if (!c.qty) continue;
+    const para = c.quien ? ` (para ${c.quien})` : "";
+    partes.push(c.qty > 0 ? `+ ${c.qty} ${c.name}${para} (${pesosTexto(c.qty * c.unit)})` : `− ${-c.qty} ${c.name}${para}`);
+  }
+  return partes.join(" · ");
+}
 
 /**
  * The customer changes an order the bar hasn't accepted yet (another product,
@@ -184,18 +216,47 @@ export async function modificarPedidoWhatsapp(
   const numero = folio.trim().toUpperCase().replace(/^(?:A-?)?/, "A-");
   const { data: orden } = await db
     .from("ordenes")
-    .select("id, folio, status, wa_estado")
+    .select("id, folio, status, wa_estado, entregada_at")
     .eq("organization_id", orgId)
     .eq("canal", "whatsapp")
     .eq("customer_phone", ctx.telefono)
     .eq("folio", numero)
     .maybeSingle();
   if (!orden) return { ok: false, error: `No encontré el pedido ${numero} de este cliente. Revisa el número en sus últimos pedidos.` };
-  if (orden.status !== "pendiente" || orden.wa_estado !== "por_aceptar") {
+  if (orden.status === "cancelada" || orden.entregada_at || orden.wa_estado === "rechazado") {
     return {
       ok: false,
-      error: `El pedido ${numero} ya fue aceptado por el equipo y no se puede cambiar desde aquí. Usa pasar_a_humano con el cambio exacto que pide el cliente y contesta «Ok entendido, ya lo revisamos».`,
+      error: `El pedido ${numero} ya se entregó o se canceló: no se puede cambiar. Si quiere algo más, ofrécele hacer un pedido nuevo.`,
     };
+  }
+  if (orden.status !== "pendiente" || orden.wa_estado !== "por_aceptar") {
+    // Accepted: the bar may already be making it. The change waits on its card.
+    const { data: filas } = await db
+      .from("orden_items")
+      .select("name, qty, unit_price_cop, mods, customer_name")
+      .eq("orden_id", orden.id)
+      .eq("organization_id", orgId);
+    const texto = textoCambio((filas ?? []) as FilaItem[], v.items) || "Cambio en la entrega o en los nombres de los vasos";
+    const cambio = {
+      texto,
+      at: new Date().toISOString(),
+      subtotal: v.subtotal,
+      items: v.items,
+      campos: {
+        order_type: p.tipo === "cercano" ? "llevar" : p.tipo,
+        se_lo_llevamos: p.tipo === "cercano",
+        delivery_address: p.tipo === "llevar" ? null : p.direccion!.trim(),
+        telefono_recibe: p.tipo === "domicilio" ? (p.telefono ?? "").replace(/\D/g, "") || null : null,
+        customer_name: p.nombre.trim().slice(0, 80),
+        customer_names: personasDelPedido(v.lines),
+      },
+    };
+    const { error: cErr } = await db.from("ordenes").update({ wa_cambio: cambio }).eq("id", orden.id).eq("organization_id", orgId);
+    if (cErr) {
+      console.error("[modificarPedidoWhatsapp] cambio:", cErr);
+      return { ok: false, error: "No pude dejarle el cambio al equipo. Usa pasar_a_humano con el cambio exacto y contesta «Ok entendido, ya lo revisamos»." };
+    }
+    return { ok: true, ordenId: orden.id as string, folio: numero, pendienteEquipo: true, texto };
   }
   const ordenId = orden.id as string;
   // Claim the order first: if the bar accepts it at this same moment, nothing changes.

@@ -398,6 +398,14 @@ export async function responder(p: Pendiente): Promise<void> {
         if (!v.ok) return v;
         const r = await modificarPedidoWhatsapp(db(), { organizationId: n.organization_id, telefono: p.waId }, folio, pedido, v);
         if (!r.ok) return r;
+        if ("pendienteEquipo" in r) {
+          // Accepted already: the change waits on the order's card in the POS.
+          await avisarPos(n.organization_id);
+          return {
+            ok: false,
+            error: `El pedido ${r.folio} ya lo estamos preparando, así que el cambio (${r.texto}) le quedó al equipo en la tarjeta del pedido para que lo agregue. Contéstale en una frase cálida que ya le avisamos al equipo y que le confirmamos apenas quede (p. ej. «Listo, ya le avisamos al equipo para agregarla a tu pedido ${r.folio}, te confirmamos 🙌»). No uses pasar_a_humano.`,
+          };
+        }
         ordenId = r.ordenId;
         // Lines changed → take or give back only the difference.
         await syncOrderConsumption(db(), n.organization_id, r.ordenId, null);
@@ -709,7 +717,7 @@ export async function avisarPos(organizationId: string): Promise<void> {
  * `recordar_pago` kindly reminds a delivery customer to transfer. Best
  * effort: a failure here never undoes the step.
  */
-export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Promise<void> {
+export async function avisarPedido(ordenId: string, extra?: AvisoExtra, cambio?: string): Promise<void> {
   const { data: o } = await db()
     .from("ordenes")
     .select("organization_id, folio, customer_phone, customer_name, order_type, delivery_address, se_lo_llevamos, wa_estado, wa_motivo, wa_motivo_detalle, total_cop, domicilio_cop, domicilio_transferido, orden_items(name, qty)")
@@ -758,6 +766,7 @@ export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Pr
   const nota = notaAviso({
     estado: o.wa_estado as string,
     extra,
+    cambio,
     folio: o.folio as string,
     items,
     recoge,
@@ -802,10 +811,15 @@ export async function avisarPedido(ordenId: string, extra?: "recordar_pago"): Pr
   });
 }
 
+/** A notice outside the normal steps: payment reminder, or the change the team just added. */
+export type AvisoExtra = "recordar_pago" | "cambio_aplicado";
+
 /** What the agent should tell the customer at each step (internal note for redactarAviso). */
 export function notaAviso(a: {
   estado: string;
-  extra?: "recordar_pago";
+  extra?: AvisoExtra;
+  /** cambio_aplicado: what changed, in words. */
+  cambio?: string;
   folio: string;
   items: string;
   recoge: boolean;
@@ -834,6 +848,9 @@ export function notaAviso(a: {
   const dom = a.domicilioCop && a.total != null
     ? `El domicilio vale ${pesosCop(a.domicilioCop)}: puede sumarlo a la transferencia (en total ${pesosCop(a.total + a.domicilioCop)}) o transferir solo los productos (${pesosCop(a.total)}) y pagarle el domicilio al domiciliario al recibir.`
     : "";
+  if (a.extra === "cambio_aplicado") {
+    return `Ya agregamos al pedido ${a.folio} el cambio que pidió (${a.cambio ?? "su cambio"}); ahora el pedido es ${a.items} y el total queda en ${pesosCop(a.total ?? 0)}. Confírmaselo con alegría en una frase, con el total nuevo. ${tono}`;
+  }
   if (a.extra === "recordar_pago") {
     return `El pedido ${a.folio} (${a.items}) a domicilio sigue esperando su transferencia. Recuérdale con amabilidad, sin presionar, que apenas nos llegue el pago lo empezamos a preparar.${dom ? ` ${dom}` : ""}${a.pagos ? ` Compártele los datos tal cual:\n${a.pagos}` : ""} ${tono}`;
   }

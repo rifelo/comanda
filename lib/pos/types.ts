@@ -354,6 +354,8 @@ export interface PosOrder {
   customerPhone?: string | null;
   /** Phone of whoever receives the delivery (may differ from the WhatsApp). */
   telefonoRecibe?: string | null;
+  /** WhatsApp: a change the customer asked for after it was accepted, waiting for the team («+ 1 Torta ($7.000)»). */
+  waCambio?: { texto: string; at: string } | null;
   /** Who prepares it (ordenes.barista_id → catalog.equipo); null/absent = nobody credited. */
   baristaId?: string | null;
   tendered: number | null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PosCatalog, PosMenuItem } from "@/lib/pos/types";
-import { notaPedido, personasDelPedido, validarPedido, type PedidoAgente } from "./pedido";
+import { notaPedido, personasDelPedido, textoCambio, validarPedido, type PedidoAgente } from "./pedido";
 
 const latte: PosMenuItem = {
   id: "p-latte", name: "Latte frío", catId: "c", sub: "", sku: "BF-005", price: 8500,
@@ -93,5 +93,17 @@ describe("notaPedido", () => {
     expect(notaPedido(pedido({ tipo: "domicilio", direccion: " Cra 20 #10-30 ", telefono: "310 111 2233", nota: "Sin azúcar" }), "573150000000"))
       .toBe("WhatsApp +573150000000 · Domicilio: Cra 20 #10-30 · Recibe Laura, tel 3101112233 · Sin azúcar");
     expect(notaPedido(pedido(), "573150000000")).toBe("WhatsApp +573150000000 · Para llevar");
+  });
+});
+
+describe("textoCambio", () => {
+  const item = (name: string, qty: number, unit: number, customer?: string) => ({ line: { kind: "item" as const, id: name, qty, mods: {}, customer }, name, unit, position: 0 });
+  it("lists what is added and removed", () => {
+    const antes = [
+      { name: "Americano", qty: 1, unit_price_cop: 5500, mods: {}, customer_name: "Bibiana" },
+      { name: "Latte", qty: 1, unit_price_cop: 8000, mods: {}, customer_name: "Pablito" },
+    ];
+    expect(textoCambio(antes, [item("Americano", 1, 5500, "Bibiana"), item("Latte", 1, 8000, "Pablito"), item("Torta de limón y arándanos", 1, 7000)])).toBe("+ 1 Torta de limón y arándanos ($7.000)");
+    expect(textoCambio(antes, [item("Americano", 1, 5500, "Bibiana")])).toBe("− 1 Latte (para Pablito)");
   });
 });

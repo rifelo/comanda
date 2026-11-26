@@ -20,7 +20,7 @@ import { pasoWa, textoDomicilio, type PasoWa } from "@/lib/whatsapp/flujo";
 import { enlaceWhatsapp, mensajeDomiciliario } from "@/lib/pos/domiciliarios";
 import { useTicketPrinter } from "@/lib/printer/tickets";
 import { chargePending, marcarEntregada, printLabelFor, printTicketFor, refreshPendientes, usePos } from "../pos-store";
-import { marcarEnCaminoWhatsapp, marcarListoWhatsapp } from "../actions";
+import { aplicarCambioWhatsapp, descartarCambioWhatsapp, marcarEnCaminoWhatsapp, marcarListoWhatsapp } from "../actions";
 import { ConversacionWa } from "./conversacion-wa";
 import { guard, methodWord, money, orderName } from "./ordenes";
 
@@ -139,8 +139,44 @@ function CardWa({ o, paso, onAbrir, domiciliarios }: { o: PosOrder; paso: PasoWa
         {o.domicilioCop ? <span className="wa-items">🛵 Domicilio {textoDomicilio(o.domicilioCop, o.domicilioTransferido)}</span> : null}
         <Barras paso={paso} />
       </button>
+      <CambioWa o={o} />
       <Acciones o={o} paso={paso} domiciliarios={domiciliarios} compacto />
     </article>
+  );
+}
+
+/**
+ * The customer asked for a change after the order was accepted (the agent
+ * can't rewrite it): the team adds it here or discards it. Shown on the card,
+ * the step view and the Pendientes card.
+ */
+export function CambioWa({ o }: { o: PosOrder }) {
+  const [busy, setBusy] = React.useState(false);
+  if (!o.waCambio) return null;
+  const pagado = o.status === "pagada";
+  const correr = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+    setBusy(true);
+    const r = await fn();
+    setBusy(false);
+    if (!r.ok) window.alert(r.error ?? "No se pudo guardar.");
+    void refreshPendientes();
+  };
+  return (
+    <div className="wa-cambio" role="alert">
+      <p className="wa-cambio-k">✋ El cliente pidió un cambio · {bogotaClock(o.waCambio.at)}</p>
+      <p className="wa-cambio-txt">{o.waCambio.texto}</p>
+      {pagado && <p className="wa-cambio-nota">Ya está pagado: cobra lo nuevo como un pedido aparte.</p>}
+      <div className="wa-cambio-acts">
+        {!pagado && (
+          <button type="button" className="btn ok sm" disabled={busy} onClick={() => void correr(() => aplicarCambioWhatsapp({ ordenId: o.id }))}>
+            Agregar al pedido
+          </button>
+        )}
+        <button type="button" className="btn ghost sm" disabled={busy} onClick={() => { if (window.confirm("¿Descartar el cambio? Escríbele al cliente si no se puede.")) void correr(() => descartarCambioWhatsapp({ ordenId: o.id })); }}>
+          Descartar
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -298,6 +334,7 @@ export function TarjetaPasoWa({ o, paso, onClose }: { o: PosOrder; paso: PasoWa;
             })}
           </ol>
 
+          <CambioWa o={o} />
           <section className="wa-ahora" aria-labelledby="wa-ahora-t">
             <div>
               <p className="wa-ahora-k">Ahora te toca</p>
