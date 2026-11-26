@@ -11,10 +11,10 @@
  */
 import * as React from "react";
 import { usePos, posStore, cancelTender, tenderAmount, startMixto } from "../pos-store";
+import { SUMAS_EFECTIVO } from "@/lib/pos/efectivo";
 import { FlowHeader, SendError, canPay, confirmPayment, money, orderSubtitle } from "./pay-common";
 
 const MAX = 99_999_999;
-const BILLS = [5_000, 10_000, 20_000, 50_000];
 
 export function EfectivoPage() {
   const s = usePos();
@@ -84,7 +84,6 @@ export function EfectivoPage() {
           <div className="card pay-amt" style={{ gap: 10, border: "2px solid var(--brand)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <span className="label" style={{ fontSize: 16, color: "var(--text)" }}>Recibido del cliente</span>
-              <button className="btn ghost sm" type="button" onClick={clear} style={{ height: 44 }}>Borrar</button>
             </div>
             <span className="huge sm" aria-live="polite">{money(k.received)}</span>
           </div>
@@ -119,18 +118,22 @@ export function EfectivoPage() {
         </section>
 
         <section className="pay-side pay-col" aria-label="Teclado">
-          <div className="bills" role="group" aria-label="Billetes rápidos">
-            {BILLS.map((b) => (
+          <div className="bills" role="group" aria-label="Sumar al recibido">
+            {SUMAS_EFECTIVO.map((b) => (
               <button key={b} className="bill" type="button" onClick={() => add(b)}>+ {money(b)}</button>
             ))}
           </div>
           <div className="keypad" role="group" aria-label="Dígitos">
-            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-              <button key={d} className="key" type="button" onClick={() => digit(d)}>{d}</button>
-            ))}
-            <button className="key alt" type="button" onClick={() => digit("000")}>000</button>
-            <button className="key" type="button" onClick={() => digit("0")}>0</button>
+            {/* Four columns: digits on the left, erase one / clear / exact on the right. */}
+            {["1", "2", "3"].map((d) => <button key={d} className="key" type="button" onClick={() => digit(d)}>{d}</button>)}
+            <button className="key alt" type="button" onClick={back1} aria-label="Borrar un dígito">⌫</button>
+            {["4", "5", "6"].map((d) => <button key={d} className="key" type="button" onClick={() => digit(d)}>{d}</button>)}
+            <button className="key alt" type="button" onClick={clear}>Limpiar</button>
+            {["7", "8", "9"].map((d) => <button key={d} className="key" type="button" onClick={() => digit(d)}>{d}</button>)}
             <button className="key alt" type="button" onClick={exact}>Exacto</button>
+            <button className="key" type="button" onClick={() => digit("0")}>0</button>
+            <button className="key alt" type="button" onClick={() => digit("00")}>00</button>
+            <button className="key alt" type="button" onClick={() => digit("000")}>000</button>
           </div>
         </section>
 

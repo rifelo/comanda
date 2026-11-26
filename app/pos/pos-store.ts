@@ -411,10 +411,9 @@ export function showRecipe(id: string) {
   posStore.set({ sheet: { mode: "receta", productId: id } });
 }
 export function tapItem(id: string) {
-  const p = posStore.get().catalog.byId[id];
-  if (!p) return;
-  if (p.mods.length > 0) posStore.set({ sheet: { mode: "add", productId: id } });
-  else addItem(id);
+  // One tap = one drink with its usual options (pedido rápido, 2026-11-26):
+  // size, milk and the name are changed on the ticket line, not in a modal.
+  if (posStore.get().catalog.byId[id]) addItem(id);
 }
 
 /** A fresh line stamped with the active person (when there is one). */
@@ -626,7 +625,15 @@ export function nombrarUna(idx: number, raw: string | null) {
     const order = line.qty > 1
       ? [...s.order.slice(0, idx), { ...line, qty: line.qty - 1 }, one, ...s.order.slice(idx + 1)]
       : s.order.map((l, k) => (k === idx ? one : l));
-    return { ...s, order, sent: false };
+    // A name corrected on the line («Ju» → «Juana») must not stay on the roster
+    // with no drink: it would print a label and count as a person.
+    const antes = line.customer;
+    const huerfano = !!antes && antes !== s.activePerson && !order.some((l) => l.customer === antes);
+    // The corrected name takes the old one's place, so the labels keep their order.
+    const people = !huerfano ? s.people
+      : name && s.people.indexOf(name) > s.people.indexOf(antes!) ? s.people.filter((p) => p !== name).map((p) => (p === antes ? name : p))
+      : s.people.filter((p) => p !== antes);
+    return { ...s, order, people, sent: false };
   });
 }
 /** Lines assigned to a person ("" / null = the unassigned ones). */
@@ -648,7 +655,7 @@ export function toggleLineExpanded(idx: number) {
     order: s.order.map((l, k) => (k === idx ? { ...l, expanded: !l.expanded } : l)),
   }));
 }
-export function setLineSingle(idx: number, gid: string, name: string) {
+export function setLineSingle(idx: number, gid: string, name: string | null) {
   posStore.set((s) => ({
     ...s,
     order: s.order.map((l, k) => (k === idx ? { ...l, mods: { ...l.mods, [gid]: name } } : l)),
@@ -1087,6 +1094,18 @@ export function payNow(method: Exclude<PayMethod, "efectivo">) {
   const s = posStore.get();
   if (!s.order.length || s.sending) return;
   startTender(method);
+  void completeSale();
+}
+/**
+ * Cash with one tap from the ticket: «Exacto» or the bill the customer hands
+ * over. Same path as confirming on the cash screen (completeSale); the change
+ * shows on the receipt screen.
+ */
+export function quickCash(recibido: number) {
+  const s = posStore.get();
+  if (!s.order.length || s.sending) return;
+  if (recibido < orderTotal(s.order, s.catalog)) return;
+  posStore.set({ payMethod: "efectivo", tendered: recibido, approvalCode: "", sendError: null, sheet: null, ticketOpen: false, lastPagos: null });
   void completeSale();
 }
 export function cancelTender() {
@@ -2135,7 +2154,7 @@ export function printReceipt() {
   printTicket(currentSaleTicket("recibo", false), modoComanda());
 }
 export function reprintComanda() {
-  printTicket(currentSaleTicket("comanda", true));
+  printTicket(currentSaleTicket("comanda", true), modoComanda());
 }
 
 /** Receipt or comanda of a stored order, from Pedidos. */
