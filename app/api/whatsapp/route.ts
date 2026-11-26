@@ -12,7 +12,8 @@ import { guardarEstados, guardarMedios, registrar, responder } from "@/lib/whats
  * stored during the request and the agent answers in `after()`.
  */
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// The reply waits for the burst (≤25 s) and may wait for a summary's «sí» (3.5 min).
+export const maxDuration = 300;
 
 /** Meta's one-time check when the webhook URL is saved. */
 export function GET(req: NextRequest) {

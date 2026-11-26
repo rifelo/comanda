@@ -131,3 +131,31 @@ export function esperaRafagaMs(texto: string | null | undefined): number {
   const soloSaludo = /^(?:(?:hola|holi|ola|buenas|buen dia|buenos dias|buenas tardes|buenas noches|buen diaa|que mas|oye|doc|vecina?|veci|una pregunta|pregunta|disculpa|disculpe)\s?)+$/.test(t);
   return soloSaludo ? 25_000 : 10_000;
 }
+
+const sinTildes = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/** The order the cafepayo.com menu sends («Hola, quiero hacer este pedido: …»). */
+export const esPedidoDelMenu = (texto: string | null) => !!texto && /^hola, quiero hacer este pedido:/i.test(texto.trim());
+
+/** The customer asks how to pay by transfer (llave, Nequi, cuenta, QR…). */
+export function pidePagos(texto: string): boolean {
+  const t = sinTildes(texto);
+  return /\bllaves?\b|\bnequi\b|\bdaviplata\b|\bbold\b|\bqr\b|numero de cuenta|\bcuenta\b.*\b(transfer|consign)|\b(transferir|transfiero|transferencia|consignar|consigno|consignacion)\b/.test(t);
+}
+
+/** Everything the customer wrote since our last message (the burst being answered). */
+export function textoDesdeRespuesta(turnos: { autor: string; texto: string }[]): string {
+  const i = turnos.map((t) => t.autor).lastIndexOf("agente");
+  return turnos.slice(i + 1).filter((t) => t.autor === "cliente").map((t) => t.texto).join("\n");
+}
+
+/** Our reply is an order summary waiting for the customer's «sí». */
+export const pideConfirmacion = (texto: string) => /\blo (enviamos|cambiamos|dejamos) as[ií]\s*\?/i.test(texto);
+
+/** The one reminder after an unanswered summary. */
+export function textoRecordarConfirmacion(nombre: string | null): string {
+  // «Doc. Bibiana» stays whole; a profile name gives its first word if it is a name (not «❤️» or «[]»).
+  const t = (nombre ?? "").trim();
+  const n = /^(doc|dr|dra|don|doña|profe|seño)\.?\s/i.test(t) ? t : (t.split(/\s+/)[0] ?? "");
+  return /^\p{L}/u.test(n) ? `${n}, te lo enviamos así? 🙌` : "Te lo enviamos así? 🙌";
+}

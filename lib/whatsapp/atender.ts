@@ -11,7 +11,7 @@ import { guardarPedidoWhatsapp, modificarPedidoWhatsapp, validarPedido } from ".
 import { atiendeA, usaConsola } from "./probadores";
 import { ESPERA_LIMITE_MS, esLimitePorNumero, nuevoDesdeRespuesta, sesionVigente, ultimaSesion } from "./sesion";
 import { versionPrompt, type Leccion } from "./aprendizajes";
-import { agradece, esperaRafagaMs, ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop } from "./flujo";
+import { agradece, esPedidoDelMenu, esperaRafagaMs, ESTADO_WA_TEXTO, pagosEnConversacion, pesosCop, pideConfirmacion, pidePagos, textoDesdeRespuesta, textoRecordarConfirmacion } from "./flujo";
 import type { WaEstado } from "@/lib/pos/types";
 import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type ClavesCliente, type FilaClaves } from "./ficha";
 
@@ -26,8 +26,8 @@ import { enlazarClaves, esTelefono, habitosDePedidos, telefonoDe, usuario, type 
  */
 /** The team wrote from the phone: the agent steps back this long. */
 const PAUSA_EQUIPO_MS = 2 * 60 * 60 * 1000;
-/** Handed over to a person: the agent stays out until the team is done. */
-const PAUSA_HUMANO_MS = 12 * 60 * 60 * 1000;
+/** Handed over to a person: the agent stays out while the team handles it (as long as when they write). */
+const PAUSA_HUMANO_MS = 2 * 60 * 60 * 1000;
 /** Chat the agent re-reads; older context lives in the client file instead. */
 const HISTORIAL_HORAS = 8;
 const HISTORIAL_MAX = 40;
@@ -307,7 +307,10 @@ export async function responder(p: Pendiente): Promise<void> {
     .select("agente_pausado_hasta, nombre, username, user_id, agente_sesion_id, agente_sesion_at")
     .eq("id", p.conversacionId)
     .single();
-  if (conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date()) return;
+  // An order sent from the menu (cafepayo.com) is always taken, even while the
+  // agent stepped back: the customer is waiting for its number.
+  const pausado = !!conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date();
+  if (pausado && !esPedidoDelMenu((este?.texto as string | null) ?? null)) return;
 
   const desde = new Date(Date.now() - HISTORIAL_HORAS * 60 * 60 * 1000).toISOString();
   const { data: filas } = await db()
@@ -358,6 +361,12 @@ export async function responder(p: Pendiente): Promise<void> {
   }
   let filaId = cargada.filaId;
   let ordenId: string | null = null;
+  // Asked how to transfer (llave, Nequi, QR…): the details always go out.
+  const quierePagos = !!n.pagos && pidePagos(textoDesdeRespuesta(turnos));
+  if (quierePagos) {
+    const ult = [...turnos].reverse().find((t) => t.autor === "cliente" && !esSoloSenal(t.texto));
+    if (ult) ult.texto = `${ult.texto}\n[Nota interna, no la escribió el cliente: pide los datos para transferir. Dáselos tal cual y no le digas que no necesita transferir ni que paga en efectivo.]`;
+  }
   const entrada: Parameters<typeof responderWhatsapp>[0] = {
     catalog,
     local: {
@@ -439,6 +448,14 @@ export async function responder(p: Pendiente): Promise<void> {
     console.info("[whatsapp] respuesta descartada: el cliente escribió de nuevo", p.waId);
     return;
   }
+  if (!ordenId && !res.humano && !quierePagos && (await hayAvisoDespues(p.conversacionId, ultimoCliente.at))) {
+    console.info("[whatsapp] respuesta descartada: ya salió un aviso del pedido", p.waId);
+    return;
+  }
+  // 3) The model forgot the details the customer asked for: add them.
+  if (quierePagos && n.pagos && !pagosEnConversacion([{ autor: "agente", texto: res.texto }], n.pagos)) {
+    res.texto = `${res.texto.trim()}\n\n${n.pagos.trim()}`;
+  }
   // A thank-you always gets a heart, even when the model forgot to react.
   const reaccion = res.reaccion ?? (agradece(ultimoCliente.texto) ? "❤️" : null);
   if (reaccion) await enviarReaccion(p.phoneNumberId, p.waId, p.messageId, reaccion);
@@ -451,6 +468,41 @@ export async function responder(p: Pendiente): Promise<void> {
     ordenId,
     version,
     conReaccion: !!reaccion,
+  });
+  // A summary waiting for «sí»: if nobody writes, ask once more before it's lost.
+  if (!ordenId && !res.humano && pideConfirmacion(res.texto)) {
+    await recordarConfirmacion({ ...p, organizationId: n.organization_id, version, nombre: ficha.trato ?? ficha.perfil ?? null });
+  }
+}
+
+/** How long a summary waits for «sí» before one reminder (inside this run's time limit). */
+const ESPERA_CONFIRMACION_MS = 210_000;
+
+/**
+ * Nothing came after our summary (no «sí», no team message, no order): one
+ * gentle «te lo enviamos así?» so the order isn't silently lost.
+ */
+async function recordarConfirmacion(a: Pendiente & { organizationId: string; version: string; nombre: string | null }): Promise<void> {
+  const enviado = new Date();
+  await dormir(ESPERA_CONFIRMACION_MS);
+  const { data: despues } = await db()
+    .from("whatsapp_mensajes")
+    .select("id")
+    .eq("conversacion_id", a.conversacionId)
+    .gt("created_at", enviado.toISOString())
+    .limit(1);
+  if (despues?.length) return;
+  const { data: conv } = await db().from("whatsapp_conversaciones").select("agente_pausado_hasta").eq("id", a.conversacionId).single();
+  if (conv?.agente_pausado_hasta && new Date(conv.agente_pausado_hasta as string) > new Date()) return;
+  await enviarBurbujas({
+    phoneNumberId: a.phoneNumberId,
+    waId: a.waId,
+    organizationId: a.organizationId,
+    conversacionId: a.conversacionId,
+    texto: textoRecordarConfirmacion(a.nombre),
+    ordenId: null,
+    version: `${a.version}·recordatorio`,
+    maxBurbujas: 1,
   });
 }
 
@@ -472,6 +524,19 @@ function agotadosAhora(catalog: PosCatalog): string {
   return fuera.length
     ? `Agotado ahora mismo (manda sobre el menú que tenías): ${fuera.join(", ")}. No lo ofrezcas ni lo metas en un pedido; si lo piden, di que hoy se nos acabó y sugiere algo parecido que sí haya.`
     : "Ahora mismo no hay nada agotado: todo el menú está disponible.";
+}
+
+/** An order notice (aceptado, listo…) went out after `desde`: it already answered that message. */
+async function hayAvisoDespues(conversacionId: string, desde: Date): Promise<boolean> {
+  const { data, error } = await db()
+    .from("whatsapp_mensajes")
+    .select("id")
+    .eq("conversacion_id", conversacionId)
+    .eq("autor", "agente")
+    .like("prompt_version", "%·aviso")
+    .gte("created_at", desde.toISOString())
+    .limit(1);
+  return !error && !!data?.length;
 }
 
 /** True when the customer sent something (not just a reaction or sticker) after `desde`. */
@@ -765,7 +830,7 @@ export function notaAviso(a: {
     x.pagosYaEnviados
       ? "Ya le mandamos los datos de pago en la conversación: NO le digas que paga " + cuando + "; si en la conversación quedó que paga por transferencia y todavía no mandó el comprobante, recuérdale con cariño que nos lo mande cuando la haga."
       : "Si en la conversación quedó que paga por transferencia (QR, Nequi, llaves), no le digas que paga " + cuando + "; si no, dile que paga " + cuando + " solo si aún no se lo dijimos.";
-  const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en UN solo mensaje corto, sin repetir el resumen del pedido, el total ni los datos de pago que ya le dimos.";
+  const tono = "Escríbele como parte del equipo, con calidez humana y cercana, en UN solo mensaje corto, sin repetir el resumen del pedido, el total ni los datos de pago que ya le dimos. Solo da este aviso: no le contestes lo último que escribió el cliente (eso lo responde otro mensaje).";
   const dom = a.domicilioCop && a.total != null
     ? `El domicilio vale ${pesosCop(a.domicilioCop)}: puede sumarlo a la transferencia (en total ${pesosCop(a.total + a.domicilioCop)}) o transferir solo los productos (${pesosCop(a.total)}) y pagarle el domicilio al domiciliario al recibir.`
     : "";

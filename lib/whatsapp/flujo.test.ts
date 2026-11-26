@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listoParaPreparar, pasoWa, siguienteEstado, tipoWa, pagosEnConversacion, textoDomicilio } from "./flujo";
+import { esPedidoDelMenu, listoParaPreparar, pasoWa, pideConfirmacion, pidePagos, siguienteEstado, textoDesdeRespuesta, textoRecordarConfirmacion, tipoWa, pagosEnConversacion, textoDomicilio } from "./flujo";
 
 describe("siguienteEstado", () => {
   it("delivery waits for the payment, pick-up goes straight to preparation", () => {
@@ -94,5 +94,32 @@ describe("esperaRafagaMs", () => {
     const { esperaRafagaMs } = await import("./flujo");
     for (const t of ["Hola", "Buen día", "Buenos días!!", "Hola buenas tardes 😊", "Doc", "Una pregunta"]) expect(esperaRafagaMs(t)).toBe(25_000);
     for (const t of ["Me ayudas con un americano por fis", "Hola, un latte para recoger", "Gracias", ""]) expect(esperaRafagaMs(t)).toBe(10_000);
+  });
+});
+
+describe("pidePagos", () => {
+  it.each(["Me envía llave para transferir por favor", "Llave por favor", "me pasas el nequi?", "Me regalas código qr", "Voy a hacerlo por transferencia", "a qué cuenta transfiero"])("%s", (t) => expect(pidePagos(t)).toBe(true));
+  it.each(["Dos tintos", "Pero no voy a pagar en efectivo", "Gracias", "llévalo a la droguería"])("no: %s", (t) => expect(pidePagos(t)).toBe(false));
+});
+describe("textoDesdeRespuesta", () => {
+  it("only what the customer wrote after our last message", () => {
+    expect(textoDesdeRespuesta([{ autor: "cliente", texto: "llave" }, { autor: "agente", texto: "x" }, { autor: "cliente", texto: "Si" }, { autor: "cliente", texto: "dos" }])).toBe("Si\ndos");
+  });
+});
+describe("pideConfirmacion / recordatorio", () => {
+  it("detects an order summary", () => {
+    expect(pideConfirmacion("1 Tinto — $3.000\n*Total: $3.000*\nLo enviamos así?")).toBe(true);
+    expect(pideConfirmacion("Lo cambiamos así?")).toBe(true);
+    expect(pideConfirmacion("Qué te preparamos hoy?")).toBe(false);
+  });
+  it("names the customer when it can", () => {
+    expect(textoRecordarConfirmacion("Marielita")).toBe("Marielita, te lo enviamos así? 🙌");
+    expect(textoRecordarConfirmacion("Doc. Bibiana")).toBe("Doc. Bibiana, te lo enviamos así? 🙌");
+    expect(textoRecordarConfirmacion("❤️")).toBe("Te lo enviamos así? 🙌");
+    expect(textoRecordarConfirmacion(null)).toBe("Te lo enviamos así? 🙌");
+  });
+  it("menu orders", () => {
+    expect(esPedidoDelMenu("Hola, quiero hacer este pedido:\n• 2 × Milo")).toBe(true);
+    expect(esPedidoDelMenu("Hola")).toBe(false);
   });
 });
