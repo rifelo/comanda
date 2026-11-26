@@ -88,6 +88,29 @@ export interface ResumenPagos {
   datafono: number;
   transferencia: number;
   count: number;
+  /**
+   * The part of the above that paid orders from an earlier day («Por cobrar»
+   * in the POS): already inside the totals — cash is in the drawer — shown on
+   * its own line so the day's close reads apart from old debts.
+   */
+  anteriores?: Omit<ResumenPagos, "anteriores">;
+}
+
+/** YYYY-MM-DD of an instant on the wall clock of `tz`. */
+export function diaLocal(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+}
+
+/**
+ * Payments with their dates → the summary, plus `anteriores`: the payments
+ * made on a later calendar day (in `tz`) than the order they paid.
+ */
+export function resumenConAnteriores(
+  pagos: ReadonlyArray<{ method: MetodoPago | string; amount_cop: number; pagadoEn: string; ordenCreadaEn: string }>,
+  tz: string,
+): ResumenPagos {
+  const viejos = pagos.filter((p) => diaLocal(p.pagadoEn, tz) > diaLocal(p.ordenCreadaEn, tz));
+  return { ...resumenPagos(pagos), anteriores: resumenPagos(viejos) };
 }
 
 export function resumenPagos(pagos: ReadonlyArray<{ method: MetodoPago | string; amount_cop: number }>): ResumenPagos {

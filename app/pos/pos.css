@@ -1058,3 +1058,8 @@
 .app .caja-paso-pedido .orders { display: block; padding: 0; overflow: visible; }
 @media (max-width: 1023px) { .app .wa-board.caja-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .app .wa-board.caja-board { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Pedidos › Por cobrar (ordenes.tsx PorCobrar) ── */
+.app .cobrar-nota { margin: 12px 20px 4px; padding: 12px 14px; border-radius: 12px; background: var(--paper, #f6f3ee); color: var(--muted); font-size: 14px; line-height: 1.4; }
+.app .cobrar-item { display: flex; flex-direction: column; gap: 6px; }
+.app .cobrar-dia { font-size: 13px; font-weight: 700; color: var(--late); padding-left: 4px; }

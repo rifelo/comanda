@@ -205,3 +205,18 @@ export function bogotaTime(iso: string): string {
   const d = new Date(new Date(iso).getTime() - 5 * 3_600_000);
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
+
+/**
+ * «Por cobrar»: an order still unpaid from an earlier day (Bogotá). It leaves
+ * the day's queues (Caja, WhatsApp, the strip under the catalog) and waits in
+ * its own tab; when it is finally paid, the arqueo shows that money on its own
+ * line («cobros de días anteriores») and the sale stays on its original day.
+ */
+export function esPorCobrar(o: { status: string; createdAt: string; local?: unknown }, today: string = bogotaDay()): boolean {
+  return o.status === "pendiente" && !o.local && bogotaDay(Date.parse(o.createdAt)) < today;
+}
+
+/** Whole days an order has been waiting, counted by Bogotá calendar day. */
+export function diasEsperando(createdAt: string, today: string = bogotaDay()): number {
+  return Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${bogotaDay(Date.parse(createdAt))}T00:00:00Z`)) / 86_400_000));
+}

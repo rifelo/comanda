@@ -185,7 +185,7 @@ export default async function CajaAdminPage({ searchParams }: { searchParams: Pr
                         <td style={{ padding: "8px" }}>{c.shift_name ?? "—"}</td>
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>{c.counted_by_name ?? "—"}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right" }}>{posMoney(c.base_inicial_cop)}</td>
-                        <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: noPos ? "var(--muted)" : undefined }}>{noPos ? "—" : posMoney(c.efectivo_cop)}</td>
+                        <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: noPos ? "var(--muted)" : undefined }}>{noPos ? "—" : posMoney(c.efectivo_cop)}{c.anteriores_efectivo_cop > 0 && <div className="text-muted" style={{ fontSize: 12 }}>incl. {posMoney(c.anteriores_efectivo_cop)} de días anteriores</div>}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right" }}>{posMoney(c.contado_cop)}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", color: noPos ? "var(--muted)" : tone, fontWeight: 700 }}>{noPos ? "—" : money(c.diferencia_cop)}</td>
                         <td className="cmd-num" style={{ padding: "8px", textAlign: "right", fontWeight: 700 }}>{posMoney(c.base_dejada_cop)}</td>

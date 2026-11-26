@@ -11,6 +11,7 @@ import { FAV_CAT, COMBO_CAT, type PosCatalog, type PosMenuItem, type PosCombo, t
 import { useCatalog, usePos, posStore, orderTotal, tapItem, showRecipe, addCombo, applyAct, dismissSuggestion, startTender, savePending, openOrdenes, marcarEntregada, queuedOrders, type SuggestionCardState } from "../pos-store";
 import { money, qtyOnTicket, useNow } from "./ticket";
 import { filtrarTemp, temperaturaDe, type FiltroTemp } from "@/lib/pos/temperatura";
+import { esPorCobrar } from "@/lib/pos/pending";
 
 /** How many products Favoritos shows (6 × 2 on the 1280 × 800 tablet). */
 const FAV_MAX = 12;
@@ -265,7 +266,8 @@ function PendingStrip() {
   const s = usePos();
   const now = useNow();
   const all = [...queuedOrders(s), ...s.pendientes]
-    .filter((o) => o.status !== "cancelada")
+    // Unpaid from an earlier day waits in Pedidos › Por cobrar, not in the day's strip.
+    .filter((o) => o.status !== "cancelada" && !esPorCobrar(o))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (!all.length) return null;
   const shown = all.slice(0, 3);

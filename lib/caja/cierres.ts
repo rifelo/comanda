@@ -11,7 +11,7 @@ import {
   faltaJustificar,
   ventanaDesdeUltimo,
   NOTA_DIFERENCIA_MIN,
-  resumenPagos,
+  resumenConAnteriores,
   totalContado,
   ventanaTurno,
   type ResumenPagos,
@@ -24,7 +24,7 @@ import { sumMovimientosVentana } from "./movimientos-db";
 // or the service-role client (tablet).
 
 const SELECT =
-  "id, organization_id, restaurant_id, shift_instance_id, status, counted_by, submitted_at, reviewed_by, reviewed_at, note, review_note, ventana_desde, ventana_hasta, base_inicial_cop, efectivo_cop, tarjeta_cop, transferencia_cop, pagos_count, esperado_cop, contado_cop, diferencia_cop, base_dejada_cop, denominaciones, base_denominaciones, base_exacta, base_confirmada_at, base_validada_at, base_validada_ok, base_validada_nota, base_encontrada_cop, counter:profiles!caja_cierres_counted_by_fkey(full_name), confirmer:profiles!caja_cierres_base_confirmada_by_fkey(full_name), validator:profiles!caja_cierres_base_validada_by_fkey(full_name), shift:shift_instances(date, template:checklist_templates(name))";
+  "id, organization_id, restaurant_id, shift_instance_id, status, counted_by, submitted_at, reviewed_by, reviewed_at, note, review_note, ventana_desde, ventana_hasta, base_inicial_cop, efectivo_cop, tarjeta_cop, transferencia_cop, pagos_count, anteriores_cop, anteriores_efectivo_cop, esperado_cop, contado_cop, diferencia_cop, base_dejada_cop, denominaciones, base_denominaciones, base_exacta, base_confirmada_at, base_validada_at, base_validada_ok, base_validada_nota, base_encontrada_cop, counter:profiles!caja_cierres_counted_by_fkey(full_name), confirmer:profiles!caja_cierres_base_confirmada_by_fkey(full_name), validator:profiles!caja_cierres_base_validada_by_fkey(full_name), shift:shift_instances(date, template:checklist_templates(name))";
 
 function mapLineas(v: unknown): CajaDenominacion[] {
   const arr = (Array.isArray(v) ? v : []) as Array<Record<string, unknown>>;
@@ -59,6 +59,8 @@ function mapCierre(row: Record<string, unknown>): CajaCierre {
     tarjeta_cop: Number(row.tarjeta_cop ?? 0),
     transferencia_cop: Number(row.transferencia_cop ?? 0),
     pagos_count: Number(row.pagos_count ?? 0),
+    anteriores_cop: Number(row.anteriores_cop ?? 0),
+    anteriores_efectivo_cop: Number(row.anteriores_efectivo_cop ?? 0),
     esperado_cop: Number(row.esperado_cop ?? 0),
     contado_cop: Number(row.contado_cop ?? 0),
     diferencia_cop: Number(row.diferencia_cop ?? 0),
@@ -172,12 +174,12 @@ export async function listCierresSede(db: Db, restaurantId: string, limit = 14):
  */
 export async function sumPagosVentana(
   db: Db,
-  input: { orgId: string; restaurantId: string; desde: string; hasta: string },
+  input: { orgId: string; restaurantId: string; desde: string; hasta: string; tz: string },
 ): Promise<ResumenPagos> {
   const [pagos, directas] = await Promise.all([
     db
       .from("orden_pagos")
-      .select("method, amount_cop, ordenes!inner(restaurant_id, status)")
+      .select("method, amount_cop, created_at, ordenes!inner(restaurant_id, status, created_at)")
       .eq("organization_id", input.orgId)
       .eq("ordenes.restaurant_id", input.restaurantId)
       .neq("ordenes.status", "cancelada")
@@ -185,7 +187,7 @@ export async function sumPagosVentana(
       .lt("created_at", input.hasta),
     db
       .from("ordenes")
-      .select("payment_method, total_cop, orden_pagos(id)")
+      .select("payment_method, total_cop, paid_at, created_at, orden_pagos(id)")
       .eq("organization_id", input.orgId)
       .eq("restaurant_id", input.restaurantId)
       .eq("status", "pagada")
@@ -196,14 +198,15 @@ export async function sumPagosVentana(
     console.error("[sumPagosVentana]", pagos.error ?? directas.error);
     return { efectivo: 0, datafono: 0, transferencia: 0, count: 0 };
   }
-  const sinFilas = cobrosDirectos(
-    ((directas.data ?? []) as Array<{ payment_method: string | null; total_cop: number; orden_pagos: unknown[] | null }>).map((o) => ({
-      payment_method: o.payment_method,
-      total_cop: Number(o.total_cop),
-      pagos: o.orden_pagos?.length ?? 0,
-    })),
-  );
-  return resumenPagos([...((pagos.data ?? []) as Array<{ method: string; amount_cop: number }>), ...sinFilas]);
+  const conFilas = ((pagos.data ?? []) as unknown as Array<{ method: string; amount_cop: number; created_at: string; ordenes: { created_at: string } | { created_at: string }[] }>).map((p) => {
+    const o = Array.isArray(p.ordenes) ? p.ordenes[0] : p.ordenes;
+    return { method: p.method, amount_cop: Number(p.amount_cop), pagadoEn: p.created_at, ordenCreadaEn: o?.created_at ?? p.created_at };
+  });
+  // Direct «Cobrar» sales write no payment row: the order's own method and total, when it was paid.
+  const sinFilas = ((directas.data ?? []) as Array<{ payment_method: string | null; total_cop: number; paid_at: string; created_at: string; orden_pagos: unknown[] | null }>)
+    .filter((o) => cobrosDirectos([{ payment_method: o.payment_method, total_cop: Number(o.total_cop), pagos: o.orden_pagos?.length ?? 0 }]).length)
+    .map((o) => ({ method: o.payment_method as string, amount_cop: Number(o.total_cop), pagadoEn: o.paid_at, ordenCreadaEn: o.created_at }));
+  return resumenConAnteriores([...conFilas, ...sinFilas], input.tz);
 }
 
 export interface CajaInstance {
@@ -335,7 +338,7 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
   });
   const ventana = ventanaDesdeUltimo(delTurno, (ultimo?.ventana_hasta as string | undefined) ?? null);
   const win = { orgId: actor.orgId, restaurantId: actor.restaurantId, desde: ventana.desde, hasta: ventana.hasta };
-  const [pagos, mov] = await Promise.all([sumPagosVentana(db, win), sumMovimientosVentana(db, win)]);
+  const [pagos, mov] = await Promise.all([sumPagosVentana(db, { ...win, tz: actor.tz }), sumMovimientosVentana(db, win)]);
 
   const denominaciones = data.denominaciones.filter((d) => d.cantidad > 0).sort((a, b) => b.valor - a.valor);
   const contado = totalContado(denominaciones);
@@ -360,6 +363,8 @@ export async function crearCierre(db: Db, actor: CierreActor, data: CierreInput)
       tarjeta_cop: pagos.datafono,
       transferencia_cop: pagos.transferencia,
       pagos_count: pagos.count,
+      anteriores_cop: (pagos.anteriores?.efectivo ?? 0) + (pagos.anteriores?.datafono ?? 0) + (pagos.anteriores?.transferencia ?? 0),
+      anteriores_efectivo_cop: pagos.anteriores?.efectivo ?? 0,
       ingresos_cop: mov.ingresos,
       salidas_cop: mov.salidas,
       esperado_cop: Math.max(0, esperado),
