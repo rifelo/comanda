@@ -181,10 +181,12 @@ function LabelsLine() {
  */
 function TicketsLine({ waiting }: { waiting: boolean }) {
   const t = useTicketPrinter();
-  if (t.modo === "no") return null;
+  // Every device sends its receipt and comanda to the caja's printer (modoComanda),
+  // also the ones set to «No»: what happened to them always shows here.
+  const mal = !!t.note && /no se pudo|no ha salido|en espera|recarga/i.test(t.note);
   return (
     <div className="done-labels">
-      {t.note && <span className="muted" style={{ fontSize: 14 }}>{t.note}</span>}
+      {t.note && <span role="status" className={mal ? "" : "muted"} style={{ fontSize: mal ? 16 : 14, fontWeight: mal ? 700 : 400, color: mal ? "var(--late)" : undefined }}>{t.note}</span>}
       <div className="done-tools">
         <button type="button" className="btn ghost sm done-tool" onClick={printReceipt} disabled={waiting}>
           Otro recibo

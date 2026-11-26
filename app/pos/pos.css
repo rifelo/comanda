@@ -1063,3 +1063,49 @@
 .app .cobrar-nota { margin: 12px 20px 4px; padding: 12px 14px; border-radius: 12px; background: var(--paper, #f6f3ee); color: var(--muted); font-size: 14px; line-height: 1.4; }
 .app .cobrar-item { display: flex; flex-direction: column; gap: 6px; }
 .app .cobrar-dia { font-size: 13px; font-weight: 700; color: var(--late); padding-left: 4px; }
+
+/* ── Pedido rápido (2026-11-26): options and the cup name on the ticket line, cash with one tap ── */
+.app .ql { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.app .ql:last-child { border-bottom: none; }
+.app .ql-top { display: flex; align-items: center; gap: 8px; min-height: 46px; position: relative; }
+.app .ql-top .q { width: 30px; height: 30px; border-radius: 9px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.app .ql-n { flex: 1 1 0; min-width: 0; }
+.app .ql-top .ln { display: block; font-size: 16px; font-weight: 700; line-height: 1.2; }
+.app .ql-top .ls { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+.app .ql-top .lp { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app .ql-x { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation; }
+.app .ql-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.app .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--surface-2); max-width: 100%; }
+.app .seg button { min-height: 40px; padding: 0 12px; border: none; border-radius: 8px; background: transparent; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; touch-action: manipulation; }
+.app .seg button.on { background: var(--strong); color: var(--on-strong); }
+.app .ql-mas { min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.app .nmf { flex: 0 0 46%; min-width: 0; }
+.app .nmf-in { display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 10px; border-radius: 10px; border: 1px dashed var(--muted); cursor: text; }
+.app .nmf.has .nmf-in { border: 1px solid transparent; background: var(--brand-soft); }
+.app .nmf.on .nmf-in { border: 2px solid var(--brand); background: var(--surface); padding: 0 9px; }
+.app .nmf-pa { font-size: 13px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+.app .nmf-in input { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: transparent; color: var(--text); font-family: inherit; font-size: 16px; font-weight: 600; }
+.app .nmf-in input::placeholder { color: var(--muted); font-weight: 400; }
+.app .nmf-chips { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); }
+.app .nmf-chips button { min-height: 44px; max-width: 160px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.app .ql:has(.nmf.on) { padding-bottom: 72px; }
+.app .qc-l { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.app .qc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.app .qc .btn { height: 60px; padding: 0 4px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; touch-action: manipulation; }
+.app .qc .btn.ghost { font-size: 13px; }
+.app .qc-m { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.app .qc-m .btn { height: 52px; font-size: 13px; padding: 0 4px; }
+.app .pay-cash .bills { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.app .pay-cash .bill { font-size: 18px; padding: 0 4px; }
+.app .pay-cash .keypad { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-height: 720px) {
+  .app .qc .btn { height: 52px; }
+  .app .qc-m .btn { height: 46px; }
+  .app .ticket-f { gap: 8px; }
+}
+/* Keyboard open on a tablet (the page shrinks): the ticket is only the drink being named. */
+@media (max-height: 560px) {
+  .app .ticket:has(.nmf.on) .ticket-h, .app .ticket:has(.nmf.on) .tk-tools, .app .ticket:has(.nmf.on) .ticket-f > :not(.total) { display: none; }
+  .app .ticket:has(.nmf.on) .ticket-f { padding-top: 8px; padding-bottom: 8px; }
+  .app .ticket:has(.nmf.on) .ticket-f .total .v { font-size: 22px; }
+}

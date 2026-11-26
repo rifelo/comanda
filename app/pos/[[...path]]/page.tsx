@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
 import { loadPosContext } from "@/lib/pos/server";
 import { PosTerminal } from "../pos-terminal";
@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   manifest: "/pos/manifest.webmanifest",
   icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
 };
+// The on-screen keyboard shrinks the page instead of covering it, so the name
+// field being typed (and its save button) stays in view on the tablets.
+export const viewport: Viewport = { interactiveWidget: "resizes-content" };
 export const dynamic = "force-dynamic";
 
 /**
